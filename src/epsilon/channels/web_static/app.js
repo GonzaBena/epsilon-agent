@@ -359,10 +359,13 @@ attachButton.addEventListener("click", () => {
   wantsCsv = false;
   fileInput.click();
 });
-document.getElementById("pill-csv").addEventListener("click", () => {
-  wantsCsv = true;
-  fileInput.click();
-});
+// «Imagen a CSV»: la píldora y la fila del panel de herramientas hacen lo mismo.
+for (const element of document.querySelectorAll("[data-csv]")) {
+  element.addEventListener("click", () => {
+    wantsCsv = true;
+    fileInput.click();
+  });
+}
 // Si cerrás el selector sin elegir nada, el atajo no queda "armado".
 fileInput.addEventListener("cancel", () => {
   wantsCsv = false;

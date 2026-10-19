@@ -1254,3 +1254,55 @@ def test_the_recents_list_can_hold_many_conversations():
     max_height = int(re.search(r"max-height:\s*(\d+)px", block).group(1))
 
     assert max_height >= 2000
+
+
+# --- Panel de herramientas: «Imagen a CSV» y la etiqueta «usa IA» ------------
+
+
+def tool_rows():
+    """Las filas del panel: [(texto del nombre, ¿tiene la etiqueta 'usa IA'?)]."""
+    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+    rows = re.findall(r'<button[^>]*class="tool"[^>]*>(.*?)</button>', right, re.S)
+    result = []
+    for row in rows:
+        name = re.search(r'<span class="tool-name">(.*?)</span>', row).group(1)
+        result.append((name, 'class="tool-tag"' in row and "usa IA" in row))
+    return result
+
+
+def test_the_tools_panel_has_an_image_to_csv_row_that_works_like_the_pill():
+    html = chat_html()
+    right = re.search(r'<aside[^>]*id="right".*?</aside>', html, re.S).group(0)
+
+    row = re.search(r'<button[^>]*class="tool"[^>]*data-csv[^>]*>', right)
+    assert row and 'type="button"' in row.group(0)
+    assert "Imagen a CSV" in right
+    # La píldora y la fila hacen lo mismo: las dos llevan data-csv, y app.js las atiende juntas.
+    assert re.search(r'<button[^>]*id="pill-csv"[^>]*data-csv', html)
+    assert "[data-csv]" in js("app.js")
+
+
+def test_only_the_tools_that_spend_tokens_say_they_use_ai():
+    # Si una herramienta pasa a usar (o dejar de usar) el modelo, hay que cambiar esta lista y su fila.
+    assert {name for name, tagged in tool_rows() if tagged} == {"/resumir", "Imagen a CSV"}
+
+
+def test_every_tool_row_is_listed_once():
+    names = [name for name, _ in tool_rows()]
+
+    assert len(names) == len(set(names))
+    assert {"+ texto", "Imagen a CSV", "/ver", "/buscar", "/archivos", "/resumir", "/ticket", "/uso"} == set(names)
+
+
+def test_the_ai_tag_explains_itself_and_does_not_name_the_model():
+    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+    tag = re.search(r'<span class="tool-tag"[^>]*>', right).group(0)
+
+    assert "title=" in tag  # el tooltip dice qué significa
+    assert "Gemini" not in right  # el modelo puede cambiar: el texto habla de «IA»
+
+
+def test_the_tag_has_a_style():
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert ".tool-tag" in css and ".tool-head" in css

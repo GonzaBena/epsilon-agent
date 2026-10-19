@@ -546,6 +546,21 @@ code {
   font-family: var(--mono);
   font-size: 13px;
 }
+/* El nombre y, al lado, la etiqueta de las que usan IA. */
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tool-tag {
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
 .tool-desc {
   color: var(--muted);
   font-size: 13px;
