@@ -1,24 +1,15 @@
 import json
 import mimetypes
-import os
 import sys
 
 from dotenv import load_dotenv
-from google import genai
-
 from google.genai import types
-import epsilon.notes as notes
+
+from epsilon import llm, notes
 
 
 def img_to_rows(img: bytes, mime: str, fields: list[str]) -> list[dict]:
     """Analiza la imagen y devuelve una lista de filas (dicts) con SOLO esos campos."""
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        raise SystemExit("Falta GEMINI_API_KEY en el .env")
-
-    cliente = genai.Client(api_key=key)
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
-
     # El prompt es corto a propósito: menos tokens de entrada = menos costo.
     # Le pedimos que NO invente: si un dato no está, que deje el campo vacío.
     prompt = (
@@ -28,27 +19,15 @@ def img_to_rows(img: bytes, mime: str, fields: list[str]) -> list[dict]:
         "en la imagen, dejá el valor como texto vacío; no inventes nada."
     )
 
-    answer = cliente.models.generate_content(
-        model=model,
-        contents=[
-            # Part.from_bytes empaqueta la imagen para enviarla junto al texto.
-            types.Part.from_bytes(data=img, mime_type=mime),
-            prompt,
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",  # obliga a responder JSON
-            temperature=0,  # 0 = respuestas lo más estables posible
-            max_output_tokens=4000,  # tope de salida, para que nada se dispare
-        ),
+    answer = llm.generate(
+        # Part.from_bytes empaqueta la imagen para enviarla junto al texto.
+        [types.Part.from_bytes(data=img, mime_type=mime)],
+        prompt,
+        max_tokens=4000,  # tope de salida, para que nada se dispare
+        json_mode=True,  # obliga a responder JSON
     )
 
-    # Mostramos los tokens usados para que puedas medir cuánto cuesta cada imagen.
-    use = answer.usage_metadata
-    print(
-        f"Tokens → input: {use.prompt_token_count}, output: {use.candidates_token_count}"
-    )
-
-    data = json.loads(answer.text)
+    data = json.loads(answer)
 
     # Si el modelo devolvió un solo objeto en vez de una lista, lo envolvemos.
     if isinstance(data, dict):

@@ -45,4 +45,7 @@ instalarlo, cargar sus claves y usarlo.
 - `extract.py` todavía llama a Gemini por su cuenta; pasarlo a `llm.generate`.
 - Comandos `/archivos` y `/resumir <nombre>` para archivos ya guardados.
 - Comando `/ayuda`.
+- `notes.save_csv`: `if path:` siempre es verdadero, así que escribe el encabezado
+  en cada guardado (también si el CSV ya existía). Debería ser `if new:`.
+- Comando `/uso` (tokens y precio, total + hoy): en curso, ver `usage.py`.
 - Más adelante: Whisper (voz), Obsidian, plantillas, FastAPI/MCP, web con chat.
