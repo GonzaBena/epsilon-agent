@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 import os
+import threading
 
 from telegram import BotCommand, BotCommandScopeChat
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -200,6 +201,18 @@ def build_app(token: str, allowed_user_id: int) -> Application:
     return app
 
 
+def polling_options(in_main_thread: bool) -> dict:
+    """Opciones de run_polling según el hilo desde el que corre."""
+    # Si no hay red al arrancar, reintenta sin límite (-1) en vez de rendirse:
+    # como la web sigue viva, nadie reiniciaría el servicio por nosotros.
+    options = {"bootstrap_retries": -1}
+    if not in_main_thread:
+        # Solo el hilo principal puede manejar señales (Ctrl+C, systemd). En
+        # otro hilo habría un error, y de las señales se ocupa la web.
+        options["stop_signals"] = None
+    return options
+
+
 def run():
     try:
         token, allowed_user_id = read_config(os.environ)
@@ -207,8 +220,9 @@ def run():
         raise SystemExit(str(e))
 
     app = build_app(token, allowed_user_id)
-    print("Bot en marcha. Ctrl+C para cortar.")
-    app.run_polling()
+    in_main = threading.current_thread() is threading.main_thread()
+    print("Bot de Telegram en marcha.")
+    app.run_polling(**polling_options(in_main))
 
 
 if __name__ == "__main__":

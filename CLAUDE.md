@@ -1,6 +1,6 @@
 # Epsilon
 
-Agente personal usado a traves de un bot de telegram que guarda notas y archivos en una carpeta,
+Agente personal que se usa desde una web local (y, opcional, un bot de Telegram) que guarda notas y archivos en una carpeta,
 extrae datos de imágenes a CSV y resume notas/PDF/imágenes con Gemini.
 La idea es que sea simple y barato de correr, y que otra persona pueda
 instalarlo, cargar sus claves y usarlo.
@@ -8,7 +8,8 @@ instalarlo, cargar sus claves y usarlo.
 ## Comandos
 
 - `uv sync` instala dependencias
-- `uv run epsilon` (o `uv run python -m epsilon.main`) arranca los canales configurados
+- `uv run epsilon` (o `uv run python -m epsilon.main`) arranca la web en
+  http://127.0.0.1:8765 y, si está configurado, Telegram
 - `uv run pytest` corre los tests (nunca llaman a Gemini)
 - El bot corre como servicio de usuario (`deploy/epsilon.service`):
   `systemctl --user status|restart|stop epsilon`; logs con
@@ -21,10 +22,11 @@ instalarlo, cargar sus claves y usarlo.
 
 - `core.py`: toda la lógica (comandos, confirmaciones, estado por sesión).
   `handle(Message) -> Reply`. No conoce ningún canal. Ver `docs/plan-core.md`.
-- `main.py`: punto de entrada. Arranca los canales con configuración completa
-  y omite (avisando) los que no; un canal caído no tumba a los demás.
-- `channels/web.py`: web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver
-  `docs/plan-web.md`.
+- `main.py`: punto de entrada. La web (siempre activa) corre en el hilo
+  principal; los demás canales configurados (Telegram) van cada uno en su hilo
+  y, si fallan, mueren solos sin tumbar la web. Se omiten los sin configurar.
+- `channels/web.py` y `channels/web_static/` (index.html, style.css, app.js):
+  web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver `docs/plan-web.md`.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.

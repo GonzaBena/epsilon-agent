@@ -1,4 +1,5 @@
 from dataclasses import asdict
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -23,6 +24,11 @@ MAX_UPLOAD = 20 * 1024 * 1024
 
 # Únicos nombres con los que se acepta que alguien llame a la web.
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
+
+# La web solo escucha en esta dirección y NO es configurable a propósito: no
+# tiene login, así que no se expone a la red (para el celular se usa Telegram).
+HOST = "127.0.0.1"
+DEFAULT_PORT = 8765
 
 # La página: index.html, style.css y app.js, cada uno en su archivo.
 STATIC_DIR = Path(__file__).parent / "web_static"
@@ -141,3 +147,37 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     return app
+
+
+# --- Arranque ----------------------------------------------------------------
+
+
+def read_port(env) -> int:
+    """Puerto de la web (WEB_PORT, por defecto 8765). Lanza ValueError si no sirve."""
+    value = env.get("WEB_PORT", str(DEFAULT_PORT))
+    if not value.isdigit() or not 1 <= int(value) <= 65535:
+        raise ValueError("WEB_PORT tiene que ser un número entre 1 y 65535")
+    return int(value)
+
+
+def is_configured(env) -> bool:
+    """La web es el canal por defecto: no necesita ninguna clave, siempre arranca."""
+    return True
+
+
+def run():
+    """Levanta el servidor y se queda esperando (bloquea hasta que lo cortan)."""
+    import uvicorn  # acá adentro: importarlo es lento y solo hace falta al arrancar
+
+    try:
+        port = read_port(os.environ)
+    except ValueError as e:
+        raise SystemExit(str(e))
+
+    print(f"Web en marcha: http://{HOST}:{port}")
+    # uvicorn maneja solo Ctrl+C y la señal de systemd (corre en el hilo principal).
+    uvicorn.run(create_app(), host=HOST, port=port, log_level="warning")
+
+
+if __name__ == "__main__":
+    run()

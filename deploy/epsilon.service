@@ -1,8 +1,8 @@
-# Servicio de usuario de systemd para el bot de Epsilon.
+# Servicio de usuario de systemd para Epsilon (web local + canales opcionales).
 # Si lo instalás en otra máquina, cambiá las dos rutas de abajo.
 # Instalar:  systemctl --user enable --now /ruta/a/deploy/epsilon.service
 [Unit]
-Description=Epsilon - Telegram Bot
+Description=Epsilon
 After=network-online.target
 Wants=network-online.target
 

@@ -285,3 +285,25 @@ def test_html_has_no_inline_script_or_style():
     assert not re.search(r"<script(?![^>]*\bsrc=)", html)  # solo <script src=...>
     assert "style=" not in html and "<style" not in html
     assert not re.search(r"\son\w+=", html)  # nada de onclick= y similares
+
+
+# --- Configuración y arranque ------------------------------------------------
+
+
+def test_read_port_defaults_to_8765():
+    assert web.read_port({}) == 8765
+
+
+def test_read_port_accepts_a_valid_port():
+    assert web.read_port({"WEB_PORT": "9000"}) == 9000
+
+
+@pytest.mark.parametrize("value", ["abc", "0", "70000", "-1", ""])
+def test_read_port_rejects_invalid_values(value):
+    with pytest.raises(ValueError, match="WEB_PORT"):
+        web.read_port({"WEB_PORT": value})
+
+
+def test_web_only_listens_on_localhost():
+    # No es configurable a propósito: sin login, no se expone a la red.
+    assert web.HOST == "127.0.0.1"

@@ -70,3 +70,22 @@ def test_every_menu_command_exists_in_core():
     menu = {c.command for c in telegram.COMMANDS}
 
     assert menu <= set(core.COMMANDS)
+
+
+# --- Opciones de arranque según el hilo --------------------------------------
+
+
+def test_in_main_thread_telegram_handles_stop_signals():
+    options = telegram.polling_options(in_main_thread=True)
+
+    assert "stop_signals" not in options  # usa los de la librería (Ctrl+C, systemd)
+
+
+def test_in_a_thread_telegram_does_not_touch_signals():
+    # Solo el hilo principal puede manejar señales; en otro hilo daría error.
+    assert telegram.polling_options(in_main_thread=False)["stop_signals"] is None
+
+
+def test_telegram_retries_forever_if_the_network_is_down_at_start():
+    for in_main in (True, False):
+        assert telegram.polling_options(in_main)["bootstrap_retries"] == -1

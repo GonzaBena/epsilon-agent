@@ -34,7 +34,8 @@ pantalla de canales y configuración (están en el mockup, vienen después).
   las señales de systemd). Telegram corre en un hilo aparte, con su propio
   bucle de eventos y sin manejadores de señales; si falla, solo muere ese hilo
   y la web sigue. Alternativa si los hilos dan problemas: un único bucle asyncio.
-- `WEB_HOST` y `WEB_PORT` configurables (por defecto 127.0.0.1 y 8765).
+- Solo `WEB_PORT` es configurable (por defecto 8765). El host queda fijo en
+  127.0.0.1 a propósito: sin login, no se expone a la red.
 
 ## Pasos (cada uno con tests y commit)
 
@@ -49,4 +50,10 @@ pantalla de canales y configuración (están en el mockup, vienen después).
 ## Notas
 
 - `uv_build` empaqueta `web_static/` (verificado construyendo el wheel).
-- Verificar con un arranque real que Telegram con token inválido no tumba la web.
+
+## Estado
+
+Los 3 pasos están hechos. Verificado con arranques reales: Telegram con token
+inválido no tumba la web; sin Telegram configurado la web arranca sola;
+Telegram sin red reintenta sin límite; SIGTERM apaga todo en ~1 s; puerto
+ocupado o WEB_PORT inválido cortan con un mensaje claro.
