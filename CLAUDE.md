@@ -23,6 +23,8 @@ instalarlo, cargar sus claves y usarlo.
   `handle(Message) -> Reply`. No conoce ningún canal. Ver `docs/plan-core.md`.
 - `main.py`: punto de entrada. Arranca los canales con configuración completa
   y omite (avisando) los que no; un canal caído no tumba a los demás.
+- `channels/web.py`: web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver
+  `docs/plan-web.md`.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
@@ -34,6 +36,10 @@ instalarlo, cargar sus claves y usarlo.
 - Los datos viven en DATA_DIR (fuera del repo). Todo acceso a archivos
   pasa por `safe_path`; nunca armar rutas con texto del usuario a mano.
 - Solo responde al ID de Telegram autorizado (también en los botones).
+- La web escucha SOLO en 127.0.0.1, sin login (uso personal; el celular usa
+  Telegram). Cada request valida Host y Origin; no sacar esas defensas ni
+  exponerla a la red sin agregar contraseña y HTTPS.
+- Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
 - Escrituras: crear o agregar, nunca pisar. Lo que viene de una imagen
   se muestra y se confirma antes de guardar.
 - Gastar lo mínimo: lo que no necesita modelo no lo usa, prompts cortos,

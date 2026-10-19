@@ -8,9 +8,12 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.149.0",
     "google-genai>=2.31.0",
     "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
     "python-telegram-bot>=22.8",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -22,5 +25,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.14.0",
     "pytest>=9.1.1",
 ]
