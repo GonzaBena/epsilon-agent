@@ -59,3 +59,24 @@ def test_list_files_limit_and_filter(tmp_path, monkeypatch):
 
     found, total = notes.list_files("foto")
     assert [p.name for p in found] == ["foto.png"] and total == 1
+
+
+def test_save_file_in_custom_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+
+    path = notes.save_file("t.jpg", b"x", folder="Tickets")
+
+    assert path.parent == tmp_path / "tickets"  # carpeta aparte, en minúsculas
+    assert path.read_bytes() == b"x"
+
+
+def test_save_file_folder_cannot_escape_or_use_summaries(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+
+    a = notes.save_file("a.jpg", b"1", folder="../../etc")
+    b = notes.save_file("b.jpg", b"2", folder="summarizes")
+    c = notes.save_file("c.jpg", b"3", folder="   ")
+
+    assert a.is_relative_to(tmp_path)  # el "../" no sale de DATA_DIR
+    assert b.parent == tmp_path / "files"  # carpeta reservada -> files/
+    assert c.parent == tmp_path / "files"  # vacío -> files/

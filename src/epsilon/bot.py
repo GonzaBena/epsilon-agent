@@ -1,6 +1,7 @@
 import asyncio
 from datetime import date, datetime
 import os
+import re
 
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -40,6 +41,9 @@ MAX_CARACTERES = 4000
 # Los bots de Telegram solo pueden descargar archivos de hasta 20 MB.
 MAX_DOWNLOADS = 20 * 1024 * 1024
 
+# Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
+TICKETS_DIR = "tickets"
+
 # El texto de ayuda vive en un solo lugar: lo usan /ayuda, /start y el
 # mensaje que se manda cuando escribís algo que el bot no entiende.
 HELP = (
@@ -49,6 +53,7 @@ HELP = (
     "/buscar palabra → buscar en las notas\n"
     "/archivos [texto] → listar lo guardado (los 10 más nuevos)\n"
     "/resumir nombre → resumir una nota o archivo guardado\n"
+    "/ticket → guardar la próxima imagen o PDF en tickets/ (mandala como archivo)\n"
     "/uso → tokens y precio gastados (hoy y total)\n\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
     "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
@@ -76,9 +81,9 @@ async def save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(answer)
 
 
-async def save_and_confirm(update, context, name, data):
-    """Guarda el archivo recibido y pregunta si se quiere resumir."""
-    path = notes.save_file(name, data)
+async def save_and_confirm(update, context, name, data, folder=None):
+    """Guarda el archivo recibido (en su carpeta, si se pidió una) y pregunta si se quiere resumir."""
+    path = notes.save_file(name, data, folder)
     relative = path.relative_to(notes.DATA_DIR)  # para mostrar y recordar
 
     # El callback_data de un botón tiene máximo 64 bytes, así que no podemos
@@ -220,8 +225,10 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = bytes(await archive.download_as_bytearray())
 
     # Sin pedido de extracción: solo guardamos y preguntamos (esto NO usa el modelo).
+    # Si antes mandaste /ticket, esta imagen va a la carpeta de tickets (una sola vez).
     if not request_data:
-        await save_and_confirm(update, context, name, data)
+        folder = context.user_data.pop("folder", None)
+        await save_and_confirm(update, context, name, data, folder)
         return
 
     name_csv, fields = request_data
@@ -297,6 +304,14 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result)
 
 
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/cancelar (o escribir «cancelar»): deja de esperar la imagen de /ticket."""
+    if context.user_data.pop("folder", None):
+        await update.message.reply_text("Cancelado. Ya no espero ningún ticket.")
+    else:
+        await update.message.reply_text("No hay nada para cancelar.")
+
+
 async def other(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cualquier otro texto: recordamos cómo se usa el bot."""
     await update.message.reply_text(HELP)
@@ -320,6 +335,16 @@ async def files_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     more = total - len(found)
     extra = f"\n(y {more} más; filtrá con /archivos texto)" if more > 0 else ""
     await update.message.reply_text(f"{listing}{extra}"[:MAX_CARACTERES])
+
+
+async def ticket_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/ticket: la próxima imagen o PDF que mandes se guarda en la carpeta tickets/."""
+    # Queda en memoria hasta la próxima imagen (si reiniciás el bot, se pierde).
+    context.user_data["folder"] = TICKETS_DIR
+    await update.message.reply_text(
+        "Mandame el ticket como archivo (así no se comprime) y lo guardo en tickets/.\n"
+        "Para arrepentirte: /cancelar"
+    )
 
 
 async def usage_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,6 +407,8 @@ COMMANDS = [
     BotCommand("buscar", "Buscar texto en todas las notas"),
     BotCommand("archivos", "Listar lo guardado (opcional: filtrar por nombre)"),
     BotCommand("resumir", "Resumir una nota o archivo guardado"),
+    BotCommand("ticket", "Guardar la próxima imagen como ticket"),
+    BotCommand("cancelar", "Cancelar el /ticket en espera"),
     BotCommand("uso", "Tokens y precio gastados (hoy y total)"),
     BotCommand("ayuda", "Cómo se usa el bot"),
 ]
@@ -414,6 +441,15 @@ def main():
     app.add_handler(CommandHandler("buscar", search, filters=ONLY_ME))
     app.add_handler(CommandHandler("archivos", files_cmd, filters=ONLY_ME))
     app.add_handler(CommandHandler("resumir", summarize_cmd, filters=ONLY_ME))
+    app.add_handler(CommandHandler("ticket", ticket_cmd, filters=ONLY_ME))
+    app.add_handler(CommandHandler("cancelar", cancel_cmd, filters=ONLY_ME))
+    # Escribir «cancelar» a secas también cancela (sin importar mayúsculas).
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(re.compile(r"^\s*cancelar\s*$", re.IGNORECASE)) & ONLY_ME,
+            cancel_cmd,
+        )
+    )
     app.add_handler(CommandHandler(["uso", "usage"], usage_cmd, filters=ONLY_ME))
     # /start lo manda Telegram solo la primera vez que abrís el bot.
     app.add_handler(CommandHandler(["ayuda", "start"], help_cmd, filters=ONLY_ME))

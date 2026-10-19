@@ -77,8 +77,19 @@ def save_csv(name: str, fields: list[str], rows: list[dict]) -> str:
     return f"{len(rows)} fila(s) guardadas en {path.name}"
 
 
-def save_file(original_name: str, data: bytes) -> Path:
-    """Guarda un archivo recibido en archivos/, sin pisar nunca uno existente."""
+def clean_folder(folder: str | None) -> str:
+    """Nombre de carpeta seguro a partir de un texto libre; vacío o reservado = FILES_DIR."""
+    # Solo letras, números, "_" y "-": nada de "/" ni ".." que armen rutas.
+    cleaned = re.sub(r"[^\w\-]", "_", (folder or "").strip().lower())[:40].strip("_")
+    # No dejamos usar la carpeta de resúmenes: _match_files la ignora.
+    if not cleaned or cleaned == SUMMARIES_DIR:
+        return FILES_DIR
+    return cleaned
+
+
+def save_file(original_name: str, data: bytes, folder: str | None = None) -> Path:
+    """Guarda un archivo recibido en su carpeta (por defecto files/), sin pisar nunca uno existente."""
+    folder = clean_folder(folder)
     # Path(...).name se queda solo con el nombre y descarta carpetas:
     # "../../x.pdf" pasa a ser "x.pdf".
     base = Path(original_name).name
@@ -87,7 +98,7 @@ def save_file(original_name: str, data: bytes) -> Path:
 
     # Anteponemos la fecha para tener los archivos ordenados.
     name = f"{date.today().isoformat()}_{base}"
-    destiny = safe_path(f"{FILES_DIR}/{name}")
+    destiny = safe_path(f"{folder}/{name}")
     destiny.parent.mkdir(parents=True, exist_ok=True)
 
     # Si ya existe uno con ese nombre, probamos con _2, _3...
@@ -95,7 +106,7 @@ def save_file(original_name: str, data: bytes) -> Path:
     n = 2
     while destiny.exists():
         p = Path(name)
-        destiny = safe_path(f"{FILES_DIR}/{p.stem}_{n}{p.suffix}")
+        destiny = safe_path(f"{folder}/{p.stem}_{n}{p.suffix}")
         n += 1
 
     destiny.write_bytes(data)
