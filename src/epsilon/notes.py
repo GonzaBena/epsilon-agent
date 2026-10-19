@@ -1,6 +1,8 @@
 import csv
+from datetime import date
 import os
-from pathlib import Path  # os lo usamos para leer variables de entorno
+from pathlib import Path
+import re
 
 # DATA_DIR es la carpeta donde viven las notas, separada del código.
 # os.environ.get busca la variable DATA_DIR; si no existe, usa "~/bot-datos".
@@ -66,6 +68,31 @@ def save_csv(name: str, fields: list[str], rows: list[dict]) -> str:
         writer.writerows(rows)
 
     return f"{len(rows)} fila(s) guardadas en {path.name}"
+
+
+def save_file(original_name: str, data: bytes) -> Path:
+    """Guarda un archivo recibido en archivos/, sin pisar nunca uno existente."""
+    # Path(...).name se queda solo con el nombre y descarta carpetas:
+    # "../../x.pdf" pasa a ser "x.pdf".
+    base = Path(original_name).name
+    # Reemplazamos por "_" cualquier carácter raro (espacios, símbolos, etc.).
+    base = re.sub(r"[^\w.\-]", "_", base)
+
+    # Anteponemos la fecha para tener los archivos ordenados.
+    name = f"{date.today().isoformat()}_{base}"
+    destiny = safe_path(f"archivos/{name}")
+    destiny.parent.mkdir(parents=True, exist_ok=True)
+
+    # Si ya existe uno con ese nombre, probamos con _2, _3...
+    # Así nunca se sobreescribe nada.
+    n = 2
+    while destiny.exists():
+        p = Path(name)
+        destiny = safe_path(f"archivos/{p.stem}_{n}{p.suffix}")
+        n += 1
+
+    destiny.write_bytes(data)
+    return destiny
 
 
 def read_note(name: str) -> str:

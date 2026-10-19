@@ -1,10 +1,10 @@
 import asyncio
-from datetime import date
+from datetime import date, datetime
 import os
 
 from dotenv import load_dotenv
-from telegram import Update, request
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import BotCommand, BotCommandScopeChat
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -14,8 +14,7 @@ from telegram.ext import (
     filters,
 )
 
-import epsilon.extract as extract
-import epsilon.notes as notes
+from epsilon import extract, notes, summarize
 
 # IMPORTANTE: cargamos el .env ANTES de importar notas.
 # notes.py lee DATA_DIR apenas se importa; si el .env no estuviera
@@ -43,6 +42,12 @@ ONLY_ME = filters.User(user_id=ALLOWED_USER_ID)
 # Telegram no acepta mensajes de más de 4096 caracteres; dejamos margen.
 MAX_CARACTERES = 4000
 
+# Los bots de Telegram solo pueden descargar archivos de hasta 20 MB.
+MAX_DOWNLOADS = 20 * 1024 * 1024
+# Para el modelo somos más conservadores (el límite exacto de Gemini,
+# chequealo en su documentación porque puede cambiar).
+MAX_PER_MODEL = 15 * 1024 * 1024
+
 
 # --- Handlers (qué hacer ante cada mensaje) ----------------------------------
 # Son "async" porque python-telegram-bot trabaja de forma asíncrona:
@@ -62,6 +67,74 @@ async def save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     line = f"- {date.today().isoformat()} {text}"
     answer = notes.save_note("inbox", line)
     await update.message.reply_text(answer)
+
+
+async def save_and_confirm(update, context, name, data):
+    """Guarda el archivo recibido y pregunta si se quiere resumir."""
+    path = notes.guardar_archivo(name, data)
+    relative = path.relative_to(notes.DATA_DIR)  # para mostrar y recordar
+
+    # El callback_data de un botón tiene máximo 64 bytes, así que no podemos
+    # meter la ruta ahí. Guardamos la ruta en memoria con un número (el id de
+    # tu mensaje) y el botón lleva solo ese número.
+    id_msg = update.message.message_id
+    context.user_data.setdefault("archivos", {})[id_msg] = str(relative)
+
+    botones = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Resumir", callback_data=f"resumir:{id_msg}"),
+                InlineKeyboardButton("Nada más", callback_data=f"nada:{id_msg}"),
+            ]
+        ]
+    )
+    await update.message.reply_text(f"Guardado: {relative}", reply_markup=botones)
+
+
+async def summarize_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Botones Resumir / Nada más."""
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ALLOWED_USER_ID:
+        return
+
+    # "resumir:123" -> accion="resumir", id_txt="123"
+    action, _, id_txt = query.data.partition(":")
+    archives = context.user_data.get("archivos", {})
+    relative = archives.get(int(id_txt))
+
+    # Si reiniciaste el bot, esa memoria se perdió (el archivo sigue guardado).
+    if relative is None:
+        await query.edit_message_text(
+            "Ya no recuerdo ese archivo; sigue guardado en la carpeta."
+        )
+        return
+
+    if action == "nada":
+        archives.pop(int(id_txt), None)
+        await query.edit_message_text(f"Listo. Queda guardado: {relative}")
+        return
+
+    ruta = notes.ruta_segura(relative)
+    if ruta.stat().st_size > MAX_PER_MODEL:
+        await query.edit_message_text("Es demasiado grande para resumirlo.")
+        return
+
+    await query.edit_message_text("Resumiendo…")
+    try:
+        # De nuevo to_thread: la llamada al modelo no debe trabar el bot.
+        texto = await asyncio.to_thread(summarize.summarize, ruta)
+    except Exception as e:
+        print(f"Error al resumir: {e!r}")  # el detalle, a la terminal
+        await query.edit_message_text("No pude resumirlo.")
+        return
+
+    archives.pop(int(id_txt), None)  # ya está resuelto; sacamos el pendiente
+    summarize_name = f"resumenes/{ruta.stem}"
+    notes.guardar_nota(summarize_name, texto)
+    await query.edit_message_text(
+        f"Resumen guardado en {summarize_name}.md\n\n{texto[: MAX_CARACTERES - 100]}"
+    )
 
 
 async def watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -117,27 +190,34 @@ def parse_request(caption: str | None):
 
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recibe una foto (o imagen enviada como archivo) y arma el preview."""
-    request_msg = parse_request(update.message.caption)
-    if not request_msg:
-        await update.message.reply_text(
-            "Mandá la imagen con un texto así:\ngastos: fecha, proveedor, total"
-        )
-        return
-    name, fields = request_msg
+    """Recibe una foto o archivo. Con 'nombre: campos' extrae un CSV; sin eso, lo guarda."""
+    request_data = parse_request(update.message.caption)
 
-    # Telegram entrega las imágenes de dos formas distintas:
     if update.message.photo:
-        # Como "foto": viene comprimida, en varios tamaños; [-1] es el más grande.
         archive = await update.message.photo[-1].get_file()
         mime = "image/jpeg"
+        # Las fotos no traen nombre, así que le armamos uno con la hora.
+        name = f"foto_{datetime.now():%H%M%S}.jpg"
     else:
-        # Como "archivo": llega sin comprimir (mejor para letra chica).
-        archive = await update.message.document.get_file()
-        mime = update.message.document.mime_type or "image/jpeg"
+        doc = update.message.document
+        # Si pesa más de lo que Telegram deja bajar, avisamos antes de intentar.
+        if doc.file_size and doc.file_size > MAX_DOWNLOADS:
+            await update.message.reply_text(
+                "Ese archivo pesa más de 20 MB; no puedo bajarlo."
+            )
+            return
+        archive = await doc.get_file()
+        mime = doc.mime_type or "image/jpeg"
+        name = doc.file_name or "archivo"
 
-    # Descargamos los bytes de la imagen a memoria (no se guarda en disco).
     data = bytes(await archive.download_as_bytearray())
+
+    # Sin pedido de extracción: solo guardamos y preguntamos (esto NO usa el modelo).
+    if not request_data:
+        await save_and_confirm(update, context, name, data)
+        return
+
+    name_csv, fields = request_data
 
     await update.message.reply_text("Analizando…")
 
@@ -160,7 +240,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # imagen antes de confirmar, la nueva reemplaza a esta. Y si reiniciás
     # el bot, se pierde (está en memoria).
     context.user_data["pendiente"] = {
-        "name": name,
+        "name": name_csv,
         "fields": fields,
         "rows": rows,
     }
@@ -176,7 +256,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     )
     await update.message.reply_text(
-        f"{len(rows)} fila(s) para {name}.csv:\n\n{preview[:MAX_CARACTERES]}",
+        f"{len(rows)} fila(s) para {name_csv}.csv:\n\n{preview[:MAX_CARACTERES]}",
         reply_markup=buttons,
     )
 
@@ -212,10 +292,36 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Arranque ----------------------------------------------------------------
 
+# Lista de comandos que se muestran en el menú de Telegram.
+# OJO: esto es solo el MENÚ. Cada comando necesita igualmente su
+# CommandHandler en main(); si falta uno, aparece en la lista pero no hace nada.
+# Reglas de Telegram: nombres en minúscula, sin "/", hasta 32 caracteres
+# (letras, números y guion bajo); descripción de 1 a 256 caracteres.
+COMANDOS = [
+    BotCommand("ver", "Ver una nota (por defecto, inbox)"),
+    BotCommand("buscar", "Buscar texto en todas las notas"),
+]
+
+
+async def post_init(app: Application):
+    """Se ejecuta una sola vez, cuando el bot arranca."""
+    try:
+        await app.bot.set_my_commands(
+            COMANDOS,
+            # scope = a quién se le muestra el menú. Acá solo a tu chat privado
+            # (en un chat privado, el chat_id es igual a tu user id).
+            # A cualquier otra persona no le aparece nada, coherente con la whitelist.
+            scope=BotCommandScopeChat(chat_id=ALLOWED_USER_ID),
+        )
+    except Exception as e:
+        # Si falla (por ejemplo, no hay ningún chat abierto con el bot todavía),
+        # el bot sigue funcionando igual; solo no tendrás el menú.
+        print(f"No pude configurar el menú de comandos: {e!r}")
+
 
 def main():
     # Application.builder() arma el bot con tu token.
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).post_init(post_init).build()
 
     # Registramos los handlers. Cada uno lleva el filtro SOLO_YO.
     # El orden importa: se usa el primero que coincida.
@@ -231,6 +337,17 @@ def main():
     )
     # Botones de confirmación (los valida la propia función).
     app.add_handler(CallbackQueryHandler(confirm))
+
+    # Imágenes y PDFs (como foto o como archivo), solo de tu usuario.
+    app.add_handler(
+        MessageHandler(
+            (filters.PHOTO | filters.Document.IMAGE | filters.Document.PDF) & ONLY_ME,
+            image,
+        )
+    )
+    # Cada grupo de botones atiende solo sus propios callback_data (pattern).
+    app.add_handler(CallbackQueryHandler(confirm, pattern=r"^(guardar|cancelar)$"))
+    app.add_handler(CallbackQueryHandler(summarize_cb, pattern=r"^(resumir|nada):"))
 
     print("Bot en marcha. Ctrl+C para cortar.")
     # run_polling: el bot le pregunta a Telegram cada tanto si hay mensajes
