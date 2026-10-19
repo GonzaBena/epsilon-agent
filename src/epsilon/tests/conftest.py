@@ -35,3 +35,20 @@ def block_real_gemini_client(monkeypatch):
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()
+
+
+@pytest.fixture(autouse=True)
+def block_real_whisper(monkeypatch):
+    """Cargar o bajar Whisper de verdad (1,6 GB) es lo último que debe pasar en un test.
+    También deja el módulo de voz limpio: sin modelo cargado ni temporizadores."""
+    from epsilon import transcribe
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó cargar o descargar Whisper de verdad")
+
+    monkeypatch.setattr(transcribe, "_build_model", forbidden)
+    monkeypatch.setattr(transcribe, "_download", forbidden)
+    monkeypatch.setattr(transcribe, "_cached", forbidden)
+    transcribe._reset()
+    yield
+    transcribe._reset()
