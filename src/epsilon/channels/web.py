@@ -1,6 +1,7 @@
 from dataclasses import asdict
 import os
 from pathlib import Path
+import socket
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -8,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import config, core
+from epsilon import checks, config, core, state
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -175,6 +176,7 @@ def create_app() -> FastAPI:
         return {
             "settings": config.status(),
             "pending_restart": config.pending_restart(),
+            "channels": state.snapshot(),  # activo / detenido (con su motivo) / omitido
         }
 
     @app.get("/api/config")
@@ -192,6 +194,13 @@ def create_app() -> FastAPI:
                 status_code=422,
             )
         return config_state()
+
+    @app.post("/api/config/test/{target}")
+    def test_connection(target: str):
+        if target not in checks.CHECKS:
+            raise HTTPException(404, "Esa prueba no existe")
+        # Corre en un hilo aparte (def, no async): hace una llamada de red.
+        return checks.run(target)
 
     @app.get("/", include_in_schema=False)
     def home():
@@ -220,6 +229,13 @@ def is_configured(env) -> bool:
     return True
 
 
+def port_in_use(port: int) -> bool:
+    """¿Hay otro programa escuchando en ese puerto?"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1)
+        return probe.connect_ex((HOST, port)) == 0  # 0 = alguien contestó
+
+
 def run():
     """Levanta el servidor y se queda esperando (bloquea hasta que lo cortan)."""
     import uvicorn  # acá adentro: importarlo es lento y solo hace falta al arrancar
@@ -229,7 +245,14 @@ def run():
     except ValueError as e:
         raise SystemExit(str(e))
 
-    print(f"Web en marcha: http://{HOST}:{port}")
+    # Lo comprobamos antes, para dar un mensaje claro en vez del error de uvicorn.
+    if port_in_use(port):
+        raise SystemExit(
+            f"El puerto {port} está ocupado por otro programa. "
+            "Cerralo, o cambiá WEB_PORT en la configuración (o en el .env)."
+        )
+
+    state.set("web", "running", f"http://{HOST}:{port}")
     # uvicorn maneja solo Ctrl+C y la señal de systemd (corre en el hilo principal).
     uvicorn.run(create_app(), host=HOST, port=port, log_level="warning")
 

@@ -3,9 +3,10 @@ from datetime import datetime
 import os
 import threading
 
-from telegram import BotCommand, BotCommandScopeChat
+from telegram import Bot, BotCommand, BotCommandScopeChat
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
+from telegram.error import InvalidToken, NetworkError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -14,7 +15,7 @@ from telegram.ext import (
     filters,
 )
 
-from epsilon import core
+from epsilon import core, state
 
 # Este archivo solo TRADUCE entre Telegram y el núcleo (core.py): convierte lo
 # que llega en un core.Message y dibuja el core.Reply. No decide nada.
@@ -72,6 +73,43 @@ def is_configured(env) -> bool:
     except ValueError:
         return False
     return True
+
+
+def explain(error: BaseException) -> str | None:
+    """Mensaje claro para un error conocido (None si no lo conocemos).
+
+    Importante: el texto original de InvalidToken trae el token entero, así que
+    nunca se muestra; acá lo reemplazamos por uno propio."""
+    if isinstance(error, InvalidToken):
+        return "Telegram rechazó el token. Revisá TELEGRAM_TOKEN en la configuración (o en el .env)."
+    if isinstance(error, NetworkError):  # incluye TimedOut
+        return "No pude conectar con Telegram. Revisá tu conexión a internet."
+    return None
+
+
+async def _bot_name(token: str) -> str:
+    async with Bot(token) as bot:
+        return (await bot.get_me()).username
+
+
+def check(token: str) -> str:
+    """Comprueba el token con getMe (gratis, no usa el modelo).
+
+    Devuelve un texto, o lanza ValueError con un mensaje claro (sin el token)."""
+    if not token:
+        raise ValueError("Falta el token de Telegram. Cargalo en la configuración.")
+    try:
+        username = asyncio.run(_bot_name(token))
+    except InvalidToken:
+        # "from None": que el error original (con el token adentro) no viaje.
+        raise ValueError(
+            "Telegram rechazó el token. Revisá que esté bien copiado."
+        ) from None
+    except NetworkError:
+        raise ValueError(
+            "No pude conectar con Telegram. Revisá tu conexión a internet."
+        ) from None
+    return f"Conectado como @{username}."
 
 
 # --- Traducción hacia Telegram -----------------------------------------------
@@ -172,6 +210,9 @@ def make_on_button(allowed_user_id: int):
 def build_app(token: str, allowed_user_id: int) -> Application:
     async def post_init(app: Application):
         """Se ejecuta una sola vez, cuando el bot arranca."""
+        # PTB llama a esto recién después de conectarse con Telegram (getMe),
+        # así que acá sí podemos decir que está activo.
+        state.set("telegram", "running", "Conectado.")
         try:
             await app.bot.set_my_commands(
                 COMMANDS,

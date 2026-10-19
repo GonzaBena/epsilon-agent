@@ -71,3 +71,11 @@ también podría cambiarla, porque no hay login. Aceptado para uso personal.
 
 Login, formularios para otros canales, cambiar `DATA_DIR`, elegir el modelo de
 una lista, mostrar el gasto en esta pantalla (`/uso` ya existe).
+
+## Estado
+
+Pasos 1 a 3 hechos. Verificado con arranques reales: token inválido de
+Telegram (motivo claro, sin el token en el log, canal «detenido» en la API),
+puerto ocupado (mensaje claro, código 1), `models.get` de Gemini contra la API
+real (clave y modelo válidos; modelo inexistente explicado) y `getMe` de
+Telegram con un token falso. Queda el paso 4 (la página).

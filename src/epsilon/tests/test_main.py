@@ -1,7 +1,7 @@
 import threading
 from types import SimpleNamespace
 
-from epsilon import main
+from epsilon import config, main
 from epsilon.channels import telegram, web
 
 TELEGRAM_ENV = {"TELEGRAM_TOKEN": "abc", "ALLOWED_USER_ID": "123"}
@@ -130,3 +130,144 @@ def test_threads_do_not_keep_the_process_alive(monkeypatch):
 
     threads = [t for t in threading.enumerate() if t is not threading.main_thread()]
     assert all(t.daemon for t in threads if t.name == "canal-telegram")
+
+
+# --- Estado de los canales y errores claros ----------------------------------
+
+import pytest
+
+from epsilon import state
+
+LEAKY_TOKEN = "123456789:AAH-ejemplo_de_token_de_telegram_vKjP"
+
+
+def test_threaded_channels_start_as_connecting(monkeypatch):
+    seen = []
+
+    class Spy(FakeChannel):
+        def run(self):
+            seen.append(state.snapshot()["telegram"]["state"])
+            super().run()
+
+    web_channel, spy = FakeChannel(), Spy()
+    use_channels(monkeypatch, web=web_channel, telegram=spy)
+
+    main.main()
+    wait_for(spy)
+
+    assert seen == ["starting"]
+
+
+def test_unconfigured_channels_are_marked_as_skipped(monkeypatch):
+    use_channels(monkeypatch, web=FakeChannel(), telegram=FakeChannel(configured=False))
+
+    main.main()
+
+    assert state.snapshot()["telegram"]["state"] == "skipped"
+
+
+def finish(channel):
+    wait_for(channel)
+    channel.threads[0].join(timeout=2)
+
+
+def test_a_failed_channel_is_marked_stopped_with_the_reason(monkeypatch, capsys):
+    broken = FakeChannel(error=RuntimeError("token inválido"))
+    use_channels(monkeypatch, web=FakeChannel(), telegram=broken)
+
+    main.main()
+    finish(broken)
+
+    snap = state.snapshot()["telegram"]
+    assert snap["state"] == "stopped" and "token inválido" in snap["detail"]
+    assert "Canal telegram: detenido" in capsys.readouterr().out
+
+
+def test_a_channel_can_explain_its_own_errors(monkeypatch):
+    broken = FakeChannel(error=RuntimeError("detalle crudo"))
+    broken.explain = lambda e: "Revisá TELEGRAM_TOKEN en la configuración."
+    use_channels(monkeypatch, web=FakeChannel(), telegram=broken)
+
+    main.main()
+    finish(broken)
+
+    detail = state.snapshot()["telegram"]["detail"]
+    assert detail.startswith("Revisá TELEGRAM_TOKEN")
+    assert "RuntimeError" in detail  # el tipo técnico queda al final, para investigar
+
+
+def test_a_channel_that_cannot_explain_falls_back_to_the_error(monkeypatch):
+    broken = FakeChannel(error=RuntimeError("algo raro"))
+    broken.explain = lambda e: None
+    use_channels(monkeypatch, web=FakeChannel(), telegram=broken)
+
+    main.main()
+    finish(broken)
+
+    assert state.snapshot()["telegram"]["detail"] == "RuntimeError: algo raro"
+
+
+def test_systemexit_messages_are_kept_as_the_reason(monkeypatch):
+    quits = FakeChannel(error=SystemExit("Falta TELEGRAM_TOKEN en el .env"))
+    use_channels(monkeypatch, web=FakeChannel(), telegram=quits)
+
+    main.main()
+    finish(quits)
+
+    assert state.snapshot()["telegram"]["detail"] == "Falta TELEGRAM_TOKEN en el .env"
+
+
+def test_secrets_never_reach_the_state_nor_the_console(monkeypatch, capsys):
+    monkeypatch.setenv("TELEGRAM_TOKEN", LEAKY_TOKEN)
+    broken = FakeChannel(error=RuntimeError(f"The token `{LEAKY_TOKEN}` was rejected"))
+    use_channels(monkeypatch, web=FakeChannel(), telegram=broken)
+
+    main.main()
+    finish(broken)
+
+    assert LEAKY_TOKEN not in str(state.snapshot())
+    assert LEAKY_TOKEN not in capsys.readouterr().out
+
+
+def test_the_main_channel_failing_stops_the_process_with_a_clear_reason(monkeypatch, capsys):
+    web_channel = FakeChannel(error=RuntimeError("no pude abrir"))
+    use_channels(monkeypatch, web=web_channel)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 1
+    assert state.snapshot()["web"]["state"] == "stopped"
+    assert "no pude abrir" in capsys.readouterr().out
+
+
+def test_systemexit_from_the_main_channel_keeps_its_own_message(monkeypatch, capsys):
+    # Por ejemplo, «el puerto está ocupado»: ya viene con un mensaje claro.
+    use_channels(monkeypatch, web=FakeChannel(error=SystemExit("El puerto 8765 está ocupado.")))
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 1  # el motivo se muestra una sola vez, en la consola
+    assert "El puerto 8765 está ocupado." in capsys.readouterr().out
+
+
+def test_logs_are_redacted_from_startup(monkeypatch):
+    import logging
+
+    monkeypatch.setattr(main, "CHANNELS", {"web": "x"})
+    monkeypatch.setattr(main, "load", lambda name: FakeChannel())
+    root = logging.getLogger()
+    before = list(root.handlers)
+
+    try:
+        main.main()
+        added = [h for h in root.handlers if h not in before]
+        handlers = added or root.handlers
+        assert any(
+            isinstance(f, config.RedactingFilter) for h in handlers for f in h.filters
+        )
+    finally:
+        for handler in list(root.handlers):
+            if handler not in before:
+                root.removeHandler(handler)

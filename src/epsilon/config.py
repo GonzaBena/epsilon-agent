@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 import os
 from pathlib import Path
 import re
@@ -223,3 +224,62 @@ def update(
     for key in clear:
         if BY_KEY[key].live:
             os.environ[key] = ""
+
+
+# --- Lo guardado, solo para uso interno --------------------------------------
+
+
+def saved(key: str, env_file: Path | None = None) -> str:
+    """Valor guardado en el .env (aunque el proceso todavía no lo use).
+
+    SOLO para uso del servidor: nunca se devuelve al navegador. Si la clave no
+    está en el archivo, vale lo que tiene el proceso (por ejemplo, del servicio)."""
+    path = env_file or ENV_FILE
+    file_values = dotenv_values(path) if path.exists() else {}
+    if key in file_values:
+        return file_values[key] or ""
+    return os.environ.get(key, "")
+
+
+# --- Redactar: ningún secreto sale en mensajes ni en logs --------------------
+
+# Por si aparece uno que no es el cargado (de una versión anterior, por ejemplo).
+_SECRET_SHAPES = re.compile(r"\d{5,15}:[\w\-]{20,100}|AIza[\w\-]{20,}", re.ASCII)
+
+
+def redact(text: str, env_file: Path | None = None) -> str:
+    """Reemplaza por *** cualquier secreto (cargado, guardado o con forma de clave)."""
+    path = env_file or ENV_FILE
+    file_values = dotenv_values(path) if path.exists() else {}
+
+    secrets = set()
+    for s in SETTINGS:
+        if s.secret:
+            secrets.add(os.environ.get(s.key, ""))
+            secrets.add(file_values.get(s.key) or "")
+
+    # Los más largos primero; y nada de valores cortos o vacíos, que
+    # reemplazarían texto normal por casualidad.
+    for secret in sorted((x for x in secrets if len(x) >= 8), key=len, reverse=True):
+        text = text.replace(secret, "***")
+    return _SECRET_SHAPES.sub("***", text)
+
+
+class RedactingFilter(logging.Filter):
+    """Filtro de logs: tacha los secretos en el mensaje y en los tracebacks.
+
+    PTB, por ejemplo, incluye el token entero en el error «Invalid token»."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = redact(record.getMessage())  # getMessage() ya aplica los args
+        record.args = ()
+        if record.exc_info:
+            # Armamos el traceback ahora, lo tachamos, y lo dejamos como texto.
+            traceback = logging.Formatter().formatException(record.exc_info)
+            record.exc_text = redact(traceback)
+            record.exc_info = None
+        elif record.exc_text:
+            record.exc_text = redact(record.exc_text)
+        if record.stack_info:
+            record.stack_info = redact(record.stack_info)
+        return True

@@ -30,7 +30,10 @@ instalarlo, cargar sus claves y usarlo.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
-  que escribe el `.env`. Ver `docs/plan-config.md`.
+  que escribe el `.env`; también `redact()` y el filtro de logs. Ver
+  `docs/plan-config.md`.
+- `state.py`: estado de cada canal (activo, detenido y por qué). `checks.py`:
+  pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
 - `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `llm.py`: ÚNICO lugar que llama a Gemini.
 - `extract.py`, `summarize.py`: lógica de imagen→CSV y resúmenes.
@@ -46,7 +49,10 @@ instalarlo, cargar sus claves y usarlo.
 - Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
 - Las claves nunca salen del servidor: ni a la web, ni a logs, ni a mensajes de
   error. Solo se informa si están cargadas y su largo. Todo valor se valida
-  (sin saltos de línea) antes de escribirlo en el `.env`.
+  (sin saltos de línea) antes de escribirlo en el `.env`. Los logs y mensajes de
+  error pasan por `config.redact` (PTB mete el token entero en «Invalid token»).
+- El cliente de Gemini se guarda en una variable antes de usarlo; encadenar
+  `genai.Client(...).models.x()` lo cierra antes de tiempo.
 - Escrituras: crear o agregar, nunca pisar. Lo que viene de una imagen
   se muestra y se confirma antes de guardar.
 - Gastar lo mínimo: lo que no necesita modelo no lo usa, prompts cortos,

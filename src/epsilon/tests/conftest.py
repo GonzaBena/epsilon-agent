@@ -1,6 +1,6 @@
 import pytest
 
-from epsilon import llm
+from epsilon import llm, state
 
 
 @pytest.fixture(autouse=True)
@@ -19,3 +19,19 @@ def never_touch_the_real_env_file(monkeypatch, tmp_path):
     from epsilon import config
 
     monkeypatch.setattr(config, "ENV_FILE", tmp_path / "never-the-real.env")
+
+
+@pytest.fixture(autouse=True)
+def block_real_gemini_client(monkeypatch):
+    """Ni siquiera las llamadas de prueba (llm.check) pueden salir a la red sin querer."""
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó crear un cliente real de Gemini")
+
+    monkeypatch.setattr(llm.genai, "Client", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def clean_channel_state():
+    """El estado de los canales es global: cada test arranca sin el de otro."""
+    state.reset()

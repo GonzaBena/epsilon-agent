@@ -287,3 +287,84 @@ def test_pending_list_is_exposed_for_the_banner(env_file):
 
     assert [p["key"] for p in pending] == ["WEB_PORT"]
     assert "8765" in pending[0]["reason"] or "puerto" in pending[0]["reason"].lower()
+
+
+# --- redact: ningún secreto sale en mensajes ni logs -------------------------
+
+
+def test_redact_removes_the_current_secrets(monkeypatch, env_file):
+    monkeypatch.setenv("GEMINI_API_KEY", SECRET)
+    monkeypatch.setenv("TELEGRAM_TOKEN", TOKEN)
+
+    out = config.redact(f"fallo con {SECRET} y con {TOKEN}", env_file)
+
+    assert SECRET not in out and TOKEN not in out
+    assert out.count("***") == 2
+
+
+def test_redact_removes_secrets_saved_in_the_file_too(env_file):
+    # Guardados pero todavía sin aplicar (pendientes de reinicio).
+    config.update({"TELEGRAM_TOKEN": TOKEN}, [], env_file)
+
+    assert TOKEN not in config.redact(f"error: {TOKEN}", env_file)
+
+
+def test_redact_removes_anything_shaped_like_a_token(env_file):
+    # Aunque no sea el cargado: por ejemplo, el de una versión anterior.
+    url = "https://api.telegram.org/bot987654321:AAHviejo_token_que_ya_no_esta_cargado/getMe"
+    key = "AIzaSyD-otra_clave_que_nadie_cargo_nunca"
+
+    out = config.redact(f"{url} {key}", env_file)
+
+    assert "AAHviejo" not in out and "AIzaSyD" not in out
+
+
+def test_redact_leaves_normal_text_alone(env_file):
+    assert config.redact("El puerto 8765 está ocupado", env_file) == "El puerto 8765 está ocupado"
+
+
+def test_redact_with_no_secrets_does_not_mangle_text(env_file):
+    # Un secreto vacío no puede reemplazar "" en todos lados.
+    assert config.redact("hola", env_file) == "hola"
+
+
+def test_log_filter_redacts_messages_arguments_and_tracebacks(monkeypatch):
+    import io
+    import logging
+
+    monkeypatch.setenv("TELEGRAM_TOKEN", TOKEN)
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(config.RedactingFilter())
+    logger = logging.getLogger("epsilon.test.redact")
+    logger.addHandler(handler)
+    logger.propagate = False
+
+    try:
+        raise RuntimeError(f"The token `{TOKEN}` was rejected")
+    except RuntimeError:
+        logger.error("falló con %s", TOKEN, exc_info=True)
+
+    out = stream.getvalue()
+    assert "falló con" in out and "was rejected" in out  # el resto se conserva
+    assert TOKEN not in out and "vKjP" not in out
+
+
+# --- saved: lo guardado, solo para uso interno -------------------------------
+
+
+def test_saved_prefers_the_file_over_the_running_process(monkeypatch, env_file):
+    monkeypatch.setenv("TELEGRAM_TOKEN", "viejo")
+    env_file.write_text(f"TELEGRAM_TOKEN={TOKEN}\n", encoding="utf-8")
+
+    assert config.saved("TELEGRAM_TOKEN", env_file) == TOKEN
+
+
+def test_saved_falls_back_to_the_environment(monkeypatch, env_file):
+    monkeypatch.setenv("TELEGRAM_TOKEN", TOKEN)
+
+    assert config.saved("TELEGRAM_TOKEN", env_file) == TOKEN
+
+
+def test_saved_is_empty_when_nothing_is_set(env_file):
+    assert config.saved("TELEGRAM_TOKEN", env_file) == ""
