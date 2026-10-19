@@ -19,7 +19,7 @@ const chipName = document.getElementById("chip-name");
 const chipRemove = document.getElementById("chip-remove");
 const drop = document.getElementById("drop");
 const statusLabel = document.getElementById("status");
-const clearButton = document.getElementById("clear");
+const newChatLink = document.getElementById("new-chat");
 
 // --- Estado -----------------------------------------------------------------
 const STORAGE_KEY = "epsilon.history"; // dónde guarda el navegador el historial
@@ -56,6 +56,8 @@ function saveHistory() {
   } catch {
     // Sin almacenamiento no pasa nada grave: solo no se recuerda al recargar.
   }
+  // shell.js escucha esto para actualizar el título (header y «Recientes»).
+  window.dispatchEvent(new Event("epsilon:history"));
 }
 
 // --- Armado de mensajes en pantalla -------------------------------------------
@@ -333,24 +335,51 @@ function resizeInput() {
 }
 input.addEventListener("input", resizeInput);
 
-// --- Comandos de ejemplo del estado vacío ---------------------------------------
-for (const button of document.querySelectorAll(".starter")) {
-  button.addEventListener("click", () => {
-    if (busy) return;
-    const text = button.dataset.command;
-    addMessage({ role: "user", text });
-    ask(postJson({ text }));
+// --- Comandos con un toque: los del estado vacío y los del menú lateral ------------------
+// Los del menú son enlaces (/?cmd=...) para que también funcionen desde la
+// pantalla de configuración; acá los atajamos para ejecutarlos sin recargar.
+function runCommand(text) {
+  if (busy) return;
+  addMessage({ role: "user", text });
+  ask(postJson({ text }));
+}
+
+for (const element of document.querySelectorAll("[data-command]")) {
+  element.addEventListener("click", (event) => {
+    event.preventDefault();
+    runCommand(element.dataset.command);
   });
 }
 
-// --- Limpiar el chat --------------------------------------------------------------
-// Solo borra lo que se ve en este navegador; las notas y archivos no se tocan.
-clearButton.addEventListener("click", () => {
+// --- Nuevo chat ---------------------------------------------------------------------------------
+// Por ahora vacía la conversación de este navegador (las notas y archivos no se
+// tocan). Más adelante crearía una conversación nueva guardada en el servidor.
+function startNewChat() {
   history = [];
   saveHistory();
   for (const node of log.querySelectorAll(".msg")) node.remove();
   empty.hidden = false;
+}
+
+newChatLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  startNewChat();
+  input.focus();
 });
+
+// --- Desde otra página (/?nuevo o /?cmd=...) ----------------------------------------------------
+// SOLO estos comandos se ejecutan solos al llegar por un enlace: son lecturas.
+// Nada que escriba o que llame al modelo. Cualquier otro valor se ignora.
+const ALLOWED_COMMANDS = ["/ver", "/archivos", "/archivos tickets", "/uso"];
+
+function handleLaunchParams() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("nuevo")) startNewChat();
+  const command = params.get("cmd");
+  if (command && ALLOWED_COMMANDS.includes(command)) runCommand(command);
+  // Limpiamos la URL: así recargar la página no repite el comando.
+  if ([...params.keys()].length) window.history.replaceState(null, "", "/");
+}
 
 // --- Estado de la conexión ----------------------------------------------------------
 function setStatus(online) {
@@ -385,6 +414,7 @@ async function checkSetup() {
 
 // --- Arranque ---------------------------------------------------------------------
 renderHistory();
+handleLaunchParams();
 checkHealth();
 checkSetup();
 input.focus();

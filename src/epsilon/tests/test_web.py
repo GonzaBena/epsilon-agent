@@ -269,7 +269,7 @@ def test_even_rejected_requests_carry_the_policy(client):
 # Reglas del proyecto sobre el frontend: el contenido es dato, nunca HTML.
 
 
-@pytest.mark.parametrize("name", ["app.js", "config.js"])
+@pytest.mark.parametrize("name", ["app.js", "config.js", "shell.js"])
 def test_js_never_builds_html_from_text(name):
     import re
 
@@ -660,3 +660,95 @@ def test_secret_fields_are_password_inputs_without_a_value():
             tag = re.search(rf'<input[^>]*data-key="{s.key}"[^>]*>', html).group(0)
             assert 'type="password"' in tag, s.key
             assert "value=" not in tag, s.key  # nunca se rellena con nada
+
+
+# --- Esqueleto compartido: header, menú lateral y paneles que se contraen ----
+
+import re
+
+PAGES = ["index.html", "config.html"]
+
+
+def page(name):
+    return (web.STATIC_DIR / name).read_text(encoding="utf-8")
+
+
+def menu_items(html):
+    """Los <a class="nav-item"> del menú: [(href, data-command, texto)]."""
+    nav = re.search(r"<nav[^>]*>(.*?)</nav>", html, re.S).group(1)
+    items = re.findall(r'<a class="nav-item"([^>]*)>(.*?)</a>', nav, re.S)
+    result = []
+    for attrs, inner in items:
+        href = re.search(r'href="([^"]*)"', attrs).group(1)
+        command = re.search(r'data-command="([^"]*)"', attrs)
+        label = re.search(r'<span class="label">(.*?)</span>', inner, re.S)
+        result.append((href, command.group(1) if command else None, label.group(1).strip() if label else ""))
+    return result
+
+
+def test_both_pages_load_the_shared_shell_script():
+    for name in PAGES:
+        assert "/static/shell.js" in page(name), name
+
+
+def test_both_pages_have_the_same_menu():
+    # El menú está escrito en cada HTML (sin plantillas): este test evita que se desfasen.
+    assert menu_items(page("index.html")) == menu_items(page("config.html"))
+
+
+def test_menu_has_the_expected_sections_and_no_dead_links():
+    labels = [label for _, _, label in menu_items(page("index.html"))]
+
+    assert labels == ["Chat", "Notas", "Archivos", "Facturas y tickets", "Uso", "Configuración"]
+    # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
+    for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
+        assert gone not in page("index.html") and gone not in page("config.html")
+
+
+def test_every_menu_item_has_a_text_label_even_when_only_the_icon_shows():
+    for name in PAGES:
+        for href, command, label in menu_items(page(name)):
+            assert label, (name, href)
+
+
+def test_menu_commands_are_ones_the_chat_page_may_run_from_a_link():
+    # La página ejecuta por sí sola un comando que llega en la URL (?cmd=...) solo
+    # si está en esta lista, y la lista es solo de lecturas (nada de escribir ni
+    # de llamar al modelo).
+    js = page("app.js")
+    allowed = re.search(r"ALLOWED_COMMANDS\s*=\s*\[(.*?)\]", js, re.S).group(1)
+    allowed = re.findall(r'"([^"]+)"', allowed)
+
+    assert sorted(allowed) == ["/archivos", "/archivos tickets", "/uso", "/ver"]
+    for href, command, label in menu_items(page("index.html")):
+        if command:
+            assert command in allowed, command
+
+
+def test_menu_links_and_commands_agree():
+    from urllib.parse import parse_qs, urlparse
+
+    for href, command, label in menu_items(page("index.html")):
+        if command:
+            assert parse_qs(urlparse(href).query)["cmd"] == [command], href
+
+
+def test_panel_toggles_are_accessible_buttons():
+    for name in PAGES:
+        html = page(name)
+        tag = re.search(r'<button[^>]*data-toggle="left"[^>]*>', html).group(0)
+        for needed in ('aria-expanded="', 'aria-controls="left"', 'aria-label="', 'type="button"'):
+            assert needed in tag, (name, needed)
+
+
+def test_no_search_box_in_the_sidebar_for_now():
+    for name in PAGES:
+        sidebar = re.search(r'<aside[^>]*id="left".*?</aside>', page(name), re.S).group(0)
+        assert "<input" not in sidebar, name
+
+
+def test_new_chat_replaces_clear_chat():
+    html = page("index.html")
+
+    assert 'id="new-chat"' in html and "Nuevo chat" in html
+    assert "Limpiar chat" not in html

@@ -29,9 +29,11 @@ instalarlo, cargar sus claves y usarlo.
   principal; los demás canales configurados (Telegram) van cada uno en su hilo
   y, si fallan, mueren solos sin tumbar la web. Se omiten los sin configurar.
 - `channels/web.py` y `channels/web_static/` (index.html, config.html, style.css,
-  app.js, config.js): web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver
+  app.js, config.js, shell.js): web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver
   `docs/plan-web.md`. La pantalla `/config` edita ajustes; el reinicio es siempre
-  manual (la página solo avisa por qué hace falta y con qué comando).
+  manual (la página solo avisa por qué hace falta y con qué comando). `shell.js`
+  maneja los paneles que se contraen y los datos del header/menú; el menú está
+  repetido en los dos HTML (un test vigila que coincidan). Ver `docs/plan-ui.md`.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
@@ -52,6 +54,8 @@ instalarlo, cargar sus claves y usarlo.
   Telegram). Cada request valida Host y Origin; no sacar esas defensas ni
   exponerla a la red sin agregar contraseña y HTTPS.
 - Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
+- Un enlace `/?cmd=...` solo ejecuta solo los comandos de `ALLOWED_COMMANDS` (app.js):
+  lecturas, nunca los que escriben o llaman al modelo.
 - Las claves nunca salen del servidor: ni a la web, ni a logs, ni a mensajes de
   error. Solo se informa si están cargadas y su largo. Todo valor se valida
   (sin saltos de línea) antes de escribirlo en el `.env`. Los logs y mensajes de
