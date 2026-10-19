@@ -64,6 +64,15 @@ def read_config(env) -> tuple[str, int]:
     return token, int(allowed)
 
 
+def is_configured(env) -> bool:
+    """¿Está completa la configuración de Telegram? Así main decide si lo arranca."""
+    try:
+        read_config(env)
+    except ValueError:
+        return False
+    return True
+
+
 # --- Traducción hacia Telegram -----------------------------------------------
 
 

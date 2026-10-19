@@ -8,7 +8,7 @@ instalarlo, cargar sus claves y usarlo.
 ## Comandos
 
 - `uv sync` instala dependencias
-- `uv run python -m epsilon.channels.telegram` arranca el bot
+- `uv run epsilon` (o `uv run python -m epsilon.main`) arranca los canales configurados
 - `uv run pytest` corre los tests (nunca llaman a Gemini)
 - El bot corre como servicio de usuario (`deploy/epsilon.service`):
   `systemctl --user status|restart|stop epsilon`; logs con
@@ -21,6 +21,8 @@ instalarlo, cargar sus claves y usarlo.
 
 - `core.py`: toda la lógica (comandos, confirmaciones, estado por sesión).
   `handle(Message) -> Reply`. No conoce ningún canal. Ver `docs/plan-core.md`.
+- `main.py`: punto de entrada. Arranca los canales con configuración completa
+  y omite (avisando) los que no; un canal caído no tumba a los demás.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.

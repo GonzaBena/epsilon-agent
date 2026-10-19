@@ -10,7 +10,7 @@ Wants=network-online.target
 Type=simple
 # Las claves las carga el propio programa desde src/epsilon/.env (no van acá).
 WorkingDirectory=/home/atlas/Documents/workspace/epsilon-agent/epsilon
-ExecStart=/home/atlas/Documents/workspace/epsilon-agent/epsilon/.venv/bin/python -u -m epsilon.channels.telegram
+ExecStart=/home/atlas/Documents/workspace/epsilon-agent/epsilon/.venv/bin/python -u -m epsilon.main
 Restart=on-failure
 RestartSec=5
 

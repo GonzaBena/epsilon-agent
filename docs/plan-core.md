@@ -47,6 +47,9 @@ confirmación, modo `/ticket`, archivo guardado esperando «Resumir / Nada más�
 4. Punto de entrada que levanta los canales configurados; actualizar
    `deploy/epsilon.service`; reiniciar y confirmar que quedó activo.
 
+Estado: los 4 pasos están hechos. Queda pendiente decidir cómo conviven dos
+canales bloqueantes en el mismo proceso (se resuelve al sumar la web).
+
 ## Después
 
 - Web mínima por defecto (FastAPI + chat simple).
