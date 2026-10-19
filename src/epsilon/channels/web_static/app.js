@@ -79,7 +79,7 @@ function make(tag, className, text) {
 function render(message) {
   const row = make("article", `msg ${message.role}${message.error ? " error" : ""}`);
 
-  if (message.role === "bot") row.append(make("span", "mark", "ε"));
+  if (message.role === "bot") row.append(make("span", "mark", "Ε"));
 
   const body = make("div", "body");
   body.append(make("p", "text", message.text));
@@ -131,7 +131,7 @@ function renderHistory() {
 // --- "Pensando…" mientras el modelo trabaja -----------------------------------
 function showThinking() {
   const row = make("article", "msg bot thinking");
-  row.append(make("span", "mark", "ε"));
+  row.append(make("span", "mark", "Ε"));
   const body = make("div", "body");
   const text = make("p", "text", "Pensando");
   const dots = make("span", "dots");

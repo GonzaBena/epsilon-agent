@@ -893,3 +893,32 @@ def test_empty_state_is_not_a_message_node():
     tag = re.search(r'<section id="empty"[^>]*>', chat_html()).group(0)
 
     assert "msg" not in tag
+
+
+# --- La marca de Epsilon es la Ε mayúscula (U+0395), en todos lados ----------
+
+BRAND = "Ε"  # Ε  GREEK CAPITAL LETTER EPSILON
+LOWERCASE = "ε"  # ε  (la minúscula: la letra correcta es la mayúscula)
+
+
+@pytest.mark.parametrize("name", ["index.html", "config.html", "app.js", "shell.js", "config.js", "style.css"])
+def test_no_lowercase_epsilon_anywhere_in_the_web_files(name):
+    # La Ε y la E latina se parecen tanto que es fácil colar la letra equivocada.
+    text = (web.STATIC_DIR / name).read_text(encoding="utf-8")
+
+    assert LOWERCASE not in text, name
+
+
+def test_every_brand_mark_in_the_html_is_the_capital_epsilon():
+    for name in ("index.html", "config.html"):
+        marks = re.findall(r'class="mark"[^>]*>(.)<', page(name))
+        assert marks, name
+        assert all(m == BRAND for m in marks), (name, [hex(ord(m)) for m in marks])
+
+
+def test_the_marks_drawn_by_the_scripts_are_the_capital_epsilon():
+    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    drawn = re.findall(r'make\("span", "mark", "(.)"\)', js)
+
+    assert len(drawn) == 2  # cada respuesta de Epsilon y el «Pensando…»
+    assert all(m == BRAND for m in drawn), [hex(ord(m)) for m in drawn]
