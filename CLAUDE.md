@@ -90,10 +90,10 @@ instalarlo, cargar sus claves y usarlo.
 
 ## Pendiente
 
-- Más adelante: Whisper (voz), Obsidian, plantillas, MCP.
+- Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, plantillas, MCP.
 - Memoria para quien quiera conversar con un modelo (se apoyará en los archivos de
   `conversations/`).
 - Registro de herramientas (`tools.py`): fuente única de los comandos. Postergado a
-  propósito; retomarlo al agregar la próxima herramienta real o un canal nuevo (ver
+  propósito; retomarlo al agregar la próxima herramienta real (MCP, un comando) o un canal nuevo (ver
   `docs/plan-tools.md`, «Para más adelante»).
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).

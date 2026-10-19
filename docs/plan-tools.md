@@ -81,5 +81,5 @@ test garantiza que sean solo lecturas).
 
 Se decidió **no hacerlo todavía**: no hace falta para la etiqueta ni para el
 contexto, y toca el núcleo y Telegram, que funcionan. **Se retoma al agregar la
-próxima herramienta real** (voz con Whisper, MCP) o un canal nuevo: ahí agregar un
+próxima herramienta real** (MCP, un comando nuevo) o un canal nuevo (la voz con Whisper no cuenta: es una forma de entrada, audio → texto antes del núcleo): ahí agregar un
 comando pasaría de tocar 5 archivos a escribir una entrada.
