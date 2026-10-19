@@ -836,38 +836,90 @@ textarea::placeholder {
   cursor: default;
 }
 
-/* Archivo adjunto, antes de enviar. */
-.chip {
+/* Archivo adjunto, antes de enviar: miniatura cuadrada con el botón de quitar
+   arriba a la derecha (al pasar el mouse) y el nombre debajo. */
+/* La ficha ocupa el ancho de la columna (como el resto del compositor) y alinea
+   la miniatura a la izquierda, sobre el borde del cuadro de texto. */
+.attachment {
   display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  width: fit-content;
-  max-width: 100%;
-  margin-bottom: 0.5rem;
-  padding-left: 0.75rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 0.75rem;
+}
+.thumb {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 0.9rem;
+  border-radius: 12px;
 }
-.chip-name {
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* recorta al cuadrado sin deformar */
+}
+.thumb-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.thumb-name {
+  width: 80px;
   overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chip-remove {
-  flex: none;
-  width: 2.75rem;
-  height: 2.75rem;
-  background: none;
+
+/* Quitar: un círculo chico arriba a la derecha, escondido hasta que hace falta. */
+.thumb-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: rgba(14, 15, 16, 0.78);
   border: 0;
   border-radius: 50%;
-  color: var(--muted);
-  font-size: 1.25rem;
-  cursor: pointer;
-}
-.chip-remove:hover {
   color: var(--text);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.thumb:hover .thumb-remove,
+.attachment:focus-within .thumb-remove,
+.thumb-remove:focus-visible {
+  opacity: 1;
+}
+.thumb-remove:hover {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+/* En pantallas táctiles no existe «pasar el mouse»: el botón se ve siempre. */
+@media (hover: none) {
+  .thumb-remove {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thumb-remove {
+    transition: none;
+  }
 }
 
 /* --- Soltar archivos ------------------------------------------------------- */

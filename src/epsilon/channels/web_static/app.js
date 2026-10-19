@@ -17,6 +17,8 @@ const fileInput = document.getElementById("file");
 const chip = document.getElementById("chip");
 const chipName = document.getElementById("chip-name");
 const chipRemove = document.getElementById("chip-remove");
+const thumbImg = document.getElementById("thumb-img");
+const thumbPdf = document.getElementById("thumb-pdf");
 const drop = document.getElementById("drop");
 const statusLabel = document.getElementById("status");
 const newChatLink = document.getElementById("new-chat");
@@ -28,6 +30,7 @@ const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
 
 let history = loadHistory(); // lista de {role, text, actions, used, chosen, error}
 let pendingFile = null;      // archivo elegido, esperando que se envíe
+let previewUrl = null;       // dirección local (blob:) de la miniatura; hay que liberarla
 let wantsCsv = false;        // true si el archivo se pidió con el atajo «Imagen a CSV»
 const CSV_TEMPLATE = "nombre: campo1, campo2"; // ejemplo del pedido de CSV
 let busy = false;            // true mientras esperamos una respuesta
@@ -240,6 +243,8 @@ function setFile(file) {
   }
   pendingFile = file;
   chipName.textContent = file.name;
+  chipName.title = file.name; // el nombre completo, por si se corta
+  showPreview(file);
   chip.hidden = false;
   input.placeholder = FILE_PLACEHOLDER;
   input.focus();
@@ -255,7 +260,31 @@ function setFile(file) {
   }
 }
 
+// La miniatura: la imagen misma (recortada al cuadrado por el CSS) o, para un
+// PDF, un ícono. La imagen se muestra desde una dirección local del navegador
+// (blob:), sin subirla a ningún lado.
+function showPreview(file) {
+  releasePreview();
+  if (file.type.startsWith("image/")) {
+    previewUrl = URL.createObjectURL(file);
+    thumbImg.src = previewUrl;
+    thumbImg.hidden = false;
+    thumbPdf.hidden = true;
+  } else {
+    thumbImg.hidden = true;
+    thumbPdf.hidden = false;
+  }
+}
+
+// Libera la memoria de la miniatura anterior (si no, queda ocupada hasta cerrar la pestaña).
+function releasePreview() {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
+  thumbImg.removeAttribute("src");
+}
+
 function clearFile() {
+  releasePreview();
   pendingFile = null;
   fileInput.value = ""; // permite elegir el mismo archivo otra vez
   chip.hidden = true;

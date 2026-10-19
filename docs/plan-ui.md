@@ -43,9 +43,21 @@ panel solo se angosta y recorta, y las etiquetas y bloques se desvanecen. Se mid
 la posición de cada pieza en el instante del clic: 0 saltos en las 4 direcciones
 (antes saltaban 7 elementos al contraer la izquierda y 4 la derecha).
 
+## Archivo adjunto
+
+Al elegir una imagen o PDF se muestra una miniatura cuadrada de 80px, alineada a la
+izquierda sobre el cuadro de texto, con el nombre debajo (cortado con «…», y entero
+en el tooltip) y un botón × arriba a la derecha. La × aparece al pasar el mouse, con
+el foco del teclado, y siempre en pantallas táctiles (`hover: none`). Las imágenes
+se muestran desde una dirección local del navegador (`blob:`, sin subirlas a ningún
+lado; la CSP lo permite solo para `img-src`) y se liberan al quitar el archivo. Los
+PDF no tienen miniatura: llevan un ícono.
+
 ## Sin verificar
 
 - El comportamiento en ventana angosta (no se pudo achicar la ventana del navegador).
+- El desvanecimiento de la × por foco de teclado: una vez leí opacidad 0 y la
+  siguiente 1; lo atribuyo a que la pestaña automatizada no dibuja fotogramas.
 - La suavidad de la animación al contraer: en la pestaña automatizada los
   fotogramas llegan a saltos. Sin transición, las 4 combinaciones de paneles
   llegan al ancho correcto (verificado).

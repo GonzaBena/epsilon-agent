@@ -817,3 +817,45 @@ def test_quick_actions_sit_above_the_message_box():
 def test_chat_warns_that_reading_images_can_be_wrong():
     assert "Epsilon puede equivocarse al leer imágenes" in chat_html()
     assert "Revisá los datos antes de guardar" in chat_html()
+
+
+# --- Vista previa del archivo adjunto (cuadrada, con quitar y nombre) ---------
+
+
+def attachment_html():
+    # Desde el contenedor hasta el nombre, que es lo último que tiene adentro.
+    return re.search(r'<div id="chip".*?id="chip-name"[^>]*></span>', chat_html(), re.S).group(0)
+
+
+def test_attachment_has_a_square_thumbnail_with_remove_button_inside():
+    html = attachment_html()
+    thumb = re.search(r'<div class="thumb">(.*?)</div>', html, re.S).group(1)
+
+    assert '<img id="thumb-img"' in thumb and 'alt=""' in thumb  # decorativa: el nombre va abajo
+    assert 'id="thumb-pdf"' in thumb  # los PDF no tienen miniatura: llevan un ícono
+    button = re.search(r'<button[^>]*id="chip-remove"[^>]*>', thumb).group(0)
+    assert 'type="button"' in button and 'aria-label="Quitar el archivo"' in button
+
+
+def test_attachment_name_sits_below_the_thumbnail():
+    html = attachment_html()
+
+    assert html.index('class="thumb"') < html.index('id="chip-name"')
+
+
+def test_csp_allows_blob_images_for_the_previews(client):
+    # La miniatura se arma con una URL local (blob:) del archivo elegido.
+    policy = client.get("/").headers["content-security-policy"]
+
+    assert re.search(r"img-src[^;]*\bblob:", policy)
+    assert "script-src 'self'" in policy  # y sigue sin permitir scripts en línea
+
+
+def test_attachment_remove_button_shows_on_hover_and_keyboard_focus():
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert ".thumb-remove" in css
+    # Visible con el mouse encima, pero también con el foco del teclado y en pantallas táctiles.
+    assert ":hover .thumb-remove" in css
+    assert "focus-within" in css or ":focus-visible" in css
+    assert "(hover: none)" in css
