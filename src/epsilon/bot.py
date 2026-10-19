@@ -47,6 +47,7 @@ HELP = (
     "+ texto → guardar una nota en inbox\n"
     "/ver [nota] → leer una nota (por defecto inbox)\n"
     "/buscar palabra → buscar en las notas\n"
+    "/archivos [texto] → listar lo guardado (los 10 más nuevos)\n"
     "/resumir nombre → resumir una nota o archivo guardado\n"
     "/uso → tokens y precio gastados (hoy y total)\n\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
@@ -306,6 +307,21 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP)
 
 
+async def files_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/archivos [texto]: lista lo guardado, lo más nuevo primero. No usa el modelo."""
+    text = " ".join(context.args).strip()
+    found, total = notes.list_files(text)
+
+    if not found:
+        await update.message.reply_text("No encontré archivos.")
+        return
+
+    listing = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in found)
+    more = total - len(found)
+    extra = f"\n(y {more} más; filtrá con /archivos texto)" if more > 0 else ""
+    await update.message.reply_text(f"{listing}{extra}"[:MAX_CARACTERES])
+
+
 async def usage_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/uso (o /usage): tokens y precio gastados, hoy y en total. No usa el modelo."""
     await update.message.reply_text(usage.format_summary(usage.summary()))
@@ -364,6 +380,7 @@ async def summarize_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 COMMANDS = [
     BotCommand("ver", "Ver una nota (por defecto, inbox)"),
     BotCommand("buscar", "Buscar texto en todas las notas"),
+    BotCommand("archivos", "Listar lo guardado (opcional: filtrar por nombre)"),
     BotCommand("resumir", "Resumir una nota o archivo guardado"),
     BotCommand("uso", "Tokens y precio gastados (hoy y total)"),
     BotCommand("ayuda", "Cómo se usa el bot"),
@@ -395,6 +412,7 @@ def main():
     )
     app.add_handler(CommandHandler("ver", watch, filters=ONLY_ME))
     app.add_handler(CommandHandler("buscar", search, filters=ONLY_ME))
+    app.add_handler(CommandHandler("archivos", files_cmd, filters=ONLY_ME))
     app.add_handler(CommandHandler("resumir", summarize_cmd, filters=ONLY_ME))
     app.add_handler(CommandHandler(["uso", "usage"], usage_cmd, filters=ONLY_ME))
     # /start lo manda Telegram solo la primera vez que abrís el bot.

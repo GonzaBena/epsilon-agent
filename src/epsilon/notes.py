@@ -131,15 +131,15 @@ def search_note(texto: str) -> list[str]:
     return results or ["Sin resultados"]
 
 
-def find_files(text: str) -> list[Path]:
-    """Busca notas y archivos cuyo nombre coincida con el texto. Más recientes primero."""
+def _match_files(text: str, extensions: set[str]) -> list[Path]:
+    """Archivos de DATA_DIR con esas extensiones cuyo nombre coincide. Más nuevos primero."""
     wanted = text.lower()
     candidates = []
 
     # rglob("*") recorre DATA_DIR y todas sus subcarpetas.
     for p in DATA_DIR.rglob("*"):
-        # Solo archivos con una extensión que sepamos resumir.
-        if not p.is_file() or p.suffix.lower() not in summarizable_ext:
+        # Solo archivos con alguna de las extensiones pedidas.
+        if not p.is_file() or p.suffix.lower() not in extensions:
             continue
 
         # Seguridad: si un symlink apunta a un archivo FUERA de DATA_DIR,
@@ -161,6 +161,19 @@ def find_files(text: str) -> list[Path]:
 
     # Ordenamos por fecha de modificación: lo más nuevo primero.
     return sorted(result, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def find_files(text: str) -> list[Path]:
+    """Busca notas y archivos que se puedan resumir cuyo nombre coincida con el texto."""
+    return _match_files(text, summarizable_ext)
+
+
+def list_files(text: str = "", limit: int = 10) -> tuple[list[Path], int]:
+    """Lista lo guardado (notas, archivos y CSV), lo más nuevo primero.
+
+    Devuelve (los primeros `limit`, cantidad total). Texto vacío = todo."""
+    result = _match_files(text, summarizable_ext | {".csv"})
+    return result[:limit], len(result)
 
 
 # Este bloque solo corre si ejecutás "python notas.py" directamente.

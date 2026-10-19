@@ -48,5 +48,4 @@ instalarlo, cargar sus claves y usarlo.
 
 ## Pendiente
 
-- Comando `/archivos` (listar archivos guardados).
 - Más adelante: Whisper (voz), Obsidian, plantillas, FastAPI/MCP, web con chat.
