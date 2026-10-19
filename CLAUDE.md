@@ -11,6 +11,9 @@ instalarlo, cargar sus claves y usarlo.
 - `uv run epsilon` (o `uv run python -m epsilon.main`) arranca la web en
   http://127.0.0.1:8765 y, si está configurado, Telegram
 - `uv run pytest` corre los tests (nunca llaman a Gemini)
+- `EPSILON_ENV_FILE=/ruta/otro.env` hace que Epsilon use ESE archivo de
+  configuración en vez del `.env` real (que ni se carga). Sirve para probar el
+  ciclo de configuración con una copia de `.env.example` y datos al azar.
 - El bot corre como servicio de usuario (`deploy/epsilon.service`):
   `systemctl --user status|restart|stop epsilon`; logs con
   `journalctl --user -u epsilon -f`.
