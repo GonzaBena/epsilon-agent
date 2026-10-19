@@ -70,7 +70,7 @@ def save_csv(name: str, fields: list[str], rows: list[dict]) -> str:
     with path.open("a", encoding="utf-8", newline="") as f:
         # DictWriter escribe cada dict ubicando cada valor en su columna.
         writer = csv.DictWriter(f, fieldnames=fields)
-        if path:
+        if new:  # el encabezado solo se escribe cuando el CSV se crea
             writer.writeheader()
         writer.writerows(rows)
 
