@@ -1,0 +1,21 @@
+[project]
+name = "epsilon"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Gonzalo Benavente", email = "elgonzatron@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=2.31.0",
+    "python-dotenv>=1.2.4",
+    "python-telegram-bot>=22.8",
+]
+
+[project.scripts]
+epsilon = "epsilon:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
