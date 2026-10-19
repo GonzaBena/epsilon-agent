@@ -74,8 +74,13 @@ una lista, mostrar el gasto en esta pantalla (`/uso` ya existe).
 
 ## Estado
 
-Pasos 1 a 3 hechos. Verificado con arranques reales: token inválido de
+Los 4 pasos están hechos. Verificado con arranques reales: token inválido de
 Telegram (motivo claro, sin el token en el log, canal «detenido» en la API),
 puerto ocupado (mensaje claro, código 1), `models.get` de Gemini contra la API
 real (clave y modelo válidos; modelo inexistente explicado) y `getMe` de
-Telegram con un token falso. Queda el paso 4 (la página).
+Telegram con un token falso. La página (`/config`) se verificó en un navegador con una instancia aparte,
+archivo de configuración de prueba y claves falsas: dibujo de puntos según el
+largo (el campo real queda vacío), validación con el error junto al campo,
+aviso de reinicio con su razón, pruebas de conexión contra Google y Telegram,
+borrado en dos pasos y aviso de primer arranque en el chat. Escribir sobre el
+`.env` real queda sin probar a propósito (lo maneja el dueño a mano).

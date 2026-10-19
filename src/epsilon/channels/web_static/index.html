@@ -19,9 +19,16 @@
       </div>
       <div class="top-actions">
         <span id="status" class="status" role="status">Conectando…</span>
+        <a class="ghost" href="/config">Configuración</a>
         <button id="clear" class="ghost" type="button">Limpiar chat</button>
       </div>
     </header>
+
+    <!-- Solo se ve si falta la clave de Gemini (primer arranque). -->
+    <aside id="setup" class="notice" hidden>
+      <p>Falta la clave de Gemini. Sin ella no puedo leer imágenes ni resumir.
+        <a href="/config">Cargala en Configuración</a>.</p>
+    </aside>
 
     <!-- La conversación. aria-live hace que un lector de pantalla lea lo nuevo. -->
     <main id="log" class="log" role="log" aria-live="polite" aria-label="Conversación">

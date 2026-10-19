@@ -34,7 +34,7 @@ body {
    ponga display. */
 [hidden] { display: none !important; }
 
-button, textarea { font: inherit; color: inherit; }
+button, textarea, input { font: inherit; color: inherit; }
 
 /* Foco visible para quien navega con teclado. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -306,4 +306,134 @@ textarea::placeholder { color: var(--muted); }
 /* Quien pidió menos movimiento no ve el parpadeo. */
 @media (prefers-reduced-motion: reduce) {
   .dots span { animation: none; opacity: 0.6; }
+}
+
+/* =========================================================================
+   Enlaces con aspecto de botón fantasma, y aviso de primer arranque (chat)
+   ========================================================================= */
+a.ghost {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+.notice p { max-width: var(--column); margin: 0 auto; }
+.notice a { color: var(--accent); }
+
+/* =========================================================================
+   Pantalla de configuración
+   ========================================================================= */
+.settings-page { overflow-y: auto; }  /* esta página hace scroll de toda la ventana */
+
+.settings {
+  width: 100%;
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+.page-title { margin: 0 0 1.5rem; font-size: 1.35rem; font-weight: 600; }
+
+/* Cada bloque se separa del anterior con una línea fina, sin tarjetas. */
+.settings section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.settings h3 { margin: 0 0 0.25rem; font-size: 1.05rem; font-weight: 600; }
+.help { margin: 0 0 1rem; color: var(--muted); max-width: 60ch; }
+
+.field { margin-bottom: 1.1rem; }
+.field label { display: block; margin-bottom: 0.35rem; font-weight: 500; }
+
+.settings input[type="text"],
+.settings input[type="password"] {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+}
+.settings input::placeholder { color: var(--muted); letter-spacing: 0.05em; }
+.settings input:focus-visible { outline: 0; border-color: var(--accent); }
+.settings input[aria-invalid="true"] { border-color: var(--danger); }
+
+.secret-row { display: flex; gap: 0.5rem; align-items: center; }
+.secret-row input { flex: 1; min-width: 0; }
+
+.hint { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.error { margin: 0.35rem 0 0; color: var(--danger); font-size: 0.9rem; }
+.error:empty { display: none; }
+
+.ghost.danger:hover { color: var(--danger); }
+
+/* Botón secundario (probar). El principal es .send, el lima. */
+.secondary {
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.secondary:hover:not(:disabled) { border-color: var(--accent); }
+.secondary:disabled { opacity: 0.45; cursor: default; }
+
+.test-row, .save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
+
+/* Resultado de una prueba o de guardar: en palabras, y el color solo acompaña. */
+.result { margin: 0; font-size: 0.95rem; }
+.result.ok { color: var(--accent); }
+.result.fail { color: var(--danger); }
+
+.save-row { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+
+.path { overflow-wrap: anywhere; }
+
+/* --- Aviso de reinicio pendiente ------------------------------------------ */
+.restart {
+  margin-bottom: 2rem;
+  padding: 1rem 1.1rem;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+}
+.settings .restart { margin-top: 0; padding-top: 1rem; border-top: 1.5px solid var(--accent); }
+.restart h3 { margin-bottom: 0.5rem; }
+.restart p { margin: 0.5rem 0 0; }
+.restart-list { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+
+/* --- Estado de canales ------------------------------------------------------ */
+.channels { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+.channel {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+}
+.channel .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--muted);
+  transform: translateY(-0.05rem);
+}
+.channel.running .dot { background: var(--accent); }
+.channel.stopped .dot { background: var(--danger); }
+.channel .state { color: var(--muted); }
+.channel.stopped .state { color: var(--danger); }
+/* El motivo ocupa su propia línea, bajo el nombre. */
+.channel .detail {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }

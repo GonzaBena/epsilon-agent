@@ -269,20 +269,22 @@ def test_even_rejected_requests_carry_the_policy(client):
 # Reglas del proyecto sobre el frontend: el contenido es dato, nunca HTML.
 
 
-def test_js_never_builds_html_from_text():
+@pytest.mark.parametrize("name", ["app.js", "config.js"])
+def test_js_never_builds_html_from_text(name):
     import re
 
-    source = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    source = (web.STATIC_DIR / name).read_text(encoding="utf-8")
     source = re.sub(r"//.*", "", source)  # los comentarios pueden nombrar la regla
 
     for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         assert forbidden not in source
 
 
-def test_html_has_no_inline_script_or_style():
+@pytest.mark.parametrize("name", ["index.html", "config.html"])
+def test_html_has_no_inline_script_or_style(name):
     import re
 
-    html = (web.STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = (web.STATIC_DIR / name).read_text(encoding="utf-8")
 
     assert not re.search(r"<script(?![^>]*\bsrc=)", html)  # solo <script src=...>
     assert "style=" not in html and "<style" not in html
@@ -616,3 +618,45 @@ def test_run_marks_the_web_as_running(monkeypatch):
 
     assert started == [{"host": "127.0.0.1", "port": 9124, "log_level": "warning"}]
     assert state.snapshot()["web"]["state"] == "running"
+
+
+# --- Página de configuración -------------------------------------------------
+
+
+def test_config_page_is_served_with_its_script(client):
+    page = client.get("/config")
+
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert "/static/config.js" in page.text and "/static/style.css" in page.text
+
+
+def test_config_page_is_protected_like_the_rest(client):
+    assert client.get("/config", headers={"Host": "evil.com"}).status_code == 403
+
+
+def test_chat_page_links_to_the_configuration():
+    html = (web.STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    assert 'href="/config"' in html
+
+
+def test_config_page_has_a_field_for_every_editable_setting():
+    # Si se agrega un ajuste en config.py y se olvida la página, falla acá.
+    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+
+    for s in config.SETTINGS:
+        if s.editable:
+            assert f'data-key="{s.key}"' in html, s.key
+
+
+def test_secret_fields_are_password_inputs_without_a_value():
+    import re
+
+    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+
+    for s in config.SETTINGS:
+        if s.secret:
+            tag = re.search(rf'<input[^>]*data-key="{s.key}"[^>]*>', html).group(0)
+            assert 'type="password"' in tag, s.key
+            assert "value=" not in tag, s.key  # nunca se rellena con nada

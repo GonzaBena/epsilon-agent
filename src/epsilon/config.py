@@ -153,6 +153,15 @@ def status(env_file: Path | None = None) -> list[dict]:
         )
         entry["pending_restart"] = pending
         entry["reason"] = s.reason if pending else ""
+        # Qué cambio espera: borrar o reemplazar. Sin ningún valor, así que sirve
+        # también para los secretos.
+        entry["pending_kind"] = (
+            ("changed" if saved[s.key] else "cleared") if pending else ""
+        )
+        if pending and not s.secret:
+            # Lo guardado, para que la pantalla no parezca haberlo perdido.
+            # Nunca para los secretos.
+            entry["saved"] = saved[s.key] or ""
         result.append(entry)
     return result
 

@@ -368,3 +368,59 @@ def test_saved_falls_back_to_the_environment(monkeypatch, env_file):
 
 def test_saved_is_empty_when_nothing_is_set(env_file):
     assert config.saved("TELEGRAM_TOKEN", env_file) == ""
+
+
+# --- Lo guardado y pendiente se muestra (solo los que no son secretos) ------
+
+
+def test_pending_plain_setting_also_reports_what_was_saved(env_file):
+    config.update({"WEB_PORT": "9001"}, [], env_file)
+
+    e = entry("WEB_PORT", env_file)
+
+    assert e["pending_restart"] is True
+    assert e["value"] == ""  # el proceso todavía usa el puerto por defecto
+    assert e["saved"] == "9001"  # lo que quedó guardado y se aplicará al reiniciar
+
+
+def test_saved_is_only_reported_while_pending(monkeypatch, env_file):
+    config.update({"WEB_PORT": "9001"}, [], env_file)
+    monkeypatch.setenv("WEB_PORT", "9001")  # tras reiniciar
+
+    assert "saved" not in entry("WEB_PORT", env_file)
+
+
+def test_saved_never_exists_for_secrets(env_file):
+    config.update({"TELEGRAM_TOKEN": TOKEN}, [], env_file)
+
+    e = entry("TELEGRAM_TOKEN", env_file)
+
+    assert e["pending_restart"] is True
+    assert "saved" not in e and "value" not in e
+    assert TOKEN not in json.dumps(config.status(env_file))
+
+
+# --- Qué cambio está pendiente (sin mostrar ningún valor) -------------------
+
+
+def test_pending_kind_tells_a_cleared_secret_from_a_replaced_one(monkeypatch, env_file):
+    monkeypatch.setenv("TELEGRAM_TOKEN", TOKEN)
+    env_file.write_text(f"TELEGRAM_TOKEN={TOKEN}\n", encoding="utf-8")
+
+    config.update({}, ["TELEGRAM_TOKEN"], env_file)
+    assert entry("TELEGRAM_TOKEN", env_file)["pending_kind"] == "cleared"
+
+    config.update({"TELEGRAM_TOKEN": "555555555:AAHotro_token_falso_de_prueba_largo_9"}, [], env_file)
+    assert entry("TELEGRAM_TOKEN", env_file)["pending_kind"] == "changed"
+
+
+def test_pending_kind_is_empty_when_nothing_is_pending(env_file):
+    assert entry("TELEGRAM_TOKEN", env_file)["pending_kind"] == ""
+
+
+def test_pending_kind_never_carries_a_value(env_file):
+    config.update({"TELEGRAM_TOKEN": TOKEN}, [], env_file)
+
+    dumped = json.dumps(config.status(env_file))
+
+    assert TOKEN not in dumped and "vKjP" not in dumped

@@ -368,7 +368,23 @@ async function checkHealth() {
   }
 }
 
+// --- Primer arranque: avisar si falta la clave de Gemini ---------------------------------
+// La API dice solo si la clave está cargada (nunca su valor). Si no se puede
+// consultar, no mostramos nada: es un aviso de ayuda, no un error.
+async function checkSetup() {
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) return;
+    const state = await response.json();
+    const key = state.settings.find((setting) => setting.key === "GEMINI_API_KEY");
+    document.getElementById("setup").hidden = !key || key.set;
+  } catch {
+    // Sin conexión: el estado de arriba ya lo indica.
+  }
+}
+
 // --- Arranque ---------------------------------------------------------------------
 renderHistory();
 checkHealth();
+checkSetup();
 input.focus();

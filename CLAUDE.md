@@ -25,8 +25,10 @@ instalarlo, cargar sus claves y usarlo.
 - `main.py`: punto de entrada. La web (siempre activa) corre en el hilo
   principal; los demás canales configurados (Telegram) van cada uno en su hilo
   y, si fallan, mueren solos sin tumbar la web. Se omiten los sin configurar.
-- `channels/web.py` y `channels/web_static/` (index.html, style.css, app.js):
-  web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver `docs/plan-web.md`.
+- `channels/web.py` y `channels/web_static/` (index.html, config.html, style.css,
+  app.js, config.js): web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver
+  `docs/plan-web.md`. La pantalla `/config` edita ajustes; el reinicio es siempre
+  manual (la página solo avisa por qué hace falta y con qué comando).
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `config.py`: ajustes editables desde la web (claves, modelo, puerto). Único

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configuración · Epsilon</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Estructura de la página. El estilo está en style.css y la lógica en
+       config.js. Los textos de ayuda son fijos; el estado de cada ajuste
+       (cargado, largo, valor) lo pone config.js con lo que responde la API. -->
+  <script src="/static/config.js" defer></script>
+</head>
+<body class="settings-page">
+  <header class="top">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">ε</span>
+      <h1>Epsilon</h1>
+    </div>
+    <div class="top-actions">
+      <a class="ghost" href="/">Volver al chat</a>
+    </div>
+  </header>
+
+  <main class="settings">
+    <h2 class="page-title">Configuración</h2>
+
+    <!-- Solo se ve si hay cambios guardados que todavía no se aplicaron. -->
+    <section id="restart" class="restart" role="status" hidden>
+      <h3>Hay cambios guardados que todavía no se aplican</h3>
+      <ul id="restart-list" class="restart-list"></ul>
+      <p>Para aplicarlos, reiniciá Epsilon:</p>
+      <p><code>systemctl --user restart epsilon</code></p>
+      <p class="hint">Si lo abriste a mano, cerralo y ejecutá <code>uv run epsilon</code> de nuevo.
+        Si algo falla al arrancar, el motivo aparece en la consola y acá, en Canales.</p>
+    </section>
+
+    <section aria-labelledby="h-channels">
+      <h3 id="h-channels">Canales</h3>
+      <ul id="channels" class="channels"></ul>
+    </section>
+
+    <form id="form" novalidate autocomplete="off">
+
+      <section aria-labelledby="h-gemini">
+        <h3 id="h-gemini">Gemini</h3>
+        <p class="help">Lee imágenes y resume. La clave se obtiene en Google AI Studio.</p>
+
+        <div class="field">
+          <label for="f-GEMINI_API_KEY">Clave de Gemini</label>
+          <div class="secret-row">
+            <input id="f-GEMINI_API_KEY" data-key="GEMINI_API_KEY" type="password"
+                   autocomplete="new-password" spellcheck="false"
+                   aria-describedby="hint-GEMINI_API_KEY err-GEMINI_API_KEY">
+            <button type="button" class="ghost danger" data-clear="GEMINI_API_KEY" hidden>Borrar</button>
+          </div>
+          <p class="hint" id="hint-GEMINI_API_KEY"></p>
+          <p class="error" id="err-GEMINI_API_KEY" role="alert"></p>
+        </div>
+
+        <div class="field">
+          <label for="f-GEMINI_MODEL">Modelo</label>
+          <input id="f-GEMINI_MODEL" data-key="GEMINI_MODEL" type="text"
+                 autocomplete="off" spellcheck="false"
+                 aria-describedby="hint-GEMINI_MODEL err-GEMINI_MODEL">
+          <p class="hint" id="hint-GEMINI_MODEL"></p>
+          <p class="error" id="err-GEMINI_MODEL" role="alert"></p>
+        </div>
+
+        <div class="test-row">
+          <button type="button" class="secondary" data-test="gemini">Probar conexión</button>
+          <p class="result" id="result-gemini" role="status"></p>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-telegram">
+        <h3 id="h-telegram">Telegram</h3>
+        <p class="help">Opcional. Sirve para usar Epsilon desde el celular. El token lo da @BotFather al crear el bot.</p>
+
+        <div class="field">
+          <label for="f-TELEGRAM_TOKEN">Token del bot</label>
+          <div class="secret-row">
+            <input id="f-TELEGRAM_TOKEN" data-key="TELEGRAM_TOKEN" type="password"
+                   autocomplete="new-password" spellcheck="false"
+                   aria-describedby="hint-TELEGRAM_TOKEN err-TELEGRAM_TOKEN">
+            <button type="button" class="ghost danger" data-clear="TELEGRAM_TOKEN" hidden>Borrar</button>
+          </div>
+          <p class="hint" id="hint-TELEGRAM_TOKEN"></p>
+          <p class="error" id="err-TELEGRAM_TOKEN" role="alert"></p>
+        </div>
+
+        <div class="field">
+          <label for="f-ALLOWED_USER_ID">Tu ID de usuario</label>
+          <input id="f-ALLOWED_USER_ID" data-key="ALLOWED_USER_ID" type="text"
+                 inputmode="numeric" autocomplete="off" spellcheck="false"
+                 aria-describedby="hint-ALLOWED_USER_ID err-ALLOWED_USER_ID">
+          <p class="hint" id="hint-ALLOWED_USER_ID"></p>
+          <p class="error" id="err-ALLOWED_USER_ID" role="alert"></p>
+        </div>
+
+        <div class="test-row">
+          <button type="button" class="secondary" data-test="telegram">Probar el token guardado</button>
+          <p class="result" id="result-telegram" role="status"></p>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-web">
+        <h3 id="h-web">Web</h3>
+
+        <div class="field">
+          <label for="f-WEB_PORT">Puerto</label>
+          <input id="f-WEB_PORT" data-key="WEB_PORT" type="text" placeholder="8765"
+                 inputmode="numeric" autocomplete="off" spellcheck="false"
+                 aria-describedby="hint-WEB_PORT err-WEB_PORT">
+          <p class="hint" id="hint-WEB_PORT"></p>
+          <p class="error" id="err-WEB_PORT" role="alert"></p>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-data">
+        <h3 id="h-data">Datos</h3>
+        <p class="help">Acá se guardan tus notas y archivos. Se cambia en el <code>.env</code> (DATA_DIR) y hace falta reiniciar.</p>
+        <p><code id="data-dir" class="path"></code></p>
+      </section>
+
+      <div class="save-row">
+        <button type="submit" id="save" class="send">Guardar cambios</button>
+        <p class="result" id="save-result" role="status"></p>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

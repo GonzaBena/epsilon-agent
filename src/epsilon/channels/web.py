@@ -206,6 +206,10 @@ def create_app() -> FastAPI:
     def home():
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/config", include_in_schema=False)
+    def config_page():
+        return FileResponse(STATIC_DIR / "config.html")
+
     # Se monta al final: las rutas de /api tienen prioridad. StaticFiles ya
     # impide salirse de la carpeta (../).
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
