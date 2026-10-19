@@ -1,9 +1,17 @@
+from datetime import date
 import mimetypes
 from pathlib import Path
 
 from google.genai import types
 
-from epsilon import llm
+from epsilon import llm, notes
+
+
+# Tope para notas de texto (~300 KB son unos 75.000 tokens). Ajustalo a gusto.
+MAX_TEXT = 300_000
+# Tope para PDFs e imágenes que se mandan al modelo (chequeá el límite real
+# de Gemini en su documentación, puede cambiar).
+MAX_FILE = 15 * 1024 * 1024
 
 PROMPT = (
     "Resumí el contenido en español, en viñetas cortas. "
@@ -29,3 +37,27 @@ def build_part(path: Path):
 
 def summarize(path: Path) -> str:
     return llm.generate([build_part(path)], PROMPT)
+
+
+def summarize_and_save(path: Path) -> tuple[str, str]:
+    """Resume un archivo, guarda el resultado en resumenes/ y lo devuelve.
+
+    Devuelve (nombre de la nota del resumen, texto del resumen).
+    Lanza ValueError con un mensaje legible si el archivo no se puede resumir.
+    """
+    size = path.stat().st_size
+
+    # Controles de tamaño ANTES de llamar al modelo: es plata que no se gasta.
+    if path.suffix.lower() in (".md", ".txt"):
+        if size > MAX_TEXT:
+            raise ValueError("La nota es demasiado larga para resumirla.")
+    elif size > MAX_FILE:
+        raise ValueError("El archivo es demasiado grande para resumirlo.")
+
+    text = summarize(path)
+
+    # guardar_nota AGREGA al final, así que si resumís dos veces lo mismo
+    # quedan los dos (con fecha) y nada se pisa.
+    note_name = f"{notes.SUMMARIES_DIR}/{path.stem}"
+    notes.save_note(note_name, f"## {date.today().isoformat()}\n{text}\n")
+    return note_name, text

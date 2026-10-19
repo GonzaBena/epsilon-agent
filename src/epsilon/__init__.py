@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from epsilon!")
+from dotenv import load_dotenv
+
+load_dotenv()

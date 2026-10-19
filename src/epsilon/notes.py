@@ -13,6 +13,13 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "~/epsilon-data")).expanduser().resol
 # Creamos la carpeta si todavía no existe (exist_ok evita error si ya está).
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Subcarpetas dentro de DATA_DIR. Se definen una sola vez acá.
+FILES_DIR = "files"  # archivos recibidos (PDFs, imágenes)
+SUMMARIES_DIR = "summarizes"  # resúmenes generados
+
+# Tipos de archivo que sabemos resumir (los mismos que soporta summarize.py).
+summarizable_ext = {".md", ".txt", ".pdf", ".jpg", ".jpeg", ".png", ".webp"}
+
 
 def safe_path(name: str) -> Path:
     """Devuelve la ruta completa de un archivo, pero solo si queda DENTRO de DATA_DIR."""
@@ -80,7 +87,7 @@ def save_file(original_name: str, data: bytes) -> Path:
 
     # Anteponemos la fecha para tener los archivos ordenados.
     name = f"{date.today().isoformat()}_{base}"
-    destiny = safe_path(f"archivos/{name}")
+    destiny = safe_path(f"{FILES_DIR}/{name}")
     destiny.parent.mkdir(parents=True, exist_ok=True)
 
     # Si ya existe uno con ese nombre, probamos con _2, _3...
@@ -88,7 +95,7 @@ def save_file(original_name: str, data: bytes) -> Path:
     n = 2
     while destiny.exists():
         p = Path(name)
-        destiny = safe_path(f"archivos/{p.stem}_{n}{p.suffix}")
+        destiny = safe_path(f"{FILES_DIR}/{p.stem}_{n}{p.suffix}")
         n += 1
 
     destiny.write_bytes(data)
@@ -122,6 +129,38 @@ def search_note(texto: str) -> list[str]:
 
     # Si la lista quedó vacía, devolvemos un mensaje en lugar de nada.
     return results or ["Sin resultados"]
+
+
+def find_files(text: str) -> list[Path]:
+    """Busca notas y archivos cuyo nombre coincida con el texto. Más recientes primero."""
+    wanted = text.lower()
+    candidates = []
+
+    # rglob("*") recorre DATA_DIR y todas sus subcarpetas.
+    for p in DATA_DIR.rglob("*"):
+        # Solo archivos con una extensión que sepamos resumir.
+        if not p.is_file() or p.suffix.lower() not in summarizable_ext:
+            continue
+
+        # Seguridad: si un symlink apunta a un archivo FUERA de DATA_DIR,
+        # lo descartamos (así nunca mandamos al modelo algo ajeno a tus datos).
+        if not p.resolve().is_relative_to(DATA_DIR):
+            continue
+
+        # No resumimos los resúmenes (sería gastar tokens para nada).
+        if p.relative_to(DATA_DIR).parts[0] == SUMMARIES_DIR:
+            continue
+
+        candidates.append(p)
+
+    # Si alguno coincide EXACTO (con o sin extensión), solo devolvemos esos.
+    # Así "inbox" encuentra inbox.md aunque exista "inbox_viejo.md".
+    exacts = [p for p in candidates if wanted in (p.name.lower(), p.stem.lower())]
+    # Si no hay exactos, aceptamos coincidencias parciales en el nombre.
+    result = exacts or [p for p in candidates if wanted in p.name.lower()]
+
+    # Ordenamos por fecha de modificación: lo más nuevo primero.
+    return sorted(result, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 # Este bloque solo corre si ejecutás "python notas.py" directamente.

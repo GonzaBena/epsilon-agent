@@ -16,11 +16,6 @@ from telegram.ext import (
 
 from epsilon import extract, notes, summarize
 
-# IMPORTANTE: cargamos el .env ANTES de importar notas.
-# notes.py lee DATA_DIR apenas se importa; si el .env no estuviera
-# cargado todavía, usaría la carpeta por defecto en vez de la tuya.
-load_dotenv()
-
 
 # --- Configuración -----------------------------------------------------------
 
@@ -44,9 +39,19 @@ MAX_CARACTERES = 4000
 
 # Los bots de Telegram solo pueden descargar archivos de hasta 20 MB.
 MAX_DOWNLOADS = 20 * 1024 * 1024
-# Para el modelo somos más conservadores (el límite exacto de Gemini,
-# chequealo en su documentación porque puede cambiar).
-MAX_PER_MODEL = 15 * 1024 * 1024
+
+# El texto de ayuda vive en un solo lugar: lo usan /ayuda, /start y el
+# mensaje que se manda cuando escribís algo que el bot no entiende.
+HELP = (
+    "Qué puedo hacer:\n\n"
+    "+ texto → guardar una nota en inbox\n"
+    "/ver [nota] → leer una nota (por defecto inbox)\n"
+    "/buscar palabra → buscar en las notas\n"
+    "/resumir nombre → resumir una nota o archivo guardado\n\n"
+    "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
+    "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
+    "la paso a CSV."
+)
 
 
 # --- Handlers (qué hacer ante cada mensaje) ----------------------------------
@@ -71,7 +76,7 @@ async def save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def save_and_confirm(update, context, name, data):
     """Guarda el archivo recibido y pregunta si se quiere resumir."""
-    path = notes.guardar_archivo(name, data)
+    path = notes.save_file(name, data)
     relative = path.relative_to(notes.DATA_DIR)  # para mostrar y recordar
 
     # El callback_data de un botón tiene máximo 64 bytes, así que no podemos
@@ -115,25 +120,25 @@ async def summarize_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"Listo. Queda guardado: {relative}")
         return
 
-    ruta = notes.ruta_segura(relative)
-    if ruta.stat().st_size > MAX_PER_MODEL:
-        await query.edit_message_text("Es demasiado grande para resumirlo.")
-        return
+    path = notes.safe_path(relative)
 
     await query.edit_message_text("Resumiendo…")
     try:
-        # De nuevo to_thread: la llamada al modelo no debe trabar el bot.
-        texto = await asyncio.to_thread(summarize.summarize, ruta)
+        # summarize_and_save ya controla el tamaño, resume y guarda.
+        # Es síncrona, así que la corremos en otro hilo para no trabar al bot.
+        note_name, text = await asyncio.to_thread(summarize.summarize_and_save, path)
+    except ValueError as e:
+        # Errores esperables (archivo muy grande, tipo no soportado): el mensaje ya es claro.
+        await query.edit_message_text(str(e))
+        return
     except Exception as e:
         print(f"Error al resumir: {e!r}")  # el detalle, a la terminal
         await query.edit_message_text("No pude resumirlo.")
         return
 
     archives.pop(int(id_txt), None)  # ya está resuelto; sacamos el pendiente
-    summarize_name = f"resumenes/{ruta.stem}"
-    notes.guardar_nota(summarize_name, texto)
     await query.edit_message_text(
-        f"Resumen guardado en {summarize_name}.md\n\n{texto[: MAX_CARACTERES - 100]}"
+        f"Resumen guardado en {note_name}.md\n\n{text[: MAX_CARACTERES - 100]}"
     )
 
 
@@ -290,6 +295,59 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(result)
 
 
+async def other(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cualquier otro texto: recordamos cómo se usa el bot."""
+    await update.message.reply_text(HELP)
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/ayuda (y /start): explica cómo se usa el bot."""
+    await update.message.reply_text(HELP)
+
+
+async def summarize_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/resumir nombre: resume una nota o archivo ya guardado."""
+    text = " ".join(context.args).strip()
+    if not text:
+        await update.message.reply_text(
+            "Uso: /resumir nombre\nPuede ser parte del nombre: /resumir inbox"
+        )
+        return
+
+    matches = notes.find_files(text)
+
+    if not matches:
+        await update.message.reply_text("No encontré nada con ese nombre.")
+        return
+
+    # Si hay más de una, NO adivinamos: mostramos hasta 5 y pedimos precisión.
+    if len(matches) > 1:
+        listing = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in matches[:5])
+        more = len(matches) - 5
+        extra = f"\n(y {more} más)" if more > 0 else ""
+        await update.message.reply_text(
+            f"Hay varias coincidencias. Probá con un nombre más específico:\n{listing}{extra}"
+        )
+        return
+
+    await update.message.reply_text("Resumiendo…")
+    try:
+        note_name, summary = await asyncio.to_thread(
+            summarize.summarize_and_save, matches[0]
+        )
+    except ValueError as e:
+        await update.message.reply_text(str(e))
+        return
+    except Exception as e:
+        print(f"Error al resumir: {e!r}")
+        await update.message.reply_text("No pude resumirlo.")
+        return
+
+    await update.message.reply_text(
+        f"Resumen guardado en {note_name}.md\n\n{summary[: MAX_CARACTERES - 100]}"
+    )
+
+
 # --- Arranque ----------------------------------------------------------------
 
 # Lista de comandos que se muestran en el menú de Telegram.
@@ -297,9 +355,11 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # CommandHandler en main(); si falta uno, aparece en la lista pero no hace nada.
 # Reglas de Telegram: nombres en minúscula, sin "/", hasta 32 caracteres
 # (letras, números y guion bajo); descripción de 1 a 256 caracteres.
-COMANDOS = [
+COMMANDS = [
     BotCommand("ver", "Ver una nota (por defecto, inbox)"),
     BotCommand("buscar", "Buscar texto en todas las notas"),
+    BotCommand("resumir", "Resumir una nota o archivo guardado"),
+    BotCommand("ayuda", "Cómo se usa el bot"),
 ]
 
 
@@ -307,7 +367,7 @@ async def post_init(app: Application):
     """Se ejecuta una sola vez, cuando el bot arranca."""
     try:
         await app.bot.set_my_commands(
-            COMANDOS,
+            COMMANDS,
             # scope = a quién se le muestra el menú. Acá solo a tu chat privado
             # (en un chat privado, el chat_id es igual a tu user id).
             # A cualquier otra persona no le aparece nada, coherente con la whitelist.
@@ -320,23 +380,18 @@ async def post_init(app: Application):
 
 
 def main():
-    # Application.builder() arma el bot con tu token.
     app = Application.builder().token(TOKEN).post_init(post_init).build()
 
-    # Registramos los handlers. Cada uno lleva el filtro SOLO_YO.
-    # El orden importa: se usa el primero que coincida.
+    # Texto y comandos (solo de tu usuario). El orden importa: gana el primero que coincida.
     app.add_handler(
         MessageHandler(filters.TEXT & filters.Regex(r"^\+") & ONLY_ME, save)
     )
     app.add_handler(CommandHandler("ver", watch, filters=ONLY_ME))
     app.add_handler(CommandHandler("buscar", search, filters=ONLY_ME))
+    app.add_handler(CommandHandler("resumir", summarize_cmd, filters=ONLY_ME))
+    # /start lo manda Telegram solo la primera vez que abrís el bot.
+    app.add_handler(CommandHandler(["ayuda", "start"], help_cmd, filters=ONLY_ME))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ONLY_ME, other))
-    # Imágenes: como foto o como archivo, solo de tu usuario.
-    app.add_handler(
-        MessageHandler((filters.PHOTO | filters.Document.IMAGE) & ONLY_ME, image)
-    )
-    # Botones de confirmación (los valida la propia función).
-    app.add_handler(CallbackQueryHandler(confirm))
 
     # Imágenes y PDFs (como foto o como archivo), solo de tu usuario.
     app.add_handler(
@@ -345,13 +400,12 @@ def main():
             image,
         )
     )
-    # Cada grupo de botones atiende solo sus propios callback_data (pattern).
+
+    # Botones: cada grupo atiende solo sus propios callback_data (pattern).
     app.add_handler(CallbackQueryHandler(confirm, pattern=r"^(guardar|cancelar)$"))
     app.add_handler(CallbackQueryHandler(summarize_cb, pattern=r"^(resumir|nada):"))
 
     print("Bot en marcha. Ctrl+C para cortar.")
-    # run_polling: el bot le pregunta a Telegram cada tanto si hay mensajes
-    # nuevos. No necesitás abrir puertos ni tener servidor público.
     app.run_polling()
 
 
