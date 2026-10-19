@@ -42,7 +42,7 @@ def test_message_goes_through_the_core(client, tmp_path):
     reply = post_message(client, text="+ hola desde la web")
 
     assert reply.status_code == 200
-    assert reply.json() == {"text": "Guardado en inbox.md", "actions": []}
+    assert reply.json() == {"text": "Guardado en inbox.md", "actions": [], "artifacts": [{"kind": "note", "path": "inbox.md"}]}
     assert "hola desde la web" in (tmp_path / "inbox.md").read_text(encoding="utf-8")
 
 
@@ -968,7 +968,7 @@ def test_a_message_in_a_conversation_is_saved_with_its_reply(client):
 def test_a_message_without_conversation_is_not_saved_and_replies_as_before(client, tmp_path):
     reply = post_message(client, text="/ayuda")
 
-    assert reply.json() == {"text": core.HELP, "actions": []}
+    assert reply.json() == {"text": core.HELP, "actions": [], "artifacts": []}
     assert not (tmp_path / "conversations").exists()
 
 
@@ -1306,3 +1306,43 @@ def test_the_tag_has_a_style():
     css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
 
     assert ".tool-tag" in css and ".tool-head" in css
+
+
+# --- artifacts por la API ----------------------------------------------------
+
+
+def test_a_reply_says_what_it_saved_even_without_a_conversation(client):
+    reply = post_message(client, text="+ algo").json()
+
+    assert reply["artifacts"] == [{"kind": "note", "path": "inbox.md"}]
+
+
+def test_what_a_reply_saved_is_kept_in_the_conversation(client):
+    cid = new_conversation(client)
+    chat(client, cid, "+ nota")
+    upload(client, name="doc.pdf", mime="application/pdf", conversation_id=cid)
+
+    bot = [l for l in saved_lines(cid) if l["role"] == "bot"]
+
+    assert bot[0]["artifacts"] == [{"kind": "note", "path": "inbox.md"}]
+    assert bot[1]["artifacts"][0]["kind"] == "file" and bot[1]["artifacts"][0]["path"].startswith("files/")
+
+
+def test_opening_a_conversation_returns_its_artifacts_newest_first_without_repeats(client):
+    cid = new_conversation(client)
+    chat(client, cid, "+ uno")
+    upload(client, name="doc.pdf", mime="application/pdf", conversation_id=cid)
+    chat(client, cid, "+ dos")  # inbox.md otra vez
+
+    data = client.get(f"/api/conversations/{cid}").json()
+
+    assert [a["kind"] for a in data["artifacts"]] == ["note", "file"]
+    assert data["artifacts"][0]["path"] == "inbox.md"
+    assert all("artifacts" in m for m in data["messages"])
+
+
+def test_a_conversation_without_saves_has_no_artifacts(client):
+    cid = new_conversation(client)
+    chat(client, cid, "/ayuda")
+
+    assert client.get(f"/api/conversations/{cid}").json()["artifacts"] == []

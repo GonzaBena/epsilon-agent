@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 import re
 
 from epsilon import extract, notes, summarize, usage
@@ -55,11 +56,28 @@ class Action:
 
 
 @dataclass
+class Artifact:
+    """Algo que la respuesta GUARDÓ en DATA_DIR. La ruta es relativa a DATA_DIR y la
+    arma el servidor (nunca viene de texto del usuario). kind: 'file' (imagen o PDF
+    recibido, ticket incluido), 'csv', 'note' o 'summary'."""
+
+    kind: str
+    path: str
+
+
+@dataclass
 class Reply:
     """Lo que el núcleo le devuelve al canal. El texto va completo, sin recortar."""
 
     text: str
     actions: list[Action] = field(default_factory=list)
+    # Lo que se guardó con esta respuesta; un canal puede mostrarlo o ignorarlo.
+    artifacts: list[Artifact] = field(default_factory=list)
+
+
+def _artifact(kind: str, path) -> Artifact:
+    """Un artifact con su ruta relativa a DATA_DIR (con «/», igual en cualquier sistema)."""
+    return Artifact(kind, Path(path).relative_to(notes.DATA_DIR).as_posix())
 
 
 # --- Estado por sesión -------------------------------------------------------
@@ -92,7 +110,8 @@ def _save(text: str) -> Reply:
         return Reply("Escribí algo después del +")
 
     # Anteponemos la fecha para saber cuándo anotaste cada cosa.
-    return Reply(notes.save_note("inbox", f"- {date.today().isoformat()} {text}"))
+    saved = notes.save_note("inbox", f"- {date.today().isoformat()} {text}")
+    return Reply(saved, artifacts=[_artifact("note", notes.safe_path("inbox.md"))])
 
 
 def _watch(args: str) -> Reply:
@@ -145,7 +164,10 @@ def _summarize_path(path) -> Reply:
     except Exception as e:
         print(f"Error al resumir: {e!r}")  # el detalle, a la terminal
         return Reply("No pude resumirlo.")
-    return Reply(f"Resumen guardado en {note_name}.md\n\n{text}")
+    return Reply(
+        f"Resumen guardado en {note_name}.md\n\n{text}",
+        artifacts=[_artifact("summary", notes.safe_path(f"{note_name}.md"))],
+    )
 
 
 def _summarize_cmd(args: str, session: Session) -> Reply:
@@ -216,8 +238,9 @@ def _save_and_offer_summary(session: Session, att: Attachment) -> Reply:
     relative = path.relative_to(notes.DATA_DIR)  # para mostrar y recordar
 
     # Los tickets solo se guardan: sin botones, no hay nada que resumir.
+    saved = [_artifact("file", path)]
     if folder == TICKETS_DIR:
-        return Reply(f"Guardado: {relative}")
+        return Reply(f"Guardado: {relative}", artifacts=saved)
 
     # Recordamos la ruta con un número; los botones llevan solo ese número
     # (así el id de un botón es corto en cualquier canal).
@@ -230,6 +253,7 @@ def _save_and_offer_summary(session: Session, att: Attachment) -> Reply:
             Action(f"resumir:{file_id}", "Resumir"),
             Action(f"nada:{file_id}", "Nada más"),
         ],
+        artifacts=saved,
     )
 
 
@@ -277,7 +301,8 @@ def _confirm_csv(action: str, session: Session) -> Reply:
     if action == "cancelar":
         return Reply("Cancelado.")
     try:
-        return Reply(notes.save_csv(pending["name"], pending["fields"], pending["rows"]))
+        saved = notes.save_csv(pending["name"], pending["fields"], pending["rows"])
+        return Reply(saved, artifacts=[_artifact("csv", notes.safe_path(f"{pending['name']}.csv"))])
     except ValueError as e:
         # Pasa si el nombre intenta salirse de la carpeta, o si el CSV
         # ya existe con otras columnas.

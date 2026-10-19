@@ -30,7 +30,17 @@ archivos y notas de la conversación.
    («Usa el modelo de IA: gasta tokens») y un test cuida que solo `/resumir` e «Imagen
    a CSV» la tengan, y que el texto no nombre al modelo.
 2. Los archivos guardados viajan en la respuesta del núcleo, se anotan en la
-   conversación y salen en la API.
+   conversación y salen en la API. **Hecho.**
+   - `core.Reply.artifacts`: lista de `Artifact(kind, path)` con `kind` = `file`
+     (imagen/PDF recibido, ticket incluido), `csv`, `note` o `summary`, y `path`
+     relativo a DATA_DIR. Solo se informa lo que SE GUARDÓ (ni la vista previa del
+     CSV, ni un error, ni «Nada más»).
+   - La web lo anota en la línea del mensaje de Epsilon; al leer y al escribir se
+     descarta lo que no sea un tipo conocido con ruta relativa limpia (el archivo se
+     puede editar a mano).
+   - Las respuestas de `/api/message` y `/api/upload` traen `artifacts`;
+     `GET /api/conversations/{id}` trae `artifacts` (lo más nuevo primero, sin repetir
+     ruta) y cada mensaje el suyo.
 3. Sección «Contexto» del panel.
 
 ## Límites conocidos

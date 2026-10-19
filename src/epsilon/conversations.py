@@ -12,7 +12,7 @@ from epsilon import config, notes
 # ni ningún canal: lo usa quien quiera guardar una conversación (hoy, la web).
 #
 # Dos tipos de línea:
-#   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "error": true, "ts": ...}
+#   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "artifacts": [...], "error": true, "ts": ...}
 #   {"type": "action", "message": "a1b2c3d4", "id": "guardar", "ts": ...}   <- se tocó un botón de ESE mensaje
 #   {"type": "title", "text": "Compras", "ts": ...}                          <- se renombró (gana la última)
 #
@@ -27,6 +27,11 @@ ID_PATTERN = re.compile(r"\d{8}-\d{6}-[0-9a-f]{4}", re.ASCII)
 
 # Un mensaje más largo que esto se recorta al guardarlo (por ejemplo, /ver de una nota enorme).
 MAX_TEXT = 20_000
+
+# Lo que una respuesta guardó (ver core.Artifact). Solo estos tipos, con una ruta relativa
+# a DATA_DIR; se revisa al escribir Y al leer (el archivo se puede editar a mano).
+ARTIFACT_KINDS = ("file", "csv", "note", "summary")
+ARTIFACT_PATH_MAX = 300
 
 UNTITLED = "Conversación sin título"
 TITLE_LENGTH = 40  # el título automático (primera línea de tu primer mensaje)
@@ -62,6 +67,29 @@ def new_id() -> str:
             return conversation_id
 
 
+# --- Artifacts ---------------------------------------------------------------
+
+
+def _clean_artifacts(raw) -> list[dict]:
+    """Solo {kind, path} válidos: tipo conocido y ruta relativa, sin «..», sin saltos de línea
+    ni caracteres de control. Lo demás se descarta en silencio."""
+    if not isinstance(raw, list):
+        return []
+    clean = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind, path = item.get("kind"), item.get("path")
+        if kind not in ARTIFACT_KINDS or not isinstance(path, str):
+            continue
+        if not path or len(path) > ARTIFACT_PATH_MAX or path.startswith("/") or "\\" in path:
+            continue
+        if any(ord(c) < 32 or ord(c) == 127 for c in path) or ".." in path.split("/"):
+            continue
+        clean.append({"kind": kind, "path": path})
+    return clean
+
+
 # --- Escribir ----------------------------------------------------------------
 
 
@@ -85,10 +113,11 @@ def add_message(
     text: str,
     actions: list[dict] | None = None,
     error: bool = False,
+    artifacts: list[dict] | None = None,
 ) -> str:
     """Guarda un mensaje y devuelve su id. role: 'user' (lo que escribís) o 'bot' (lo que
     responde Epsilon). El id sirve para decir después, sin ambigüedad, en qué mensaje se
-    tocó un botón."""
+    tocó un botón. `artifacts` = lo que esta respuesta guardó (archivos, CSV, notas)."""
     if role not in ("user", "bot"):
         raise ValueError("role tiene que ser 'user' o 'bot'")
 
@@ -101,6 +130,8 @@ def add_message(
     entry = {"type": "message", "id": message_id, "role": role, "text": text}
     if actions:
         entry["actions"] = [{"id": a["id"], "label": a["label"]} for a in actions]
+    if artifacts and (clean := _clean_artifacts(artifacts)):
+        entry["artifacts"] = clean
     if error:
         entry["error"] = True
     _append(conversation_id, entry)
@@ -159,6 +190,7 @@ def messages(conversation_id: str) -> list[dict] | None:
                 "role": entry["role"],
                 "text": entry["text"],
                 "actions": entry.get("actions") or [],
+                "artifacts": _clean_artifacts(entry.get("artifacts")),
                 "error": bool(entry.get("error")),
                 "ts": entry.get("ts", ""),
                 "used": False,
@@ -175,6 +207,22 @@ def messages(conversation_id: str) -> list[dict] | None:
             if message and not message["used"] and any(a.get("id") == entry.get("id") for a in message["actions"]):
                 message["used"] = True
                 message["chosen"] = entry["id"]
+    return result
+
+
+def artifacts(conversation_id: str) -> list[dict] | None:
+    """Todo lo que la conversación guardó, lo más nuevo primero y sin repetir la misma ruta
+    (guardar dos veces en inbox.md es una sola entrada). None si no existe."""
+    found = messages(conversation_id)
+    if found is None:
+        return None
+    seen: set[str] = set()
+    result = []
+    for message in reversed(found):
+        for item in reversed(message["artifacts"]):
+            if item["path"] not in seen:
+                seen.add(item["path"])
+                result.append(item)
     return result
 
 

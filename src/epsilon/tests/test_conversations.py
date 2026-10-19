@@ -472,3 +472,87 @@ def test_a_new_message_does_move_it_to_the_top(tmp_path):
     conversations.add_message("20261019-100000-aaaa", "user", "sigo acá")
 
     assert conversations.list_all()[0]["id"] == "20261019-100000-aaaa"
+
+
+# --- artifacts: lo que una respuesta guardó ----------------------------------
+
+
+def test_a_bot_message_keeps_what_it_saved():
+    conversations.add_message(VALID, "bot", "Guardado", artifacts=[{"kind": "note", "path": "inbox.md"}])
+
+    [message] = conversations.messages(VALID)
+    assert message["artifacts"] == [{"kind": "note", "path": "inbox.md"}]
+
+
+def test_a_message_without_artifacts_has_an_empty_list(tmp_path):
+    conversations.add_message(VALID, "bot", "hola")
+
+    assert conversations.messages(VALID)[0]["artifacts"] == []
+    assert "artifacts" not in lines(tmp_path, VALID)[0]  # no se escribe lo que está vacío
+
+
+def test_artifacts_are_written_on_the_message_line_and_nothing_is_edited(tmp_path):
+    conversations.add_message(VALID, "bot", "a", artifacts=[{"kind": "csv", "path": "gastos.csv"}])
+    conversations.add_message(VALID, "bot", "b", artifacts=[{"kind": "note", "path": "inbox.md"}])
+
+    written = lines(tmp_path, VALID)
+    assert [l["artifacts"][0]["path"] for l in written] == ["gastos.csv", "inbox.md"]
+
+
+def test_unknown_kinds_and_odd_paths_are_not_stored():
+    conversations.add_message(
+        VALID,
+        "bot",
+        "x",
+        artifacts=[
+            {"kind": "virus", "path": "a.exe"},  # tipo que no existe
+            {"kind": "note", "path": "../../etc/passwd"},  # se sale de la carpeta
+            {"kind": "note", "path": "/etc/passwd"},  # absoluta
+            {"kind": "note", "path": "nota\ncon salto.md"},  # salto de línea
+            {"kind": "note", "path": ""},
+            {"kind": "note", "path": "a\\b.md"},  # barra invertida
+            {"kind": "note", "path": "x" * 301},  # demasiado larga
+            {"kind": "csv", "path": "bien.csv"},
+        ],
+    )
+
+    assert conversations.messages(VALID)[0]["artifacts"] == [{"kind": "csv", "path": "bien.csv"}]
+
+
+def test_a_hand_edited_line_cannot_smuggle_odd_artifacts(tmp_path):
+    conversations.add_message(VALID, "user", "hola")
+    path = folder(tmp_path) / f"{VALID}.jsonl"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "message", "id": "aaaa1111", "role": "bot", "text": "x",
+                            "artifacts": [{"kind": "note", "path": "../fuera.md"}, "no soy un dict", {"kind": "csv", "path": "ok.csv"}]}) + "\n")
+        f.write(json.dumps({"type": "message", "id": "bbbb2222", "role": "bot", "text": "y", "artifacts": "texto"}) + "\n")
+
+    messages = conversations.messages(VALID)
+
+    assert messages[1]["artifacts"] == [{"kind": "csv", "path": "ok.csv"}]
+    assert messages[2]["artifacts"] == []
+
+
+def test_artifacts_are_listed_newest_first_without_repeats():
+    conversations.add_message(VALID, "bot", "1", artifacts=[{"kind": "note", "path": "inbox.md"}])
+    conversations.add_message(VALID, "bot", "2", artifacts=[{"kind": "csv", "path": "gastos.csv"}])
+    conversations.add_message(VALID, "bot", "3", artifacts=[{"kind": "note", "path": "inbox.md"}])  # otra vez
+
+    assert conversations.artifacts(VALID) == [
+        {"kind": "note", "path": "inbox.md"},
+        {"kind": "csv", "path": "gastos.csv"},
+    ]
+
+
+def test_artifacts_of_a_missing_conversation_is_none():
+    assert conversations.artifacts(VALID) is None
+    with pytest.raises(ValueError):
+        conversations.artifacts("../../x")
+
+
+def test_inside_one_message_the_last_artifact_is_the_newest():
+    conversations.add_message(
+        VALID, "bot", "x", artifacts=[{"kind": "file", "path": "a.pdf"}, {"kind": "note", "path": "b.md"}]
+    )
+
+    assert [a["path"] for a in conversations.artifacts(VALID)] == ["b.md", "a.pdf"]

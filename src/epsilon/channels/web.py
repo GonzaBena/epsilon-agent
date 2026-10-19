@@ -125,12 +125,14 @@ def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
     data = to_json(reply)
     if conversation_id:
         # El cliente necesita el id del mensaje para decir después qué botón tocó.
-        data["message_id"] = conversations.add_message(conversation_id, "bot", reply.text, actions=data["actions"])
+        data["message_id"] = conversations.add_message(
+            conversation_id, "bot", reply.text, actions=data["actions"], artifacts=data["artifacts"]
+        )
     return data
 
 
 def to_json(reply: core.Reply) -> dict:
-    return asdict(reply)  # {"text": ..., "actions": [{"id": ..., "label": ...}]}
+    return asdict(reply)  # {"text": ..., "actions": [...], "artifacts": [{"kind": ..., "path": ...}]}
 
 
 # --- La app ------------------------------------------------------------------
@@ -235,7 +237,12 @@ def create_app() -> FastAPI:
         found = conversations.messages(conversation_id) if conversations.is_valid_id(conversation_id) else None
         if found is None:
             raise HTTPException(404, "No existe esa conversación")
-        return {"id": conversation_id, "title": conversations.title(conversation_id), "messages": found}
+        return {
+            "id": conversation_id,
+            "title": conversations.title(conversation_id),
+            "messages": found,
+            "artifacts": conversations.artifacts(conversation_id),  # lo guardado, para «Contexto»
+        }
 
     @app.put("/api/conversations/{conversation_id}/title")
     def rename_conversation(conversation_id: str, body: TitleIn):

@@ -293,3 +293,93 @@ def test_resumir_command_summarizes_the_single_match(monkeypatch):
     notes.save_note("casa", "x")
 
     assert say("/resumir casa").text == "Resumen guardado en summarizes/casa.md\n\n- ok"
+
+
+# --- artifacts: qué guardó la respuesta --------------------------------------
+# El canal que quiera (hoy, la web) puede mostrar «lo creado en esta conversación».
+# Las rutas son relativas a DATA_DIR; solo cuenta lo que SE GUARDÓ de verdad.
+
+
+def artifacts(reply):
+    return [(a.kind, a.path) for a in reply.artifacts]
+
+
+def test_a_reply_has_no_artifacts_by_default():
+    assert say("/ayuda").artifacts == []
+    assert say("/archivos").artifacts == []
+
+
+def test_plus_saves_to_inbox_and_reports_the_note():
+    assert artifacts(say("+ comprar pan")) == [("note", "inbox.md")]
+
+
+def test_a_rejected_plus_reports_nothing():
+    assert say("+").artifacts == []
+
+
+def test_a_received_file_reports_where_it_was_saved():
+    reply = send_file(name="doc.pdf")
+
+    [(kind, path)] = artifacts(reply)
+    assert kind == "file" and path.startswith("files/") and path.endswith("doc.pdf")
+    assert (notes.DATA_DIR / path).exists()
+
+
+def test_a_ticket_is_reported_as_a_file_in_tickets():
+    say("/ticket")
+
+    [(kind, path)] = artifacts(send_file(name="ticket.jpg"))
+
+    assert kind == "file" and path.startswith("tickets/")
+
+
+def test_a_confirmed_csv_reports_the_csv(monkeypatch):
+    fake_rows(monkeypatch, [{"fecha": "1/1"}])
+    send_file("gastos: fecha")
+
+    assert artifacts(press("guardar")) == [("csv", "gastos.csv")]
+
+
+def test_a_csv_preview_and_a_cancel_report_nothing(monkeypatch):
+    fake_rows(monkeypatch, [{"fecha": "1/1"}])
+
+    assert send_file("gastos: fecha").artifacts == []  # solo se muestra, falta confirmar
+    assert press("cancelar").artifacts == []
+
+
+def test_a_csv_that_could_not_be_saved_reports_nothing(monkeypatch):
+    fake_rows(monkeypatch, [{"fecha": "1/1"}])
+    notes.save_csv("gastos", ["otra"], [{"otra": "x"}])
+    send_file("gastos: fecha")
+
+    assert press("guardar").artifacts == []
+
+
+def test_a_summary_reports_the_summary_note(monkeypatch):
+    monkeypatch.setattr(core.summarize, "summarize_and_save", lambda p: ("summarizes/doc", "- ok"))
+    reply = send_file(name="doc.pdf")
+
+    assert artifacts(press(reply.actions[0].id)) == [("summary", "summarizes/doc.md")]
+
+
+def test_the_resumir_command_reports_the_summary_too(monkeypatch):
+    monkeypatch.setattr(core.summarize, "summarize_and_save", lambda p: ("summarizes/casa", "- ok"))
+    notes.save_note("casa", "x")
+
+    assert artifacts(say("/resumir casa")) == [("summary", "summarizes/casa.md")]
+
+
+def test_a_failed_summary_reports_nothing(monkeypatch):
+    def too_big(path):
+        raise ValueError("El archivo es demasiado grande para resumirlo.")
+
+    monkeypatch.setattr(core.summarize, "summarize_and_save", too_big)
+    reply = send_file(name="doc.pdf")
+
+    assert press(reply.actions[0].id).artifacts == []
+
+
+def test_nada_reports_nothing_new():
+    reply = send_file(name="doc.pdf")
+
+    assert press(reply.actions[1].id).artifacts == []
