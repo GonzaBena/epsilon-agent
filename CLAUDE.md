@@ -48,8 +48,5 @@ instalarlo, cargar sus claves y usarlo.
 
 ## Pendiente
 
-- `extract.py` todavía llama a Gemini por su cuenta; pasarlo a `llm.generate`.
-- Comandos `/archivos` y `/resumir <nombre>` para archivos ya guardados.
-- Comando `/ayuda`.
-- `/uso` ya funciona; falta cargar `PRICES` en `usage.py` para que muestre el precio.
+- Comando `/archivos` (listar archivos guardados).
 - Más adelante: Whisper (voz), Obsidian, plantillas, FastAPI/MCP, web con chat.
