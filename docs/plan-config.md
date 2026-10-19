@@ -58,10 +58,11 @@ también podría cambiarla, porque no hay login. Aceptado para uso personal.
 
 1. **`config.py`:** lista de ajustes, validación, lectura de estado (sin
    valores secretos), escritura segura y cálculo de «pendiente de reinicio».
-2. **API:** `GET /api/config`, `PUT /api/config` (cambios parciales) y
-   `POST /api/config/test/{gemini|telegram}`.
-3. **Estado de canales y errores claros al arrancar** en `main`; `llm.check()`
-   y la prueba de Telegram.
+2. **API:** `GET /api/config` y `PUT /api/config` (cambios parciales). Los
+   errores de validación no repiten lo recibido (FastAPI por defecto devuelve
+   el cuerpo en el 422, y ahí podría volver una clave).
+3. **Estado de canales y errores claros al arrancar** en `main`; `llm.check()`,
+   la prueba de Telegram y `POST /api/config/test/{gemini|telegram}`.
 4. **Página** `config.html` / `config.js`: campos enmascarados, aviso de
    reinicio con sus razones, estado de canales y aviso de primer arranque.
    Se revisa en el navegador.

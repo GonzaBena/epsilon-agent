@@ -1,7 +1,9 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
-from epsilon import core, notes
+from epsilon import config, core, notes
 from epsilon.channels import web
 
 
@@ -307,3 +309,191 @@ def test_read_port_rejects_invalid_values(value):
 def test_web_only_listens_on_localhost():
     # No es configurable a propósito: sin login, no se expone a la red.
     assert web.HOST == "127.0.0.1"
+
+
+# --- Configuración -----------------------------------------------------------
+
+CFG_SECRET = "AIzaSyD-ejemplo_de_clave_larga_QzXw"
+CFG_TOKEN = "123456789:AAH-ejemplo_de_token_de_telegram_vKjP"
+
+
+@pytest.fixture
+def cfg(client, monkeypatch):
+    """Cliente con el entorno de configuración vacío (se restaura solo al terminar)."""
+    for setting in config.SETTINGS:
+        monkeypatch.delenv(setting.key, raising=False)
+    return client
+
+
+def put_config(client, changes=None, clear=None):
+    return client.put("/api/config", json={"changes": changes or {}, "clear": clear or []})
+
+
+def setting(state, key):
+    return next(s for s in state["settings"] if s["key"] == key)
+
+
+def test_get_config_lists_every_setting(cfg):
+    state = cfg.get("/api/config").json()
+
+    assert [s["key"] for s in state["settings"]] == [s.key for s in config.SETTINGS]
+    assert state["pending_restart"] == []
+    assert setting(state, "DATA_DIR")["editable"] is False
+
+
+def test_get_config_never_includes_secrets(cfg, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", CFG_SECRET)
+    monkeypatch.setenv("TELEGRAM_TOKEN", CFG_TOKEN)
+
+    reply = cfg.get("/api/config")
+
+    assert CFG_SECRET not in reply.text and CFG_TOKEN not in reply.text
+    assert CFG_SECRET[-4:] not in reply.text and CFG_TOKEN[-4:] not in reply.text
+    assert setting(reply.json(), "GEMINI_API_KEY")["length"] == len(CFG_SECRET)
+
+
+def test_put_config_saves_and_returns_the_new_state(cfg):
+    reply = put_config(cfg, {"GEMINI_MODEL": "gemini-nuevo"})
+
+    assert reply.status_code == 200
+    assert setting(reply.json(), "GEMINI_MODEL")["value"] == "gemini-nuevo"
+    assert "gemini-nuevo" in config.ENV_FILE.read_text(encoding="utf-8")
+    assert os.environ["GEMINI_MODEL"] == "gemini-nuevo"  # se aplica al instante
+
+
+def test_put_secret_returns_only_its_length_and_never_echoes_it(cfg):
+    reply = put_config(cfg, {"GEMINI_API_KEY": CFG_SECRET})
+
+    assert reply.status_code == 200
+    assert CFG_SECRET not in reply.text and CFG_SECRET[-4:] not in reply.text
+    assert setting(reply.json(), "GEMINI_API_KEY")["length"] == len(CFG_SECRET)
+    # Y queda guardada de verdad, para que el proceso la use.
+    assert CFG_SECRET in config.ENV_FILE.read_text(encoding="utf-8")
+    assert CFG_SECRET not in cfg.get("/api/config").text
+
+
+def test_restart_setting_shows_up_as_pending_with_its_reason(cfg):
+    state = put_config(cfg, {"TELEGRAM_TOKEN": CFG_TOKEN}).json()
+
+    assert [p["key"] for p in state["pending_restart"]] == ["TELEGRAM_TOKEN"]
+    assert "una sola vez al arrancar" in state["pending_restart"][0]["reason"]
+    assert "TELEGRAM_TOKEN" not in os.environ
+    assert CFG_TOKEN not in str(state)
+
+
+def test_pending_survives_reloading_the_page(cfg):
+    put_config(cfg, {"WEB_PORT": "9001"})
+
+    state = cfg.get("/api/config").json()
+
+    assert [p["key"] for p in state["pending_restart"]] == ["WEB_PORT"]
+
+
+def test_invalid_values_get_a_422_with_a_message_per_field(cfg):
+    reply = put_config(cfg, {"WEB_PORT": "0", "ALLOWED_USER_ID": "yo"})
+
+    assert reply.status_code == 422
+    errors = reply.json()["errors"]
+    assert "1 y 65535" in errors["WEB_PORT"] and "número" in errors["ALLOWED_USER_ID"]
+    assert not config.ENV_FILE.exists()
+
+
+def test_rejected_secret_is_not_echoed_back(cfg):
+    reply = put_config(cfg, {"GEMINI_API_KEY": "clave inválida con espacios"})
+
+    assert reply.status_code == 422
+    assert "clave inválida" not in reply.text
+
+
+def test_newline_injection_is_rejected_through_the_api(cfg):
+    reply = put_config(cfg, {"GEMINI_MODEL": "x\nGEMINI_API_KEY=robada"})
+
+    assert reply.status_code == 422
+    assert not config.ENV_FILE.exists() and "GEMINI_API_KEY" not in os.environ
+
+
+@pytest.mark.parametrize("key", ["DATA_DIR", "PATH", "NO_EXISTE"])
+def test_readonly_and_unknown_settings_are_rejected(cfg, key):
+    reply = put_config(cfg, {key: "/tmp/x"})
+
+    assert reply.status_code == 422 and key in reply.json()["errors"]
+    assert not config.ENV_FILE.exists()
+
+
+def test_clear_removes_a_setting(cfg):
+    put_config(cfg, {"GEMINI_API_KEY": CFG_SECRET})
+
+    state = put_config(cfg, clear=["GEMINI_API_KEY"]).json()
+
+    assert setting(state, "GEMINI_API_KEY")["set"] is False
+
+
+def test_nothing_to_save_is_rejected(cfg):
+    assert put_config(cfg).status_code == 422
+    assert put_config(cfg, {"GEMINI_MODEL": "  "}).status_code == 422
+
+
+def test_oversized_values_are_rejected(cfg):
+    assert put_config(cfg, {"GEMINI_MODEL": "x" * 600}).status_code == 422
+
+
+def test_config_update_must_be_json(cfg):
+    reply = cfg.put(
+        "/api/config",
+        content='{"changes": {"GEMINI_MODEL": "x"}}',
+        headers={"Content-Type": "text/plain"},
+    )
+
+    assert reply.status_code == 422
+    assert not config.ENV_FILE.exists()
+
+
+def test_foreign_origin_cannot_read_or_change_the_config(cfg):
+    evil = {"Origin": "http://evil.com"}
+
+    assert cfg.get("/api/config", headers=evil).status_code == 403
+    changed = cfg.put(
+        "/api/config", json={"changes": {"ALLOWED_USER_ID": "1"}, "clear": []}, headers=evil
+    )
+    assert changed.status_code == 403
+    assert not config.ENV_FILE.exists()
+
+
+def test_rebinding_cannot_change_the_telegram_whitelist(cfg):
+    reply = cfg.put(
+        "/api/config",
+        json={"changes": {"ALLOWED_USER_ID": "1"}, "clear": []},
+        headers={"Host": "evil.com:8765", "Origin": "http://evil.com:8765"},
+    )
+
+    assert reply.status_code == 403
+    assert not config.ENV_FILE.exists()
+
+
+def test_api_responses_are_never_cached(cfg):
+    # Aunque no traigan secretos, no tienen por qué quedar en ningún caché.
+    for path in ("/api/config", "/api/health"):
+        assert cfg.get(path).headers["cache-control"] == "no-store"
+
+
+# --- Los errores de validación no repiten lo que se mandó --------------------
+
+
+def test_validation_errors_never_echo_a_submitted_secret(cfg):
+    # FastAPI por defecto devuelve el cuerpo recibido ("input") en los 422.
+    reply = put_config(cfg, {"GEMINI_API_KEY": CFG_SECRET, "GEMINI_MODEL": "x" * 600})
+
+    assert reply.status_code == 422
+    assert CFG_SECRET not in reply.text and CFG_SECRET[-4:] not in reply.text
+    assert "input" not in reply.text
+
+
+def test_validation_errors_say_where_and_what_without_the_value(client):
+    huge = "y" * 20_000
+
+    reply = client.post("/api/message", json={"text": huge})
+
+    assert reply.status_code == 422
+    assert huge[:50] not in reply.text
+    assert reply.json()["detail"] == "Pedido no válido"
+    assert reply.json()["problems"][0]["where"].startswith("body")

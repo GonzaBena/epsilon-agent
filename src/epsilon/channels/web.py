@@ -3,11 +3,12 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import core
+from epsilon import config, core
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -79,6 +80,24 @@ class MessageIn(BaseModel):
         return self
 
 
+class ConfigIn(BaseModel):
+    """Cambios parciales: solo lo que se manda se toca. Valor vacío = no tocar."""
+
+    changes: dict[str, str] = Field(default_factory=dict, max_length=20)
+    clear: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def sane(self):
+        # Topes de tamaño: ninguna clave ni valor razonable se acerca a esto.
+        if any(len(k) > 64 or len(v) > 500 for k, v in self.changes.items()):
+            raise ValueError("Valor demasiado largo")
+        if any(len(k) > 64 for k in self.clear):
+            raise ValueError("Nombre demasiado largo")
+        if not self.clear and not any(v.strip() for v in self.changes.values()):
+            raise ValueError("No hay nada para guardar")
+        return self
+
+
 def to_json(reply: core.Reply) -> dict:
     return asdict(reply)  # {"text": ..., "actions": [{"id": ..., "label": ...}]}
 
@@ -103,9 +122,22 @@ def create_app() -> FastAPI:
         response.headers["Content-Security-Policy"] = CSP
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Las páginas no se cachean: tras actualizar Epsilon no queda un app.js viejo.
-        if not request.url.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-cache"
+        # La API ni siquiera se guarda en caché (la configuración es sensible).
+        is_api = request.url.path.startswith("/api/")
+        response.headers["Cache-Control"] = "no-store" if is_api else "no-cache"
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError):
+        # FastAPI, por defecto, devuelve en el 422 el cuerpo que recibió
+        # ("input"): ahí podría volver una clave. Acá solo decimos dónde y qué falló.
+        problems = [
+            {"where": ".".join(str(p) for p in e["loc"]), "what": e["msg"]}
+            for e in exc.errors()
+        ]
+        return JSONResponse(
+            {"detail": "Pedido no válido", "problems": problems}, status_code=422
+        )
 
     @app.get("/api/health")
     def health():
@@ -137,6 +169,29 @@ def create_app() -> FastAPI:
         )
         msg = core.Message(text=text, attachment=attachment, session_id=SESSION_ID)
         return to_json(core.handle(msg))
+
+    def config_state() -> dict:
+        # Sin secretos: de las claves solo sale si están cargadas y su largo.
+        return {
+            "settings": config.status(),
+            "pending_restart": config.pending_restart(),
+        }
+
+    @app.get("/api/config")
+    def get_config():
+        return config_state()
+
+    @app.put("/api/config")
+    def put_config(body: ConfigIn):
+        try:
+            config.update(body.changes, body.clear)
+        except config.ConfigError as e:
+            # Los mensajes dicen qué está mal por ajuste y nunca repiten el valor.
+            return JSONResponse(
+                {"detail": "Revisá los campos marcados.", "errors": e.errors},
+                status_code=422,
+            )
+        return config_state()
 
     @app.get("/", include_in_schema=False)
     def home():
