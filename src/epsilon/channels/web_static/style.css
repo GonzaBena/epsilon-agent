@@ -13,6 +13,7 @@
   --on-accent: #0e0f10; /* texto sobre el lima */
   --danger: #ff9b8a;
 
+  --t: 0.18s; /* duración al abrir y contraer los paneles */
   --column: 47.5rem; /* ancho de la conversación (760px) */
   --radius: 12px;
   --font:
@@ -102,7 +103,8 @@ code {
   height: 1.9rem;
   border: 1.5px solid var(--accent);
   border-radius: 8px;
-  color: var(--accent);
+  background-color: var(--accent);
+  color: black;
   font-size: 1.1rem;
   line-height: 1;
 }
@@ -159,7 +161,7 @@ code {
   min-height: 0;
   display: grid;
   grid-template-columns: var(--left-w) minmax(0, 1fr);
-  transition: grid-template-columns 0.18s ease;
+  transition: grid-template-columns var(--t) ease;
 }
 .shell[data-left="collapsed"] {
   --left-w: 64px;
@@ -194,13 +196,18 @@ code {
   overflow-y: auto;
 }
 
-/* --- Paneles laterales ------------------------------------------------------- */
+/* --- Paneles laterales -------------------------------------------------------
+   REGLA para que contraer se vea bien: el contenido NO cambia de lugar al cambiar
+   de estado. Solo se angosta el panel, que recorta (overflow) lo que no entra, y
+   las etiquetas y bloques se desvanecen. Si algo se moviera de golpe (centrarse,
+   desaparecer), se vería un salto antes de que el ancho empiece a animarse.
+   Por eso el relleno y la posición de los íconos son iguales en los dos estados. */
 .side {
   display: flex;
   flex-direction: column;
   gap: 20px;
   min-height: 0;
-  padding: 16px 12px;
+  padding: 16px 10px;
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--side);
@@ -212,10 +219,32 @@ code {
 .side-title {
   margin: 0 0 4px;
   padding: 0 12px;
+  max-height: 24px;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition:
+    max-height var(--t) ease,
+    margin var(--t) ease,
+    opacity 0.15s ease 0.05s;
+}
+
+/* Las etiquetas (Nuevo chat, Chat, Notas...). Al contraer se encogen a cero y se
+   desvanecen; siguen en la página, así que cada ícono conserva su nombre para
+   quien usa un lector de pantalla. */
+.label {
+  display: block;
+  max-width: 14rem;
+  margin-left: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    max-width var(--t) ease,
+    margin-left var(--t) ease,
+    opacity 0.15s ease 0.05s;
 }
 
 /* «Nuevo chat»: el botón lima que manda en el panel. */
@@ -224,14 +253,17 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   min-height: 44px;
+  overflow: hidden;
   border-radius: 10px;
   background: var(--accent);
   color: var(--on-accent);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
+}
+.new-chat .label {
+  margin-left: 8px;
 }
 .new-chat:hover {
   filter: brightness(1.08);
@@ -246,9 +278,9 @@ code {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
   min-height: 44px;
   padding: 0 12px;
+  overflow: hidden;
   border-radius: 8px;
   color: var(--muted);
   font-size: 14px;
@@ -270,10 +302,14 @@ code {
 .new-chat svg {
   flex: none;
 }
-.label {
-  white-space: nowrap;
-}
 
+.recents {
+  max-height: 240px;
+  overflow: hidden;
+  transition:
+    max-height var(--t) ease,
+    opacity 0.15s ease 0.05s;
+}
 .recents-list {
   margin: 0;
   padding: 0;
@@ -302,10 +338,17 @@ code {
   flex-direction: column;
   gap: 4px;
   padding: 12px;
+  max-height: 120px;
+  overflow: hidden;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 10px;
   font-size: 13px;
+  transition:
+    max-height var(--t) ease,
+    padding var(--t) ease,
+    border-width var(--t) ease,
+    opacity 0.15s ease 0.05s;
 }
 .local-path {
   color: var(--muted);
@@ -333,50 +376,67 @@ code {
   background: var(--surface-2);
 }
 
-/* --- Panel izquierdo contraído: una columna de íconos -----------------------
+/* --- Panel izquierdo contraído: una columna de íconos -------------------------
    Vale cuando lo cerrás vos (data-left="collapsed") y cuando la ventana es
-   angosta (shell.js agrega is-narrow). Las etiquetas siguen en la página, solo
-   que fuera de la vista: así cada ícono conserva su nombre para quien usa un
-   lector de pantalla. */
+   angosta (shell.js agrega is-narrow). Con 64px de ancho y 10px de relleno quedan
+   44px de contenido: justo el de un ícono con su margen, sin moverlo de lugar. */
 .shell:is([data-left="collapsed"], .is-narrow) {
   --left-w: 64px;
 }
-.shell:is([data-left="collapsed"], .is-narrow) .side-left {
-  align-items: center;
-  padding: 16px 10px;
+.shell:is([data-left="collapsed"], .is-narrow) .side-left .label {
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  transition:
+    max-width var(--t) ease,
+    margin-left var(--t) ease,
+    opacity 0.1s ease;
 }
-.shell:is([data-left="collapsed"], .is-narrow) .side-left .side-title,
-.shell:is([data-left="collapsed"], .is-narrow) .side-left .recents,
+/* Lo que desaparece también sale del orden de tabulación (visibility), pero recién
+   cuando termina el desvanecimiento. */
+.shell:is([data-left="collapsed"], .is-narrow) .side-left .side-title {
+  max-height: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  transition:
+    max-height var(--t) ease,
+    margin var(--t) ease,
+    opacity 0.1s ease;
+}
+.shell:is([data-left="collapsed"], .is-narrow) .side-left .recents {
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    max-height var(--t) ease,
+    opacity 0.1s ease,
+    visibility 0s linear var(--t);
+}
 .shell:is([data-left="collapsed"], .is-narrow) .side-left .local-card {
-  display: none;
-}
-.shell:is([data-left="collapsed"], .is-narrow) .label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-.shell:is([data-left="collapsed"], .is-narrow) .new-chat,
-.shell:is([data-left="collapsed"], .is-narrow) .nav-item {
-  width: 44px;
-  padding: 0;
-  justify-content: center;
-}
-.shell:is([data-left="collapsed"], .is-narrow) .nav {
-  align-items: center;
-}
-/* Sin el menú de arriba (se ocultó), el botón de abrir va abajo del todo. */
-.shell[data-left="collapsed"] .side-left .panel-toggle {
-  margin-top: auto;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    max-height var(--t) ease,
+    padding var(--t) ease,
+    border-width var(--t) ease,
+    opacity 0.1s ease,
+    visibility 0s linear var(--t);
 }
 /* En ventanas angostas el panel no se puede abrir: no hay lugar. */
 .shell.is-narrow .side-left .panel-toggle {
   display: none;
 }
 
-/* --- Panel derecho ------------------------------------------------------------ */
+/* --- Panel derecho ------------------------------------------------------------
+   Mismo principio: el relleno es el mismo abierto y contraído, y el contenido
+   tiene un ancho fijo (296px) que el panel recorta al angostarse, así que no se
+   reacomoda mientras se anima. */
 .side-right {
+  padding: 16px 2px;
   border-left: 1px solid var(--line);
 }
 .side-head {
@@ -386,11 +446,24 @@ code {
 }
 .side-head .side-title {
   margin: 0;
+  max-width: 10rem;
+  transition:
+    max-width var(--t) ease,
+    padding var(--t) ease,
+    opacity 0.15s ease 0.05s;
 }
 .side-body {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: 296px;
+  max-height: 4000px;
+  padding: 0 8px;
+  overflow: hidden;
+  transition:
+    max-height var(--t) ease,
+    opacity 0.15s ease 0.05s;
 }
 
 /* Cada herramienta: el comando arriba y qué hace abajo. Tocarla lo escribe en el mensaje. */
@@ -440,17 +513,32 @@ code {
   color: var(--accent);
 }
 
-/* Contraído: solo queda el botón para abrirlo, centrado. */
-.shell[data-right="collapsed"] .side-right {
-  align-items: center;
-  padding: 16px 2px;
-}
-.shell[data-right="collapsed"] .side-right .side-body,
+/* Contraído: solo queda el botón para abrirlo (el título y el contenido se desvanecen). */
 .shell[data-right="collapsed"] .side-right .side-head .side-title {
-  display: none;
+  max-width: 0;
+  padding: 0;
+  opacity: 0;
+  transition:
+    max-width var(--t) ease,
+    padding var(--t) ease,
+    opacity 0.1s ease;
 }
-.shell[data-right="collapsed"] .side-right .side-head {
-  justify-content: center;
+.shell[data-right="collapsed"] .side-right .side-body {
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    max-height var(--t) ease,
+    opacity 0.1s ease,
+    visibility 0s linear var(--t);
+}
+
+/* Quien pidió menos movimiento no ve ninguna de estas animaciones. */
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .shell * {
+    transition: none !important;
+  }
 }
 
 /* --- Atajos y nota de cautela, junto al cuadro de texto ------------------------ */

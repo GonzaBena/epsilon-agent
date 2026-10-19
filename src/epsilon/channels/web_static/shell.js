@@ -42,6 +42,17 @@
     right: { open: "Cerrar el panel", collapsed: "Abrir el panel" },
   };
 
+  // En la columna de íconos las etiquetas no se ven: el tooltip dice qué es cada uno.
+  // (Abierto sería redundante, porque la etiqueta está a la vista.)
+  function updateTooltips() {
+    const rail = shell.dataset.left === "collapsed" || shell.classList.contains("is-narrow");
+    for (const item of document.querySelectorAll(".new-chat, .nav-item")) {
+      const label = item.querySelector(".label");
+      if (rail && label) item.title = label.textContent.trim();
+      else item.removeAttribute("title");
+    }
+  }
+
   // Dibuja el estado: el CSS se encarga del ancho según data-left / data-right, y
   // los botones avisan a los lectores de pantalla si el panel está abierto.
   function applyLayout() {
@@ -54,6 +65,7 @@
       button.setAttribute("aria-label", label);
       button.title = label; // el texto que aparece al pasar el mouse
     }
+    updateTooltips();
   }
 
   for (const button of document.querySelectorAll("[data-toggle]")) {
@@ -72,6 +84,7 @@
   const narrow = window.matchMedia("(max-width: 62.5rem)");
   function applyNarrow() {
     shell.classList.toggle("is-narrow", narrow.matches);
+    updateTooltips();
   }
   narrow.addEventListener("change", applyNarrow);
 

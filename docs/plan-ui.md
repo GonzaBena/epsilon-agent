@@ -34,6 +34,15 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
    y no envían; «Imagen a CSV» abre el selector y deja un ejemplo seleccionado.
 3. Pulido: color de las burbujas, botón de enviar cuadrado con ícono, estado vacío.
 
+## Animación de los paneles
+
+Al contraer, nada puede cambiar de lugar de golpe: se vio que los íconos saltaban
+al centro del panel (todavía ancho) y recién después el panel se achicaba. Regla
+actual: el relleno y la posición de los íconos son iguales abierto y contraído; el
+panel solo se angosta y recorta, y las etiquetas y bloques se desvanecen. Se midió
+la posición de cada pieza en el instante del clic: 0 saltos en las 4 direcciones
+(antes saltaban 7 elementos al contraer la izquierda y 4 la derecha).
+
 ## Sin verificar
 
 - El comportamiento en ventana angosta (no se pudo achicar la ventana del navegador).
