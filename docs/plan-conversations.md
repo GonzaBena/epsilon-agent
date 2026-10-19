@@ -40,7 +40,16 @@ servidor (en `DATA_DIR`), para llenar «Recientes» y hacer real el «Nuevo chat
 1. `conversations.py`, sin web: crear id, agregar mensajes y acciones, leer
    (resolviendo qué botones se usaron), listar, y validar ids.
 2. API de la web: listar, abrir, crear, renombrar, y guardar cada mensaje y su
-   respuesta (el cliente manda el id del mensaje al tocar un botón).
+   respuesta (el cliente manda el id del mensaje al tocar un botón). **Hecho.**
+   - `GET/POST /api/conversations`, `GET /api/conversations/{id}`,
+     `PUT /api/conversations/{id}/title`.
+   - `/api/message` y `/api/upload` aceptan `conversation_id` (opcional: sin él no
+     se guarda nada, como antes). La respuesta trae `message_id`, el id del
+     mensaje de Epsilon; al tocar un botón el cliente manda ese `message_id`.
+   - Un id inválido: 422 al escribir, 404 al leer o renombrar. Nunca se arma una
+     ruta con lo que llega por la URL.
+   - Cada conversación tiene su estado pendiente (`session_id = web:<id>`).
+   - Verificado de punta a punta con un reinicio real del proceso (23 comprobaciones).
 3. Interfaz: «Recientes» real, abrir una conversación, renombrarla, historial leído
    del servidor en lugar del navegador.
 

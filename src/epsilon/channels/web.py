@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import checks, config, core, state
+from epsilon import checks, config, conversations, core, state
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -73,6 +73,9 @@ def is_allowed(host: str, origin: str | None) -> bool:
 class MessageIn(BaseModel):
     text: str = Field("", max_length=10_000)
     action: str | None = Field(None, max_length=100)
+    # Opcionales: sin conversation_id no se guarda nada (así se puede usar la API con curl).
+    conversation_id: str | None = Field(None, max_length=40)
+    message_id: str | None = Field(None, max_length=100)  # el mensaje cuyo botón se tocó
 
     @model_validator(mode="after")
     def needs_something(self):
@@ -97,6 +100,33 @@ class ConfigIn(BaseModel):
         if not self.clear and not any(v.strip() for v in self.changes.values()):
             raise ValueError("No hay nada para guardar")
         return self
+
+
+class TitleIn(BaseModel):
+    title: str = Field(max_length=200)
+
+
+def conversation_of(raw: str | None) -> str | None:
+    """None si no se mandó conversación (no se guarda nada); 422 si el id no es válido."""
+    if not raw:
+        return None
+    if not conversations.is_valid_id(raw):
+        raise HTTPException(422, "Id de conversación no válido")
+    return raw
+
+
+def session_for(conversation_id: str | None) -> str:
+    """Cada conversación tiene su propio estado pendiente (por ejemplo, un CSV sin confirmar)."""
+    return f"web:{conversation_id}" if conversation_id else SESSION_ID
+
+
+def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
+    """La respuesta para el navegador; si hay conversación, también la guarda."""
+    data = to_json(reply)
+    if conversation_id:
+        # El cliente necesita el id del mensaje para decir después qué botón tocó.
+        data["message_id"] = conversations.add_message(conversation_id, "bot", reply.text, actions=data["actions"])
+    return data
 
 
 def to_json(reply: core.Reply) -> dict:
@@ -150,11 +180,23 @@ def create_app() -> FastAPI:
 
     @app.post("/api/message")
     def message(body: MessageIn):
-        msg = core.Message(text=body.text, action=body.action, session_id=SESSION_ID)
-        return to_json(core.handle(msg))
+        cid = conversation_of(body.conversation_id)
+        if cid and body.action:
+            # Un botón: se anota en QUÉ mensaje se tocó. No es un mensaje tuyo.
+            if body.message_id:
+                conversations.add_action(cid, body.message_id, body.action)
+        elif cid:
+            conversations.add_message(cid, "user", body.text)
+        msg = core.Message(text=body.text, action=body.action, session_id=session_for(cid))
+        return reply_json(core.handle(msg), cid)
 
     @app.post("/api/upload")
-    def upload(file: UploadFile = File(...), text: str = Form("", max_length=10_000)):
+    def upload(
+        file: UploadFile = File(...),
+        text: str = Form("", max_length=10_000),
+        conversation_id: str = Form("", max_length=40),
+    ):
+        cid = conversation_of(conversation_id)
         mime = file.content_type or ""
         # Mismos tipos que acepta Telegram: imágenes y PDFs.
         if not (mime.startswith("image/") or mime == "application/pdf"):
@@ -165,11 +207,44 @@ def create_app() -> FastAPI:
         if len(data) > MAX_UPLOAD:
             raise HTTPException(413, "Ese archivo pesa más de 20 MB")
 
-        attachment = core.Attachment(
-            data=data, name=file.filename or "archivo", mime=mime
-        )
-        msg = core.Message(text=text, attachment=attachment, session_id=SESSION_ID)
-        return to_json(core.handle(msg))
+        name = file.filename or "archivo"
+        if cid:
+            # Lo que se ve en el chat: el nombre del archivo y, si hay, tu pedido.
+            conversations.add_message(cid, "user", f"{name}\n{text}" if text.strip() else name)
+
+        attachment = core.Attachment(data=data, name=name, mime=mime)
+        msg = core.Message(text=text, attachment=attachment, session_id=session_for(cid))
+        return reply_json(core.handle(msg), cid)
+
+    # --- Conversaciones guardadas ---------------------------------------------
+    # Un id que no tiene la forma exacta (o que no existe) es siempre un 404:
+    # nunca se arma una ruta con lo que llega en la URL.
+
+    @app.get("/api/conversations")
+    def list_conversations():
+        return {"conversations": conversations.list_all()}
+
+    @app.post("/api/conversations")
+    def create_conversation():
+        # Solo reserva un id: el archivo nace con el primer mensaje, así
+        # «Nuevo chat» no deja archivos vacíos.
+        return {"id": conversations.new_id()}
+
+    @app.get("/api/conversations/{conversation_id}")
+    def get_conversation(conversation_id: str):
+        found = conversations.messages(conversation_id) if conversations.is_valid_id(conversation_id) else None
+        if found is None:
+            raise HTTPException(404, "No existe esa conversación")
+        return {"id": conversation_id, "title": conversations.title(conversation_id), "messages": found}
+
+    @app.put("/api/conversations/{conversation_id}/title")
+    def rename_conversation(conversation_id: str, body: TitleIn):
+        if not conversations.is_valid_id(conversation_id):
+            raise HTTPException(404, "No existe esa conversación")
+        try:
+            return {"title": conversations.set_title(conversation_id, body.title)}
+        except FileNotFoundError:
+            raise HTTPException(404, "No existe esa conversación") from None
 
     def config_state() -> dict:
         # Sin secretos: de las claves solo sale si están cargadas y su largo.
