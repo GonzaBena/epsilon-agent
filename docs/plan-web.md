@@ -48,6 +48,5 @@ pantalla de canales y configuración (están en el mockup, vienen después).
 
 ## Notas
 
-- Comprobar si `uv_build` empaqueta los archivos que no son Python
-  (`web_static/`); si no, ajustar la configuración.
+- `uv_build` empaqueta `web_static/` (verificado construyendo el wheel).
 - Verificar con un arranque real que Telegram con token inválido no tumba la web.

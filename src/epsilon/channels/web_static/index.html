@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Epsilon</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Todo el estilo está en style.css y toda la lógica en app.js: acá solo
+       va la estructura de la página. -->
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="app">
+
+    <header class="top">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">ε</span>
+        <h1>Epsilon</h1>
+      </div>
+      <div class="top-actions">
+        <span id="status" class="status" role="status">Conectando…</span>
+        <button id="clear" class="ghost" type="button">Limpiar chat</button>
+      </div>
+    </header>
+
+    <!-- La conversación. aria-live hace que un lector de pantalla lea lo nuevo. -->
+    <main id="log" class="log" role="log" aria-live="polite" aria-label="Conversación">
+      <section id="empty" class="empty">
+        <h2>Empezá con un comando o una nota</h2>
+        <p>Escribí <code>+ texto</code> para guardar una nota, o arrastrá una imagen o un PDF.
+          Si la imagen lleva un texto como <code>gastos: fecha, total</code>, la paso a CSV.</p>
+        <div class="starters">
+          <button class="starter" type="button" data-command="/ayuda">/ayuda</button>
+          <button class="starter" type="button" data-command="/archivos">/archivos</button>
+          <button class="starter" type="button" data-command="/uso">/uso</button>
+        </div>
+      </section>
+    </main>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <!-- Archivo elegido, esperando que se envíe junto con el texto. -->
+      <div id="chip" class="chip" hidden>
+        <span id="chip-name" class="chip-name"></span>
+        <button id="chip-remove" class="chip-remove" type="button" aria-label="Quitar el archivo">×</button>
+      </div>
+
+      <div class="row">
+        <button id="attach" class="icon-btn" type="button" aria-label="Adjuntar imagen o PDF">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.9-8.9a3.3 3.3 0 0 1 4.7 4.7l-8.9 8.9a1.7 1.7 0 0 1-2.4-2.4l8.2-8.2"/>
+          </svg>
+        </button>
+        <input id="file" type="file" accept="image/*,application/pdf" hidden>
+
+        <textarea id="input" rows="1" aria-label="Mensaje"
+                  placeholder="Escribí un mensaje o un comando"></textarea>
+
+        <button id="send" class="send" type="submit">Enviar</button>
+      </div>
+    </form>
+
+    <!-- Aparece al arrastrar un archivo sobre la ventana. -->
+    <div id="drop" class="drop" hidden>
+      <p>Soltá la imagen o el PDF para adjuntarlo</p>
+    </div>
+
+  </div>
+</body>
+</html>

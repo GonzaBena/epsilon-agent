@@ -1,7 +1,9 @@
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core
@@ -21,6 +23,16 @@ MAX_UPLOAD = 20 * 1024 * 1024
 
 # Únicos nombres con los que se acepta que alguien llame a la web.
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
+
+# La página: index.html, style.css y app.js, cada uno en su archivo.
+STATIC_DIR = Path(__file__).parent / "web_static"
+
+# Política de contenido: solo recursos de esta misma web, sin scripts ni
+# estilos en línea, y la página no puede mostrarse dentro de otra.
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
 
 
 # --- Defensas ----------------------------------------------------------------
@@ -75,9 +87,19 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         host = request.headers.get("host", "")
-        if not is_allowed(host, request.headers.get("origin")):
-            return JSONResponse({"detail": "No permitido"}, status_code=403)
-        return await call_next(request)
+        if is_allowed(host, request.headers.get("origin")):
+            response = await call_next(request)
+        else:
+            response = JSONResponse({"detail": "No permitido"}, status_code=403)
+
+        # Segunda barrera para la regla «el contenido es dato»: el navegador
+        # solo ejecuta scripts y estilos de esta misma web, nunca en línea.
+        response.headers["Content-Security-Policy"] = CSP
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Las páginas no se cachean: tras actualizar Epsilon no queda un app.js viejo.
+        if not request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/api/health")
     def health():
@@ -109,5 +131,13 @@ def create_app() -> FastAPI:
         )
         msg = core.Message(text=text, attachment=attachment, session_id=SESSION_ID)
         return to_json(core.handle(msg))
+
+    @app.get("/", include_in_schema=False)
+    def home():
+        return FileResponse(STATIC_DIR / "index.html")
+
+    # Se monta al final: las rutas de /api tienen prioridad. StaticFiles ya
+    # impide salirse de la carpeta (../).
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     return app

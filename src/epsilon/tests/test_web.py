@@ -219,3 +219,69 @@ def test_own_origin_is_accepted(client):
 def test_request_without_origin_is_accepted(client):
     # curl, scripts y la propia navegación no mandan Origin.
     assert post_message(client, text="/ayuda").status_code == 200
+
+
+# --- Página estática ---------------------------------------------------------
+
+
+def test_home_serves_the_page_with_its_css_and_js(client):
+    page = client.get("/")
+
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert "/static/style.css" in page.text and "/static/app.js" in page.text
+
+
+def test_static_files_are_served_with_their_types(client):
+    css = client.get("/static/style.css")
+    js = client.get("/static/app.js")
+
+    assert css.status_code == 200 and "text/css" in css.headers["content-type"]
+    assert js.status_code == 200 and "javascript" in js.headers["content-type"]
+
+
+def test_static_files_cannot_escape_their_folder(client):
+    assert client.get("/static/../web.py").status_code == 404
+    assert client.get("/static/%2e%2e/web.py").status_code == 404
+
+
+def test_pages_are_not_cached(client):
+    # Así, después de actualizar Epsilon el navegador no usa un app.js viejo.
+    assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
+
+
+def test_responses_carry_a_strict_content_security_policy(client):
+    for path in ("/", "/api/health"):
+        policy = client.get(path).headers["content-security-policy"]
+        assert "script-src 'self'" in policy
+        assert "frame-ancestors 'none'" in policy
+
+
+def test_even_rejected_requests_carry_the_policy(client):
+    reply = client.get("/api/health", headers={"Host": "evil.com"})
+
+    assert reply.status_code == 403
+    assert "content-security-policy" in reply.headers
+
+
+# Reglas del proyecto sobre el frontend: el contenido es dato, nunca HTML.
+
+
+def test_js_never_builds_html_from_text():
+    import re
+
+    source = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    source = re.sub(r"//.*", "", source)  # los comentarios pueden nombrar la regla
+
+    for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert forbidden not in source
+
+
+def test_html_has_no_inline_script_or_style():
+    import re
+
+    html = (web.STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    assert not re.search(r"<script(?![^>]*\bsrc=)", html)  # solo <script src=...>
+    assert "style=" not in html and "<style" not in html
+    assert not re.search(r"\son\w+=", html)  # nada de onclick= y similares
