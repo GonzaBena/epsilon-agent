@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -11,8 +12,12 @@ from epsilon import config, notes
 # ni ningún canal: lo usa quien quiera guardar una conversación (hoy, la web).
 #
 # Dos tipos de línea:
-#   {"type": "message", "role": "user" | "bot", "text": ..., "actions": [...], "error": true, "ts": ...}
-#   {"type": "action", "id": "guardar", "ts": ...}   <- se tocó un botón
+#   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "error": true, "ts": ...}
+#   {"type": "action", "message": "a1b2c3d4", "id": "guardar", "ts": ...}   <- se tocó un botón de ESE mensaje
+#   {"type": "title", "text": "Compras", "ts": ...}                          <- se renombró (gana la última)
+#
+# Como el archivo es solo de agregar, nada se edita: «qué botón se tocó» y «el nombre nuevo»
+# son líneas nuevas, y al LEER se combinan (cada mensaje sale con used/chosen ya resueltos).
 
 FOLDER = "conversations"
 
@@ -24,7 +29,8 @@ ID_PATTERN = re.compile(r"\d{8}-\d{6}-[0-9a-f]{4}", re.ASCII)
 MAX_TEXT = 20_000
 
 UNTITLED = "Conversación sin título"
-TITLE_LENGTH = 40
+TITLE_LENGTH = 40  # el título automático (primera línea de tu primer mensaje)
+TITLE_MAX = 80  # el que ponés vos
 
 
 def _now() -> datetime:
@@ -59,14 +65,18 @@ def new_id() -> str:
 # --- Escribir ----------------------------------------------------------------
 
 
-def _append(conversation_id: str, entry: dict) -> None:
+def _append(conversation_id: str, entry: dict, keep_mtime: bool = False) -> None:
     path = _path(conversation_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     entry["ts"] = _now().isoformat(timespec="seconds")
+    before = path.stat().st_mtime_ns if path.exists() else None
     # Modo "a" = agregar al final. json.dumps escapa los saltos de línea del texto,
     # así que cada entrada ocupa exactamente una línea; ensure_ascii=False deja las tildes.
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    # Renombrar no es actividad nueva: se conserva la fecha para no reordenar «Recientes».
+    if keep_mtime and before is not None:
+        os.utime(path, ns=(path.stat().st_atime_ns, before))
 
 
 def add_message(
@@ -75,8 +85,10 @@ def add_message(
     text: str,
     actions: list[dict] | None = None,
     error: bool = False,
-) -> None:
-    """Guarda un mensaje. role: 'user' (lo que escribís) o 'bot' (lo que responde Epsilon)."""
+) -> str:
+    """Guarda un mensaje y devuelve su id. role: 'user' (lo que escribís) o 'bot' (lo que
+    responde Epsilon). El id sirve para decir después, sin ambigüedad, en qué mensaje se
+    tocó un botón."""
     if role not in ("user", "bot"):
         raise ValueError("role tiene que ser 'user' o 'bot'")
 
@@ -85,17 +97,32 @@ def add_message(
     if len(text) > MAX_TEXT:
         text = text[:MAX_TEXT] + "\n…(recortado)"
 
-    entry = {"type": "message", "role": role, "text": text}
+    message_id = secrets.token_hex(4)  # 8 hex: unos 4.000 millones, de sobra dentro de una conversación
+    entry = {"type": "message", "id": message_id, "role": role, "text": text}
     if actions:
         entry["actions"] = [{"id": a["id"], "label": a["label"]} for a in actions]
     if error:
         entry["error"] = True
     _append(conversation_id, entry)
+    return message_id
 
 
-def add_action(conversation_id: str, action_id: str) -> None:
-    """Anota que se tocó un botón (así, al reabrir, los ya usados quedan apagados)."""
-    _append(conversation_id, {"type": "action", "id": str(action_id)[:100]})
+def add_action(conversation_id: str, message_id: str, action_id: str) -> None:
+    """Anota que se tocó el botón `action_id` del mensaje `message_id` (así, al reabrir,
+    ese mensaje sale con su botón elegido y los demás apagados)."""
+    _append(conversation_id, {"type": "action", "message": str(message_id)[:100], "id": str(action_id)[:100]})
+
+
+def set_title(conversation_id: str, text: str) -> str:
+    """Cambia el título (agrega una línea; gana la última). Un texto vacío vuelve al
+    automático. Devuelve el título que queda. Lanza FileNotFoundError si no existe."""
+    path = _path(conversation_id)
+    if not path.exists():
+        raise FileNotFoundError("No existe esa conversación")
+    # Sin claves, en una sola línea, sin espacios de más, y con tope de largo.
+    clean = " ".join(config.redact(str(text)).split())[:TITLE_MAX]
+    _append(conversation_id, {"type": "title", "text": clean}, keep_mtime=True)
+    return _title(path)
 
 
 # --- Leer --------------------------------------------------------------------
@@ -122,38 +149,49 @@ def messages(conversation_id: str) -> list[dict] | None:
         return None
 
     result: list[dict] = []
+    by_id: dict[str, dict] = {}
     for entry in _entries(path):
         kind = entry.get("type")
 
         if kind == "message" and entry.get("role") in ("user", "bot") and isinstance(entry.get("text"), str):
-            result.append(
-                {
-                    "role": entry["role"],
-                    "text": entry["text"],
-                    "actions": entry.get("actions") or [],
-                    "error": bool(entry.get("error")),
-                    "ts": entry.get("ts", ""),
-                    "used": False,
-                    "chosen": None,
-                }
-            )
+            message = {
+                "id": entry.get("id") or "",
+                "role": entry["role"],
+                "text": entry["text"],
+                "actions": entry.get("actions") or [],
+                "error": bool(entry.get("error")),
+                "ts": entry.get("ts", ""),
+                "used": False,
+                "chosen": None,
+            }
+            result.append(message)
+            if message["id"]:
+                by_id[message["id"]] = message
 
         elif kind == "action":
-            # Se resuelve el mensaje MÁS RECIENTE, todavía sin usar, que ofrecía ese botón:
-            # tras reiniciar el servidor los ids de botón se repiten, y así no se cruzan.
-            for message in reversed(result):
-                if not message["used"] and any(a.get("id") == entry.get("id") for a in message["actions"]):
-                    message["used"] = True
-                    message["chosen"] = entry["id"]
-                    break
+            # La pulsación apunta a UN mensaje. Se ignora si ese mensaje no existe, si no
+            # ofrecía ese botón, o si ya se había tocado otro (la primera pulsación gana).
+            message = by_id.get(entry.get("message"))
+            if message and not message["used"] and any(a.get("id") == entry.get("id") for a in message["actions"]):
+                message["used"] = True
+                message["chosen"] = entry["id"]
     return result
+
+
+def title(conversation_id: str) -> str | None:
+    """El título de una conversación (el que pusiste, o el automático). None si no existe."""
+    path = _path(conversation_id)
+    return _title(path) if path.exists() else None
 
 
 # --- Listar ------------------------------------------------------------------
 
 
 def _title(path: Path) -> str:
-    """La primera línea de tu primer mensaje, recortada. Lee solo hasta encontrarla."""
+    """El título: el último que pusiste y, si no hay (o lo vaciaste), la primera línea de tu
+    primer mensaje recortada. Recorre el archivo entero, porque un renombrado puede estar al final."""
+    custom: str | None = None
+    automatic: str | None = None
     try:
         with path.open(encoding="utf-8", errors="replace") as f:
             for line in f:
@@ -161,12 +199,16 @@ def _title(path: Path) -> str:
                     entry = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(entry, dict) and entry.get("type") == "message" and entry.get("role") == "user":
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("type") == "title":
+                    custom = str(entry.get("text", "")).strip() or None  # vacío = volver al automático
+                elif automatic is None and entry.get("type") == "message" and entry.get("role") == "user":
                     first_line = str(entry.get("text", "")).strip().split("\n")[0].strip()
-                    return first_line[:TITLE_LENGTH] or UNTITLED
+                    automatic = first_line[:TITLE_LENGTH] or None
     except OSError:
         pass
-    return UNTITLED
+    return custom or automatic or UNTITLED
 
 
 def list_all(limit: int = 50) -> list[dict]:

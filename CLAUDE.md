@@ -40,8 +40,10 @@ instalarlo, cargar sus claves y usarlo.
   que escribe el `.env`; también `redact()` y el filtro de logs. Ver
   `docs/plan-config.md`.
 - `conversations.py`: conversaciones como archivos (`DATA_DIR/conversations/<id>.jsonl`,
-  una línea por mensaje, solo se agrega). Ids generados por el servidor y validados
-  con un patrón estricto; lo guardado pasa por `config.redact`. Ver
+  una línea por mensaje, solo se agrega). Cada mensaje lleva un id; un botón tocado y
+  un renombrado son líneas nuevas que se combinan al leer (nunca se edita). Ids de
+  conversación generados por el servidor y validados con un patrón estricto; lo
+  guardado (también el título) pasa por `config.redact`. Ver
   `docs/plan-conversations.md`.
 - `state.py`: estado de cada canal (activo, detenido y por qué). `checks.py`:
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).

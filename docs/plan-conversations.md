@@ -17,8 +17,17 @@ servidor (en `DATA_DIR`), para llenar «Recientes» y hacer real el «Nuevo chat
   «Recientes» se ordena por fecha de modificación, como `/archivos`.
 - **Lo que se guarda pasa por `config.redact`** (una clave pegada por error en el
   chat no queda en disco) y se recorta si es enorme.
-- **Los botones** (Guardar, Resumir...) registran en el archivo cuándo se tocan; al
-  reabrir, los ya usados quedan apagados.
+- **Cada mensaje lleva un id** (8 hex). Un botón tocado se registra como una línea
+  que apunta a ese id, y al leer cada mensaje sale con `actions` (vacío si no tiene
+  botones), `used` y `chosen` ya resueltos. Así no hay que adivinar en qué mensaje
+  se tocó (con dos mensajes pendientes que comparten botón, se resuelve el exacto).
+  La primera pulsación gana; una pulsación sobre un botón que ese mensaje no ofrecía,
+  o sobre un mensaje que no existe, se ignora.
+- **El título se puede cambiar.** Como el archivo es solo de agregar, renombrar
+  agrega una línea `title` y gana la última; un título vacío vuelve al automático
+  (la primera línea de tu primer mensaje). Es de una sola línea, hasta 80 caracteres,
+  y pasa por `config.redact`. Renombrar NO cambia el orden de «Recientes» (se
+  conserva la fecha de modificación).
 - **El estado pendiente** (CSV esperando confirmar) es por conversación:
   `session_id = web:<id>`.
 - **Solo la web.** Telegram no se toca: ya guarda su chat del lado de Telegram y
@@ -30,9 +39,10 @@ servidor (en `DATA_DIR`), para llenar «Recientes» y hacer real el «Nuevo chat
 
 1. `conversations.py`, sin web: crear id, agregar mensajes y acciones, leer
    (resolviendo qué botones se usaron), listar, y validar ids.
-2. API de la web: listar, abrir, crear, y guardar cada mensaje y su respuesta.
-3. Interfaz: «Recientes» real, abrir una conversación, historial leído del servidor
-   en lugar del navegador.
+2. API de la web: listar, abrir, crear, renombrar, y guardar cada mensaje y su
+   respuesta (el cliente manda el id del mensaje al tocar un botón).
+3. Interfaz: «Recientes» real, abrir una conversación, renombrarla, historial leído
+   del servidor en lugar del navegador.
 
 ## Después
 

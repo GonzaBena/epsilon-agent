@@ -43,7 +43,8 @@ def test_new_id_does_not_create_a_file(tmp_path):
 
 
 def test_new_id_skips_ids_that_already_exist(tmp_path, monkeypatch):
-    suffixes = iter(["aaaa", "aaaa", "bbbb"])
+    # new_id, el id del mensaje (que también usa token_hex), new_id que choca, y new_id que no.
+    suffixes = iter(["aaaa", "01020304", "aaaa", "bbbb"])
     monkeypatch.setattr(conversations.secrets, "token_hex", lambda n: next(suffixes))
     monkeypatch.setattr(conversations, "_now", lambda: __import__("datetime").datetime(2026, 10, 19, 15, 30, 0))
 
@@ -144,6 +145,22 @@ def test_huge_texts_are_cut(tmp_path):
     assert len(text) < 21_000 and text.endswith("(recortado)")
 
 
+# --- Ids de mensaje ----------------------------------------------------------
+
+
+def test_add_message_returns_an_id_that_is_saved_with_it(tmp_path):
+    message_id = conversations.add_message(VALID, "bot", "hola")
+
+    assert re.fullmatch(r"[0-9a-f]{8}", message_id)
+    assert lines(tmp_path, VALID)[0]["id"] == message_id
+
+
+def test_message_ids_are_unique_within_a_conversation():
+    ids = {conversations.add_message(VALID, "user", str(i)) for i in range(300)}
+
+    assert len(ids) == 300
+
+
 # --- Leer, resolviendo qué botones se usaron ---------------------------------
 
 
@@ -152,63 +169,104 @@ def test_messages_of_a_missing_conversation_is_none():
 
 
 def test_messages_come_back_in_order_with_their_fields():
-    conversations.add_message(VALID, "user", "hola")
-    conversations.add_message(VALID, "bot", "No pude", error=True)
+    first = conversations.add_message(VALID, "user", "hola")
+    second = conversations.add_message(VALID, "bot", "No pude", error=True)
 
     result = conversations.messages(VALID)
 
-    assert [(m["role"], m["text"], m["error"]) for m in result] == [("user", "hola", False), ("bot", "No pude", True)]
+    assert [(m["id"], m["role"], m["text"], m["error"]) for m in result] == [
+        (first, "user", "hola", False),
+        (second, "bot", "No pude", True),
+    ]
     assert all("ts" in m for m in result)
 
 
-def test_a_pressed_button_marks_its_message_as_used():
-    actions = [{"id": "guardar", "label": "Guardar"}, {"id": "cancelar", "label": "Cancelar"}]
-    conversations.add_message(VALID, "bot", "1 fila", actions=actions)
-    assert conversations.messages(VALID)[0]["used"] is False
+def test_a_message_without_buttons_says_so():
+    conversations.add_message(VALID, "bot", "sin botones")
 
-    conversations.add_action(VALID, "guardar")
     message = conversations.messages(VALID)[0]
 
-    assert message["used"] is True and message["chosen"] == "guardar"
+    assert message["actions"] == [] and message["used"] is False and message["chosen"] is None
 
 
-def test_actions_are_not_returned_as_messages():
-    conversations.add_message(VALID, "bot", "x", actions=[{"id": "nada:1", "label": "Nada más"}])
-    conversations.add_action(VALID, "nada:1")
+def test_a_message_with_buttons_lists_them_until_one_is_pressed():
+    actions = [{"id": "guardar", "label": "Guardar"}, {"id": "cancelar", "label": "Cancelar"}]
+    conversations.add_message(VALID, "bot", "1 fila", actions=actions)
+
+    message = conversations.messages(VALID)[0]
+
+    assert message["actions"] == actions
+    assert message["used"] is False and message["chosen"] is None
+
+
+def test_a_pressed_button_marks_its_message_with_the_chosen_one():
+    actions = [{"id": "guardar", "label": "Guardar"}, {"id": "cancelar", "label": "Cancelar"}]
+    message_id = conversations.add_message(VALID, "bot", "1 fila", actions=actions)
+
+    conversations.add_action(VALID, message_id, "cancelar")
+    message = conversations.messages(VALID)[0]
+
+    assert message["used"] is True and message["chosen"] == "cancelar"
+    assert message["actions"] == actions  # los botones siguen ahí: se muestran apagados
+
+
+def test_action_lines_are_not_returned_as_messages():
+    message_id = conversations.add_message(VALID, "bot", "x", actions=[{"id": "nada:1", "label": "Nada más"}])
+    conversations.add_action(VALID, message_id, "nada:1")
 
     assert len(conversations.messages(VALID)) == 1
 
 
-def test_a_repeated_button_id_resolves_the_latest_unused_message():
-    # Tras reiniciar, el contador de archivos vuelve a empezar y los ids se repiten.
+def test_the_action_resolves_the_exact_message_even_when_ids_repeat():
+    # Tras reiniciar, el contador de archivos vuelve a empezar y los ids de botón se repiten:
+    # por eso la pulsación apunta al mensaje, no solo al botón.
     pair = [{"id": "resumir:1", "label": "Resumir"}, {"id": "nada:1", "label": "Nada más"}]
-    conversations.add_message(VALID, "bot", "A", actions=pair)
-    conversations.add_action(VALID, "resumir:1")
-    conversations.add_message(VALID, "bot", "B", actions=pair)  # mismos ids
-    assert [m["used"] for m in conversations.messages(VALID)] == [True, False]
+    old = conversations.add_message(VALID, "bot", "viejo", actions=pair)
+    new = conversations.add_message(VALID, "bot", "nuevo", actions=pair)
 
-    conversations.add_action(VALID, "nada:1")
+    conversations.add_action(VALID, old, "nada:1")
 
-    result = conversations.messages(VALID)
-    assert [(m["used"], m["chosen"]) for m in result] == [(True, "resumir:1"), (True, "nada:1")]
+    result = {m["id"]: m for m in conversations.messages(VALID)}
+    assert (result[old]["used"], result[old]["chosen"]) == (True, "nada:1")
+    assert (result[new]["used"], result[new]["chosen"]) == (False, None)
 
+    conversations.add_action(VALID, new, "resumir:1")
 
-def test_with_two_pending_messages_sharing_a_button_the_newest_is_resolved():
-    # El archivo solo anota QUÉ botón se tocó, no en qué mensaje. Lo razonable es
-    # que se tocó el más nuevo: el de más abajo, el que se está mirando.
-    pair = [{"id": "resumir:1", "label": "Resumir"}, {"id": "nada:1", "label": "Nada más"}]
-    conversations.add_message(VALID, "bot", "viejo", actions=pair)
-    conversations.add_message(VALID, "bot", "nuevo", actions=pair)
-
-    conversations.add_action(VALID, "resumir:1")
-
-    result = conversations.messages(VALID)
-    assert [(m["text"], m["used"]) for m in result] == [("viejo", False), ("nuevo", True)]
+    result = {m["id"]: m for m in conversations.messages(VALID)}
+    assert (result[new]["used"], result[new]["chosen"]) == (True, "resumir:1")
+    assert result[old]["chosen"] == "nada:1"  # el primero no cambió
 
 
-def test_an_action_with_no_matching_message_is_ignored():
-    conversations.add_message(VALID, "bot", "sin botones")
-    conversations.add_action(VALID, "guardar")
+def test_the_first_press_wins():
+    actions = [{"id": "guardar", "label": "Guardar"}, {"id": "cancelar", "label": "Cancelar"}]
+    message_id = conversations.add_message(VALID, "bot", "1 fila", actions=actions)
+
+    conversations.add_action(VALID, message_id, "guardar")
+    conversations.add_action(VALID, message_id, "cancelar")
+
+    assert conversations.messages(VALID)[0]["chosen"] == "guardar"
+
+
+def test_a_button_the_message_did_not_offer_is_ignored():
+    message_id = conversations.add_message(VALID, "bot", "x", actions=[{"id": "guardar", "label": "Guardar"}])
+
+    conversations.add_action(VALID, message_id, "inventado")
+
+    assert conversations.messages(VALID)[0]["used"] is False
+
+
+def test_an_action_for_an_unknown_message_is_ignored():
+    conversations.add_message(VALID, "bot", "x", actions=[{"id": "guardar", "label": "Guardar"}])
+
+    conversations.add_action(VALID, "no-existe", "guardar")
+
+    assert conversations.messages(VALID)[0]["used"] is False
+
+
+def test_an_action_cannot_resolve_a_message_that_has_no_buttons():
+    message_id = conversations.add_message(VALID, "user", "hola")
+
+    conversations.add_action(VALID, message_id, "guardar")
 
     assert conversations.messages(VALID)[0]["used"] is False
 
@@ -217,10 +275,10 @@ def test_malformed_lines_are_skipped_not_fatal(tmp_path):
     folder(tmp_path).mkdir()
     path = folder(tmp_path) / f"{VALID}.jsonl"
     path.write_text(
-        '{"type": "message", "role": "user", "text": "bien", "ts": "x"}\n'
+        '{"type": "message", "id": "aaaaaaaa", "role": "user", "text": "bien", "ts": "x"}\n'
         "esto no es json\n"
         '{"type": "desconocido"}\n'
-        '{"type": "message", "role": "bot", "text": "también bien", "ts": "x"}\n',
+        '{"type": "message", "id": "bbbbbbbb", "role": "bot", "text": "también bien", "ts": "x"}\n',
         encoding="utf-8",
     )
 
@@ -303,3 +361,114 @@ def test_list_survives_a_broken_file(tmp_path):
 
     assert titles["20261019-100000-aaaa"] == "bien"
     assert titles["20261019-110000-bbbb"] == "Conversación sin título"
+
+
+# --- Título: se puede cambiar (agregando una línea; gana la última) ----------
+
+
+def test_set_title_appends_a_line_and_keeps_everything_else(tmp_path):
+    conversations.add_message(VALID, "user", "mensaje original")
+    before = (folder(tmp_path) / f"{VALID}.jsonl").read_text(encoding="utf-8")
+
+    conversations.set_title(VALID, "Compras de la oficina")
+
+    after = (folder(tmp_path) / f"{VALID}.jsonl").read_text(encoding="utf-8")
+    assert after.startswith(before)  # nada de lo anterior se tocó
+    last = lines(tmp_path, VALID)[-1]
+    assert last["type"] == "title" and last["text"] == "Compras de la oficina" and "ts" in last
+
+
+def test_a_custom_title_replaces_the_automatic_one_in_the_list():
+    conversations.add_message(VALID, "user", "+ comprar filamento")
+
+    conversations.set_title(VALID, "Filamento")
+
+    assert conversations.list_all()[0]["title"] == "Filamento"
+    assert conversations.title(VALID) == "Filamento"
+
+
+def test_the_last_title_wins():
+    conversations.add_message(VALID, "user", "hola")
+
+    conversations.set_title(VALID, "Uno")
+    conversations.set_title(VALID, "Dos")
+
+    assert conversations.title(VALID) == "Dos"
+
+
+def test_an_empty_title_goes_back_to_the_automatic_one():
+    conversations.add_message(VALID, "user", "mi primer mensaje")
+    conversations.set_title(VALID, "Nombre propio")
+
+    conversations.set_title(VALID, "   ")
+
+    assert conversations.title(VALID) == "mi primer mensaje"
+
+
+def test_set_title_returns_the_title_now_in_effect():
+    conversations.add_message(VALID, "user", "mi primer mensaje")
+
+    assert conversations.set_title(VALID, "  Nombre   propio ") == "Nombre propio"
+    assert conversations.set_title(VALID, "") == "mi primer mensaje"
+
+
+def test_a_title_is_a_single_clean_line_of_at_most_80_characters():
+    conversations.add_message(VALID, "user", "hola")
+
+    title = conversations.set_title(VALID, "línea uno\nlínea dos\t\ttabulada   " + "x" * 200)
+
+    assert "\n" not in title and "\t" not in title and "  " not in title
+    assert len(title) == 80
+
+
+def test_titles_are_redacted_too(tmp_path, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TOKEN", TOKEN)
+    conversations.add_message(VALID, "user", "hola")
+
+    conversations.set_title(VALID, f"bot {TOKEN}")
+
+    raw = (folder(tmp_path) / f"{VALID}.jsonl").read_text(encoding="utf-8")
+    assert TOKEN not in raw and "vKjP" not in raw
+
+
+def test_set_title_on_a_missing_conversation_fails_and_creates_nothing(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        conversations.set_title(VALID, "x")
+
+    assert not folder(tmp_path).exists()
+
+
+def test_set_title_checks_the_id():
+    with pytest.raises(ValueError):
+        conversations.set_title("../escape", "x")
+
+
+def test_title_of_a_missing_conversation_is_none():
+    assert conversations.title(VALID) is None
+
+
+def test_title_lines_are_not_messages():
+    conversations.add_message(VALID, "user", "hola")
+    conversations.set_title(VALID, "Otro")
+
+    assert len(conversations.messages(VALID)) == 1
+
+
+def test_renaming_does_not_reorder_the_list(tmp_path):
+    make(tmp_path, "20261019-100000-aaaa", "la vieja", 1_000)
+    make(tmp_path, "20261019-110000-bbbb", "la nueva", 2_000)
+
+    conversations.set_title("20261019-100000-aaaa", "Renombrada")
+
+    assert [c["title"] for c in conversations.list_all()] == ["la nueva", "Renombrada"]
+    # y la fecha que se muestra sigue siendo la de la última actividad, no la del renombrado
+    assert os.stat(folder(tmp_path) / "20261019-100000-aaaa.jsonl").st_mtime == pytest.approx(1_000, abs=1)
+
+
+def test_a_new_message_does_move_it_to_the_top(tmp_path):
+    make(tmp_path, "20261019-100000-aaaa", "la vieja", 1_000)
+    make(tmp_path, "20261019-110000-bbbb", "la nueva", 2_000)
+
+    conversations.add_message("20261019-100000-aaaa", "user", "sigo acá")
+
+    assert conversations.list_all()[0]["id"] == "20261019-100000-aaaa"
