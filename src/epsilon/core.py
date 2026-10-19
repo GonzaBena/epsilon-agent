@@ -18,6 +18,7 @@ HELP = (
     "/archivos [texto] → listar lo guardado (los 10 más nuevos)\n"
     "/resumir nombre → resumir una nota o archivo guardado\n"
     "/ticket → guardar la próxima imagen o PDF en tickets/ (mandala como archivo)\n"
+    "/contexto → lo que guardaste desde que arrancó el bot\n"
     "/uso → tokens y precio gastados (hoy y total)\n\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
     "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
@@ -91,9 +92,22 @@ class Session:
     folder: str | None = None  # modo /ticket: carpeta de la próxima imagen
     files: dict[str, str] = field(default_factory=dict)  # id -> ruta, esperando Resumir
     counter: int = 0  # para numerar los archivos de arriba
+    artifacts: list[Artifact] = field(default_factory=list)  # lo guardado, lo más nuevo primero
 
 
 SESSIONS: dict[str, Session] = {}
+
+# /contexto recuerda hasta esta cantidad de ítems por sesión (la memoria no crece sin límite).
+MAX_CONTEXT = 100
+KIND_NAMES = {"file": "archivo", "csv": "CSV", "note": "nota", "summary": "resumen"}
+
+
+def _remember(session: Session, saved: list[Artifact]) -> None:
+    """Suma lo que acaba de guardar una respuesta: arriba de todo, sin repetir ruta."""
+    if not saved:
+        return
+    paths = {a.path for a in saved}
+    session.artifacts = [*reversed(saved), *(a for a in session.artifacts if a.path not in paths)][:MAX_CONTEXT]
 
 
 def _session(session_id: str) -> Session:
@@ -147,6 +161,14 @@ def _files(args: str) -> Reply:
 def _usage(args: str) -> Reply:
     """/uso: tokens y precio gastados, hoy y en total. No usa el modelo."""
     return Reply(usage.format_summary(usage.summary()))
+
+
+def _context(args: str, session: Session) -> Reply:
+    """/contexto: lo guardado desde que arrancó el bot (se pierde al reiniciarlo). No usa el modelo."""
+    if not session.artifacts:
+        return Reply("Todavía no guardaste nada en esta sesión. Para ver todo lo guardado: /archivos")
+    listing = "\n".join(f"- {KIND_NAMES[a.kind]}: {a.path}" for a in session.artifacts)
+    return Reply(f"Guardado en esta sesión (lo más nuevo primero):\n{listing}")
 
 
 def _help(args: str, session: Session) -> Reply:
@@ -341,6 +363,7 @@ COMMANDS = {
     "ver": lambda args, s: _watch(args),
     "buscar": lambda args, s: _search(args),
     "archivos": lambda args, s: _files(args),
+    "contexto": _context,
     "uso": lambda args, s: _usage(args),
     "usage": lambda args, s: _usage(args),
     "resumir": _summarize_cmd,
@@ -352,6 +375,14 @@ COMMANDS = {
 
 
 def handle(msg: Message) -> Reply:
+    """Punto de entrada único: ver _dispatch. Además, recuerda en la sesión lo que la
+    respuesta guardó, para /contexto."""
+    reply = _dispatch(msg)
+    _remember(_session(msg.session_id), reply.artifacts)
+    return reply
+
+
+def _dispatch(msg: Message) -> Reply:
     """Punto de entrada único: recibe un mensaje y devuelve la respuesta.
 
     Puede tardar (llama al modelo): los canales asíncronos tienen que

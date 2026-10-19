@@ -193,3 +193,7 @@ def test_telegram_is_marked_running_only_after_it_connects(monkeypatch):
     asyncio.run(app.post_init(app))  # PTB lo llama recién tras un getMe exitoso
 
     assert state.snapshot()["telegram"]["state"] == "running"
+
+
+def test_contexto_is_in_the_telegram_menu():
+    assert "contexto" in [c.command for c in telegram.COMMANDS]

@@ -53,6 +53,12 @@ archivos y notas de la conversación.
    - Verificado en el navegador con una instancia de prueba (notas repetidas = una
      entrada, reabrir conversación, clic sin enviar, «Nuevo chat» vacía).
 
+4. `/contexto` en el núcleo (y menú de Telegram). **Hecho.** Cada respuesta que guarda algo
+   se anota en la sesión (hasta 100 ítems, sin repetir ruta, lo más nuevo primero) y
+   `/contexto` lo lista. Vive en memoria: se pierde al reiniciar (en la web, el panel sí
+   conserva todo porque sale de la conversación guardada). No usa el modelo. No se agregó
+   a `ALLOWED_COMMANDS` ni al panel de la web, que ya muestra el contexto.
+
 ## Límites conocidos
 
 - Solo cuenta lo que se haga de ahora en adelante: las conversaciones ya guardadas

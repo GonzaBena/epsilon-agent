@@ -41,6 +41,7 @@ COMMANDS = [
     BotCommand("resumir", "Resumir una nota o archivo guardado"),
     BotCommand("ticket", "Guardar la próxima imagen como ticket"),
     BotCommand("cancelar", "Cancelar el /ticket en espera"),
+    BotCommand("contexto", "Lo que guardaste desde que arrancó el bot"),
     BotCommand("uso", "Tokens y precio gastados (hoy y total)"),
     BotCommand("ayuda", "Cómo se usa el bot"),
 ]

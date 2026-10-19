@@ -23,7 +23,7 @@ instalarlo, cargar sus claves y usarlo.
 
 ## Estructura
 
-- `core.py`: toda la lógica (comandos, confirmaciones, estado por sesión).
+- `core.py`: toda la lógica (comandos, confirmaciones, estado por sesión; `/contexto` lista lo guardado en la sesión, en memoria).
   `handle(Message) -> Reply`. No conoce ningún canal. Ver `docs/plan-core.md`.
 - `main.py`: punto de entrada. La web (siempre activa) corre en el hilo
   principal; los demás canales configurados (Telegram) van cada uno en su hilo

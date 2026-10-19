@@ -383,3 +383,65 @@ def test_nada_reports_nothing_new():
     reply = send_file(name="doc.pdf")
 
     assert press(reply.actions[1].id).artifacts == []
+
+
+# --- /contexto: lo guardado en esta sesión -----------------------------------
+
+
+def test_contexto_with_nothing_saved_says_so():
+    assert "Todavía no guardaste nada" in say("/contexto").text
+
+
+def test_contexto_lists_what_the_session_saved_newest_first(monkeypatch):
+    say("+ una nota")
+    send_file(name="doc.pdf")
+    fake_rows(monkeypatch, [{"fecha": "1/1"}])
+    send_file("gastos: fecha")
+    press("guardar")
+
+    lines = say("/contexto").text.splitlines()
+
+    assert lines[0].startswith("Guardado en esta sesión")
+    assert lines[1:] == ["- CSV: gastos.csv", lines[2], "- nota: inbox.md"]
+    assert lines[2].startswith("- archivo: files/") and lines[2].endswith("doc.pdf")
+
+
+def test_contexto_does_not_repeat_a_path():
+    say("+ uno")
+    say("+ dos")
+
+    assert say("/contexto").text.count("inbox.md") == 1
+
+
+def test_contexto_is_per_session():
+    say("+ mía", session_id="a")
+
+    assert "Todavía no guardaste nada" in say("/contexto", session_id="b").text
+    assert "inbox.md" in say("/contexto", session_id="a").text
+
+
+def test_contexto_saves_nothing_itself_and_does_not_list_itself():
+    reply = say("/contexto")
+
+    assert reply.artifacts == []
+    assert "Todavía no guardaste nada" in say("/contexto").text
+
+
+def test_contexto_remembers_a_bounded_number_of_items():
+    for n in range(core.MAX_CONTEXT + 5):
+        core._remember(core._session("s1"), [core.Artifact("file", f"files/g{n}.txt")])
+
+    assert len(core._session("s1").artifacts) <= core.MAX_CONTEXT
+
+
+def test_contexto_is_in_the_help_and_works_with_a_bot_suffix():
+    assert "/contexto" in core.HELP
+    assert "Todavía no guardaste nada" in say("/contexto@epsilon_bot").text
+
+
+def test_inside_one_reply_the_last_saved_item_is_the_newest():
+    session = core.Session()
+
+    core._remember(session, [core.Artifact("file", "a.pdf"), core.Artifact("note", "b.md")])
+
+    assert [a.path for a in session.artifacts] == ["b.md", "a.pdf"]
