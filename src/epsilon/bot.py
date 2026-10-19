@@ -86,6 +86,11 @@ async def save_and_confirm(update, context, name, data, folder=None):
     path = notes.save_file(name, data, folder)
     relative = path.relative_to(notes.DATA_DIR)  # para mostrar y recordar
 
+    # Los tickets solo se guardan: sin botones, no hay nada que resumir.
+    if folder == TICKETS_DIR:
+        await update.message.reply_text(f"Guardado: {relative}")
+        return
+
     # El callback_data de un botón tiene máximo 64 bytes, así que no podemos
     # meter la ruta ahí. Guardamos la ruta en memoria con un número (el id de
     # tu mensaje) y el botón lleva solo ese número.
