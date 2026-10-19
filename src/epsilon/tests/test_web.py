@@ -1346,3 +1346,54 @@ def test_a_conversation_without_saves_has_no_artifacts(client):
     chat(client, cid, "/ayuda")
 
     assert client.get(f"/api/conversations/{cid}").json()["artifacts"] == []
+
+
+# --- panel «Contexto» --------------------------------------------------------
+
+
+def right_panel():
+    return re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+
+
+def test_the_right_panel_has_a_context_section_between_tools_and_channels():
+    right = right_panel()
+
+    heading = re.search(r'<h2[^>]*id="h-context"[^>]*>\s*Contexto\s*</h2>', right)
+    assert heading
+    assert right.index("h-tools") < heading.start() < right.index("h-side-channels")
+    assert re.search(r'<ul[^>]*id="context"', right)
+    # Vacío no es un hueco: explica qué va a aparecer ahí.
+    assert re.search(r'<p[^>]*id="context-empty"[^>]*>[^<]+</p>', right)
+
+
+def test_the_context_comes_from_the_server_and_is_drawn_as_text():
+    app = js("app.js")
+
+    # Al abrir una conversación y al recibir una respuesta. (Que no se use innerHTML ya lo vigila otro test.)
+    assert app.count("data.artifacts") >= 2 and "insertAdjacentHTML" not in app
+
+
+def test_clicking_a_context_item_writes_the_command_without_sending_it():
+    app = js("app.js")
+    start = app.index("function contextCommand")
+    block = app[start : app.index("\n}\n", start)]
+
+    # nota y resumen -> /ver; archivo -> /resumir; CSV -> /archivos
+    assert "/ver " in block and "/resumir " in block and "/archivos " in block
+    # Y el clic usa insertText (escribe), nunca ask/runCommand (envía).
+    click = app[app.index("function renderContext") :]
+    click = click[: click.index("\n}\n")]
+    assert "insertText(" in click and "ask(" not in click and "runCommand(" not in click
+
+
+def test_a_new_chat_and_opening_one_reset_the_context():
+    app = js("app.js")
+    for name in ("clearScreen", "openConversation"):
+        body = app[app.index(f"function {name}") :]
+        assert "setContext(" in body[: body.index("\n}\n")], name
+
+
+def test_the_context_has_a_style():
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert ".context" in css and ".context-empty" in css

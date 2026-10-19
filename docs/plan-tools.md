@@ -41,7 +41,17 @@ archivos y notas de la conversación.
    - Las respuestas de `/api/message` y `/api/upload` traen `artifacts`;
      `GET /api/conversations/{id}` trae `artifacts` (lo más nuevo primero, sin repetir
      ruta) y cada mensaje el suyo.
-3. Sección «Contexto» del panel.
+3. Sección «Contexto» del panel. **Hecho.**
+   - Entre «Herramientas» y «Canales». Lista (lo más nuevo primero, sin repetir ruta)
+     con ícono por tipo (imagen, documento, nota) y el nombre en monoespaciado; vacía,
+     explica qué va a aparecer.
+   - Se carga al abrir una conversación (`data.artifacts`), se completa con cada
+     respuesta y se vacía con «Nuevo chat». Todo como texto (`textContent`, íconos con
+     `createElementNS`).
+   - Tocar un ítem **escribe** en el cuadro: nota/resumen → `/ver ruta`, archivo →
+     `/resumir nombre`, CSV → `/archivos nombre`. No envía nada.
+   - Verificado en el navegador con una instancia de prueba (notas repetidas = una
+     entrada, reabrir conversación, clic sin enviar, «Nuevo chat» vacía).
 
 ## Límites conocidos
 

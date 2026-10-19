@@ -566,6 +566,51 @@ code {
   font-size: 13px;
 }
 
+/* Contexto: lo que la conversación guardó. Tocar un ítem escribe el comando en el mensaje. */
+.context {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 12px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.context-item:hover {
+  background: var(--surface-2);
+}
+.context-item svg {
+  flex: none;
+  color: var(--muted);
+}
+.context-name {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-empty {
+  margin: 0;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.context-empty[hidden] {
+  display: none;
+}
+
 .side-right .channels {
   margin: 0;
   padding: 0 12px;

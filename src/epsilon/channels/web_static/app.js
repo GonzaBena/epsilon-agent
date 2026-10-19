@@ -138,6 +138,7 @@ function addMessage(message) {
 // Deja la pantalla sin mensajes (el saludo vuelve a mostrarse si hace falta).
 function clearScreen() {
   for (const node of log.querySelectorAll(".msg")) node.remove();
+  setContext([]); // lo guardado es de ESTA conversación
   clearFile(); // un archivo a medio adjuntar no tiene que irse a otra conversación
   empty.hidden = false;
 }
@@ -154,6 +155,7 @@ async function openConversation(id) {
     if (response.ok) {
       const data = await response.json();
       for (const message of data.messages) render(message); // ya traen used / chosen
+      setContext(data.artifacts || []);
       empty.hidden = data.messages.length > 0;
       scrollToEnd();
     }
@@ -227,6 +229,7 @@ async function ask(request) {
       // message_id: el id con el que el servidor guardó este mensaje; hace falta para
       // decirle después cuál de sus botones tocaste.
       addMessage({ role: "bot", text: data.text, actions: data.actions, id: data.message_id });
+      addToContext(data.artifacts || []);
     }
     announce(); // «Recientes» y el título pueden haber cambiado
   } catch (error) {
@@ -482,6 +485,75 @@ function insertText(text) {
 
 for (const element of document.querySelectorAll("[data-insert]")) {
   element.addEventListener("click", () => insertText(element.dataset.insert));
+}
+
+// --- Contexto: lo que esta conversación creó o guardó ---------------------------------------------
+// La lista viene del servidor (rutas que él armó); acá solo se muestra, como texto. Tocar un
+// ítem ESCRIBE el comando útil en el cuadro de texto (como las herramientas); no lo envía.
+const contextList = document.getElementById("context");
+const contextEmpty = document.getElementById("context-empty");
+let contextItems = []; // lo más nuevo primero, sin repetir ruta
+
+// Qué escribir al tocar un ítem. Una nota o un resumen se leen; un archivo se puede resumir
+// (usa el nombre, no la carpeta: así lo encuentra /resumir); un CSV se busca en /archivos.
+function contextCommand(item) {
+  const name = item.path.split("/").pop();
+  if (item.kind === "note" || item.kind === "summary") return `/ver ${item.path.replace(/\.md$/, "")}`;
+  if (item.kind === "csv") return `/archivos ${name.replace(/\.csv$/, "")}`;
+  return `/resumir ${name}`;
+}
+
+// Íconos: imagen, documento (PDF y CSV) y nota. Dibujados con createElementNS, sin HTML.
+const SVG_NS = "http://www.w3.org/2000/svg";
+const ICONS = {
+  image: ["M4 5h16v14H4z", "M4 16l4-4 4 4 3-3 5 5", "M9 9.5h.01"],
+  document: ["M7 3h7l5 5v13H7z", "M14 3v5h5", "M10 13h6M10 17h6"],
+  note: ["M5 4h14v16H5z", "M8 9h8M8 13h8M8 17h5"],
+};
+
+function contextIcon(item) {
+  const isImage = item.kind === "file" && /\.(jpe?g|png|webp|gif)$/i.test(item.path);
+  const shape = isImage ? "image" : item.kind === "note" || item.kind === "summary" ? "note" : "document";
+  const svg = document.createElementNS(SVG_NS, "svg");
+  for (const [name, value] of Object.entries({
+    viewBox: "0 0 24 24", width: "18", height: "18", fill: "none", stroke: "currentColor",
+    "stroke-width": "1.6", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
+  })) svg.setAttribute(name, value);
+  for (const d of ICONS[shape]) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+function renderContext() {
+  contextList.replaceChildren();
+  contextEmpty.hidden = contextItems.length > 0;
+  for (const item of contextItems) {
+    const row = make("li");
+    const button = make("button", "context-item");
+    button.type = "button";
+    button.title = `${item.path} · tocá para escribir el comando`;
+    button.append(contextIcon(item), make("span", "context-name", item.path.split("/").pop()));
+    button.addEventListener("click", () => insertText(contextCommand(item)));
+    row.append(button);
+    contextList.append(row);
+  }
+}
+
+// Reemplaza la lista entera (al abrir una conversación o empezar una nueva).
+function setContext(items) {
+  contextItems = items.slice();
+  renderContext();
+}
+
+// Suma lo que acaba de guardar una respuesta: arriba de todo, sin repetir ruta.
+function addToContext(items) {
+  if (!items.length) return;
+  const paths = new Set(items.map((item) => item.path));
+  contextItems = [...items.slice().reverse(), ...contextItems.filter((item) => !paths.has(item.path))];
+  renderContext();
 }
 
 // --- Nuevo chat y abrir una conversación ------------------------------------------------------
