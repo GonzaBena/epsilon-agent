@@ -10,7 +10,9 @@ USAGE_FILE = "usage.jsonl"
 # Cargalo a mano con los precios de la página de precios de Gemini; si un
 # modelo no está acá, se cuentan sus tokens pero NO se inventa un precio.
 # Ejemplo:  "gemini-3.1-flash-lite": (0.10, 0.40),
-PRICES: dict[str, tuple[float, float]] = {}
+PRICES: dict[str, tuple[float, float]] = {
+    "gemini-3.1-flash-lite": (0.25, 1.5),
+}
 
 
 def record(model: str, input_tokens: int, output_tokens: int) -> None:
@@ -41,7 +43,9 @@ def _add(period: dict, entry: dict) -> None:
         period["unpriced"] += 1  # tokens contados, pero sin precio conocido
         return
     # El precio es por millón de tokens, por eso dividimos por 1.000.000.
-    period["cost"] += (entry["input"] * price[0] + entry["output"] * price[1]) / 1_000_000
+    period["cost"] += (
+        entry["input"] * price[0] + entry["output"] * price[1]
+    ) / 1_000_000
 
 
 def summary() -> dict:
@@ -58,3 +62,29 @@ def summary() -> dict:
         if entry["date"] == today:
             _add(result["today"], entry)
     return result
+
+
+def _format_period(label: str, p: dict) -> str:
+    # f"{n:,}" separa miles con coma; la cambiamos por punto (formato español).
+    tokens = lambda n: f"{n:,}".replace(",", ".")
+    if p["unpriced"] == p["calls"] and p["calls"] > 0:
+        price = "sin precio cargado"
+    else:
+        price = f"US$ {p['cost']:.4f}"
+        if p["unpriced"]:
+            price += f" (+{p['unpriced']} llamada(s) sin precio)"
+    return (
+        f"{label}: {p['calls']} llamada(s)\n"
+        f"  entrada: {tokens(p['input'])} tokens\n"
+        f"  salida: {tokens(p['output'])} tokens\n"
+        f"  precio: {price}"
+    )
+
+
+def format_summary(data: dict) -> str:
+    """Arma el texto de /uso a partir de summary()."""
+    return (
+        _format_period("Hoy", data["today"])
+        + "\n\n"
+        + _format_period("Total", data["total"])
+    )

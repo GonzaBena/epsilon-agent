@@ -47,6 +47,28 @@ def test_today_excludes_older_records(tmp_path, monkeypatch):
     assert result["today"]["calls"] == 1
 
 
+def test_format_summary_shows_today_total_and_cost():
+    period = {"calls": 2, "input": 1_234_000, "output": 5_000, "cost": 0.5, "unpriced": 0}
+    today = {"calls": 1, "input": 100, "output": 10, "cost": 0.0001, "unpriced": 0}
+
+    text = usage.format_summary({"total": period, "today": today})
+
+    assert "Hoy" in text and "Total" in text
+    assert "1.234.000" in text  # miles con punto, como se lee en español
+    assert "US$ 0.5000" in text
+    assert "US$ 0.0001" in text
+
+
+def test_format_summary_warns_about_unpriced_calls():
+    empty = {"calls": 0, "input": 0, "output": 0, "cost": 0.0, "unpriced": 0}
+    total = {"calls": 3, "input": 10, "output": 5, "cost": 0.0, "unpriced": 3}
+
+    text = usage.format_summary({"total": total, "today": empty})
+
+    assert "sin precio" in text
+    assert "US$ 0.0000" not in text.split("Total")[1]  # no muestra un costo falso
+
+
 def test_unknown_model_counts_tokens_but_not_cost(tmp_path, monkeypatch):
     use_tmp_data(tmp_path, monkeypatch)
 

@@ -47,5 +47,5 @@ instalarlo, cargar sus claves y usarlo.
 - Comando `/ayuda`.
 - `notes.save_csv`: `if path:` siempre es verdadero, así que escribe el encabezado
   en cada guardado (también si el CSV ya existía). Debería ser `if new:`.
-- Comando `/uso` (tokens y precio, total + hoy): en curso, ver `usage.py`.
+- `/uso` ya funciona; falta cargar `PRICES` en `usage.py` para que muestre el precio.
 - Más adelante: Whisper (voz), Obsidian, plantillas, FastAPI/MCP, web con chat.

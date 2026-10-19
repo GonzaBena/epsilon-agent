@@ -14,7 +14,7 @@ from telegram.ext import (
     filters,
 )
 
-from epsilon import extract, notes, summarize
+from epsilon import extract, notes, summarize, usage
 
 
 # --- Configuración -----------------------------------------------------------
@@ -47,7 +47,8 @@ HELP = (
     "+ texto → guardar una nota en inbox\n"
     "/ver [nota] → leer una nota (por defecto inbox)\n"
     "/buscar palabra → buscar en las notas\n"
-    "/resumir nombre → resumir una nota o archivo guardado\n\n"
+    "/resumir nombre → resumir una nota o archivo guardado\n"
+    "/uso → tokens y precio gastados (hoy y total)\n\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
     "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
     "la paso a CSV."
@@ -305,6 +306,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP)
 
 
+async def usage_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/uso (o /usage): tokens y precio gastados, hoy y en total. No usa el modelo."""
+    await update.message.reply_text(usage.format_summary(usage.summary()))
+
+
 async def summarize_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/resumir nombre: resume una nota o archivo ya guardado."""
     text = " ".join(context.args).strip()
@@ -359,6 +365,7 @@ COMMANDS = [
     BotCommand("ver", "Ver una nota (por defecto, inbox)"),
     BotCommand("buscar", "Buscar texto en todas las notas"),
     BotCommand("resumir", "Resumir una nota o archivo guardado"),
+    BotCommand("uso", "Tokens y precio gastados (hoy y total)"),
     BotCommand("ayuda", "Cómo se usa el bot"),
 ]
 
@@ -389,6 +396,7 @@ def main():
     app.add_handler(CommandHandler("ver", watch, filters=ONLY_ME))
     app.add_handler(CommandHandler("buscar", search, filters=ONLY_ME))
     app.add_handler(CommandHandler("resumir", summarize_cmd, filters=ONLY_ME))
+    app.add_handler(CommandHandler(["uso", "usage"], usage_cmd, filters=ONLY_ME))
     # /start lo manda Telegram solo la primera vez que abrís el bot.
     app.add_handler(CommandHandler(["ayuda", "start"], help_cmd, filters=ONLY_ME))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ONLY_ME, other))
