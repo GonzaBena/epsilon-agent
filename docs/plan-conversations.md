@@ -71,7 +71,16 @@ servidor (en `DATA_DIR`), para llenar «Recientes» y hacer real el «Nuevo chat
 - Cambiar de conversación a mitad de una respuesta (el cuidado está en el código,
   pero no se probó con una respuesta lenta).
 - Ventana angosta y suavidad de la animación (igual que en `docs/plan-ui.md`).
-- Con muchas conversaciones (la API devuelve las 50 más recientes; no hay «ver más»).
+
+## «Ver más» en Recientes (hecho)
+
+- `GET /api/conversations?limit=N` (1 a 200; otro valor es 422) devuelve `conversations` y
+  `total`. Sin `limit`, 50.
+- «Recientes» pide 20 y, si `total` supera lo mostrado, un botón «Ver más» pide 20 más
+  (el tope se conserva al refrescar). Al terminar, el botón desaparece.
+- Si la conversación abierta es vieja y no entra en la página, se pide aparte para que
+  el header y la lista no la tomen por una nueva.
+- Verificado en el navegador con 25 conversaciones.
 
 ## Después
 

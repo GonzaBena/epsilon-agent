@@ -259,20 +259,29 @@ def _title(path: Path) -> str:
     return custom or automatic or UNTITLED
 
 
+def _files() -> list[Path]:
+    """Los archivos de conversaciones: solo los que tienen un id nuestro y, si es un symlink,
+    que no salga de DATA_DIR."""
+    folder = notes.safe_path(FOLDER)
+    if not folder.is_dir():
+        return []
+    return [
+        p
+        for p in folder.iterdir()
+        if p.is_file() and p.suffix == ".jsonl" and is_valid_id(p.stem) and p.resolve().is_relative_to(notes.DATA_DIR)
+    ]
+
+
+def count() -> int:
+    """Cuántas conversaciones hay en total (para saber si «Ver más» tiene algo que mostrar)."""
+    return len(_files())
+
+
 def list_all(limit: int = 50) -> list[dict]:
     """Las conversaciones, la más reciente primero: [{id, title, updated}].
 
     Solo aparecen las que tienen al menos un mensaje (el archivo nace con el primero)."""
-    folder = notes.safe_path(FOLDER)
-    if not folder.is_dir():
-        return []
-
-    candidates = []
-    for p in folder.iterdir():
-        # Solo archivos con un id nuestro; y, si es un symlink, que no salga de DATA_DIR.
-        if p.is_file() and p.suffix == ".jsonl" and is_valid_id(p.stem) and p.resolve().is_relative_to(notes.DATA_DIR):
-            candidates.append(p)
-
+    candidates = _files()
     newest_first = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
     return [
         {

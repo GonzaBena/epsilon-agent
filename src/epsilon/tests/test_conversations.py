@@ -556,3 +556,23 @@ def test_inside_one_message_the_last_artifact_is_the_newest():
     )
 
     assert [a["path"] for a in conversations.artifacts(VALID)] == ["b.md", "a.pdf"]
+
+
+# --- contar (para «Ver más») -------------------------------------------------
+
+
+def test_count_is_the_total_even_when_the_list_is_cut(tmp_path):
+    for i in range(5):
+        make(tmp_path, f"20261019-10000{i}-aaaa", f"c{i}", 1_000 + i)
+
+    assert conversations.count() == 5
+    assert len(conversations.list_all(limit=2)) == 2
+
+
+def test_count_ignores_foreign_files_and_empty_folder(tmp_path):
+    assert conversations.count() == 0
+    make(tmp_path, VALID, "hola", 1_000)
+    (folder(tmp_path) / "notas.txt").write_text("x")
+    (folder(tmp_path) / "no-es-un-id.jsonl").write_text("x")
+
+    assert conversations.count() == 1

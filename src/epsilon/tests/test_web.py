@@ -1071,7 +1071,7 @@ def test_a_rejected_upload_saves_nothing(client, tmp_path):
 
 
 def test_the_conversation_list_is_empty_at_first_then_shows_titles(client):
-    assert client.get("/api/conversations").json() == {"conversations": []}
+    assert client.get("/api/conversations").json() == {"conversations": [], "total": 0}
     cid = new_conversation(client)
     chat(client, cid, "+ comprar filamento")
 
@@ -1397,3 +1397,54 @@ def test_the_context_has_a_style():
     css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
 
     assert ".context" in css and ".context-empty" in css
+
+
+# --- «Ver más» en Recientes --------------------------------------------------
+
+
+def make_conversations(client, how_many):
+    ids = []
+    for n in range(how_many):
+        cid = new_conversation(client)
+        chat(client, cid, f"/ayuda {n}")
+        ids.append(cid)
+    return ids
+
+
+def test_the_conversation_list_reports_the_total_and_accepts_a_limit(client):
+    make_conversations(client, 5)
+
+    page = client.get("/api/conversations?limit=2").json()
+
+    assert len(page["conversations"]) == 2 and page["total"] == 5
+    assert client.get("/api/conversations").json()["total"] == 5  # sin limit: el tope de siempre (50)
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "abc", "201", "1.5", ""])
+def test_a_bad_limit_is_rejected_without_listing_anything(client, bad):
+    make_conversations(client, 1)
+
+    assert client.get(f"/api/conversations?limit={bad}").status_code == 422
+
+
+def test_recents_have_a_see_more_button_that_asks_for_a_bigger_page():
+    source = js("shell.js")
+
+    assert "Ver más" in source
+    assert "limit=" in source and "total" in source
+    assert re.search(r'make\("button",\s*"recents-more"', source)  # un botón de verdad: se alcanza con el teclado
+
+
+def test_the_see_more_button_has_a_style():
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert ".recents-more" in css
+
+
+def test_an_open_conversation_outside_the_first_page_still_gets_its_title():
+    source = js("shell.js")
+
+    # Si la abierta no está en la página pedida pero hay más en el servidor, se consulta
+    # directamente (si no, el header diría «Conversación nueva» para una conversación vieja).
+    assert "encodeURIComponent(currentId)" in source
+    assert re.search(r"total\s*>\s*conversations\.length", source)

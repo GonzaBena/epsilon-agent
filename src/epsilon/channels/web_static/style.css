@@ -373,6 +373,22 @@ code {
     opacity: 1;
   }
 }
+/* «Ver más» al final de Recientes: discreto, como un enlace. */
+.recents-more {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.recents-more:hover {
+  background: var(--surface-2);
+  color: inherit;
+}
 .recent-input {
   width: 100%;
   min-height: 36px;

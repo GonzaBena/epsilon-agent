@@ -118,6 +118,9 @@
 
   let currentId = recallCurrent(); // la conversación abierta, para resaltarla (también en la config)
   let conversations = []; // lo último que dijo el servidor: [{id, title, updated}]
+  let total = 0; // cuántas conversaciones hay en el servidor (puede ser más que las mostradas)
+  const PAGE = 20; // cuántas se piden de entrada, y cuántas más agrega «Ver más»
+  let shown = PAGE; // cuántas se piden ahora (no baja: al refrescar se conserva)
   let editingId = null; // la conversación que se está renombrando
 
   function recallCurrent() {
@@ -131,9 +134,20 @@
   // Pide la lista al servidor y la dibuja.
   async function refreshRecents() {
     try {
-      const response = await fetch("/api/conversations");
+      const response = await fetch(`/api/conversations?limit=${shown}`);
       if (!response.ok) return;
-      conversations = (await response.json()).conversations;
+      const data = await response.json();
+      conversations = data.conversations;
+      total = data.total;
+      // La abierta puede ser una vieja que no entra en la página pedida: se la pide aparte, para
+      // que el header y «Recientes» no la tomen por una conversación nueva.
+      if (currentId && total > conversations.length && !conversations.some((c) => c.id === currentId)) {
+        const open = await fetch(`/api/conversations/${encodeURIComponent(currentId)}`);
+        if (open.ok) {
+          const found = await open.json();
+          conversations = [{ id: found.id, title: found.title, updated: "" }, ...conversations];
+        }
+      }
     } catch {
       return; // sin conexión: se queda lo que había
     }
@@ -164,6 +178,19 @@
       const item = make("li", "recent-row");
       if (conversation.id === editingId) item.append(renameInput(conversation));
       else item.append(...conversationRow(conversation));
+      recentsList.append(item);
+    }
+    // Hay más de las que se muestran: un botón pide otra página (y se queda en la lista,
+    // así Tab llega hasta él después de la última conversación).
+    if (total > conversations.length) {
+      const more = make("button", "recents-more", "Ver más");
+      more.type = "button";
+      more.addEventListener("click", () => {
+        shown += PAGE;
+        refreshRecents();
+      });
+      const item = make("li");
+      item.append(more);
       recentsList.append(item);
     }
     const editing = recentsList.querySelector(".recent-input");

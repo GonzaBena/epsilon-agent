@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import socket
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -223,8 +223,9 @@ def create_app() -> FastAPI:
     # nunca se arma una ruta con lo que llega en la URL.
 
     @app.get("/api/conversations")
-    def list_conversations():
-        return {"conversations": conversations.list_all()}
+    def list_conversations(limit: int = Query(50, ge=1, le=200)):
+        # limit: cuántas devolver (la web pide más con «Ver más»); total: cuántas hay en realidad.
+        return {"conversations": conversations.list_all(limit), "total": conversations.count()}
 
     @app.post("/api/conversations")
     def create_conversation():
