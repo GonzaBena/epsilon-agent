@@ -29,6 +29,8 @@ instalarlo, cargar sus claves y usarlo.
   web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver `docs/plan-web.md`.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
+- `config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
+  que escribe el `.env`. Ver `docs/plan-config.md`.
 - `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `llm.py`: ÚNICO lugar que llama a Gemini.
 - `extract.py`, `summarize.py`: lógica de imagen→CSV y resúmenes.
@@ -42,6 +44,9 @@ instalarlo, cargar sus claves y usarlo.
   Telegram). Cada request valida Host y Origin; no sacar esas defensas ni
   exponerla a la red sin agregar contraseña y HTTPS.
 - Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
+- Las claves nunca salen del servidor: ni a la web, ni a logs, ni a mensajes de
+  error. Solo se informa si están cargadas y su largo. Todo valor se valida
+  (sin saltos de línea) antes de escribirlo en el `.env`.
 - Escrituras: crear o agregar, nunca pisar. Lo que viene de una imagen
   se muestra y se confirma antes de guardar.
 - Gastar lo mínimo: lo que no necesita modelo no lo usa, prompts cortos,
