@@ -45,6 +45,7 @@ instalarlo, cargar sus claves y usarlo.
 - Cuando enseñes algo nuevo, código con comentarios línea por línea.
 - Antes de cambios grandes, proponé el plan y esperá confirmación.
 - Verifica que pasan los tests despues de cada cambio.
+- Si los tests pasan, hacé el commit del cambio sin preguntar (nunca push sin pedirlo).
 
 ## Pendiente
 
