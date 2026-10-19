@@ -33,6 +33,10 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
    Las herramientas y píldoras escriben en el cuadro (reemplazan lo que hubiera)
    y no envían; «Imagen a CSV» abre el selector y deja un ejemplo seleccionado.
 3. Pulido: color de las burbujas, botón de enviar cuadrado con ícono, estado vacío.
+   **Hecho.** Tu burbuja usa `#1e2318` (radio 14px, sin borde); el botón de enviar es
+   un cuadrado lima de 44px con flecha (`.send-btn`; `.send` de texto sigue para
+   «Guardar cambios»); el estado vacío es un saludo de Epsilon con su marca. El
+   saludo NO lleva la clase `msg`: «Nuevo chat» borra todos los `.msg`.
 
 ## Animación de los paneles
 
@@ -42,6 +46,11 @@ actual: el relleno y la posición de los íconos son iguales abierto y contraíd
 panel solo se angosta y recorta, y las etiquetas y bloques se desvanecen. Se midió
 la posición de cada pieza en el instante del clic: 0 saltos en las 4 direcciones
 (antes saltaban 7 elementos al contraer la izquierda y 4 la derecha).
+
+## Pendiente del mockup
+
+La tabla del preview de CSV (hoy es texto con ` | `) y la etiqueta de herramienta
+sobre cada respuesta necesitan que el núcleo devuelva datos estructurados.
 
 ## Archivo adjunto
 

@@ -859,3 +859,37 @@ def test_attachment_remove_button_shows_on_hover_and_keyboard_focus():
     assert ":hover .thumb-remove" in css
     assert "focus-within" in css or ":focus-visible" in css
     assert "(hover: none)" in css
+
+
+# --- Pulido: botón de enviar con ícono y estado vacío como saludo -------------
+
+
+def test_send_button_is_an_icon_button_that_still_has_a_name():
+    tag = re.search(r'<button[^>]*id="send"[^>]*>(.*?)</button>', chat_html(), re.S)
+    attrs = re.search(r'<button[^>]*id="send"[^>]*>', chat_html()).group(0)
+
+    assert 'type="submit"' in attrs and 'aria-label="Enviar"' in attrs
+    assert "send-btn" in attrs
+    assert "<svg" in tag.group(1) and 'aria-hidden="true"' in tag.group(1)
+
+
+def test_config_save_button_keeps_its_text_label():
+    # Comparte la clase base con el botón de enviar del chat, pero es de texto.
+    html = page("config.html")
+
+    assert re.search(r'<button[^>]*id="save"[^>]*class="send"[^>]*>\s*Guardar cambios', html)
+
+
+def test_empty_state_is_a_greeting_from_epsilon_with_starters():
+    section = re.search(r'<section id="empty".*?</section>', chat_html(), re.S).group(0)
+
+    assert 'class="mark"' in section and "Mandame" in section
+    assert section.count('class="starter"') == 3
+    assert "audio" not in section.lower()  # todavía no se puede mandar audio
+
+
+def test_empty_state_is_not_a_message_node():
+    # «Nuevo chat» borra todos los .msg: si el saludo lo fuera, se perdería.
+    tag = re.search(r'<section id="empty"[^>]*>', chat_html()).group(0)
+
+    assert "msg" not in tag

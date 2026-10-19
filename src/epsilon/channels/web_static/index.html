@@ -90,14 +90,20 @@
 
       <!-- La conversación. aria-live hace que un lector de pantalla lea lo nuevo. -->
       <main id="log" class="log" role="log" aria-live="polite" aria-label="Conversación">
+        <!-- El primer mensaje de Epsilon. No lleva la clase msg a propósito: «Nuevo
+             chat» borra todos los .msg, y este saludo tiene que quedar. -->
         <section id="empty" class="empty">
-          <h2>Empezá con un comando o una nota</h2>
-          <p>Escribí <code>+ texto</code> para guardar una nota, o arrastrá una imagen o un PDF.
-            Si la imagen lleva un texto como <code>gastos: fecha, total</code>, la paso a CSV.</p>
-          <div class="starters">
-            <button class="starter" type="button" data-command="/ayuda">/ayuda</button>
-            <button class="starter" type="button" data-command="/archivos">/archivos</button>
-            <button class="starter" type="button" data-command="/uso">/uso</button>
+          <span class="mark" aria-hidden="true">ε</span>
+          <div class="body">
+            <p class="greeting">Mandame un texto, una imagen o un PDF y lo guardo donde corresponda.
+              También puedo leer lo que ya tenés en tus notas.</p>
+            <p class="greeting hint-line">Probá con <code>+ comprar filamento</code> para guardar una nota,
+              o adjuntá una imagen con <code>gastos: fecha, total</code> para pasarla a CSV.</p>
+            <div class="starters">
+              <button class="starter" type="button" data-command="/ayuda">/ayuda</button>
+              <button class="starter" type="button" data-command="/archivos">/archivos</button>
+              <button class="starter" type="button" data-command="/uso">/uso</button>
+            </div>
           </div>
         </section>
       </main>
@@ -139,7 +145,9 @@
           <textarea id="input" rows="1" aria-label="Mensaje"
                     placeholder="Escribí un mensaje o un comando"></textarea>
 
-          <button id="send" class="send" type="submit">Enviar</button>
+          <button id="send" class="send-btn" type="submit" aria-label="Enviar" title="Enviar">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
         </div>
 
         <p class="disclaimer">Epsilon puede equivocarse al leer imágenes. Revisá los datos antes de guardar.</p>

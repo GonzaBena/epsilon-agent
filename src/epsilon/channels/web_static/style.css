@@ -5,6 +5,7 @@
   --bg: #0e0f10; /* fondo de la página */
   --side: #141516; /* paneles laterales */
   --surface: #151718; /* compositor, chips */
+  --bubble: #1e2318;      /* tu burbuja: un verde muy oscuro */
   --surface-2: #1b1e1f; /* tus mensajes, botones secundarios */
   --line: #26292b; /* bordes finos */
   --text: #e8e9e6;
@@ -611,10 +612,10 @@ code {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.5rem 1rem;
+  padding: 2rem 1.5rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.75rem;
 }
 
 /* Cada hijo de la conversación se centra en la columna. */
@@ -625,18 +626,30 @@ code {
 }
 
 /* --- Estado vacío ---------------------------------------------------------- */
+/* El saludo de Epsilon: se ve como uno de sus mensajes (la marca ε y el texto). */
 .empty {
-  margin-top: 12vh;
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 8vh;
 }
-.empty h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.35rem;
-  font-weight: 600;
+.empty .mark {
+  flex: none;
+  margin-top: 0.1rem;
 }
-.empty p {
-  margin: 0 0 1.25rem;
+.empty .body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  max-width: 68ch;
+}
+.greeting {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.greeting.hint-line {
   color: var(--muted);
-  max-width: 60ch;
 }
 
 .starters {
@@ -670,11 +683,10 @@ code {
   justify-content: flex-end;
 }
 .msg.user .body {
-  max-width: 85%;
-  padding: 0.6rem 0.9rem;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius) var(--radius) 4px var(--radius);
+  max-width: 80%;
+  padding: 10px 14px;
+  background: var(--bubble);
+  border-radius: 14px;
 }
 
 /* Lo que responde Epsilon: a la izquierda, sin burbuja, con su marca. */
@@ -693,6 +705,13 @@ code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums; /* los números alinean */
+}
+.msg .text {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.msg.user .text {
+  line-height: 1.55;
 }
 .msg.error .text {
   color: var(--danger);
@@ -832,6 +851,28 @@ textarea::placeholder {
   cursor: pointer;
 }
 .send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Enviar en el chat: cuadrado con ícono, como en el mockup. */
+.send-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: var(--accent);
+  border: 0;
+  border-radius: 12px;
+  color: var(--on-accent);
+  cursor: pointer;
+}
+.send-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.send-btn:disabled {
   opacity: 0.45;
   cursor: default;
 }
