@@ -10,6 +10,12 @@ instalarlo, cargar sus claves y usarlo.
 - `uv sync` instala dependencias
 - `uv run bot.py` arranca el bot
 - `uv run pytest` corre los tests (nunca llaman a Gemini)
+- El bot corre como servicio de usuario (`deploy/epsilon.service`):
+  `systemctl --user status|restart|stop epsilon`; logs con
+  `journalctl --user -u epsilon -f`.
+  **Después de modificar el código del bot, hay que reiniciarlo**
+  (`systemctl --user restart epsilon`) y confirmar que quedó activo; si no,
+  sigue corriendo el código viejo.
 
 ## Estructura
 

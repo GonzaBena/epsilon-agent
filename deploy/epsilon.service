@@ -1,0 +1,18 @@
+# Servicio de usuario de systemd para el bot de Epsilon.
+# Si lo instalás en otra máquina, cambiá las dos rutas de abajo.
+# Instalar:  systemctl --user enable --now /ruta/a/deploy/epsilon.service
+[Unit]
+Description=Epsilon - Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Las claves las carga el propio programa desde src/epsilon/.env (no van acá).
+WorkingDirectory=/home/atlas/Documents/workspace/epsilon-agent/epsilon
+ExecStart=/home/atlas/Documents/workspace/epsilon-agent/epsilon/.venv/bin/python -u -m epsilon.bot
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
