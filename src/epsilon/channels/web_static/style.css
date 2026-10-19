@@ -2,30 +2,38 @@
 
 /* --- Colores y medidas en un solo lugar ------------------------------------ */
 :root {
-  --bg: #0e0f10;          /* fondo de la página */
-  --side: #141516;        /* paneles laterales */
-  --surface: #151718;     /* compositor, chips */
-  --surface-2: #1b1e1f;   /* tus mensajes, botones secundarios */
-  --line: #26292b;        /* bordes finos */
+  --bg: #0e0f10; /* fondo de la página */
+  --side: #141516; /* paneles laterales */
+  --surface: #151718; /* compositor, chips */
+  --surface-2: #1b1e1f; /* tus mensajes, botones secundarios */
+  --line: #26292b; /* bordes finos */
   --text: #e8e9e6;
-  --muted: #a1a6a1;       /* textos secundarios (7:1 sobre el fondo) */
-  --accent: #b8f26b;      /* lima: lo único con color */
-  --on-accent: #0e0f10;   /* texto sobre el lima */
+  --muted: #a1a6a1; /* textos secundarios (7:1 sobre el fondo) */
+  --accent: #b8f26b; /* lima: lo único con color */
+  --on-accent: #0e0f10; /* texto sobre el lima */
   --danger: #ff9b8a;
 
-  --column: 47.5rem;      /* ancho de la conversación (760px) */
+  --column: 47.5rem; /* ancho de la conversación (760px) */
   --radius: 12px;
-  --font: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font:
+    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body { height: 100%; margin: 0; }
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
 
 body {
   display: flex;
-  flex-direction: column;  /* header arriba, el esqueleto ocupa el resto */
+  flex-direction: column; /* header arriba, el esqueleto ocupa el resto */
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
@@ -35,12 +43,22 @@ body {
 
 /* El elemento con el atributo hidden siempre se oculta, aunque otra regla le
    ponga display. */
-[hidden] { display: none !important; }
+[hidden] {
+  display: none !important;
+}
 
-button, textarea, input { font: inherit; color: inherit; }
+button,
+textarea,
+input {
+  font: inherit;
+  color: inherit;
+}
 
 /* Foco visible para quien navega con teclado. */
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 code {
   font-family: var(--mono);
@@ -69,7 +87,12 @@ code {
   color: inherit;
   text-decoration: none;
 }
-.brand h1 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: 0.01em; }
+.brand h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
 
 /* La marca ε: el único adorno de la página. */
 .mark {
@@ -78,7 +101,7 @@ code {
   width: 1.9rem;
   height: 1.9rem;
   border: 1.5px solid var(--accent);
-  border-radius: 50%;
+  border-radius: 8px;
   color: var(--accent);
   font-size: 1.1rem;
   line-height: 1;
@@ -96,9 +119,15 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.crumb #crumb { color: var(--text); }
+.crumb #crumb {
+  color: var(--text);
+}
 
-.top-actions { display: flex; align-items: center; gap: 0.75rem; }
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 
 /* El modelo de Gemini en uso. Es un enlace: lleva a cambiarlo en Configuración. */
 .model-chip {
@@ -118,7 +147,9 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.model-chip:hover { border-color: var(--accent); }
+.model-chip:hover {
+  border-color: var(--accent);
+}
 
 /* --- Esqueleto: panel izquierdo + escenario --------------------------------- */
 /* El ancho del panel sale de data-left (lo cambia shell.js al abrir y cerrar). */
@@ -130,7 +161,25 @@ code {
   grid-template-columns: var(--left-w) minmax(0, 1fr);
   transition: grid-template-columns 0.18s ease;
 }
-.shell[data-left="collapsed"] { --left-w: 64px; }
+.shell[data-left="collapsed"] {
+  --left-w: 64px;
+}
+
+/* El chat tiene además un panel derecho; la configuración no. */
+.shell.has-right {
+  --right-w: 300px;
+  grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
+}
+.shell.has-right[data-right="collapsed"] {
+  --right-w: 48px;
+}
+/* En ventanas angostas no hay lugar: el panel derecho no se muestra. */
+.shell.has-right.is-narrow {
+  --right-w: 0px;
+}
+.shell.is-narrow .side-right {
+  display: none;
+}
 
 /* El escenario: lo que cambia de una página a otra (el chat, la configuración). */
 .stage {
@@ -141,7 +190,9 @@ code {
   background: var(--bg);
 }
 /* La configuración es una página larga: hace scroll en el escenario. */
-.settings-page .stage { overflow-y: auto; }
+.settings-page .stage {
+  overflow-y: auto;
+}
 
 /* --- Paneles laterales ------------------------------------------------------- */
 .side {
@@ -154,7 +205,9 @@ code {
   overflow-y: auto;
   background: var(--side);
 }
-.side-left { border-right: 1px solid var(--line); }
+.side-left {
+  border-right: 1px solid var(--line);
+}
 
 .side-title {
   margin: 0 0 4px;
@@ -180,9 +233,15 @@ code {
   font-weight: 600;
   text-decoration: none;
 }
-.new-chat:hover { filter: brightness(1.08); }
+.new-chat:hover {
+  filter: brightness(1.08);
+}
 
-.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .nav-item {
   position: relative;
   display: flex;
@@ -195,14 +254,31 @@ code {
   font-size: 14px;
   text-decoration: none;
 }
-.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
 /* La página actual: fondo y ícono en lima (además del atributo, para lectores). */
-.nav-item[aria-current="page"] { background: var(--surface-2); color: var(--text); }
-.nav-item[aria-current="page"] svg { color: var(--accent); }
-.nav-item svg, .new-chat svg { flex: none; }
-.label { white-space: nowrap; }
+.nav-item[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-item[aria-current="page"] svg {
+  color: var(--accent);
+}
+.nav-item svg,
+.new-chat svg {
+  flex: none;
+}
+.label {
+  white-space: nowrap;
+}
 
-.recents-list { margin: 0; padding: 0; list-style: none; }
+.recents-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .recent {
   display: block;
   padding: 8px 12px;
@@ -214,7 +290,10 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.recent:hover, .recent[aria-current] { background: var(--surface-2); }
+.recent:hover,
+.recent[aria-current] {
+  background: var(--surface-2);
+}
 
 /* Dónde se guardan tus datos: abajo del todo. */
 .local-card {
@@ -249,18 +328,28 @@ code {
   color: var(--muted);
   cursor: pointer;
 }
-.panel-toggle:hover { color: var(--text); background: var(--surface-2); }
+.panel-toggle:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
 
 /* --- Panel izquierdo contraído: una columna de íconos -----------------------
    Vale cuando lo cerrás vos (data-left="collapsed") y cuando la ventana es
    angosta (shell.js agrega is-narrow). Las etiquetas siguen en la página, solo
    que fuera de la vista: así cada ícono conserva su nombre para quien usa un
    lector de pantalla. */
-.shell:is([data-left="collapsed"], .is-narrow) { --left-w: 64px; }
-.shell:is([data-left="collapsed"], .is-narrow) .side-left { align-items: center; padding: 16px 10px; }
-.shell:is([data-left="collapsed"], .is-narrow) .side-title,
-.shell:is([data-left="collapsed"], .is-narrow) .recents,
-.shell:is([data-left="collapsed"], .is-narrow) .local-card { display: none; }
+.shell:is([data-left="collapsed"], .is-narrow) {
+  --left-w: 64px;
+}
+.shell:is([data-left="collapsed"], .is-narrow) .side-left {
+  align-items: center;
+  padding: 16px 10px;
+}
+.shell:is([data-left="collapsed"], .is-narrow) .side-left .side-title,
+.shell:is([data-left="collapsed"], .is-narrow) .side-left .recents,
+.shell:is([data-left="collapsed"], .is-narrow) .side-left .local-card {
+  display: none;
+}
 .shell:is([data-left="collapsed"], .is-narrow) .label {
   position: absolute;
   width: 1px;
@@ -269,14 +358,134 @@ code {
   clip: rect(0 0 0 0);
 }
 .shell:is([data-left="collapsed"], .is-narrow) .new-chat,
-.shell:is([data-left="collapsed"], .is-narrow) .nav-item { width: 44px; padding: 0; justify-content: center; }
-.shell:is([data-left="collapsed"], .is-narrow) .nav { align-items: center; }
+.shell:is([data-left="collapsed"], .is-narrow) .nav-item {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+}
+.shell:is([data-left="collapsed"], .is-narrow) .nav {
+  align-items: center;
+}
 /* Sin el menú de arriba (se ocultó), el botón de abrir va abajo del todo. */
-.shell[data-left="collapsed"] .panel-toggle { margin-top: auto; }
+.shell[data-left="collapsed"] .side-left .panel-toggle {
+  margin-top: auto;
+}
 /* En ventanas angostas el panel no se puede abrir: no hay lugar. */
-.shell.is-narrow .panel-toggle { display: none; }
+.shell.is-narrow .side-left .panel-toggle {
+  display: none;
+}
 
-.status { color: var(--muted); font-size: 0.875rem; }
+/* --- Panel derecho ------------------------------------------------------------ */
+.side-right {
+  border-left: 1px solid var(--line);
+}
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.side-head .side-title {
+  margin: 0;
+}
+.side-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Cada herramienta: el comando arriba y qué hace abajo. Tocarla lo escribe en el mensaje. */
+.tools {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tool {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 12px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.tool:hover {
+  background: var(--surface-2);
+}
+.tool-name {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.tool-desc {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.side-right .channels {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 14px;
+}
+.side-link {
+  display: inline-block;
+  margin: 0.75rem 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.side-link:hover {
+  color: var(--accent);
+}
+
+/* Contraído: solo queda el botón para abrirlo, centrado. */
+.shell[data-right="collapsed"] .side-right {
+  align-items: center;
+  padding: 16px 2px;
+}
+.shell[data-right="collapsed"] .side-right .side-body,
+.shell[data-right="collapsed"] .side-right .side-head .side-title {
+  display: none;
+}
+.shell[data-right="collapsed"] .side-right .side-head {
+  justify-content: center;
+}
+
+/* --- Atajos y nota de cautela, junto al cuadro de texto ------------------------ */
+.quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pill {
+  min-height: 36px;
+  padding: 0 12px;
+  background: none;
+  border: 1px solid #2c3032;
+  border-radius: 999px;
+  color: #c9cdc9;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pill:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.disclaimer {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.status {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
 .status::before {
   content: "";
   display: inline-block;
@@ -286,9 +495,15 @@ code {
   border-radius: 50%;
   background: var(--muted);
 }
-.status.online::before { background: var(--accent); }
-.status.offline { color: var(--danger); }
-.status.offline::before { background: var(--danger); }
+.status.online::before {
+  background: var(--accent);
+}
+.status.offline {
+  color: var(--danger);
+}
+.status.offline::before {
+  background: var(--danger);
+}
 
 .ghost {
   min-height: 2.75rem;
@@ -299,7 +514,10 @@ code {
   color: var(--muted);
   cursor: pointer;
 }
-.ghost:hover { color: var(--text); background: var(--surface-2); }
+.ghost:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
 
 .log {
   flex: 1;
@@ -312,14 +530,32 @@ code {
 }
 
 /* Cada hijo de la conversación se centra en la columna. */
-.log > * { width: 100%; max-width: var(--column); margin-inline: auto; }
+.log > * {
+  width: 100%;
+  max-width: var(--column);
+  margin-inline: auto;
+}
 
 /* --- Estado vacío ---------------------------------------------------------- */
-.empty { margin-top: 12vh; }
-.empty h2 { margin: 0 0 0.5rem; font-size: 1.35rem; font-weight: 600; }
-.empty p { margin: 0 0 1.25rem; color: var(--muted); max-width: 60ch; }
+.empty {
+  margin-top: 12vh;
+}
+.empty h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+.empty p {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+  max-width: 60ch;
+}
 
-.starters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
 .starter {
   min-height: 2.75rem;
   padding: 0 1rem;
@@ -330,13 +566,21 @@ code {
   font-size: 0.9rem;
   cursor: pointer;
 }
-.starter:hover { border-color: var(--accent); color: var(--accent); }
+.starter:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* --- Mensajes -------------------------------------------------------------- */
-.msg { display: flex; gap: 0.75rem; }
+.msg {
+  display: flex;
+  gap: 0.75rem;
+}
 
 /* Lo que escribís vos: a la derecha, en un bloque. */
-.msg.user { justify-content: flex-end; }
+.msg.user {
+  justify-content: flex-end;
+}
 .msg.user .body {
   max-width: 85%;
   padding: 0.6rem 0.9rem;
@@ -346,20 +590,33 @@ code {
 }
 
 /* Lo que responde Epsilon: a la izquierda, sin burbuja, con su marca. */
-.msg.bot .mark { flex: none; margin-top: 0.1rem; }
-.msg.bot .body { min-width: 0; max-width: 68ch; }
+.msg.bot .mark {
+  flex: none;
+  margin-top: 0.1rem;
+}
+.msg.bot .body {
+  min-width: 0;
+  max-width: 68ch;
+}
 
 /* Los saltos de línea del texto se respetan; las palabras largas se cortan. */
 .text {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;  /* los números alinean */
+  font-variant-numeric: tabular-nums; /* los números alinean */
 }
-.msg.error .text { color: var(--danger); }
+.msg.error .text {
+  color: var(--danger);
+}
 
 /* --- Botones de acción (Guardar, Cancelar, Resumir...) --------------------- */
-.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
 
 .action {
   min-height: 2.75rem;
@@ -376,18 +633,44 @@ code {
   color: var(--on-accent);
   font-weight: 600;
 }
-.action:hover:not(:disabled) { filter: brightness(1.1); }
+.action:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
 
 /* Ya usados: se apagan, y el elegido conserva el borde para saber cuál fue. */
-.action:disabled { cursor: default; opacity: 0.45; }
-.action.chosen { opacity: 1; outline: 1.5px solid var(--accent); outline-offset: 2px; }
+.action:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.action.chosen {
+  opacity: 1;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* --- "Pensando…" mientras el modelo trabaja -------------------------------- */
-.thinking .text { color: var(--muted); }
-.dots span { animation: blink 1.2s infinite both; }
-.dots span:nth-child(2) { animation-delay: 0.2s; }
-.dots span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+.thinking .text {
+  color: var(--muted);
+}
+.dots span {
+  animation: blink 1.2s infinite both;
+}
+.dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
 
 /* --- Compositor ------------------------------------------------------------ */
 .composer {
@@ -395,7 +678,10 @@ code {
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
-.composer > * { max-width: var(--column); margin-inline: auto; }
+.composer > * {
+  max-width: var(--column);
+  margin-inline: auto;
+}
 
 .row {
   display: flex;
@@ -406,7 +692,9 @@ code {
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
-.row:focus-within { border-color: var(--accent); }
+.row:focus-within {
+  border-color: var(--accent);
+}
 
 textarea {
   flex: 1;
@@ -415,13 +703,17 @@ textarea {
   padding: 0.6rem 0.25rem;
   background: none;
   border: 0;
-  outline: 0;           /* el foco se muestra en el borde de .row */
+  outline: 0; /* el foco se muestra en el borde de .row */
   resize: none;
   line-height: 1.4;
 }
 /* La regla global :focus-visible tiene más peso que "outline: 0" de arriba. */
-textarea:focus-visible { outline: 0; }
-textarea::placeholder { color: var(--muted); }
+textarea:focus-visible {
+  outline: 0;
+}
+textarea::placeholder {
+  color: var(--muted);
+}
 
 .icon-btn {
   flex: none;
@@ -435,7 +727,10 @@ textarea::placeholder { color: var(--muted); }
   color: var(--muted);
   cursor: pointer;
 }
-.icon-btn:hover { color: var(--text); background: var(--surface-2); }
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
 
 .send {
   flex: none;
@@ -448,7 +743,10 @@ textarea::placeholder { color: var(--muted); }
   font-weight: 600;
   cursor: pointer;
 }
-.send:disabled { opacity: 0.45; cursor: default; }
+.send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 
 /* Archivo adjunto, antes de enviar. */
 .chip {
@@ -464,7 +762,11 @@ textarea::placeholder { color: var(--muted); }
   border-radius: 999px;
   font-size: 0.9rem;
 }
-.chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chip-remove {
   flex: none;
   width: 2.75rem;
@@ -476,7 +778,9 @@ textarea::placeholder { color: var(--muted); }
   font-size: 1.25rem;
   cursor: pointer;
 }
-.chip-remove:hover { color: var(--text); }
+.chip-remove:hover {
+  color: var(--text);
+}
 
 /* --- Soltar archivos ------------------------------------------------------- */
 .drop {
@@ -488,19 +792,29 @@ textarea::placeholder { color: var(--muted); }
   border: 2px dashed var(--accent);
   border-radius: var(--radius);
   z-index: 10;
-  pointer-events: none;  /* no tapa el soltar: lo recibe la ventana */
+  pointer-events: none; /* no tapa el soltar: lo recibe la ventana */
 }
-.drop p { margin: 0; font-size: 1.15rem; }
+.drop p {
+  margin: 0;
+  font-size: 1.15rem;
+}
 
 /* --- Celulares: menos margen y sin el texto del estado ---------------------- */
 @media (max-width: 36rem) {
-  .status { display: none; }
-  .msg.user .body { max-width: 92%; }
+  .status {
+    display: none;
+  }
+  .msg.user .body {
+    max-width: 92%;
+  }
 }
 
 /* Quien pidió menos movimiento no ve el parpadeo. */
 @media (prefers-reduced-motion: reduce) {
-  .dots span { animation: none; opacity: 0.6; }
+  .dots span {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 /* =========================================================================
@@ -519,8 +833,13 @@ a.ghost {
   border-bottom: 1px solid var(--line);
   font-size: 0.95rem;
 }
-.notice p { max-width: var(--column); margin: 0 auto; }
-.notice a { color: var(--accent); }
+.notice p {
+  max-width: var(--column);
+  margin: 0 auto;
+}
+.notice a {
+  color: var(--accent);
+}
 
 /* =========================================================================
    Pantalla de configuración
@@ -532,7 +851,11 @@ a.ghost {
   margin: 0 auto;
   padding: 1.5rem 1rem 4rem;
 }
-.page-title { margin: 0 0 1.5rem; font-size: 1.35rem; font-weight: 600; }
+.page-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
 
 /* Cada bloque se separa del anterior con una línea fina, sin tarjetas. */
 .settings section {
@@ -540,11 +863,25 @@ a.ghost {
   padding-top: 1.5rem;
   border-top: 1px solid var(--line);
 }
-.settings h3 { margin: 0 0 0.25rem; font-size: 1.05rem; font-weight: 600; }
-.help { margin: 0 0 1rem; color: var(--muted); max-width: 60ch; }
+.settings h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.help {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  max-width: 60ch;
+}
 
-.field { margin-bottom: 1.1rem; }
-.field label { display: block; margin-bottom: 0.35rem; font-weight: 500; }
+.field {
+  margin-bottom: 1.1rem;
+}
+.field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+}
 
 .settings input[type="text"],
 .settings input[type="password"] {
@@ -557,18 +894,45 @@ a.ghost {
   font-family: var(--mono);
   font-size: 0.95rem;
 }
-.settings input::placeholder { color: var(--muted); letter-spacing: 0.05em; }
-.settings input:focus-visible { outline: 0; border-color: var(--accent); }
-.settings input[aria-invalid="true"] { border-color: var(--danger); }
+.settings input::placeholder {
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+.settings input:focus-visible {
+  outline: 0;
+  border-color: var(--accent);
+}
+.settings input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
 
-.secret-row { display: flex; gap: 0.5rem; align-items: center; }
-.secret-row input { flex: 1; min-width: 0; }
+.secret-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.secret-row input {
+  flex: 1;
+  min-width: 0;
+}
 
-.hint { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.9rem; }
-.error { margin: 0.35rem 0 0; color: var(--danger); font-size: 0.9rem; }
-.error:empty { display: none; }
+.hint {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.error {
+  margin: 0.35rem 0 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+.error:empty {
+  display: none;
+}
 
-.ghost.danger:hover { color: var(--danger); }
+.ghost.danger:hover {
+  color: var(--danger);
+}
 
 /* Botón secundario (probar). El principal es .send, el lima. */
 .secondary {
@@ -579,19 +943,43 @@ a.ghost {
   border-radius: 8px;
   cursor: pointer;
 }
-.secondary:hover:not(:disabled) { border-color: var(--accent); }
-.secondary:disabled { opacity: 0.45; cursor: default; }
+.secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 
-.test-row, .save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; }
+.test-row,
+.save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
 
 /* Resultado de una prueba o de guardar: en palabras, y el color solo acompaña. */
-.result { margin: 0; font-size: 0.95rem; }
-.result.ok { color: var(--accent); }
-.result.fail { color: var(--danger); }
+.result {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.result.ok {
+  color: var(--accent);
+}
+.result.fail {
+  color: var(--danger);
+}
 
-.save-row { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.save-row {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
 
-.path { overflow-wrap: anywhere; }
+.path {
+  overflow-wrap: anywhere;
+}
 
 /* --- Aviso de reinicio pendiente ------------------------------------------ */
 .restart {
@@ -600,13 +988,30 @@ a.ghost {
   border: 1.5px solid var(--accent);
   border-radius: var(--radius);
 }
-.settings .restart { margin-top: 0; padding-top: 1rem; border-top: 1.5px solid var(--accent); }
-.restart h3 { margin-bottom: 0.5rem; }
-.restart p { margin: 0.5rem 0 0; }
-.restart-list { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+.settings .restart {
+  margin-top: 0;
+  padding-top: 1rem;
+  border-top: 1.5px solid var(--accent);
+}
+.restart h3 {
+  margin-bottom: 0.5rem;
+}
+.restart p {
+  margin: 0.5rem 0 0;
+}
+.restart-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
 
 /* --- Estado de canales ------------------------------------------------------ */
-.channels { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+.channels {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
 .channel {
   display: grid;
   grid-template-columns: auto auto 1fr;
@@ -620,10 +1025,18 @@ a.ghost {
   background: var(--muted);
   transform: translateY(-0.05rem);
 }
-.channel.running .dot { background: var(--accent); }
-.channel.stopped .dot { background: var(--danger); }
-.channel .state { color: var(--muted); }
-.channel.stopped .state { color: var(--danger); }
+.channel.running .dot {
+  background: var(--accent);
+}
+.channel.stopped .dot {
+  background: var(--danger);
+}
+.channel .state {
+  color: var(--muted);
+}
+.channel.stopped .state {
+  color: var(--danger);
+}
 /* El motivo ocupa su propia línea, bajo el nombre. */
 .channel .detail {
   grid-column: 2 / -1;

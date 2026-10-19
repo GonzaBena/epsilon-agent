@@ -28,6 +28,8 @@ const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
 
 let history = loadHistory(); // lista de {role, text, actions, used, chosen, error}
 let pendingFile = null;      // archivo elegido, esperando que se envíe
+let wantsCsv = false;        // true si el archivo se pidió con el atajo «Imagen a CSV»
+const CSV_TEMPLATE = "nombre: campo1, campo2"; // ejemplo del pedido de CSV
 let busy = false;            // true mientras esperamos una respuesta
 
 // Con un archivo adjunto, el texto que escribas se usa para pedir un CSV.
@@ -241,6 +243,16 @@ function setFile(file) {
   chip.hidden = false;
   input.placeholder = FILE_PLACEHOLDER;
   input.focus();
+  // Si se eligió con «Imagen a CSV», dejamos un ejemplo del pedido ya seleccionado:
+  // escribir encima lo reemplaza. Si ya habías escrito algo, no se toca.
+  if (wantsCsv) {
+    wantsCsv = false;
+    if (!input.value.trim()) {
+      input.value = CSV_TEMPLATE;
+      resizeInput();
+      input.select();
+    }
+  }
 }
 
 function clearFile() {
@@ -250,7 +262,18 @@ function clearFile() {
   input.placeholder = DEFAULT_PLACEHOLDER;
 }
 
-attachButton.addEventListener("click", () => fileInput.click());
+attachButton.addEventListener("click", () => {
+  wantsCsv = false;
+  fileInput.click();
+});
+document.getElementById("pill-csv").addEventListener("click", () => {
+  wantsCsv = true;
+  fileInput.click();
+});
+// Si cerrás el selector sin elegir nada, el atajo no queda "armado".
+fileInput.addEventListener("cancel", () => {
+  wantsCsv = false;
+});
 fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) setFile(fileInput.files[0]);
 });
@@ -349,6 +372,20 @@ for (const element of document.querySelectorAll("[data-command]")) {
     event.preventDefault();
     runCommand(element.dataset.command);
   });
+}
+
+// --- Atajos y herramientas: escriben en el cuadro de texto, no envían ----------------------
+// Así podés agregarle lo que falta (el nombre de la nota, la palabra a buscar).
+// Reemplazan lo que hubiera escrito: son para empezar un comando nuevo.
+function insertText(text) {
+  input.value = text;
+  resizeInput();
+  input.focus();
+  input.setSelectionRange(text.length, text.length); // el cursor, al final
+}
+
+for (const element of document.querySelectorAll("[data-insert]")) {
+  element.addEventListener("click", () => insertText(element.dataset.insert));
 }
 
 // --- Nuevo chat ---------------------------------------------------------------------------------

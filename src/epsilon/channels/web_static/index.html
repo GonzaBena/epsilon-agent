@@ -25,7 +25,7 @@
     </div>
   </header>
 
-  <div class="shell" data-left="open" data-right="open">
+  <div class="shell has-right" data-left="open" data-right="open">
 
     <!-- Menú lateral. Es el mismo en config.html (si cambia uno, cambia el otro:
          un test lo vigila). Contraído, queda una columna de íconos; las
@@ -103,6 +103,13 @@
       </main>
 
       <form id="composer" class="composer" autocomplete="off">
+        <!-- Atajos: preparan el mensaje, no envían nada. -->
+        <div class="quick">
+          <button class="pill" type="button" data-insert="+ ">Guardar nota</button>
+          <button class="pill" type="button" id="pill-csv">Imagen a CSV</button>
+          <button class="pill" type="button" data-insert="/resumir ">Resumir</button>
+        </div>
+
         <!-- Archivo elegido, esperando que se envíe junto con el texto. -->
         <div id="chip" class="chip" hidden>
           <span id="chip-name" class="chip-name"></span>
@@ -123,8 +130,45 @@
 
           <button id="send" class="send" type="submit">Enviar</button>
         </div>
+
+        <p class="disclaimer">Epsilon puede equivocarse al leer imágenes. Revisá los datos antes de guardar.</p>
       </form>
     </div>
+
+    <!-- Panel derecho: qué sabe hacer Epsilon y cómo están los canales. Contraído,
+         queda una columna mínima con el botón para abrirlo. -->
+    <aside class="side side-right" id="right" aria-label="Herramientas y canales">
+      <div class="side-head">
+        <h2 class="side-title">Panel</h2>
+        <button type="button" class="panel-toggle" data-toggle="right"
+                aria-expanded="true" aria-controls="right" aria-label="Cerrar el panel" title="Cerrar el panel">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        </button>
+      </div>
+
+      <div class="side-body">
+        <section aria-labelledby="h-tools">
+          <h2 class="side-title" id="h-tools">Herramientas</h2>
+          <!-- Tocar una fila escribe el comando en el cuadro de texto (no lo envía):
+               así podés agregarle lo que falta, como el nombre de la nota. -->
+          <ul class="tools">
+            <li><button type="button" class="tool" data-insert="+ "><span class="tool-name">+ texto</span><span class="tool-desc">Guardar una nota en inbox</span></button></li>
+            <li><button type="button" class="tool" data-insert="/ver "><span class="tool-name">/ver</span><span class="tool-desc">Leer una nota (por defecto, inbox)</span></button></li>
+            <li><button type="button" class="tool" data-insert="/buscar "><span class="tool-name">/buscar</span><span class="tool-desc">Buscar una palabra en tus notas</span></button></li>
+            <li><button type="button" class="tool" data-insert="/archivos "><span class="tool-name">/archivos</span><span class="tool-desc">Listar lo guardado, lo más nuevo primero</span></button></li>
+            <li><button type="button" class="tool" data-insert="/resumir "><span class="tool-name">/resumir</span><span class="tool-desc">Resumir una nota o archivo guardado</span></button></li>
+            <li><button type="button" class="tool" data-insert="/ticket"><span class="tool-name">/ticket</span><span class="tool-desc">Guardar la próxima imagen en tickets/</span></button></li>
+            <li><button type="button" class="tool" data-insert="/uso"><span class="tool-name">/uso</span><span class="tool-desc">Tokens y precio gastados</span></button></li>
+          </ul>
+        </section>
+
+        <section aria-labelledby="h-side-channels">
+          <h2 class="side-title" id="h-side-channels">Canales</h2>
+          <ul class="channels" id="side-channels"></ul>
+          <a class="side-link" href="/config">Administrar en Configuración</a>
+        </section>
+      </div>
+    </aside>
 
   </div>
 

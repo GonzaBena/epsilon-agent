@@ -752,3 +752,68 @@ def test_new_chat_replaces_clear_chat():
 
     assert 'id="new-chat"' in html and "Nuevo chat" in html
     assert "Limpiar chat" not in html
+
+
+# --- Panel derecho (chat), atajos y nota de cautela --------------------------
+
+
+def chat_html():
+    return page("index.html")
+
+
+def test_chat_has_a_collapsible_right_panel_with_an_accessible_toggle():
+    html = chat_html()
+
+    assert re.search(r'<aside[^>]*id="right"', html)
+    tag = re.search(r'<button[^>]*data-toggle="right"[^>]*>', html).group(0)
+    for needed in ('aria-expanded="', 'aria-controls="right"', 'aria-label="', 'type="button"'):
+        assert needed in tag, needed
+    assert 'class="shell has-right"' in html or "has-right" in re.search(r'<div class="shell[^"]*"', html).group(0)
+
+
+def test_the_config_page_has_no_right_panel():
+    html = page("config.html")
+
+    assert 'id="right"' not in html and "has-right" not in html
+
+
+def test_tool_rows_only_list_commands_the_core_knows():
+    # Si se cambia o saca un comando del núcleo, el panel no puede seguir ofreciéndolo.
+    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+    inserts = re.findall(r'data-insert="([^"]*)"', right)
+
+    assert inserts, "el panel de herramientas no tiene filas"
+    for text in inserts:
+        if text.startswith("/"):
+            assert text.strip().lstrip("/") in core.COMMANDS, text
+        else:
+            assert text == "+ "  # guardar una nota
+
+
+def test_every_core_command_the_help_mentions_is_in_the_tools_panel():
+    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+    shown = {t.strip().lstrip("/") for t in re.findall(r'data-insert="([^"]*)"', right) if t.startswith("/")}
+
+    for command in ("ver", "buscar", "archivos", "resumir", "ticket", "uso"):
+        assert command in shown, command
+
+
+def test_tool_rows_are_buttons_that_fill_the_message_box_without_sending():
+    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+
+    for tag in re.findall(r"<[^>]*data-insert=[^>]*>", right):
+        assert tag.startswith("<button") and 'type="button"' in tag, tag
+
+
+def test_quick_actions_sit_above_the_message_box():
+    html = chat_html()
+    composer = re.search(r'<form id="composer".*?</form>', html, re.S).group(0)
+
+    for label in ("Guardar nota", "Imagen a CSV", "Resumir"):
+        assert label in composer, label
+    assert composer.index("Guardar nota") < composer.index('id="input"')
+
+
+def test_chat_warns_that_reading_images_can_be_wrong():
+    assert "Epsilon puede equivocarse al leer imágenes" in chat_html()
+    assert "Revisá los datos antes de guardar" in chat_html()

@@ -29,9 +29,14 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
 
 1. Header y panel izquierdo con su versión contraída. **Hecho.**
 2. Panel derecho (Herramientas, Canales) con su versión contraída, píldoras de
-   atajos sobre el cuadro de texto y la nota «puede equivocarse».
+   atajos sobre el cuadro de texto y la nota «puede equivocarse». **Hecho.**
+   Las herramientas y píldoras escriben en el cuadro (reemplazan lo que hubiera)
+   y no envían; «Imagen a CSV» abre el selector y deja un ejemplo seleccionado.
 3. Pulido: color de las burbujas, botón de enviar cuadrado con ícono, estado vacío.
 
 ## Sin verificar
 
-El comportamiento en ventana angosta (no se pudo achicar la ventana del navegador).
+- El comportamiento en ventana angosta (no se pudo achicar la ventana del navegador).
+- La suavidad de la animación al contraer: en la pestaña automatizada los
+  fotogramas llegan a saltos. Sin transición, las 4 combinaciones de paneles
+  llegan al ancho correcto (verificado).
