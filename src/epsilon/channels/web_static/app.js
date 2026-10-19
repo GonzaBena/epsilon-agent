@@ -30,6 +30,12 @@ let history = loadHistory(); // lista de {role, text, actions, used, chosen, err
 let pendingFile = null;      // archivo elegido, esperando que se envíe
 let busy = false;            // true mientras esperamos una respuesta
 
+// Con un archivo adjunto, el texto que escribas se usa para pedir un CSV.
+// Esa función no se descubre sola, así que el placeholder la explica.
+const DEFAULT_PLACEHOLDER = input.placeholder; // el que trae el HTML
+const FILE_PLACEHOLDER =
+  "Para pasarlo a CSV escribí: gastos: fecha, total. Sin texto, solo se guarda.";
+
 // --- Historial en el navegador ------------------------------------------------
 // localStorage puede fallar (modo privado, datos bloqueados): por eso va en
 // try/catch y la página funciona igual sin él.
@@ -231,6 +237,7 @@ function setFile(file) {
   pendingFile = file;
   chipName.textContent = file.name;
   chip.hidden = false;
+  input.placeholder = FILE_PLACEHOLDER;
   input.focus();
 }
 
@@ -238,6 +245,7 @@ function clearFile() {
   pendingFile = null;
   fileInput.value = ""; // permite elegir el mismo archivo otra vez
   chip.hidden = true;
+  input.placeholder = DEFAULT_PLACEHOLDER;
 }
 
 attachButton.addEventListener("click", () => fileInput.click());
