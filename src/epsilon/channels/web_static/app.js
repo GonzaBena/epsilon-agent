@@ -24,11 +24,17 @@ const statusLabel = document.getElementById("status");
 const newChatLink = document.getElementById("new-chat");
 
 // --- Estado -----------------------------------------------------------------
-const STORAGE_KEY = "epsilon.history"; // dónde guarda el navegador el historial
-const MAX_SAVED = 200;                  // mensajes que se recuerdan al recargar
 const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
 
-let history = loadHistory(); // lista de {role, text, actions, used, chosen, error}
+// La conversación abierta. Las conversaciones viven en el SERVIDOR (archivos en la
+// carpeta de datos); acá solo recordamos cuál tenías abierta. null = no hay servidor
+// al que guardarle: el chat funciona igual, pero sin guardar.
+let conversationId = null;
+let loadToken = 0; // para ignorar la respuesta de una conversación que ya cambiaste
+const CURRENT_KEY = "epsilon.current"; // la que tenías abierta, para volver a ella al recargar
+// Misma forma que acepta el servidor (conversations.py); un test vigila que coincidan.
+const CONVERSATION_ID = /^\d{8}-\d{6}-[0-9a-f]{4}$/;
+
 let pendingFile = null;      // archivo elegido, esperando que se envíe
 let previewUrl = null;       // dirección local (blob:) de la miniatura; hay que liberarla
 let wantsCsv = false;        // true si el archivo se pidió con el atajo «Imagen a CSV»
@@ -41,28 +47,38 @@ const DEFAULT_PLACEHOLDER = input.placeholder; // el que trae el HTML
 const FILE_PLACEHOLDER =
   "Para pasarlo a CSV escribí: gastos: fecha, total. Sin texto, solo se guarda.";
 
-// --- Historial en el navegador ------------------------------------------------
-// localStorage puede fallar (modo privado, datos bloqueados): por eso va en
-// try/catch y la página funciona igual sin él.
+// --- La conversación abierta (se recuerda en el navegador; el contenido, no) ---------
+// localStorage puede fallar (modo privado, datos bloqueados): va en try/catch y la
+// página funciona igual, solo que no vuelve a la última conversación al recargar.
 
-function loadHistory() {
+function rememberCurrent(id) {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(saved) ? saved : [];
+    if (id) localStorage.setItem(CURRENT_KEY, id);
+    else localStorage.removeItem(CURRENT_KEY);
   } catch {
-    return [];
+    // Sin almacenamiento no pasa nada grave.
   }
 }
 
-function saveHistory() {
+function recallCurrent() {
   try {
-    // slice(-N) se queda con los últimos N mensajes.
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-MAX_SAVED)));
+    const id = localStorage.getItem(CURRENT_KEY) || "";
+    return CONVERSATION_ID.test(id) ? id : null;
   } catch {
-    // Sin almacenamiento no pasa nada grave: solo no se recuerda al recargar.
+    return null;
   }
-  // shell.js escucha esto para actualizar el título (header y «Recientes»).
-  window.dispatchEvent(new Event("epsilon:history"));
+}
+
+// El historial viejo (de antes de guardar en el servidor) ya no se usa: lo borramos.
+try {
+  localStorage.removeItem("epsilon.history");
+} catch {
+  // Nada que borrar.
+}
+
+// shell.js escucha esto para actualizar «Recientes» y el título del header.
+function announce() {
+  window.dispatchEvent(new CustomEvent("epsilon:conversation", { detail: { id: conversationId } }));
 }
 
 // --- Armado de mensajes en pantalla -------------------------------------------
@@ -112,20 +128,55 @@ function scrollToEnd() {
   log.scrollTop = log.scrollHeight;
 }
 
-// Agrega un mensaje al historial, lo muestra y lo guarda.
+// Muestra un mensaje. (Guardarlo es cosa del servidor: ya lo hizo al recibir el pedido.)
 function addMessage(message) {
-  history.push(message);
-  empty.hidden = true; // ya hay conversación: afuera el estado vacío
+  empty.hidden = true; // ya hay conversación: afuera el saludo
   render(message);
-  saveHistory();
   scrollToEnd();
 }
 
-// Al abrir la página, dibuja lo que se recordaba.
-function renderHistory() {
-  empty.hidden = history.length > 0;
-  for (const message of history) render(message);
-  scrollToEnd();
+// Deja la pantalla sin mensajes (el saludo vuelve a mostrarse si hace falta).
+function clearScreen() {
+  for (const node of log.querySelectorAll(".msg")) node.remove();
+  clearFile(); // un archivo a medio adjuntar no tiene que irse a otra conversación
+  empty.hidden = false;
+}
+
+// Abre una conversación: dibuja lo que el servidor tiene guardado.
+async function openConversation(id) {
+  const token = ++loadToken;
+  conversationId = id;
+  rememberCurrent(id);
+  clearScreen();
+  try {
+    const response = await fetch(`/api/conversations/${id}`);
+    if (token !== loadToken) return; // ya abriste otra mientras esta cargaba
+    if (response.ok) {
+      const data = await response.json();
+      for (const message of data.messages) render(message); // ya traen used / chosen
+      empty.hidden = data.messages.length > 0;
+      scrollToEnd();
+    }
+    // Un 404 es una conversación nueva que todavía no tiene mensajes: pantalla vacía.
+  } catch {
+    setStatus(false);
+  }
+  announce();
+}
+
+// Nuevo chat: pide un id al servidor (no crea ningún archivo hasta el primer mensaje).
+async function startNewChat() {
+  const token = ++loadToken;
+  clearScreen();
+  conversationId = null;
+  try {
+    const response = await fetch("/api/conversations", { method: "POST" });
+    if (response.ok && token === loadToken) conversationId = (await response.json()).id;
+  } catch {
+    // Sin servidor: el chat sigue andando, solo que sin guardar.
+  }
+  rememberCurrent(conversationId);
+  announce();
 }
 
 // --- "Pensando…" mientras el modelo trabaja -----------------------------------
@@ -161,6 +212,7 @@ function setBusy(value) {
 async function ask(request) {
   setBusy(true);
   const thinking = showThinking();
+  const target = conversationId; // en qué conversación se hizo el pedido
   try {
     const response = await request();
     const data = await response.json();
@@ -169,18 +221,27 @@ async function ask(request) {
       throw new Error(typeof data.detail === "string" ? data.detail : "Pedido no válido");
     }
     setStatus(true);
-    addMessage({ role: "bot", text: data.text, actions: data.actions });
+    // Si cambiaste de conversación mientras esperabas, la respuesta no se dibuja acá
+    // (el servidor igual la guardó en la suya).
+    if (target === conversationId) {
+      // message_id: el id con el que el servidor guardó este mensaje; hace falta para
+      // decirle después cuál de sus botones tocaste.
+      addMessage({ role: "bot", text: data.text, actions: data.actions, id: data.message_id });
+    }
+    announce(); // «Recientes» y el título pueden haber cambiado
   } catch (error) {
     // fetch falla con TypeError cuando no hay conexión con el servidor.
     const offline = error instanceof TypeError;
     setStatus(!offline);
-    addMessage({
-      role: "bot",
-      error: true,
-      text: offline
-        ? "No pude conectar con Epsilon. ¿Sigue corriendo? Revisá el servicio."
-        : error.message,
-    });
+    if (target === conversationId) {
+      addMessage({
+        role: "bot",
+        error: true,
+        text: offline
+          ? "No pude conectar con Epsilon. ¿Sigue corriendo? Revisá el servicio."
+          : error.message,
+      });
+    }
   } finally {
     thinking.remove();
     setBusy(false);
@@ -190,11 +251,13 @@ async function ask(request) {
 }
 
 function postJson(body) {
+  // Sin conversation_id (no hay servidor al que guardarle) el pedido igual funciona.
+  const payload = conversationId ? { ...body, conversation_id: conversationId } : body;
   return () =>
     fetch("/api/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
 }
 
@@ -203,6 +266,7 @@ function postFile(file, text) {
   const form = new FormData();
   form.append("file", file);
   form.append("text", text);
+  if (conversationId) form.append("conversation_id", conversationId);
   return () => fetch("/api/upload", { method: "POST", body: form });
 }
 
@@ -226,9 +290,9 @@ function pressAction(message, box, action) {
     button.disabled = true;
     if (button.dataset.id === action.id) button.classList.add("chosen");
   }
-  saveHistory();
 
-  ask(postJson({ action: action.id }));
+  // message_id: el servidor anota en QUÉ mensaje se tocó (puede haber dos con el mismo botón).
+  ask(postJson({ action: action.id, message_id: message.id }));
 }
 
 // --- Archivo adjunto -------------------------------------------------------------
@@ -417,34 +481,44 @@ for (const element of document.querySelectorAll("[data-insert]")) {
   element.addEventListener("click", () => insertText(element.dataset.insert));
 }
 
-// --- Nuevo chat ---------------------------------------------------------------------------------
-// Por ahora vacía la conversación de este navegador (las notas y archivos no se
-// tocan). Más adelante crearía una conversación nueva guardada en el servidor.
-function startNewChat() {
-  history = [];
-  saveHistory();
-  for (const node of log.querySelectorAll(".msg")) node.remove();
-  empty.hidden = false;
-}
-
+// --- Nuevo chat y abrir una conversación ------------------------------------------------------
 newChatLink.addEventListener("click", (event) => {
   event.preventDefault();
-  startNewChat();
-  input.focus();
+  startNewChat().then(() => input.focus());
 });
 
-// --- Desde otra página (/?nuevo o /?cmd=...) ----------------------------------------------------
+// Las conversaciones de «Recientes» son enlaces (/?c=<id>) para que también funcionen
+// desde la pantalla de configuración; en el chat los atajamos y abrimos sin recargar.
+// (shell.js dibuja la lista; acá solo escuchamos los clics.)
+document.getElementById("recents").addEventListener("click", (event) => {
+  const link = event.target.closest("a.recent[data-id]");
+  if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+  event.preventDefault(); // Ctrl+clic y compañía abren en otra pestaña, como siempre
+  if (link.dataset.id !== conversationId) openConversation(link.dataset.id).then(() => input.focus());
+});
+
+// --- Al llegar a la página (también desde otra: /?nuevo, /?c=..., /?cmd=...) -----------------
 // SOLO estos comandos se ejecutan solos al llegar por un enlace: son lecturas.
 // Nada que escriba o que llame al modelo. Cualquier otro valor se ignora.
 const ALLOWED_COMMANDS = ["/ver", "/archivos", "/archivos tickets", "/uso"];
 
-function handleLaunchParams() {
+async function start() {
   const params = new URLSearchParams(window.location.search);
-  if (params.has("nuevo")) startNewChat();
+  // Limpiamos la URL: así recargar la página no repite el comando ni vuelve a abrir esa conversación.
+  if ([...params.keys()].length) window.history.replaceState(null, "", "/");
+
+  const requested = params.get("c") || "";
+  if (params.has("nuevo")) {
+    await startNewChat();
+  } else {
+    // Una conversación pedida en la URL, o la que tenías abierta, o una nueva.
+    const id = CONVERSATION_ID.test(requested) ? requested : recallCurrent();
+    if (id) await openConversation(id);
+    else await startNewChat();
+  }
+
   const command = params.get("cmd");
   if (command && ALLOWED_COMMANDS.includes(command)) runCommand(command);
-  // Limpiamos la URL: así recargar la página no repite el comando.
-  if ([...params.keys()].length) window.history.replaceState(null, "", "/");
 }
 
 // --- Estado de la conexión ----------------------------------------------------------
@@ -479,8 +553,7 @@ async function checkSetup() {
 }
 
 // --- Arranque ---------------------------------------------------------------------
-renderHistory();
-handleLaunchParams();
+start();
 checkHealth();
 checkSetup();
 input.focus();

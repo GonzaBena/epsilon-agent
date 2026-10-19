@@ -305,7 +305,7 @@ code {
 }
 
 .recents {
-  max-height: 240px;
+  max-height: 4000px;
   overflow: hidden;
   transition:
     max-height var(--t) ease,
@@ -330,6 +330,58 @@ code {
 .recent:hover,
 .recent[aria-current] {
   background: var(--surface-2);
+}
+
+/* Cada fila de «Recientes»: la conversación y, al lado, el botón de renombrar. */
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.recent-row .recent {
+  flex: 1;
+  min-width: 0;
+}
+/* El lápiz se ve al pasar el mouse por la fila, con el foco del teclado, y siempre en pantallas
+   táctiles (donde no hay «pasar el mouse»). */
+.recent-edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.recent-row:hover .recent-edit,
+.recent-row:focus-within .recent-edit,
+.recent-edit:focus-visible {
+  opacity: 1;
+}
+.recent-edit:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+@media (hover: none) {
+  .recent-edit {
+    opacity: 1;
+  }
+}
+.recent-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: 0;
 }
 
 /* Dónde se guardan tus datos: abajo del todo. */

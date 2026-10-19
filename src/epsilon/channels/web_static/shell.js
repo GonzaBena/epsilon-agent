@@ -8,7 +8,7 @@
 (() => {
   // --- Paneles que se contraen -------------------------------------------------------
   const LAYOUT_KEY = "epsilon.layout"; // dónde recuerda el navegador cómo dejaste los paneles
-  const HISTORY_KEY = "epsilon.history"; // el mismo historial que guarda app.js
+  const CURRENT_KEY = "epsilon.current"; // la conversación abierta (la escribe app.js)
 
   const shell = document.querySelector(".shell");
 
@@ -88,7 +88,7 @@
   }
   narrow.addEventListener("change", applyNarrow);
 
-  // --- Título de la conversación (header y «Recientes») ---------------------------------
+  // --- «Recientes» y título de la conversación ------------------------------------------
   function make(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -96,37 +96,150 @@
     return node;
   }
 
-  // La primera línea de tu primer mensaje, recortada. Vacío si todavía no hay.
-  function conversationTitle() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(HISTORY_KEY));
-      const first = Array.isArray(saved) && saved.find((message) => message.role === "user");
-      return first ? String(first.text).split("\n")[0].slice(0, 40) : "";
-    } catch {
-      return "";
-    }
+  // Un ícono sin innerHTML: se arma con la API de SVG.
+  function icon(pathData) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    for (const [name, value] of Object.entries({
+      viewBox: "0 0 24 24", width: "14", height: "14", fill: "none", stroke: "currentColor",
+      "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
+    })) svg.setAttribute(name, value);
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", pathData);
+    svg.append(path);
+    return svg;
   }
+  const PENCIL = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z";
 
   const recentsList = document.getElementById("recents");
   const crumb = document.getElementById("crumb");
+  const isChat = Boolean(crumb && crumb.hasAttribute("data-dynamic")); // el crumb de la config es fijo
+  const NEW_TITLE = "Conversación nueva";
 
-  function renderTitle() {
-    const title = conversationTitle() || "Conversación nueva";
-    if (recentsList) {
-      recentsList.replaceChildren();
-      const item = make("li");
-      const link = make("a", "recent", title);
-      link.href = "/";
-      link.setAttribute("aria-current", "true"); // por ahora hay una sola conversación
-      item.append(link);
-      recentsList.append(item);
+  let currentId = recallCurrent(); // la conversación abierta, para resaltarla (también en la config)
+  let conversations = []; // lo último que dijo el servidor: [{id, title, updated}]
+  let editingId = null; // la conversación que se está renombrando
+
+  function recallCurrent() {
+    try {
+      return localStorage.getItem(CURRENT_KEY) || null;
+    } catch {
+      return null;
     }
-    // Solo el título del chat cambia; en otras páginas el crumb es fijo.
-    if (crumb && crumb.hasAttribute("data-dynamic")) crumb.textContent = title;
   }
 
-  // app.js avisa con este evento cada vez que guarda el historial.
-  window.addEventListener("epsilon:history", renderTitle);
+  // Pide la lista al servidor y la dibuja.
+  async function refreshRecents() {
+    try {
+      const response = await fetch("/api/conversations");
+      if (!response.ok) return;
+      conversations = (await response.json()).conversations;
+    } catch {
+      return; // sin conexión: se queda lo que había
+    }
+    renderRecents();
+  }
+
+  // force: dibujar aunque se esté renombrando. Si no, una respuesta que llega (o volver a la
+  // pestaña) recrearía el cuadro de texto y se perdería lo que estabas escribiendo.
+  function renderRecents(force = false) {
+    if (editingId && !force) return;
+    const current = conversations.find((c) => c.id === currentId);
+    // El título del header: el de la conversación abierta, o «nueva» si todavía no tiene mensajes.
+    if (isChat) crumb.textContent = current ? current.title : NEW_TITLE;
+    if (!recentsList) return;
+
+    recentsList.replaceChildren();
+    // Una conversación nueva todavía no tiene archivo (nace con el primer mensaje): no está en la
+    // lista del servidor, pero se muestra arriba para que se vea dónde estás.
+    if (isChat && currentId && !current) {
+      const item = make("li");
+      const label = make("span", "recent", NEW_TITLE);
+      label.setAttribute("aria-current", "true");
+      item.append(label);
+      recentsList.append(item);
+    }
+
+    for (const conversation of conversations) {
+      const item = make("li", "recent-row");
+      if (conversation.id === editingId) item.append(renameInput(conversation));
+      else item.append(...conversationRow(conversation));
+      recentsList.append(item);
+    }
+    const editing = recentsList.querySelector(".recent-input");
+    if (editing) {
+      editing.focus();
+      editing.select();
+    }
+  }
+
+  // Cada conversación: un enlace (/?c=<id>) y el botón de renombrar.
+  function conversationRow(conversation) {
+    // Enlace y no botón: abre en otra pestaña con Ctrl+clic, y en la configuración
+    // (donde no hay chat) simplemente lleva a esa conversación. app.js lo atrapa en el chat.
+    const link = make("a", "recent", conversation.title);
+    link.href = `/?c=${conversation.id}`;
+    link.dataset.id = conversation.id;
+    link.title = conversation.title; // el título entero, por si se corta
+    if (conversation.id === currentId && isChat) link.setAttribute("aria-current", "true");
+
+    const edit = make("button", "recent-edit");
+    edit.type = "button";
+    edit.setAttribute("aria-label", `Renombrar «${conversation.title}»`);
+    edit.title = "Renombrar";
+    edit.append(icon(PENCIL));
+    edit.addEventListener("click", () => {
+      editingId = conversation.id;
+      renderRecents(true);
+    });
+    return [link, edit];
+  }
+
+  // Renombrar en el lugar: Enter guarda, Escape cancela (y soltar el foco también cancela).
+  function renameInput(conversation) {
+    const field = make("input", "recent-input");
+    field.type = "text";
+    field.value = conversation.title;
+    field.maxLength = 200; // el mismo tope que acepta el servidor
+    field.setAttribute("aria-label", "Nuevo nombre de la conversación");
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        finishRename(conversation.id, field.value);
+      } else if (event.key === "Escape") {
+        finishRename(conversation.id, null);
+      }
+    });
+    field.addEventListener("blur", () => {
+      if (editingId === conversation.id) finishRename(conversation.id, null);
+    });
+    return field;
+  }
+
+  async function finishRename(id, text) {
+    editingId = null; // primero, así el "blur" que provoca redibujar no vuelve a entrar
+    if (text !== null) {
+      try {
+        // Vacío = volver al título automático; el servidor limpia y recorta el texto.
+        await fetch(`/api/conversations/${id}/title`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: text }),
+        });
+      } catch {
+        // Sin conexión: la lista se vuelve a pedir abajo y queda como estaba.
+      }
+    }
+    await refreshRecents();
+    recentsList.querySelector(`[data-id="${id}"]`)?.focus(); // el foco vuelve a donde estaba
+  }
+
+  // app.js avisa con este evento cuando abrís o creás una conversación, o llega una respuesta.
+  window.addEventListener("epsilon:conversation", (event) => {
+    currentId = event.detail.id;
+    renderRecents(); // enseguida, con lo que ya sabemos (por ejemplo, el título al cambiar de chat)
+    refreshRecents(); // y con lo que diga el servidor
+  });
 
   // --- Canales (panel derecho del chat) -------------------------------------------------------
   // Mismas etiquetas que la pantalla de configuración; si cambian, cambiarlas en los dos.
@@ -181,12 +294,15 @@
 
   // Al volver a la pestaña, el estado de los canales puede haber cambiado.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) loadInfo();
+    if (!document.hidden) {
+      loadInfo();
+      refreshRecents(); // pudo haber conversaciones nuevas (por ejemplo, desde otra pestaña)
+    }
   });
 
   // --- Arranque -------------------------------------------------------------------------------
   applyLayout();
   applyNarrow();
-  renderTitle();
+  refreshRecents();
   loadInfo();
 })();

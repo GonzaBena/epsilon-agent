@@ -60,6 +60,8 @@ instalarlo, cargar sus claves y usarlo.
   Telegram). Cada request valida Host y Origin; no sacar esas defensas ni
   exponerla a la red sin agregar contraseña y HTTPS.
 - Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
+- El patrón del id de conversación está en `conversations.py` Y en `app.js`; un test
+  vigila que coincidan (si se cambia uno, cambiar el otro).
 - Un enlace `/?cmd=...` solo ejecuta solo los comandos de `ALLOWED_COMMANDS` (app.js):
   lecturas, nunca los que escriben o llaman al modelo.
 - Las claves nunca salen del servidor: ni a la web, ni a logs, ni a mensajes de

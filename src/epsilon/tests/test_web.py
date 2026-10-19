@@ -1183,3 +1183,74 @@ def test_rebinding_cannot_read_conversations(client):
 
     assert client.get(f"/api/conversations/{cid}", headers=attacker).status_code == 403
     assert "privado" not in client.get("/api/conversations", headers=attacker).text
+
+
+# --- Interfaz de conversaciones (Recientes, abrir, renombrar) -----------------
+
+
+def js(name):
+    return (web.STATIC_DIR / name).read_text(encoding="utf-8")
+
+
+def test_the_conversation_id_pattern_in_the_browser_matches_the_servers():
+    # El mismo patrón está escrito en app.js y en conversations.py: si uno cambia y el
+    # otro no, el navegador rechazaría ids válidos (o aceptaría ids que el servidor rechaza).
+    found = re.search(r"CONVERSATION_ID\s*=\s*/(.+)/;", js("app.js")).group(1)
+
+    assert found == "^" + conversations.ID_PATTERN.pattern + "$"
+
+
+def test_history_is_no_longer_kept_in_the_browser():
+    # El servidor es la fuente de verdad. Lo único que queda de la clave vieja es borrarla.
+    for name in ("app.js", "shell.js"):
+        for line in js(name).splitlines():
+            if "epsilon.history" in line and not line.strip().startswith("//"):
+                assert "removeItem" in line, (name, line)
+
+
+def test_the_chat_sends_the_conversation_with_every_request():
+    source = js("app.js")
+
+    assert source.count("conversation_id") >= 2  # en el JSON de los mensajes y en la subida
+    assert "message_id" in source  # y al tocar un botón, en qué mensaje
+
+
+def test_the_chat_opens_and_creates_conversations_through_the_api():
+    source = js("app.js")
+
+    assert "/api/conversations" in source
+    assert 'method: "POST"' in source  # Nuevo chat crea una conversación en el servidor
+    assert re.search(r'params\.get\("c"\)', source)  # /?c=<id> abre una conversación
+
+
+def test_recents_come_from_the_server_and_link_to_each_conversation():
+    source = js("shell.js")
+
+    assert "/api/conversations" in source
+    assert "/?c=" in source
+    assert "aria-current" in source
+
+
+def test_renaming_goes_through_the_title_endpoint_and_is_reachable_by_keyboard():
+    source = js("shell.js")
+
+    assert re.search(r'method:\s*"PUT"', source) and "/title" in source
+    assert "Renombrar" in source  # el botón lleva nombre accesible
+    assert '"Enter"' in source and '"Escape"' in source
+
+
+def test_the_rename_button_shows_on_hover_focus_and_touch():
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert ".recent-edit" in css
+    assert ":hover .recent-edit" in css and ":focus-within .recent-edit" in css
+    assert re.search(r"\(hover: none\)\s*\{[^}]*\.recent-edit", css, re.S)
+
+
+def test_the_recents_list_can_hold_many_conversations():
+    # Con el tope viejo (240px) se cortaba la lista a las ~6 conversaciones.
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    block = re.search(r"\n\.recents \{(.*?)\}", css, re.S).group(1)
+    max_height = int(re.search(r"max-height:\s*(\d+)px", block).group(1))
+
+    assert max_height >= 2000

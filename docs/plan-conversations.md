@@ -51,7 +51,27 @@ servidor (en `DATA_DIR`), para llenar «Recientes» y hacer real el «Nuevo chat
    - Cada conversación tiene su estado pendiente (`session_id = web:<id>`).
    - Verificado de punta a punta con un reinicio real del proceso (23 comprobaciones).
 3. Interfaz: «Recientes» real, abrir una conversación, renombrarla, historial leído
-   del servidor en lugar del navegador.
+   del servidor en lugar del navegador. **Hecho.**
+   - El navegador solo recuerda CUÁL conversación tenías abierta (`epsilon.current`);
+     el contenido viene del servidor. El historial viejo (`epsilon.history`) se borra.
+   - «Recientes» es la lista real, con un lápiz en cada fila (al pasar el mouse, con
+     el foco del teclado, y siempre en pantallas táctiles). Enter guarda, Escape y
+     soltar el foco cancelan; vacío vuelve al título automático.
+   - Las conversaciones son enlaces `/?c=<id>`: en el chat se abren sin recargar y
+     desde la configuración llevan al chat con esa conversación abierta. Un id con
+     forma inválida en la URL se ignora.
+   - El patrón del id está escrito en `app.js` y en `conversations.py`; un test vigila
+     que coincidan.
+   - Si cambiás de conversación mientras esperás una respuesta, esa respuesta no se
+     dibuja en la otra (el servidor igual la guarda en la suya).
+   - Si no hay servidor para crear la conversación, el chat funciona igual, sin guardar.
+
+## Sin verificar
+
+- Cambiar de conversación a mitad de una respuesta (el cuidado está en el código,
+  pero no se probó con una respuesta lenta).
+- Ventana angosta y suavidad de la animación (igual que en `docs/plan-ui.md`).
+- Con muchas conversaciones (la API devuelve las 50 más recientes; no hay «ver más»).
 
 ## Después
 
