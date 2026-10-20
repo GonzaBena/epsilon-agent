@@ -122,7 +122,8 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 
 ## Pendiente
 
-- Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, plantillas, MCP.
+- Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
+  cumpla ese papel serían skills.
 - Memoria para quien quiera conversar con un modelo (se apoyará en los archivos de
   `conversations/`).
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
