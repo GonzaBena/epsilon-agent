@@ -4,7 +4,7 @@ import pytest
 
 from epsilon import conversations, core
 from epsilon.channels import web
-from tests.web.helpers import attachment_html, chat_html, js, make_conversations, page, right_panel, tool_rows
+from tests.web.helpers import attachment_html, chat_html, js, make_conversations, page, right_panel, static_path, tool_rows
 
 
 # --- Panel derecho (chat), atajos y nota de cautela --------------------------
@@ -94,7 +94,7 @@ def test_csp_allows_blob_images_for_the_previews(client):
 
 
 def test_attachment_remove_button_shows_on_hover_and_keyboard_focus():
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
 
     assert ".thumb-remove" in css
     # Visible con el mouse encima, pero también con el foco del teclado y en pantallas táctiles.
@@ -154,7 +154,7 @@ def test_renaming_goes_through_the_title_endpoint_and_is_reachable_by_keyboard()
 
 
 def test_the_rename_button_shows_on_hover_focus_and_touch():
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
 
     assert ".recent-edit" in css
     assert ":hover .recent-edit" in css and ":focus-within .recent-edit" in css
@@ -163,7 +163,7 @@ def test_the_rename_button_shows_on_hover_focus_and_touch():
 
 def test_the_recents_list_can_hold_many_conversations():
     # Con el tope viejo (240px) se cortaba la lista a las ~6 conversaciones.
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
     block = re.search(r"\n\.recents \{(.*?)\}", css, re.S).group(1)
     max_height = int(re.search(r"max-height:\s*(\d+)px", block).group(1))
 
@@ -203,7 +203,7 @@ def test_the_ai_tag_explains_itself_and_does_not_name_the_model(client):
 
 
 def test_the_tag_has_a_style():
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
 
     assert ".tool-tag" in css and ".tool-head" in css
 
@@ -254,7 +254,7 @@ def test_a_new_chat_and_opening_one_reset_the_context():
 
 
 def test_the_context_has_a_style():
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
 
     assert ".context" in css and ".context-empty" in css
 
@@ -287,7 +287,7 @@ def test_recents_have_a_see_more_button_that_asks_for_a_bigger_page():
 
 
 def test_the_see_more_button_has_a_style():
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
 
     assert ".recents-more" in css
 
@@ -305,7 +305,7 @@ def test_an_open_conversation_outside_the_first_page_still_gets_its_title():
 
 
 def test_telegram_conversations_are_marked_with_an_icon_a_color_and_a_word():
-    shell, css = js("shell.js"), (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    shell, css = js("shell.js"), static_path("style.css").read_text(encoding="utf-8")
 
     assert 'conversation.channel === "telegram"' in shell and "channel-mark" in shell
     assert "Telegram: " in shell  # el nombre del canal también para quien no ve color ni ícono
@@ -314,7 +314,7 @@ def test_telegram_conversations_are_marked_with_an_icon_a_color_and_a_word():
 
 
 def test_the_telegram_color_is_not_the_only_signal_and_differs_from_the_accent():
-    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    css = static_path("style.css").read_text(encoding="utf-8")
     accent = re.search(r"--accent:\s*(#[0-9a-f]+)", css).group(1)
     telegram_color = re.search(r"--telegram:\s*(#[0-9a-f]+)", css).group(1)
 

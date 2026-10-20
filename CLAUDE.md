@@ -32,8 +32,8 @@ instalarlo, cargar sus claves y usarlo.
   prende y apaga en caliente (`start_channel` / `stop_channel`, para la página Canales): el canal
   tiene que exponer `stop()`, y la elección queda en `<NOMBRE>_ENABLED` del `.env` (el servicio
   la respeta al reiniciar). La web no se puede apagar desde la web.
-- `channels/web.py` y `channels/web_static/` (index.html, config.html, canales.html, uso.html,
-  style.css, app.js, config.js, canales.js, uso.js, shell.js): web local (FastAPI). Solo traduce
+- `channels/web.py` y `channels/web_static/` (las páginas `*.html` en la raíz, `css/style.css`,
+  `js/` con app, config, canales, uso y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
   HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso; Configuración va
   abajo de todo en el menú de la izquierda. `/config` edita ajustes (el reinicio es siempre manual: la página
   avisa por qué y con qué comando); los de sí/no son interruptores. `/canales` muestra cada canal y

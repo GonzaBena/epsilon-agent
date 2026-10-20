@@ -1,7 +1,7 @@
 import re
 
 from epsilon.channels import web
-from tests.web.helpers import js, transcribe_audio
+from tests.web.helpers import js, static_path, transcribe_audio
 
 
 # --- Voz: /api/transcribe ----------------------------------------------------
@@ -94,7 +94,7 @@ def test_foreign_host_cannot_transcribe(client, fake_voice):
 
 def test_mic_button_dictates_into_the_box_without_sending(client):
     html = client.get("/").text
-    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    js = static_path("app.js").read_text(encoding="utf-8")
 
     assert 'id="mic"' in html and 'id="mic-status"' in html
     assert 'role="status"' in html  # los avisos se anuncian a lectores de pantalla
@@ -110,12 +110,12 @@ def test_mic_button_stays_hidden_if_the_browser_cannot_record(client):
     assert 'id="mic"' in client.get("/").text
     mic_tag = client.get("/").text.split('id="mic"', 1)[1].split(">", 1)[0]
     assert "hidden" in mic_tag  # arranca oculto; app.js lo muestra solo si hay MediaRecorder
-    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    js = static_path("app.js").read_text(encoding="utf-8")
     assert "window.MediaRecorder" in js and "getUserMedia" in js
 
 
 def test_mic_stops_the_microphone_when_the_recording_ends(client):
-    assert "track.stop()" in (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")  # si no, el navegador deja el micrófono prendido
+    assert "track.stop()" in static_path("app.js").read_text(encoding="utf-8")  # si no, el navegador deja el micrófono prendido
 
 
 # --- Voz apagada: vale para la web igual que para Telegram -------------------
@@ -131,11 +131,11 @@ def test_transcribe_refuses_when_voice_is_off(client, monkeypatch, tmp_path):
 
 def test_the_api_says_voice_is_off_and_the_mic_button_follows_it(client, monkeypatch):
     monkeypatch.setenv("VOICE_ENABLED", "no")
-    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    js = static_path("app.js").read_text(encoding="utf-8")
 
     assert client.get("/api/config").json()["voice"] == "apagada"
     assert 'state.voice === "apagada"' in js and "voiceOff" in js  # sin botón de micrófono
-    assert "apagada" in (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")
+    assert "apagada" in static_path("config.js").read_text(encoding="utf-8")
 
 
 # --- Borrar el modelo de voz ---------------------------------------------------
@@ -167,8 +167,8 @@ def test_deleting_the_model_with_the_voice_on_is_refused_and_touches_nothing(cli
 
 
 def test_deleting_the_model_asks_for_a_second_tap_and_is_hidden_otherwise():
-    js_text = (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")
-    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+    js_text = static_path("config.js").read_text(encoding="utf-8")
+    html = static_path("config.html").read_text(encoding="utf-8")
 
     assert 'id="voice-model"' in html and re.search(r'id="voice-model"[^>]*hidden', html)
     assert "deleteArmed" in js_text and "¿Seguro?" in js_text

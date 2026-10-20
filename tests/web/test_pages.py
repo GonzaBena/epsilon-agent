@@ -6,7 +6,7 @@ import pytest
 from epsilon import state, tools
 from epsilon import state
 from epsilon.channels import web
-from tests.web.helpers import BRAND, LOWERCASE, PAGES, chat_html, js, menu_items, page, top_links
+from tests.web.helpers import BRAND, LOWERCASE, PAGES, chat_html, js, menu_items, page, static_path, top_links
 
 
 # --- Página estática ---------------------------------------------------------
@@ -17,12 +17,12 @@ def test_home_serves_the_page_with_its_css_and_js(client):
 
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
-    assert "/static/style.css" in page.text and "/static/app.js" in page.text
+    assert "/static/css/style.css" in page.text and "/static/js/app.js" in page.text
 
 
 def test_static_files_are_served_with_their_types(client):
-    css = client.get("/static/style.css")
-    js = client.get("/static/app.js")
+    css = client.get("/static/css/style.css")
+    js = client.get("/static/js/app.js")
 
     assert css.status_code == 200 and "text/css" in css.headers["content-type"]
     assert js.status_code == 200 and "javascript" in js.headers["content-type"]
@@ -35,7 +35,7 @@ def test_static_files_cannot_escape_their_folder(client):
 
 def test_pages_are_not_cached(client):
     # Así, después de actualizar Epsilon el navegador no usa un app.js viejo.
-    assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
+    assert client.get("/static/js/app.js").headers["cache-control"] == "no-cache"
 
 
 def test_responses_carry_a_strict_content_security_policy(client):
@@ -56,7 +56,7 @@ def test_even_rejected_requests_carry_the_policy(client):
 def test_js_never_builds_html_from_text(name):
     import re
 
-    source = (web.STATIC_DIR / name).read_text(encoding="utf-8")
+    source = static_path(name).read_text(encoding="utf-8")
     source = re.sub(r"//.*", "", source)  # los comentarios pueden nombrar la regla
 
     for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
@@ -67,7 +67,7 @@ def test_js_never_builds_html_from_text(name):
 def test_html_has_no_inline_script_or_style(name):
     import re
 
-    html = (web.STATIC_DIR / name).read_text(encoding="utf-8")
+    html = static_path(name).read_text(encoding="utf-8")
 
     assert not re.search(r"<script(?![^>]*\bsrc=)", html)  # solo <script src=...>
     assert "style=" not in html and "<style" not in html
@@ -79,7 +79,7 @@ def test_html_has_no_inline_script_or_style(name):
 
 def test_both_pages_load_the_shared_shell_script():
     for name in PAGES:
-        assert "/static/shell.js" in page(name), name
+        assert "/static/js/shell.js" in page(name), name
 
 
 def test_both_pages_have_the_same_menu():
@@ -189,7 +189,7 @@ def test_empty_state_is_not_a_message_node():
 @pytest.mark.parametrize("name", ["index.html", "config.html", "app.js", "shell.js", "config.js", "style.css"])
 def test_no_lowercase_epsilon_anywhere_in_the_web_files(name):
     # La Ε y la E latina se parecen tanto que es fácil colar la letra equivocada.
-    text = (web.STATIC_DIR / name).read_text(encoding="utf-8")
+    text = static_path(name).read_text(encoding="utf-8")
 
     assert LOWERCASE not in text, name
 
@@ -205,7 +205,7 @@ def test_every_letter_mark_in_the_html_is_the_capital_epsilon():
 
 
 def test_the_marks_drawn_by_the_scripts_are_the_capital_epsilon():
-    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    js = static_path("app.js").read_text(encoding="utf-8")
     drawn = re.findall(r'make\("span", "mark", "(.)"\)', js)
 
     assert len(drawn) == 2  # cada respuesta de Epsilon y el «Pensando…»
@@ -249,7 +249,7 @@ def test_the_channels_page_is_served(client):
 def test_the_channels_page_loads_its_own_script_and_the_shell():
     html = page("canales.html")
 
-    assert '/static/canales.js' in html and '/static/shell.js' in html and '/static/config.js' not in html
+    assert '/static/js/canales.js' in html and '/static/js/shell.js' in html and '/static/js/config.js' not in html
     assert 'id="channel-cards"' in html and 'role="status"' in html
 
 

@@ -2,7 +2,7 @@ import re
 
 from epsilon import config
 from epsilon.channels import web
-from tests.web.helpers import js, page, switch_tags
+from tests.web.helpers import js, page, static_path, switch_tags
 
 
 # --- Página de configuración -------------------------------------------------
@@ -13,7 +13,7 @@ def test_config_page_is_served_with_its_script(client):
 
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
-    assert "/static/config.js" in page.text and "/static/style.css" in page.text
+    assert "/static/js/config.js" in page.text and "/static/css/style.css" in page.text
 
 
 def test_config_page_is_protected_like_the_rest(client):
@@ -21,14 +21,14 @@ def test_config_page_is_protected_like_the_rest(client):
 
 
 def test_chat_page_links_to_the_configuration():
-    html = (web.STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = static_path("index.html").read_text(encoding="utf-8")
 
     assert 'href="/config"' in html
 
 
 def test_config_page_has_a_field_for_every_editable_setting():
     # Si se agrega un ajuste en config.py y se olvida la página, falla acá.
-    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+    html = static_path("config.html").read_text(encoding="utf-8")
 
     for s in config.SETTINGS:
         if s.editable and s.page == "config":
@@ -40,7 +40,7 @@ def test_config_page_has_a_field_for_every_editable_setting():
 def test_secret_fields_are_password_inputs_without_a_value():
     import re
 
-    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+    html = static_path("config.html").read_text(encoding="utf-8")
 
     for s in config.SETTINGS:
         if s.secret:
@@ -59,13 +59,13 @@ def test_config_reports_the_voice_status(cfg, monkeypatch):
 
 
 def test_the_voice_status_is_shown_in_the_settings_page():
-    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+    html = static_path("config.html").read_text(encoding="utf-8")
 
-    assert 'id="voice-status"' in html and "state.voice" in (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")
+    assert 'id="voice-status"' in html and "state.voice" in static_path("config.js").read_text(encoding="utf-8")
 
 
 def test_mic_says_when_there_is_no_microphone_and_hides_the_button():
-    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    js = static_path("app.js").read_text(encoding="utf-8")
 
     assert "NotFoundError" in js  # un aviso propio: no confundir «no hay micrófono» con «sin permiso»
     assert "No encontré un micrófono" in js

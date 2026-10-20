@@ -1,7 +1,7 @@
+from pathlib import Path
 import re
 
 from epsilon import conversations, notes, state
-from epsilon import state
 from epsilon.channels import web
 
 CFG_SECRET = "AIzaSyD-ejemplo_de_clave_larga_QzXw"
@@ -9,6 +9,12 @@ CFG_TOKEN = "123456789:AAH-ejemplo_de_token_de_telegram_vKjP"
 PAGES = ["index.html", "config.html", "canales.html", "uso.html"]
 BRAND = "Ε"  # Ε  GREEK CAPITAL LETTER EPSILON
 LOWERCASE = "ε"  # ε  (la minúscula: la letra correcta es la mayúscula)
+
+
+def static_path(name):
+    """La ruta de un archivo de la web: los .js están en js/, los .css en css/ y lo demás en la raíz."""
+    folder = {".js": "js", ".css": "css"}.get(Path(name).suffix, "")
+    return web.STATIC_DIR / folder / name
 
 
 def post_message(client, **body):
@@ -32,7 +38,7 @@ def setting(state, key):
 
 
 def page(name):
-    return (web.STATIC_DIR / name).read_text(encoding="utf-8")
+    return static_path(name).read_text(encoding="utf-8")
 
 
 def menu_items(html):
@@ -75,7 +81,7 @@ def saved_lines(conversation_id):
 
 
 def js(name):
-    return (web.STATIC_DIR / name).read_text(encoding="utf-8")
+    return static_path(name).read_text(encoding="utf-8")
 
 
 def tool_rows(client):
