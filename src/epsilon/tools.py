@@ -109,6 +109,13 @@ TOOLS = (
         links=("/uso",),
     ),
     Tool(
+        "/menu",
+        name="menu",
+        help="ajustes del bot, como la voz (con botones)",
+        menu="Ajustes del bot (voz y más)",
+        writes=True,
+    ),
+    Tool(
         "/ayuda",
         name="ayuda",
         menu="Cómo se usa el bot",

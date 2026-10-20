@@ -114,13 +114,12 @@ def trim(text: str) -> str:
     return text[:MAX_CHARS] or "(vacío)"
 
 
-def keyboard(actions: list[core.Action]) -> InlineKeyboardMarkup | None:
-    """Convierte las acciones del núcleo en una fila de botones."""
+def keyboard(actions: list[core.Action], stacked: bool = False) -> InlineKeyboardMarkup | None:
+    """Convierte las acciones del núcleo en botones: todos en una fila, o uno por fila (un menú)."""
     if not actions:
         return None
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(a.label, callback_data=a.id) for a in actions]]
-    )
+    buttons = [InlineKeyboardButton(a.label, callback_data=a.id) for a in actions]
+    return InlineKeyboardMarkup([[b] for b in buttons] if stacked else [buttons])
 
 
 async def ask_core(chat_id: int, context: ContextTypes.DEFAULT_TYPE, msg: core.Message):
@@ -144,7 +143,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     msg = core.Message(text=update.message.text, session_id=session_id(chat_id))
     reply = await ask_core(chat_id, context, msg)
-    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions))
+    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
 
 
 async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,7 +174,7 @@ async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_id=session_id(chat_id),
     )
     reply = await ask_core(chat_id, context, msg)
-    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions))
+    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
 
 
 def _audio_suffix(media) -> str:
@@ -224,7 +223,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🎙 «{text[: MAX_CHARS - 10]}»")
     msg = core.Message(text=text, session_id=session_id(chat_id))
     reply = await ask_core(chat_id, context, msg)
-    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions))
+    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
 
 
 def make_on_button(allowed_user_id: int):
@@ -241,7 +240,7 @@ def make_on_button(allowed_user_id: int):
         msg = core.Message(action=query.data, session_id=session_id(chat_id))
         reply = await ask_core(chat_id, context, msg)
         await query.edit_message_text(
-            trim(reply.text), reply_markup=keyboard(reply.actions)
+            trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked)
         )
 
     return on_button

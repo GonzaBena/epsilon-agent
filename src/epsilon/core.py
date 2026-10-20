@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 import re
 
-from epsilon import extract, notes, summarize, tools, usage
+from epsilon import config, extract, menu, notes, summarize, tools, usage
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -69,6 +69,8 @@ class Reply:
     actions: list[Action] = field(default_factory=list)
     # Lo que se guardó con esta respuesta; un canal puede mostrarlo o ignorarlo.
     artifacts: list[Artifact] = field(default_factory=list)
+    # True: los botones van uno por fila (un menú); False: todos en una fila (Guardar / Cancelar).
+    stacked: bool = False
 
 
 def _artifact(kind: str, path) -> Artifact:
@@ -168,6 +170,24 @@ def _context(args: str, session: Session) -> Reply:
 
 def _help(args: str, session: Session) -> Reply:
     return Reply(HELP)
+
+
+def _menu_reply(screen: tuple[str, list[tuple[str, str]]]) -> Reply:
+    text, buttons = screen
+    return Reply(text, [Action(id, label) for id, label in buttons], stacked=True)
+
+
+def _menu(args: str, session: Session) -> Reply:
+    """/menu: los ajustes del bot, con botones. Cada toque edita el mismo mensaje."""
+    return _menu_reply(menu.render())
+
+
+def _menu_action(rest: str) -> Reply:
+    try:
+        screen = menu.press(rest)
+    except (config.ConfigError, OSError) as e:
+        return Reply(f"No pude guardar el cambio: {config.redact(str(e))[:200]}")
+    return _menu_reply(screen) if screen else Reply("No entiendo esa acción.")
 
 
 def _summarize_path(path) -> Reply:
@@ -344,6 +364,8 @@ def _file_button(action: str, file_id: str, session: Session) -> Reply:
 
 def _handle_action(action: str, session: Session) -> Reply:
     name, _, file_id = action.partition(":")
+    if name == "menu":
+        return _menu_action(file_id)
     if name in ("guardar", "cancelar"):
         return _confirm_csv(name, session)
     if name in ("resumir", "nada"):
@@ -365,6 +387,7 @@ COMMANDS = {
     "resumir": _summarize_cmd,
     "ticket": _ticket,
     "cancelar": _cancel,
+    "menu": _menu,
     "ayuda": _help,
     "start": _help,
 }

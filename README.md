@@ -63,6 +63,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/cancelar`         | Cancela el `/ticket` que quedó en espera.        |
 | `/contexto`         | Lista lo que guardaste desde que arrancó el bot. |
 | `/uso`              | Tokens y precio gastados, hoy y en total.        |
+| `/menu`             | Ajustes del bot con botones (hoy, la voz).       |
 | `/ayuda`            | Muestra la ayuda.                                |
 
 **Imagen a CSV:** adjuntá una imagen con un texto como `gastos: fecha, proveedor, total`.

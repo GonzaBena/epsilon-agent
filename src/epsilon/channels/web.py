@@ -133,7 +133,9 @@ def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
 
 
 def to_json(reply: core.Reply) -> dict:
-    return asdict(reply)  # {"text": ..., "actions": [...], "artifacts": [{"kind": ..., "path": ...}]}
+    data = asdict(reply)  # {"text": ..., "actions": [...], "artifacts": [{"kind": ..., "path": ...}]}
+    data.pop("stacked")  # cómo se acomodan los botones es cosa de cada canal; la web no lo usa
+    return data
 
 
 # --- La app ------------------------------------------------------------------
