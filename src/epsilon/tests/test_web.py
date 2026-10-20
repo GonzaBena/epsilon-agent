@@ -1579,3 +1579,20 @@ def test_mic_button_stays_hidden_if_the_browser_cannot_record(client):
 
 def test_mic_stops_the_microphone_when_the_recording_ends(client):
     assert "track.stop()" in (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")  # si no, el navegador deja el micrófono prendido
+
+
+# --- Voz en la configuración y en el panel ------------------------------------
+
+
+def test_config_reports_the_voice_status(cfg, monkeypatch):
+    monkeypatch.setattr(web.transcribe, "status", lambda: "descargado")
+
+    assert cfg.get("/api/config").json()["voice"] == "descargado"
+
+
+def test_the_side_panel_draws_the_voice_status():
+    js = (web.STATIC_DIR / "shell.js").read_text(encoding="utf-8")
+    html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
+
+    assert "state.voice" in js
+    assert 'id="voice-status"' in html and "state.voice" in (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")

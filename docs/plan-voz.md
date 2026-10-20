@@ -79,8 +79,15 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
    - Verificado en el navegador con un micrófono falso (tono): grabación real en webm/opus,
      envío real, texto en el cuadro, nada enviado. El permiso del micrófono y la voz real
      quedan por probar con tu navegador.
-5. Configuración: ajustes de idioma, minutos de inactividad y dispositivo en `/config`;
-   estado de la voz en el panel (cargado / descargado / no instalado). Docs.
+5. Configuración y estado. **Hecho.**
+   - `/config` tiene una sección «Voz»: idioma (código de 2-3 letras o `auto`; `es` por defecto),
+     minutos sin usar antes de soltar el modelo (1–1440; 10) y dispositivo (`cpu` o `cuda`).
+     Idioma y minutos valen al instante; el dispositivo, al reiniciar o cuando el modelo se
+     descargue de memoria (la pantalla avisa por qué). Los valores por defecto se muestran.
+   - `GET /api/config` trae `voice` (cargado / descargado / descargando / sin descargar / no
+     instalado). Se ve en la sección «Voz» y como una fila «Voz» en «Canales» del panel.
+   - El botón de micrófono pasó junto al de enviar.
+   - `cuda` necesita las librerías de NVIDIA (no están instaladas): hoy solo `cpu` está probado.
 
 ## Sin verificar hasta probarlo
 

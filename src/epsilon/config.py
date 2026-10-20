@@ -46,6 +46,26 @@ def _port(value: str) -> str:
     return value
 
 
+def _language(value: str) -> str:
+    value = value.lower()
+    if not re.fullmatch(r"[a-z]{2,3}", value, re.ASCII) and value != "auto":
+        raise ValueError("El idioma es un código de 2 o 3 letras (es, en, pt...) o «auto» para detectarlo.")
+    return value
+
+
+def _minutes(value: str) -> str:
+    if not re.fullmatch(r"\d{1,4}", value, re.ASCII) or not 1 <= int(value) <= 1440:
+        raise ValueError("Los minutos tienen que ser un número entero entre 1 y 1440.")
+    return str(int(value))
+
+
+def _device(value: str) -> str:
+    value = value.lower()
+    if value not in ("cpu", "cuda"):
+        raise ValueError("El dispositivo es «cpu» o «cuda» (placa NVIDIA).")
+    return value
+
+
 @dataclass(frozen=True)
 class Setting:
     key: str  # nombre de la variable en el .env
@@ -55,6 +75,7 @@ class Setting:
     editable: bool = True
     reason: str = ""  # por qué hace falta reiniciar (se muestra en el aviso)
     validate: object = None  # función de arriba; None si no es editable
+    default: str = ""  # lo que se usa (y se muestra) si el ajuste no está definido
 
 
 SETTINGS = (
@@ -104,6 +125,31 @@ SETTINGS = (
         ),
         validate=_port,
     ),
+    # Voz (transcribe.py los lee al usar el modelo, no al arrancar).
+    Setting(
+        "WHISPER_LANGUAGE",
+        "Idioma de la voz",
+        live=True,
+        default="es",
+        validate=_language,
+    ),
+    Setting(
+        "WHISPER_IDLE_MINUTES",
+        "Minutos sin usar la voz antes de soltar el modelo",
+        live=True,
+        default="10",
+        validate=_minutes,
+    ),
+    Setting(
+        "WHISPER_DEVICE",
+        "Dispositivo de la voz",
+        default="cpu",
+        reason=(
+            "El modelo de voz se carga con el dispositivo que había al cargarse; "
+            "el nuevo se usa cuando se descargue de memoria o al reiniciar."
+        ),
+        validate=_device,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
@@ -118,7 +164,7 @@ def _current(setting: Setting) -> str:
     """Lo que el proceso está usando ahora."""
     if setting.key == "DATA_DIR":
         return str(notes.DATA_DIR)  # la ruta ya resuelta, no el texto del .env
-    return os.environ.get(setting.key, "")
+    return os.environ.get(setting.key, setting.default)
 
 
 def status(env_file: Path | None = None) -> list[dict]:

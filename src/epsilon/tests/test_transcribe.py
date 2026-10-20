@@ -368,3 +368,9 @@ def test_other_texts_are_left_alone(heard):
 def test_audio_to_text_applies_the_translation(voice, audio):
     voice.texts = ("Más", "comprar pan.")
     assert transcribe.audio_to_text(audio) == "+ comprar pan."
+
+
+def test_auto_language_means_let_whisper_detect(monkeypatch):
+    for value in ("auto", "AUTO", ""):
+        monkeypatch.setenv("WHISPER_LANGUAGE", value)
+        assert transcribe.language() is None

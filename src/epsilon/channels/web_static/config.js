@@ -28,6 +28,16 @@ const restartBox = document.getElementById("restart");
 const restartList = document.getElementById("restart-list");
 const channelsList = document.getElementById("channels");
 const dataDir = document.getElementById("data-dir");
+const voiceStatus = document.getElementById("voice-status");
+
+// El estado de la voz que informa el servidor, dicho en una frase.
+const VOICE_TEXTS = {
+  cargado: "Lista: el modelo está cargado en memoria.",
+  descargado: "Lista: el modelo está bajado y se carga con el primer audio.",
+  descargando: "Bajando el modelo de voz (una sola vez, ~1,6 GB).",
+  "sin descargar": "Se baja solo con el primer audio (~1,6 GB, una sola vez).",
+  "no instalado": "No instalada. Instalala con: uv sync --extra voz",
+};
 
 // Todos los campos, por el nombre del ajuste (data-key en el HTML).
 const fields = {};
@@ -141,6 +151,7 @@ function render(state) {
     if (setting.key === "DATA_DIR") dataDir.textContent = setting.value;
   }
   renderChannels(state.channels);
+  voiceStatus.textContent = VOICE_TEXTS[state.voice] || "";
   renderRestart(state.pending_restart);
   resetClear();
 }

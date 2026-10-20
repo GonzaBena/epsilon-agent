@@ -1222,25 +1222,32 @@ a.ghost {
 }
 
 .settings input[type="text"],
-.settings input[type="password"] {
+.settings input[type="password"],
+.settings select {
   width: 100%;
   min-height: 2.75rem;
   padding: 0 0.75rem;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  color: var(--text);
   font-family: var(--mono);
   font-size: 0.95rem;
+}
+#voice-status {
+  margin: 0 0 1rem;
 }
 .settings input::placeholder {
   color: var(--muted);
   letter-spacing: 0.05em;
 }
-.settings input:focus-visible {
+.settings input:focus-visible,
+.settings select:focus-visible {
   outline: 0;
   border-color: var(--accent);
 }
-.settings input[aria-invalid="true"] {
+.settings input[aria-invalid="true"],
+.settings select[aria-invalid="true"] {
   border-color: var(--danger);
 }
 

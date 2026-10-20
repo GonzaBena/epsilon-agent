@@ -41,9 +41,9 @@ class VoiceDownloading(VoiceError):
 
 
 def language() -> str | None:
-    """Idioma del audio. Español por defecto; vacío = que Whisper lo detecte."""
+    """Idioma del audio. Español por defecto; «auto» o vacío = que Whisper lo detecte."""
     value = os.environ.get("WHISPER_LANGUAGE", "es").strip().lower()
-    return value or None
+    return None if value in ("", "auto") else value
 
 
 def idle_seconds() -> float:

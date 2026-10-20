@@ -279,6 +279,16 @@
   };
   const sideChannels = document.getElementById("side-channels");
 
+  // La voz no es un canal, pero se lee igual de un vistazo: misma fila, mismo estilo.
+  // «Lista» = el modelo está (o se baja solo al primer audio); sin la extra, dice cómo instalarla.
+  const VOICE_ROWS = {
+    cargado: ["running", "Lista"],
+    descargado: ["running", "Lista"],
+    descargando: ["starting", "Bajando el modelo…"],
+    "sin descargar": ["skipped", "Se baja con el primer audio"],
+    "no instalado": ["skipped", "Sin instalar"],
+  };
+
   function renderSideChannels(channels) {
     if (!sideChannels) return; // la configuración no tiene este panel
     sideChannels.replaceChildren();
@@ -291,6 +301,17 @@
       if (info.detail) row.append(make("span", "detail", info.detail));
       sideChannels.append(row);
     }
+  }
+
+  function renderSideVoice(voice) {
+    const found = VOICE_ROWS[voice];
+    if (!sideChannels || !found) return;
+    const row = make("li", `channel ${found[0]}`);
+    row.append(make("span", "dot"));
+    row.append(make("strong", "", "Voz"));
+    row.append(make("span", "state", found[1]));
+    if (voice === "no instalado") row.append(make("span", "detail", "Instalala con: uv sync --extra voz"));
+    sideChannels.append(row);
   }
 
   // --- Modelo, carpeta de datos y canales (de la API, sin ningún secreto) ---------------------
@@ -314,6 +335,7 @@
       }
 
       renderSideChannels(state.channels || {});
+      renderSideVoice(state.voice);
     } catch {
       // Sin conexión: el header queda con sus marcadores; el estado del chat ya lo indica.
     }

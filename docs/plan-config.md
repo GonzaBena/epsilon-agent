@@ -12,6 +12,8 @@ claves desde la web, sin editar el `.env` a mano.
 | `TELEGRAM_TOKEN` | sí | al reiniciar |
 | `ALLOWED_USER_ID` | sí | al reiniciar |
 | `WEB_PORT` | sí | al reiniciar |
+| `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES` | sí | al instante (`transcribe.py` los lee al usar el modelo) |
+| `WHISPER_DEVICE` | sí | al reiniciar (o al descargarse el modelo) |
 | `DATA_DIR` | no, solo se muestra | cambiarlo en caliente dejaría las notas viejas atrás |
 
 La pantalla también muestra el estado de cada canal (activo, sin configurar,

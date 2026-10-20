@@ -48,7 +48,8 @@ def block_real_whisper(monkeypatch):
 
     monkeypatch.setattr(transcribe, "_build_model", forbidden)
     monkeypatch.setattr(transcribe, "_download", forbidden)
-    monkeypatch.setattr(transcribe, "_cached", forbidden)
+    # Mirar si el modelo está bajado no baja nada (lo hace el estado de /api/config): «no está».
+    monkeypatch.setattr(transcribe, "_cached", lambda: False)
     transcribe._reset()
     yield
     transcribe._reset()

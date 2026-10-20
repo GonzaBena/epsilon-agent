@@ -18,7 +18,9 @@ TOKEN = "123456789:AAH-ejemplo_de_token_de_telegram_vKjP"
 def clean_env(monkeypatch, tmp_path):
     """Entorno vacío y datos en carpeta temporal: nada toca tu configuración real."""
     for key in KEYS:
-        monkeypatch.delenv(key, raising=False)
+        # update() escribe en os.environ: setenv + delenv hace que monkeypatch lo restaure al terminar.
+        monkeypatch.setenv(key, "")
+        monkeypatch.delenv(key)
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path / "data")
 
 
@@ -424,3 +426,66 @@ def test_pending_kind_never_carries_a_value(env_file):
     dumped = json.dumps(config.status(env_file))
 
     assert TOKEN not in dumped and "vKjP" not in dumped
+
+
+# --- Voz: idioma, minutos de inactividad y dispositivo ------------------------
+
+
+def test_voice_settings_show_their_defaults_when_unset(env_file):
+    assert entry("WHISPER_LANGUAGE", env_file)["value"] == "es"
+    assert entry("WHISPER_IDLE_MINUTES", env_file)["value"] == "10"
+    assert entry("WHISPER_DEVICE", env_file)["value"] == "cpu"
+
+
+def test_voice_settings_show_what_the_process_uses(monkeypatch, env_file):
+    monkeypatch.setenv("WHISPER_LANGUAGE", "en")
+
+    assert entry("WHISPER_LANGUAGE", env_file)["value"] == "en"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("WHISPER_LANGUAGE", "es"),
+        ("WHISPER_LANGUAGE", "AUTO"),
+        ("WHISPER_IDLE_MINUTES", "1"),
+        ("WHISPER_IDLE_MINUTES", "1440"),
+        ("WHISPER_DEVICE", "cuda"),
+        ("WHISPER_DEVICE", "CPU"),
+    ],
+)
+def test_valid_voice_values_are_saved_normalized(key, value, env_file):
+    config.update({key: value}, [], env_file)
+
+    assert f"{key}='{value.lower()}'" in env_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("WHISPER_LANGUAGE", "español"),
+        ("WHISPER_LANGUAGE", "e"),
+        ("WHISPER_LANGUAGE", "es\nEVIL=1"),
+        ("WHISPER_IDLE_MINUTES", "0"),
+        ("WHISPER_IDLE_MINUTES", "1441"),
+        ("WHISPER_IDLE_MINUTES", "diez"),
+        ("WHISPER_IDLE_MINUTES", "-5"),
+        ("WHISPER_IDLE_MINUTES", "1.5"),
+        ("WHISPER_DEVICE", "tpu"),
+        ("WHISPER_DEVICE", "cpu\nEVIL=1"),
+    ],
+)
+def test_invalid_voice_values_are_rejected(key, value, env_file):
+    with pytest.raises(config.ConfigError) as error:
+        config.update({key: value}, [], env_file)
+
+    assert key in error.value.errors and not env_file.exists()
+
+
+def test_language_and_idle_minutes_apply_at_once_but_device_waits_for_a_restart(env_file):
+    config.update({"WHISPER_LANGUAGE": "en", "WHISPER_IDLE_MINUTES": "3", "WHISPER_DEVICE": "cuda"}, [], env_file)
+
+    assert os.environ["WHISPER_LANGUAGE"] == "en" and os.environ["WHISPER_IDLE_MINUTES"] == "3"
+    assert "WHISPER_DEVICE" not in os.environ
+    assert entry("WHISPER_DEVICE", env_file)["pending_restart"] is True
+    assert "modelo de voz" in entry("WHISPER_DEVICE", env_file)["reason"]

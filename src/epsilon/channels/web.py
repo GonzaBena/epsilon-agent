@@ -288,6 +288,7 @@ def create_app() -> FastAPI:
             "settings": config.status(),
             "pending_restart": config.pending_restart(),
             "channels": state.snapshot(),  # activo / detenido (con su motivo) / omitido
+            "voice": transcribe.status(),  # cargado / descargado / descargando / sin descargar / no instalado
         }
 
     @app.get("/api/config")
