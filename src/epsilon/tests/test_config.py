@@ -495,13 +495,13 @@ def test_language_and_idle_minutes_apply_at_once_but_device_waits_for_a_restart(
 
 
 def test_telegram_voice_settings_default_to_receive_without_confirming(env_file):
-    assert entry("TELEGRAM_VOICE", env_file)["value"] == "si"
+    assert entry("VOICE_ENABLED", env_file)["value"] == "si"
     assert entry("VOICE_CONFIRM", env_file)["value"] == "no"
-    assert config.enabled("TELEGRAM_VOICE") is True
+    assert config.enabled("VOICE_ENABLED") is True
     assert config.enabled("VOICE_CONFIRM") is False
 
 
-@pytest.mark.parametrize("key", ["TELEGRAM_VOICE", "VOICE_CONFIRM"])
+@pytest.mark.parametrize("key", ["VOICE_ENABLED", "VOICE_CONFIRM"])
 @pytest.mark.parametrize("value,saved", [("si", "si"), ("SÍ", "si"), ("No", "no")])
 def test_yes_no_settings_are_saved_without_accent_and_apply_at_once(key, value, saved, env_file, monkeypatch):
     monkeypatch.delenv(key, raising=False)
@@ -521,8 +521,8 @@ def test_yes_no_settings_reject_anything_else(value, env_file):
 
 
 def test_enabled_falls_back_to_the_default_when_the_value_is_garbage(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_VOICE", "quizás")
+    monkeypatch.setenv("VOICE_ENABLED", "quizás")
     monkeypatch.setenv("VOICE_CONFIRM", "")
 
-    assert config.enabled("TELEGRAM_VOICE") is False  # no dice «si»
+    assert config.enabled("VOICE_ENABLED") is False  # no dice «si»
     assert config.enabled("VOICE_CONFIRM") is False

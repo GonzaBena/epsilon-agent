@@ -53,3 +53,9 @@ def block_real_whisper(monkeypatch):
     transcribe._reset()
     yield
     transcribe._reset()
+
+
+@pytest.fixture(autouse=True)
+def voice_on_by_default(monkeypatch):
+    """La voz de la PC real (su .env) no cuenta: cada test parte con la voz prendida."""
+    monkeypatch.setenv("VOICE_ENABLED", "si")

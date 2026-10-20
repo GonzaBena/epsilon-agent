@@ -9,7 +9,7 @@ from epsilon.channels import telegram
 @pytest.fixture(autouse=True)
 def voice_settings(monkeypatch, tmp_path):
     # Los dos ajustes de voz empiezan en su valor por defecto y el .env es uno temporal.
-    for key in ("TELEGRAM_VOICE", "VOICE_CONFIRM"):
+    for key in ("VOICE_ENABLED", "VOICE_CONFIRM"):
         monkeypatch.setenv(key, config.BY_KEY[key].default)
     env = tmp_path / "menu.env"
     monkeypatch.setattr(config, "ENV_FILE", env)
@@ -37,7 +37,7 @@ def test_the_voice_screen_shows_the_current_state_of_each_setting():
 
     assert "Voz" in reply.text
     assert labels(reply) == [
-        "Recibir notas de voz: sí ✅",
+        "Voz (web y Telegram): sí ✅",
         "Confirmar antes de ejecutar: no ⬜",
         "‹ Volver",
     ]
@@ -57,10 +57,10 @@ def test_a_toggle_changes_the_setting_saves_it_and_redraws_the_same_screen(voice
 
 
 def test_turning_voice_off_is_visible_in_the_setting():
-    say(action="menu:t:TELEGRAM_VOICE")
+    say(action="menu:t:VOICE_ENABLED")
 
-    assert config.enabled("TELEGRAM_VOICE") is False
-    assert labels(say(action="menu:voz"))[0] == "Recibir notas de voz: no ⬜"
+    assert config.enabled("VOICE_ENABLED") is False
+    assert labels(say(action="menu:voz"))[0] == "Voz (web y Telegram): no ⬜"
 
 
 def test_back_and_close():
@@ -76,7 +76,7 @@ def test_back_and_close():
         "menu:t:GEMINI_API_KEY",  # un ajuste real, pero que el menú no ofrece
         "menu:t:WEB_PORT",
         "menu:t:",
-        "menu:t:TELEGRAM_VOICE:x",
+        "menu:t:VOICE_ENABLED:x",
         "menu:nada",
         "menu:",
         "menu:t",

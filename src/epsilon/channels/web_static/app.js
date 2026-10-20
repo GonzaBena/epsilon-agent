@@ -541,6 +541,8 @@ async function startRecording() {
 }
 
 // Sin micrófono o sin MediaRecorder (navegador viejo, página que no es localhost/https): sin botón.
+let voiceOff = false; // la voz está apagada en la configuración: el botón no se muestra
+let refreshMic = () => {};
 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
   micButton.addEventListener("click", () => {
     if (transcribing) return;
@@ -550,14 +552,18 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.Medi
 
   // Solo se muestra si hay un micrófono (kind «audioinput»; la lista no pide permiso).
   // Si lo enchufás después, «devicechange» lo hace aparecer.
-  async function refreshMic() {
+  refreshMic = async () => {
+    if (voiceOff) {
+      micButton.hidden = true;
+      return;
+    }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       micButton.hidden = !devices.some((device) => device.kind === "audioinput");
     } catch {
       micButton.hidden = false; // no se pudo saber: que lo intente y avise
     }
-  }
+  };
   refreshMic();
   navigator.mediaDevices.addEventListener("devicechange", refreshMic);
 }
@@ -767,6 +773,8 @@ async function checkSetup() {
     const state = await response.json();
     const key = state.settings.find((setting) => setting.key === "GEMINI_API_KEY");
     document.getElementById("setup").hidden = !key || key.set;
+    voiceOff = state.voice === "apagada";
+    refreshMic();
   } catch {
     // Sin conexión: el estado de arriba ya lo indica.
   }

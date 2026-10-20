@@ -165,18 +165,18 @@
 
           <section aria-labelledby="h-voice">
             <h3 id="h-voice">Voz</h3>
-            <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Los dos primeros ajustes valen solo para Telegram y también se cambian desde el bot con <code>/menu</code>.</p>
+            <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Apagada, no se descarga ni se usa el modelo. Los dos primeros ajustes también se cambian desde el bot con <code>/menu</code>; confirmar vale solo para Telegram.</p>
             <p class="result" id="voice-status" role="status"></p>
 
             <div class="field">
-              <label for="f-TELEGRAM_VOICE">Recibir notas de voz por Telegram</label>
-              <select id="f-TELEGRAM_VOICE" data-key="TELEGRAM_VOICE"
-                      aria-describedby="hint-TELEGRAM_VOICE err-TELEGRAM_VOICE">
+              <label for="f-VOICE_ENABLED">Voz (micrófono de la web y notas de voz de Telegram)</label>
+              <select id="f-VOICE_ENABLED" data-key="VOICE_ENABLED"
+                      aria-describedby="hint-VOICE_ENABLED err-VOICE_ENABLED">
                 <option value="si">Sí</option>
                 <option value="no">No</option>
               </select>
-              <p class="hint" id="hint-TELEGRAM_VOICE"></p>
-              <p class="error" id="err-TELEGRAM_VOICE" role="alert"></p>
+              <p class="hint" id="hint-VOICE_ENABLED"></p>
+              <p class="error" id="err-VOICE_ENABLED" role="alert"></p>
             </div>
 
             <div class="field">

@@ -210,9 +210,9 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     media = update.message.voice or update.message.audio or update.message.document
 
-    # Apagada desde /menu o /config: ni se descarga el audio.
-    if not config.enabled("TELEGRAM_VOICE"):
-        await update.message.reply_text("La voz está apagada. Prendela con /menu.")
+    # Apagada desde /menu o /config (vale para todos los canales): ni se descarga el audio.
+    if not config.enabled("VOICE_ENABLED"):
+        await update.message.reply_text(transcribe.VOICE_OFF)
         return
 
     # Si pesa más de lo que Telegram deja bajar, avisamos antes de intentar.

@@ -159,10 +159,11 @@ SETTINGS = (
         ),
         validate=_device,
     ),
-    # Voz por Telegram (channels/telegram.py los lee en cada audio; se cambian también con /menu).
+    # Interruptor de la voz y confirmación (transcribe.py y channels/telegram.py los leen en cada
+# audio; se cambian también con /menu).
     Setting(
-        "TELEGRAM_VOICE",
-        "Recibir notas de voz por Telegram",
+        "VOICE_ENABLED",
+        "Voz (micrófono de la web y notas de voz de Telegram)",
         live=True,
         default="si",
         validate=_yes_no,

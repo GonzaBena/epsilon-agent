@@ -374,3 +374,27 @@ def test_auto_language_means_let_whisper_detect(monkeypatch):
     for value in ("auto", "AUTO", ""):
         monkeypatch.setenv("WHISPER_LANGUAGE", value)
         assert transcribe.language() is None
+
+
+# --- Un solo interruptor para todos los canales ------------------------------
+
+
+def test_with_voice_turned_off_nothing_is_transcribed_loaded_or_downloaded(audio, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    touched = []
+    monkeypatch.setattr(transcribe, "_build_model", lambda: touched.append("build"))
+    monkeypatch.setattr(transcribe, "_download", lambda: touched.append("download"))
+
+    with pytest.raises(transcribe.VoiceError) as error:
+        transcribe.audio_to_text(audio)
+
+    assert str(error.value) == transcribe.VOICE_OFF and touched == []
+    assert transcribe.status() == "apagada"
+
+
+def test_turning_it_back_on_restores_the_normal_status(monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "si")
+    monkeypatch.setattr(transcribe, "_whisper_module", lambda: object())
+    monkeypatch.setattr(transcribe, "_cached", lambda: True)
+
+    assert transcribe.status() == "descargado"

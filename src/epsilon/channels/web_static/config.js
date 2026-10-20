@@ -32,6 +32,7 @@ const voiceStatus = document.getElementById("voice-status");
 
 // El estado de la voz que informa el servidor, dicho en una frase.
 const VOICE_TEXTS = {
+  apagada: "Apagada: no se usa ni se descarga el modelo.",
   cargado: "Lista: el modelo está cargado en memoria.",
   descargado: "Lista: el modelo está bajado y se carga con el primer audio.",
   descargando: "Bajando el modelo de voz (una sola vez, ~1,6 GB).",

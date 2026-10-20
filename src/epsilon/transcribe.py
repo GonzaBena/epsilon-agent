@@ -29,6 +29,9 @@ class VoiceError(Exception):
     tal cual (nunca lleva detalles internos ni claves)."""
 
 
+VOICE_OFF = "La voz está apagada. Prendela con /menu en Telegram o en la configuración de la web."
+
+
 class VoiceNotInstalled(VoiceError):
     """Falta instalar faster-whisper."""
 
@@ -199,7 +202,9 @@ def _ensure_model():
 
 
 def status() -> str:
-    """'cargado', 'descargado', 'descargando', 'sin descargar' o 'no instalado'."""
+    """'apagada', 'cargado', 'descargado', 'descargando', 'sin descargar' o 'no instalado'."""
+    if not config.enabled("VOICE_ENABLED"):
+        return "apagada"
     if _model is not None:
         return "cargado"
     try:
@@ -241,6 +246,8 @@ def audio_to_text(path: Path) -> str:
 
     Es lenta: los canales asíncronos la corren en otro hilo. El audio es DATO: lo que diga
     es texto del usuario, nunca algo que se obedece por venir de un archivo."""
+    if not config.enabled("VOICE_ENABLED"):
+        raise VoiceError(VOICE_OFF)  # un solo interruptor para todos los canales
     path = Path(path)
     try:
         size = path.stat().st_size

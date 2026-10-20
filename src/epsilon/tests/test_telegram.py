@@ -276,7 +276,7 @@ def heard(monkeypatch):
     monkeypatch.setattr(transcribe, "audio_to_text", fake_audio_to_text)
     monkeypatch.setattr(core, "handle", fake_handle)
     # Los ajustes de voz de la PC real no cuentan: cada test parte de los valores por defecto.
-    monkeypatch.setenv("TELEGRAM_VOICE", "si")
+    monkeypatch.setenv("VOICE_ENABLED", "si")
     monkeypatch.setenv("VOICE_CONFIRM", "no")
     telegram.PENDING_VOICE.clear()
     return seen
@@ -483,13 +483,13 @@ def test_each_kind_of_audio_reaches_the_voice_handler_and_other_files_do_not():
 
 
 def test_with_voice_turned_off_the_audio_is_not_even_downloaded(heard, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_VOICE", "no")
+    monkeypatch.setenv("VOICE_ENABLED", "no")
     media = FakeMedia()
     update = FakeUpdate(voice=media)
 
     hear(update)
 
-    assert update.replies == ["La voz está apagada. Prendela con /menu."]
+    assert update.replies == [transcribe.VOICE_OFF]
     assert not media.downloaded and heard.paths == [] and heard.messages == []
 
 

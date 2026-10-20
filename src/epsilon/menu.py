@@ -32,9 +32,9 @@ SCREENS: dict[str, Screen] = {
     MAIN: Screen("", "⚙️ Menú", ("voz",), hint="Elegí qué configurar."),
     "voz": Screen(
         "🎙 Voz",
-        "🎙 Voz en Telegram",
+        "🎙 Voz",
         (
-            Toggle("TELEGRAM_VOICE", "Recibir notas de voz"),
+            Toggle("VOICE_ENABLED", "Voz (web y Telegram)"),
             Toggle("VOICE_CONFIRM", "Confirmar antes de ejecutar"),
         ),
         back=MAIN,

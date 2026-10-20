@@ -1596,3 +1596,24 @@ def test_mic_says_when_there_is_no_microphone_and_hides_the_button():
     assert "No encontré un micrófono" in js
     assert "enumerateDevices" in js and "audioinput" in js  # sin dispositivos de entrada, sin botón
     assert "devicechange" in js  # si lo enchufás después, aparece
+
+
+# --- Voz apagada: vale para la web igual que para Telegram -------------------
+
+
+def test_transcribe_refuses_when_voice_is_off(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    reply = transcribe_audio(client)
+
+    assert reply.status_code == 422
+    assert reply.json()["detail"] == web.transcribe.VOICE_OFF
+
+
+def test_the_api_says_voice_is_off_and_the_mic_button_follows_it(client, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert client.get("/api/config").json()["voice"] == "apagada"
+    assert 'state.voice === "apagada"' in js and "voiceOff" in js  # sin botón de micrófono
+    for name in ("shell.js", "config.js"):
+        assert "apagada" in (web.STATIC_DIR / name).read_text(encoding="utf-8")

@@ -282,6 +282,7 @@
   // La voz no es un canal, pero se lee igual de un vistazo: misma fila, mismo estilo.
   // «Lista» = el modelo está (o se baja solo al primer audio); sin la extra, dice cómo instalarla.
   const VOICE_ROWS = {
+    apagada: ["skipped", "Apagada"],
     cargado: ["running", "Lista"],
     descargado: ["running", "Lista"],
     descargando: ["starting", "Bajando el modelo…"],
