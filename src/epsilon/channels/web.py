@@ -103,6 +103,10 @@ class ConfigIn(BaseModel):
         return self
 
 
+class ChannelIn(BaseModel):
+    enabled: bool
+
+
 class TitleIn(BaseModel):
     title: str = Field(max_length=200)
 
@@ -312,6 +316,53 @@ def create_app() -> FastAPI:
             return {"title": conversations.set_title(conversation_id, body.title)}
         except FileNotFoundError:
             raise HTTPException(404, "No existe esa conversación") from None
+
+    # --- Canales: ver su estado y prender / apagar los que se pueden --------------
+    # main se importa acá adentro: él importa a la web (por nombre) y no al revés.
+
+    def channels_state() -> dict:
+        from epsilon import main
+
+        snapshot = state.snapshot()
+        found = []
+        for name in main.CHANNELS:
+            info = snapshot.get(name, {"state": "skipped", "detail": ""})
+            found.append(
+                {
+                    "name": name,
+                    "state": info["state"],  # running / starting / skipped / stopped / off
+                    "detail": info["detail"],
+                    "switchable": main.switchable(name),  # la web no se puede apagar a sí misma
+                    "enabled": not main.switched_off(name),
+                }
+            )
+        return {"channels": found}
+
+    @app.get("/api/channels")
+    def get_channels():
+        return channels_state()
+
+    @app.put("/api/channels/{name}")
+    def set_channel(name: str, body: ChannelIn):
+        """Prende o apaga un canal de verdad (el bot deja de escuchar) y deja la elección guardada,
+        así el servicio la respeta al reiniciar."""
+        from epsilon import main
+
+        if name not in main.CHANNELS or not main.switchable(name):
+            raise HTTPException(404, "Ese canal no se puede apagar ni prender desde acá.")
+        key = f"{name.upper()}_ENABLED"
+        try:
+            if body.enabled:
+                if not main.load(name).is_configured(os.environ):
+                    raise main.ChannelError("Falta configurarlo (token y tu ID de usuario).")
+                config.update({key: "si"}, [])
+                main.start_channel(name)
+            else:
+                config.update({key: "no"}, [])
+                main.stop_channel(name)
+        except main.ChannelError as e:
+            raise HTTPException(409, str(e)) from None
+        return channels_state()
 
     def config_state() -> dict:
         # Sin secretos: de las claves solo sale si están cargadas y su largo.

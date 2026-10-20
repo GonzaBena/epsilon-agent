@@ -21,9 +21,65 @@ def load(name: str):
     return importlib.import_module(CHANNELS[name])
 
 
+def switched_off(name: str) -> bool:
+    """¿Lo apagaste desde la web? Un canal tiene interruptor si existe el ajuste <NOMBRE>_ENABLED."""
+    key = f"{name.upper()}_ENABLED"
+    return key in config.BY_KEY and not config.enabled(key)
+
+
 def enabled_channels(env) -> list[str]:
-    """Nombres de los canales que tienen su configuración completa."""
-    return [name for name in CHANNELS if load(name).is_configured(env)]
+    """Nombres de los canales que tienen su configuración completa y no están apagados."""
+    return [name for name in CHANNELS if load(name).is_configured(env) and not switched_off(name)]
+
+
+class ChannelError(Exception):
+    """No se pudo prender o apagar un canal. El mensaje está listo para mostrar."""
+
+
+_threads: dict[str, threading.Thread] = {}  # los canales con hilo propio que prendimos
+_stopping: set[str] = set()  # los que estamos apagando a propósito (no es un error)
+_control = threading.Lock()  # prender y apagar de a uno
+
+
+def switchable(name: str) -> bool:
+    """¿Se puede apagar y prender desde la web? Solo los que tienen interruptor y saben detenerse."""
+    return f"{name.upper()}_ENABLED" in config.BY_KEY and hasattr(load(name), "stop")
+
+
+def start_channel(name: str) -> None:
+    """Prende un canal opcional en su propio hilo (si ya está corriendo, no hace nada)."""
+    with _control:
+        channel = load(name)
+        if not channel.is_configured(os.environ):
+            raise ChannelError("Falta configurarlo (token y tu ID de usuario).")
+        thread = _threads.get(name)
+        if thread is not None and thread.is_alive():
+            return
+        _stopping.discard(name)
+        getattr(channel, "reset", lambda: None)()  # que no quede un pedido de apagado viejo
+        state.set(name, "starting")
+        thread = threading.Thread(target=run_isolated, args=(name, channel), name=f"canal-{name}", daemon=True)
+        _threads[name] = thread
+        thread.start()
+
+
+def stop_channel(name: str, timeout: float = 15) -> None:
+    """Apaga un canal opcional sin cortar el proceso y espera a que termine de verdad."""
+    with _control:
+        channel = load(name)
+        if not hasattr(channel, "stop"):
+            raise ChannelError("Ese canal no se puede apagar desde acá.")
+        thread = _threads.get(name)
+        if thread is None or not thread.is_alive():
+            state.set(name, "off", "Apagado.")
+            return
+        _stopping.add(name)
+        channel.stop()
+        thread.join(timeout)
+        if thread.is_alive():
+            _stopping.discard(name)
+            raise ChannelError("No terminó de apagarse a tiempo; probá de nuevo en un momento.")
+        state.set(name, "off", "Apagado.")
 
 
 def install_log_redaction():
@@ -59,7 +115,8 @@ def run_isolated(name: str, channel):
     except (Exception, SystemExit) as e:  # SystemExit: un canal que corta con un mensaje
         state.set(name, "stopped", describe(channel, e))
     else:
-        state.set(name, "stopped", "El canal terminó.")
+        if name not in _stopping:  # si lo apagamos a propósito, stop_channel anota «apagado»
+            state.set(name, "stopped", "El canal terminó.")
 
 
 def main():
@@ -73,20 +130,15 @@ def main():
 
     for name in CHANNELS:
         if name not in enabled:
-            state.set(name, "skipped")
+            # Apagado a propósito (lo dejaste así desde la web) o sin configurar.
+            state.set(name, "off" if switched_off(name) and load(name).is_configured(os.environ) else "skipped")
 
     primary, *others = enabled
 
     for name in others:
-        state.set(name, "starting")
-        # daemon=True: estos hilos no impiden que el proceso se cierre cuando
-        # termina la web.
-        threading.Thread(
-            target=run_isolated,
-            args=(name, load(name)),
-            name=f"canal-{name}",
-            daemon=True,
-        ).start()
+        # daemon=True (en start_channel): estos hilos no impiden que el proceso se cierre
+        # cuando termina la web.
+        start_channel(name)
 
     channel = load(primary)
     try:

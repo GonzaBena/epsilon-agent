@@ -381,6 +381,10 @@ def build_app(token: str, allowed_user_id: int) -> Application:
         # PTB llama a esto recién después de conectarse con Telegram (getMe),
         # así que acá sí podemos decir que está activo.
         state.set("telegram", "running", "Conectado.")
+        _runtime["app"], _runtime["loop"] = app, asyncio.get_running_loop()
+        if _runtime["stop_requested"]:  # lo apagaron mientras conectaba
+            app.stop_running()
+            return
         try:
             await app.bot.set_my_commands(
                 COMMANDS,
@@ -417,6 +421,27 @@ def build_app(token: str, allowed_user_id: int) -> Application:
     return app
 
 
+# Para poder apagar el bot sin cortar el proceso (la página Canales): el hilo que corre el bot
+# deja acá su bucle de eventos y su aplicación; stop() le pide cortar desde otro hilo.
+_runtime: dict = {"app": None, "loop": None, "stop_requested": False}
+
+
+def reset() -> None:
+    """Borra un pedido de apagado viejo. main lo llama justo antes de prender el canal (no al
+    empezar run(): un stop() que llegue mientras el hilo arranca se perdería)."""
+    _runtime["stop_requested"] = False
+
+
+def stop() -> None:
+    """Pide que el bot deje de escuchar (run() vuelve enseguida). No espera: main espera al hilo.
+    Si todavía está conectando, el pedido se cumple apenas arranca."""
+    _runtime["stop_requested"] = True
+    loop, app = _runtime["loop"], _runtime["app"]
+    if loop is not None and app is not None:
+        # stop_running tiene que correr dentro del bucle del bot, no en este hilo.
+        loop.call_soon_threadsafe(app.stop_running)
+
+
 def polling_options(in_main_thread: bool) -> dict:
     """Opciones de run_polling según el hilo desde el que corre."""
     # Si no hay red al arrancar, reintenta sin límite (-1) en vez de rendirse:
@@ -438,7 +463,10 @@ def run():
     app = build_app(token, allowed_user_id)
     in_main = threading.current_thread() is threading.main_thread()
     print("Bot de Telegram en marcha.")
-    app.run_polling(**polling_options(in_main))
+    try:
+        app.run_polling(**polling_options(in_main))
+    finally:
+        _runtime.update(app=None, loop=None)  # listo para volver a prenderlo
 
 
 if __name__ == "__main__":

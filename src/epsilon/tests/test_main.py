@@ -271,3 +271,140 @@ def test_logs_are_redacted_from_startup(monkeypatch):
         for handler in list(root.handlers):
             if handler not in before:
                 root.removeHandler(handler)
+
+
+# --- Prender y apagar un canal sin reiniciar el servicio ---------------------
+
+
+class Stoppable(FakeChannel):
+    """Un canal que corre hasta que le piden parar, como el bot de Telegram."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.stopped = threading.Event()
+        self.runs = 0
+
+    def run(self):
+        self.runs += 1
+        self.threads.append(threading.current_thread())
+        self.started.set()
+        self.stopped.clear()
+        self.stopped.wait(timeout=5)
+
+    def stop(self):
+        self.stopped.set()
+
+
+def running_telegram(monkeypatch, channel=None):
+    channel = channel or Stoppable()
+    use_channels(monkeypatch, web=FakeChannel(), telegram=channel)
+    main.main()
+    wait_for(channel)
+    return channel
+
+
+def test_a_switchable_channel_is_one_with_an_enabled_setting_and_a_stop():
+    assert main.switchable("telegram") is True
+    assert main.switchable("web") is False  # la web no se puede apagar desde la web
+
+
+def test_stopping_a_channel_ends_its_thread_and_marks_it_off(monkeypatch):
+    channel = running_telegram(monkeypatch)
+
+    main.stop_channel("telegram")
+
+    assert not channel.threads[0].is_alive()
+    assert state.snapshot()["telegram"]["state"] == "off"  # y no «detenido» ni un error
+
+
+def test_a_stopped_channel_can_be_started_again(monkeypatch):
+    channel = running_telegram(monkeypatch)
+    main.stop_channel("telegram")
+
+    main.start_channel("telegram")
+    deadline = threading.Event()
+    for _ in range(100):
+        if channel.runs == 2:
+            break
+        deadline.wait(0.02)
+
+    assert channel.runs == 2 and channel.threads[1].is_alive()
+    main.stop_channel("telegram")
+
+
+def test_starting_a_channel_first_forgets_an_old_stop_request(monkeypatch):
+    resets = []
+    channel = Stoppable()
+    channel.reset = lambda: resets.append(1)
+    use_channels(monkeypatch, web=FakeChannel(), telegram=channel)
+
+    main.start_channel("telegram")
+    wait_for(channel)
+
+    assert resets == [1]
+    main.stop_channel("telegram")
+
+
+def test_starting_twice_does_not_start_two_threads(monkeypatch):
+    channel = running_telegram(monkeypatch)
+
+    main.start_channel("telegram")
+
+    assert channel.runs == 1
+    main.stop_channel("telegram")
+
+
+def test_stopping_something_that_is_not_running_just_marks_it_off(monkeypatch):
+    use_channels(monkeypatch, web=FakeChannel(), telegram=Stoppable())
+
+    main.stop_channel("telegram")
+
+    assert state.snapshot()["telegram"]["state"] == "off"
+
+
+def test_a_channel_that_does_not_stop_in_time_says_so(monkeypatch):
+    class Stubborn(Stoppable):
+        def stop(self):
+            pass  # ignora el pedido
+
+    channel = running_telegram(monkeypatch, Stubborn())
+
+    with pytest.raises(main.ChannelError, match="a tiempo"):
+        main.stop_channel("telegram", timeout=0.2)
+    channel.stopped.set()
+
+
+def test_a_channel_without_a_stop_cannot_be_switched_off(monkeypatch):
+    use_channels(monkeypatch, web=FakeChannel(), telegram=FakeChannel())
+
+    assert main.switchable("telegram") is False
+    with pytest.raises(main.ChannelError):
+        main.stop_channel("telegram")
+
+
+def test_an_unconfigured_channel_cannot_be_started(monkeypatch):
+    use_channels(monkeypatch, web=FakeChannel(), telegram=Stoppable(configured=False))
+
+    with pytest.raises(main.ChannelError, match="configurarlo"):
+        main.start_channel("telegram")
+
+
+def test_a_channel_switched_off_in_the_settings_does_not_start_with_the_service(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_ENABLED", "no")
+    channel = Stoppable()
+    use_channels(monkeypatch, web=FakeChannel(), telegram=channel)
+
+    main.main()
+
+    assert channel.threads == []
+    assert state.snapshot()["telegram"]["state"] == "off"  # apagado por vos, no «sin configurar»
+    assert main.enabled_channels(TELEGRAM_ENV) == ["web"]
+
+
+def test_an_unconfigured_and_switched_off_channel_still_says_unconfigured(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_ENABLED", "no")
+    use_channels(monkeypatch, web=FakeChannel(), telegram=Stoppable(configured=False))
+
+    main.main()
+
+    assert state.snapshot()["telegram"]["state"] == "skipped"

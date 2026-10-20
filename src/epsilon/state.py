@@ -5,13 +5,14 @@ import threading
 # cada arranque empieza de cero.
 #
 # Estados: starting (conectando), running (activo), skipped (sin configurar),
-# stopped (detenido; el detalle explica por qué).
+# stopped (detenido; el detalle explica por qué), off (apagado a propósito desde la web).
 
 LABELS = {
     "starting": "conectando…",
     "running": "activo",
     "skipped": "sin configurar, se omite",
     "stopped": "detenido",
+    "off": "apagado",
 }
 
 _lock = threading.Lock()  # los canales corren en hilos distintos

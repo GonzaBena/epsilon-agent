@@ -59,6 +59,7 @@ def block_real_whisper(monkeypatch):
 def voice_on_by_default(monkeypatch):
     """La voz de la PC real (su .env) no cuenta: cada test parte con la voz prendida."""
     monkeypatch.setenv("VOICE_ENABLED", "si")
+    monkeypatch.setenv("TELEGRAM_ENABLED", "si")  # (y se restauran solos si un test los cambia)
 
 
 @pytest.fixture(autouse=True)
@@ -67,3 +68,12 @@ def never_touch_the_real_data_dir(monkeypatch, tmp_path_factory):
     from epsilon import notes
 
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path_factory.mktemp("data"))
+
+
+@pytest.fixture(autouse=True)
+def fresh_channel_control(monkeypatch):
+    """Los hilos de canales que prendió un test no cuentan en el siguiente."""
+    from epsilon import main
+
+    monkeypatch.setattr(main, "_threads", {})
+    monkeypatch.setattr(main, "_stopping", set())

@@ -85,6 +85,7 @@ class Setting:
     reason: str = ""  # por qué hace falta reiniciar (se muestra en el aviso)
     validate: object = None  # función de arriba; None si no es editable
     default: str = ""  # lo que se usa (y se muestra) si el ajuste no está definido
+    page: str = "config"  # en qué página de la web se edita: «config» o «canales»
 
 
 SETTINGS = (
@@ -158,6 +159,16 @@ SETTINGS = (
             "el nuevo se usa cuando se descargue de memoria o al reiniciar."
         ),
         validate=_device,
+    ),
+    # Interruptor del canal de Telegram (la página Canales lo prende y apaga en caliente; si está
+    # en «no», el servicio tampoco lo arranca). No tiene campo en /config: se maneja desde Canales.
+    Setting(
+        "TELEGRAM_ENABLED",
+        "Canal de Telegram prendido",
+        live=True,
+        default="si",
+        validate=_yes_no,
+        page="canales",
     ),
     # Interruptor de la voz y confirmación (transcribe.py y channels/telegram.py los leen en cada
 # audio; se cambian también con /menu).

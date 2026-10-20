@@ -743,3 +743,127 @@ def test_the_telegram_conversation_never_stores_the_bot_token(core_says, monkeyp
     say_text("mi token: 123456789:AAH-ejemplo_de_token_de_telegram_vKjP")
 
     assert "AAH-ejemplo" not in " ".join(m["text"] for m in telegram_conversation()[1])
+
+
+# --- Apagar el bot desde la página Canales -----------------------------------
+
+
+class FakeLoop:
+    def __init__(self):
+        self.scheduled = []
+
+    def call_soon_threadsafe(self, callback):
+        self.scheduled.append(callback)
+
+
+def test_stop_asks_the_bots_own_loop_to_stop_the_app(monkeypatch):
+    loop, app = FakeLoop(), SimpleNamespace(stop_running=lambda: None)
+    monkeypatch.setitem(telegram._runtime, "loop", loop)
+    monkeypatch.setitem(telegram._runtime, "app", app)
+
+    telegram.stop()
+
+    # No lo corta desde este hilo: lo agenda en el bucle del bot (stop_running lo exige).
+    assert loop.scheduled == [app.stop_running]
+
+
+def test_stop_before_the_bot_finished_connecting_is_remembered(monkeypatch):
+    monkeypatch.setitem(telegram._runtime, "loop", None)
+    monkeypatch.setitem(telegram._runtime, "app", None)
+    monkeypatch.setitem(telegram._runtime, "stop_requested", False)
+
+    telegram.stop()
+
+    assert telegram._runtime["stop_requested"] is True  # post_init lo cumple al arrancar
+
+
+def test_reset_forgets_an_old_stop_request(monkeypatch):
+    monkeypatch.setitem(telegram._runtime, "stop_requested", True)
+
+    telegram.reset()
+
+    assert telegram._runtime["stop_requested"] is False
+
+
+def test_run_clears_the_runtime_so_the_bot_can_be_started_again(monkeypatch):
+    monkeypatch.setattr(telegram, "read_config", lambda env: ("123:abc", 42))
+    app = SimpleNamespace(run_polling=lambda **kw: telegram._runtime.update(loop=object(), app=app))
+    monkeypatch.setattr(telegram, "build_app", lambda token, uid: app)
+
+    telegram.run()
+
+    assert telegram._runtime["app"] is None and telegram._runtime["loop"] is None
+
+
+@pytest.fixture
+def offline_ptb(monkeypatch):
+    """La Application real de python-telegram-bot, con la red de mentira: conecta, escucha y se apaga."""
+    from telegram import User
+    from telegram.ext import ExtBot
+
+    async def initialize(self):
+        self._initialized = True
+        self._bot_user = User(id=1, first_name="x", is_bot=True, username="x_bot")
+
+    async def nothing(self, *args, **kwargs):
+        return True
+
+    async def no_updates(self, *args, **kwargs):
+        await asyncio.sleep(0.05)
+        return ()
+
+    for name, fake in (
+        ("initialize", initialize),
+        ("shutdown", nothing),
+        ("delete_webhook", nothing),
+        ("set_my_commands", nothing),
+        ("get_updates", no_updates),
+    ):
+        monkeypatch.setattr(ExtBot, name, fake)
+    monkeypatch.setattr(telegram, "read_config", lambda env: ("123:abc", 42))
+    real_build = telegram.build_app
+    monkeypatch.setattr(telegram, "build_app", lambda token, uid: real_build(token, uid))
+
+
+def run_bot_in_a_thread():
+    import threading as threads
+
+    finished = threads.Event()
+
+    def target():
+        telegram.run()
+        finished.set()
+
+    threads.Thread(target=target, daemon=True).start()
+    return finished
+
+
+def wait_until_connected():
+    import time
+
+    for _ in range(200):
+        if telegram._runtime["loop"] is not None:
+            return
+        time.sleep(0.02)
+    raise AssertionError("el bot no llegó a conectar")
+
+
+def test_the_real_bot_stops_from_another_thread_and_can_be_started_again(offline_ptb):
+    for _ in range(2):  # apagar y volver a prender, en el mismo proceso
+        telegram.reset()  # lo que hace main justo antes de prenderlo
+        finished = run_bot_in_a_thread()
+        wait_until_connected()
+
+        telegram.stop()
+
+        assert finished.wait(timeout=8), "el bot no se apagó"
+        assert telegram._runtime["app"] is None and telegram._runtime["loop"] is None
+
+
+def test_the_real_bot_stops_even_if_it_is_asked_while_still_connecting(offline_ptb):
+    telegram.reset()
+    finished = run_bot_in_a_thread()
+
+    telegram.stop()  # sin esperar a que conecte
+
+    assert finished.wait(timeout=8)
