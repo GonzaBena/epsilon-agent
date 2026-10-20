@@ -116,6 +116,13 @@ def conversation_of(raw: str | None) -> str | None:
     return raw
 
 
+def ensure_writable(conversation_id: str | None) -> None:
+    """La web solo lee las conversaciones de otros canales (Telegram): escribir ahí mandaría
+    mensajes que ese canal nunca vería. Lo vigila el servidor, no solo el botón."""
+    if conversation_id and conversations.channel(conversation_id) not in (None, "web"):
+        raise HTTPException(409, "Esa conversación es de Telegram: respondé desde Telegram.")
+
+
 def session_for(conversation_id: str | None) -> str:
     """Cada conversación tiene su propio estado pendiente (por ejemplo, un CSV sin confirmar)."""
     return f"web:{conversation_id}" if conversation_id else SESSION_ID
@@ -205,6 +212,7 @@ def create_app() -> FastAPI:
     @app.post("/api/message")
     def message(body: MessageIn):
         cid = conversation_of(body.conversation_id)
+        ensure_writable(cid)
         if cid and body.action:
             # Un botón: se anota en QUÉ mensaje se tocó. No es un mensaje tuyo.
             if body.message_id:
@@ -221,6 +229,7 @@ def create_app() -> FastAPI:
         conversation_id: str = Form("", max_length=40),
     ):
         cid = conversation_of(conversation_id)
+        ensure_writable(cid)
         mime = file.content_type or ""
         # Mismos tipos que acepta Telegram: imágenes y PDFs.
         if not (mime.startswith("image/") or mime == "application/pdf"):
@@ -290,6 +299,7 @@ def create_app() -> FastAPI:
         return {
             "id": conversation_id,
             "title": conversations.title(conversation_id),
+            "channel": conversations.channel(conversation_id),  # «web» o «telegram» (solo lectura)
             "messages": found,
             "artifacts": conversations.artifacts(conversation_id),  # lo guardado, para «Contexto»
         }

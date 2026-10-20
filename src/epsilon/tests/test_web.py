@@ -1660,3 +1660,59 @@ def test_deleting_the_model_is_blocked_for_foreign_origins(client):
     reply = client.post("/api/voice/delete-model", headers={"Origin": "http://evil.example"})
 
     assert reply.status_code == 403
+
+
+# --- Conversaciones de Telegram: la web las lee, no escribe en ellas ---------
+
+
+def telegram_talk(text="desde Telegram"):
+    conversation_id = conversations.for_channel("telegram")
+    conversations.add_message(conversation_id, "user", text)
+    conversations.add_message(conversation_id, "bot", "respuesta")
+    return conversation_id
+
+
+def test_the_list_and_the_conversation_say_which_channel_they_are_from(client):
+    web_id = client.post("/api/conversations").json()["id"]
+    post_message(client, text="+ nota", conversation_id=web_id)
+    telegram_id = telegram_talk()
+
+    listed = {c["id"]: c["channel"] for c in client.get("/api/conversations").json()["conversations"]}
+
+    assert listed == {web_id: "web", telegram_id: "telegram"}
+    opened = client.get(f"/api/conversations/{telegram_id}").json()
+    assert opened["channel"] == "telegram" and opened["title"] == "Telegram"
+    assert [m["text"] for m in opened["messages"]] == ["desde Telegram", "respuesta"]
+    assert client.get(f"/api/conversations/{web_id}").json()["channel"] == "web"
+
+
+def test_only_the_open_telegram_conversation_is_listed(client):
+    old = telegram_talk("vieja")
+    conversations.close_channel("telegram")
+    new = telegram_talk("nueva")
+
+    body = client.get("/api/conversations").json()
+
+    assert [c["id"] for c in body["conversations"]] == [new] and body["total"] == 1
+    assert old not in str(body)
+
+
+def test_the_server_refuses_to_write_into_a_telegram_conversation(client, tmp_path):
+    telegram_id = telegram_talk()
+    before = (tmp_path / "conversations" / f"{telegram_id}.jsonl").read_text(encoding="utf-8")
+
+    message = post_message(client, text="+ algo", conversation_id=telegram_id)
+    button = post_message(client, action="guardar", message_id="x", conversation_id=telegram_id)
+    uploaded = upload(client, conversation_id=telegram_id)
+
+    for reply in (message, button, uploaded):
+        assert reply.status_code == 409 and "Telegram" in reply.json()["detail"]
+    assert not (tmp_path / "inbox.md").exists()  # ni siquiera llegó al núcleo
+    assert (tmp_path / "conversations" / f"{telegram_id}.jsonl").read_text(encoding="utf-8") == before
+
+
+def test_a_new_or_web_conversation_can_still_be_written(client):
+    fresh = client.post("/api/conversations").json()["id"]  # sin archivo todavía
+
+    assert post_message(client, text="+ uno", conversation_id=fresh).status_code == 200
+    assert post_message(client, text="+ dos", conversation_id=fresh).status_code == 200
