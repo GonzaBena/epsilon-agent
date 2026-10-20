@@ -288,3 +288,44 @@ def test_the_real_model_is_blocked_in_tests(audio, monkeypatch):
 
     with pytest.raises(transcribe.VoiceError, match="de verdad"):
         transcribe.audio_to_text(audio)
+
+
+def test_the_voice_extra_pins_av_below_19():
+    # faster-whisper 1.2.1 llama av.open(metadata_errors=...), que av 19 ya no acepta: con av 19
+    # TODO audio falla con «No pude transcribir». (Se descubrió probando con un audio real.)
+    import tomllib
+    from pathlib import Path
+
+    root = Path(transcribe.__file__).resolve().parents[2]
+    extra = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["optional-dependencies"]["voz"]
+
+    assert "faster-whisper>=1.2.1" in extra and "av<19" in extra
+
+
+# --- Devolver la memoria al sistema ------------------------------------------
+# Medido con el modelo real: soltar el modelo NO bajaba la RAM (1058 MB); con malloc_trim bajó a 200 MB.
+
+
+def test_unloading_gives_the_memory_back_to_the_system(voice, audio, monkeypatch):
+    released = []
+    monkeypatch.setattr(transcribe, "_release_memory", lambda: released.append(1))
+    clock = {"now": 0.0}
+    monkeypatch.setattr(transcribe, "_now", lambda: clock["now"])
+    transcribe.audio_to_text(audio)
+
+    clock["now"] = 60  # todavía no es hora
+    transcribe.unload_if_idle()
+    assert released == []
+
+    clock["now"] = 11 * 60
+    transcribe.unload_if_idle()
+    assert released == [1]
+
+
+def test_releasing_memory_never_breaks_where_malloc_trim_does_not_exist(monkeypatch):
+    def no_libc(name):
+        raise OSError("no hay libc.so.6 (por ejemplo, en macOS o Windows)")
+
+    monkeypatch.setattr(transcribe.ctypes, "CDLL", no_libc)
+
+    transcribe._release_memory()  # no lanza

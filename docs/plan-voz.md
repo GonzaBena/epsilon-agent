@@ -46,11 +46,17 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
    largo). Tests con un modelo falso y reloj controlado. **Hecho** (`transcribe.py`,
    `tests/test_transcribe.py`; `conftest.py` bloquea cargar o bajar Whisper de verdad).
    Todavía no está conectado a ningún canal ni declarada la extra `voz`: eso es el paso 2.
-2. Instalar la extra, dejar que se descargue el modelo y
-   probar con un audio real para medir velocidad y memoria en tu PC.
-   **Hecho a medias:** extra `voz` declarada e instalada (`faster-whisper` 1.2.1) y el
-   modelo ya estaba en la caché de Hugging Face (no hubo que bajar nada). Falta la prueba
-   con un audio real (velocidad y RAM).
+2. Instalar la extra, dejar que se descargue el modelo y probar con un audio real.
+   **Hecho** (CPU, `int8`, audio de prueba de 13,6 s en mp3 y en webm/opus):
+   - Cargar el modelo: ~5 s. Transcribir con el modelo cargado: ~6 s (≈0,45× el tiempo del
+     audio). Primer audio (carga + transcripción): ~11 s. El texto sale bien en español
+     (con algún error de palabra, normal en Whisper).
+   - RAM: ~1,1 GB con el modelo cargado. **Soltar el modelo NO bajaba la RAM** (seguían ~1 GB):
+     el asignador de Linux no la devuelve. Con `malloc_trim` baja a ~200 MB, y quedó en la
+     descarga por inactividad (`_release_memory`).
+   - Hallazgo de la prueba real: `faster-whisper` 1.2.1 no anda con `av` 19 (`metadata_errors`);
+     la extra fija `av<19` y un test lo vigila. Sin esto, todo audio fallaba.
+   - El modelo ya estaba en la caché de Hugging Face: no hizo falta bajar nada.
 3. Telegram: notas de voz y archivos de audio.
 4. Web: endpoint `/api/transcribe` (JSON/Multipart, mismas defensas que `/api/upload`)
    y botón de micrófono.
@@ -59,6 +65,6 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
 
 ## Sin verificar hasta probarlo
 
-- Velocidad real en CPU con audios de 10 s, 1 min y 5 min.
+- Velocidad con audios largos (1 y 5 minutos): se midió solo con uno de 13,6 s.
 - (Resuelto) `faster-whisper` 1.2.1 y `ctranslate2` 4.8.3 tienen paquete para Python 3.12.
 - Grabación del micrófono en el navegador (permisos, formato `webm/opus`).

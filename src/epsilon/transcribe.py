@@ -1,3 +1,5 @@
+import ctypes
+import gc
 import math
 import os
 from pathlib import Path
@@ -121,6 +123,17 @@ def _arm_timer(delay: float) -> None:
     _timer.start()
 
 
+def _release_memory() -> None:
+    """Después de soltar el modelo, devuelve la RAM al sistema. En Linux, soltarlo NO alcanza
+    (medido: 1058 MB seguían ocupados); malloc_trim la libera (bajó a 200 MB). Donde no
+    existe (macOS, Windows) no hace nada: la memoria igual queda libre para este proceso."""
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
 def unload_if_idle() -> None:
     """Saca el modelo de la memoria si pasó el tiempo sin usarse. Nunca en medio de un audio."""
     global _model
@@ -132,7 +145,8 @@ def unload_if_idle() -> None:
             return
         remaining = idle_seconds() - (_now() - _last_used)
         if remaining <= 0:
-            _model = None  # sin referencias, Python libera la memoria
+            _model = None
+            _release_memory()
         else:
             _arm_timer(remaining)
     finally:

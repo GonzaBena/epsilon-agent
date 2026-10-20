@@ -20,6 +20,8 @@ dependencies = [
 # Voz (Whisper local): uv sync --extra voz. Opcional: quien no la quiera no descarga nada.
 voz = [
     "faster-whisper>=1.2.1",
+    # faster-whisper 1.2.1 llama av.open(metadata_errors=...), que av 19 ya no acepta.
+    "av<19",
 ]
 
 [project.scripts]
