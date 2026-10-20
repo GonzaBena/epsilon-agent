@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+import itertools
 import os
 from pathlib import Path
 import re
@@ -185,12 +186,34 @@ def _audio_suffix(media) -> str:
     return suffix if re.fullmatch(r"\.[a-z0-9]{1,5}", suffix) else ".ogg"
 
 
+# Notas de voz esperando «Ejecutar» o «Cancelar»: token -> (chat, texto). Viven en memoria (se
+# pierden al reiniciar, como /contexto); el texto no viaja en el botón porque Telegram deja
+# apenas 64 bytes. Hasta MAX_PENDING_VOICE en total: lo más viejo se descarta.
+VOICE_PREFIX = "voz:"
+MAX_PENDING_VOICE = 20
+PENDING_VOICE: dict[str, tuple[int, str]] = {}
+_voice_counter = itertools.count(1)
+
+
+def remember_voice(chat_id: int, text: str) -> str:
+    token = str(next(_voice_counter))
+    PENDING_VOICE[token] = (chat_id, text)
+    while len(PENDING_VOICE) > MAX_PENDING_VOICE:
+        PENDING_VOICE.pop(next(iter(PENDING_VOICE)))
+    return token
+
+
 async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Nota de voz o audio: se transcribe en local y el texto entra al núcleo como si lo
     hubieras escrito. Primero se muestra lo entendido y el pedido se ejecuta directo, sin
     pedir confirmación (sería lo mismo que escribir)."""
     chat_id = update.effective_chat.id
     media = update.message.voice or update.message.audio or update.message.document
+
+    # Apagada desde /menu o /config: ni se descarga el audio.
+    if not config.enabled("TELEGRAM_VOICE"):
+        await update.message.reply_text("La voz está apagada. Prendela con /menu.")
+        return
 
     # Si pesa más de lo que Telegram deja bajar, avisamos antes de intentar.
     if media.file_size and media.file_size > MAX_DOWNLOAD:
@@ -219,11 +242,51 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if path:
             path.unlink(missing_ok=True)
 
+    heard = f"🎙 «{text[: MAX_CHARS - 40]}»"
+    # Con la confirmación prendida (/menu o /config), no se ejecuta hasta que toques Ejecutar.
+    if config.enabled("VOICE_CONFIRM"):
+        token = remember_voice(chat_id, text)
+        await update.message.reply_text(
+            f"{heard}\n¿Lo ejecuto?",
+            reply_markup=InlineKeyboardMarkup(
+                [[
+                    InlineKeyboardButton("Ejecutar", callback_data=f"{VOICE_PREFIX}si:{token}"),
+                    InlineKeyboardButton("Cancelar", callback_data=f"{VOICE_PREFIX}no:{token}"),
+                ]]
+            ),
+        )
+        return
+
     # Lo entendido va en un mensaje aparte, para ver qué escuchó; después, la respuesta al pedido.
-    await update.message.reply_text(f"🎙 «{text[: MAX_CHARS - 10]}»")
+    await update.message.reply_text(heard)
+    await run_voice_text(update.message, context, chat_id, text)
+
+
+async def run_voice_text(message, context, chat_id: int, text: str):
+    """El texto de una nota de voz entra al núcleo como si lo hubieras escrito."""
     msg = core.Message(text=text, session_id=session_id(chat_id))
     reply = await ask_core(chat_id, context, msg)
-    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+    await message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+
+
+async def on_voice_answer(query, context, chat_id: int):
+    """«Ejecutar» o «Cancelar» sobre una nota de voz que esperaba confirmación."""
+    parts = query.data.split(":")  # voz:si:<token>
+    if len(parts) != 3 or parts[1] not in ("si", "no"):
+        return
+    answer, token = parts[1], parts[2]
+    pending = PENDING_VOICE.get(token)
+    if not pending or pending[0] != chat_id:
+        # Pasó mucho tiempo, o el bot se reinició: el texto ya no está.
+        await query.edit_message_text("Ese audio ya no está; mandalo de nuevo.")
+        return
+    del PENDING_VOICE[token]
+    heard = f"🎙 «{pending[1][: MAX_CHARS - 40]}»"
+    if answer == "no":
+        await query.edit_message_text(f"{heard}\nCancelado.")
+        return
+    await query.edit_message_text(heard)  # queda lo entendido, sin botones
+    await run_voice_text(query.message, context, chat_id, pending[1])
 
 
 def make_on_button(allowed_user_id: int):
@@ -237,6 +300,9 @@ def make_on_button(allowed_user_id: int):
             return
 
         chat_id = query.message.chat.id
+        if query.data.startswith(VOICE_PREFIX):
+            await on_voice_answer(query, context, chat_id)
+            return
         msg = core.Message(action=query.data, session_id=session_id(chat_id))
         reply = await ask_core(chat_id, context, msg)
         await query.edit_message_text(

@@ -236,6 +236,7 @@ class FakeUpdate:
     def __init__(self, voice=None, audio=None, document=None, chat_id=7):
         self.voice, self.audio, self.document = voice, audio, document
         self.replies = []
+        self.markups = []
         self.message = SimpleNamespace(
             voice=voice, audio=audio, document=document, photo=None, caption=None, reply_text=self.reply_text
         )
@@ -243,6 +244,7 @@ class FakeUpdate:
 
     async def reply_text(self, text, reply_markup=None):
         self.replies.append(text)
+        self.markups.append(reply_markup)
 
 
 class FakeContext:
@@ -273,6 +275,10 @@ def heard(monkeypatch):
 
     monkeypatch.setattr(transcribe, "audio_to_text", fake_audio_to_text)
     monkeypatch.setattr(core, "handle", fake_handle)
+    # Los ajustes de voz de la PC real no cuentan: cada test parte de los valores por defecto.
+    monkeypatch.setenv("TELEGRAM_VOICE", "si")
+    monkeypatch.setenv("VOICE_CONFIRM", "no")
+    telegram.PENDING_VOICE.clear()
     return seen
 
 
@@ -471,3 +477,127 @@ def test_each_kind_of_audio_reaches_the_voice_handler_and_other_files_do_not():
     assert telegram.on_voice in goes_to(audio=Audio("a", "u", 3))
     assert telegram.on_voice in goes_to(document=Document("d", "u", file_name="g.m4a", mime_type="audio/mp4"))
     assert telegram.on_voice not in goes_to(document=Document("d", "u", file_name="x.pdf", mime_type="application/pdf"))
+
+
+# --- Voz: apagada desde /menu, y confirmación opcional ----------------------
+
+
+def test_with_voice_turned_off_the_audio_is_not_even_downloaded(heard, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_VOICE", "no")
+    media = FakeMedia()
+    update = FakeUpdate(voice=media)
+
+    hear(update)
+
+    assert update.replies == ["La voz está apagada. Prendela con /menu."]
+    assert not media.downloaded and heard.paths == [] and heard.messages == []
+
+
+class FakeQuery:
+    """Un toque de botón: guarda cómo quedó el mensaje que lo tenía."""
+
+    def __init__(self, data, chat_id=7, user_id=42):
+        self.data = data
+        self.from_user = SimpleNamespace(id=user_id)
+        self.edits = []
+        self.replies = []
+        self.message = SimpleNamespace(chat=SimpleNamespace(id=chat_id), reply_text=self.reply_text)
+
+    async def answer(self):
+        pass
+
+    async def edit_message_text(self, text, reply_markup=None):
+        self.edits.append((text, reply_markup))
+
+    async def reply_text(self, text, reply_markup=None):
+        self.replies.append(text)
+
+
+def tap(data, **kwargs):
+    query = FakeQuery(data, **kwargs)
+    asyncio.run(telegram.make_on_button(42)(SimpleNamespace(callback_query=query), FakeContext()))
+    return query
+
+
+def ask_to_confirm(heard, monkeypatch):
+    monkeypatch.setenv("VOICE_CONFIRM", "si")
+    update = FakeUpdate(voice=FakeMedia())
+    hear(update)
+    return update
+
+
+def test_with_confirmation_on_the_note_waits_for_a_tap_and_runs_nothing(heard, monkeypatch):
+    update = ask_to_confirm(heard, monkeypatch)
+
+    assert update.replies == ["🎙 «+ comprar pan»\n¿Lo ejecuto?"]
+    [[run, cancel]] = update.markups[0].inline_keyboard
+    assert (run.text, cancel.text) == ("Ejecutar", "Cancelar")
+    assert run.callback_data.startswith("voz:si:") and cancel.callback_data.startswith("voz:no:")
+    assert len(run.callback_data.encode()) <= 64
+    assert heard.messages == []  # todavía no se ejecutó
+
+
+def test_run_executes_the_note_once_and_removes_the_buttons(heard, monkeypatch):
+    update = ask_to_confirm(heard, monkeypatch)
+    [[run, _]] = update.markups[0].inline_keyboard
+
+    query = tap(run.callback_data)
+
+    assert query.edits == [("🎙 «+ comprar pan»", None)]
+    assert query.replies == ["Guardado en inbox.md"]
+    [msg] = heard.messages
+    assert msg.text == "+ comprar pan" and msg.session_id == "telegram:7"
+    # Tocarlo otra vez no lo repite.
+    again = tap(run.callback_data)
+    assert again.edits == [("Ese audio ya no está; mandalo de nuevo.", None)]
+    assert len(heard.messages) == 1
+
+
+def test_cancel_discards_the_note(heard, monkeypatch):
+    update = ask_to_confirm(heard, monkeypatch)
+    [[_, cancel]] = update.markups[0].inline_keyboard
+
+    query = tap(cancel.callback_data)
+
+    assert query.edits == [("🎙 «+ comprar pan»\nCancelado.", None)]
+    assert heard.messages == [] and telegram.PENDING_VOICE == {}
+
+
+def test_a_note_from_before_a_restart_says_it_is_gone(heard):
+    query = tap("voz:si:999")
+
+    assert query.edits == [("Ese audio ya no está; mandalo de nuevo.", None)]
+    assert heard.messages == []
+
+
+def test_another_chat_cannot_run_a_pending_note(heard, monkeypatch):
+    update = ask_to_confirm(heard, monkeypatch)
+    [[run, _]] = update.markups[0].inline_keyboard
+
+    tap(run.callback_data, chat_id=8)
+
+    assert heard.messages == [] and len(telegram.PENDING_VOICE) == 1
+
+
+def test_only_the_authorized_user_can_answer(heard, monkeypatch):
+    update = ask_to_confirm(heard, monkeypatch)
+    [[run, _]] = update.markups[0].inline_keyboard
+
+    query = tap(run.callback_data, user_id=99)
+
+    assert query.edits == [] and heard.messages == []
+
+
+@pytest.mark.parametrize("data", ["voz:", "voz:si", "voz:quizas:1", "voz:si:1:2"])
+def test_malformed_voice_buttons_do_nothing(heard, data):
+    query = tap(data)
+
+    assert query.edits == [] and heard.messages == []
+
+
+def test_pending_notes_are_capped(heard):
+    for n in range(telegram.MAX_PENDING_VOICE + 5):
+        telegram.remember_voice(7, f"nota {n}")
+
+    assert len(telegram.PENDING_VOICE) == telegram.MAX_PENDING_VOICE
+    assert "nota 0" not in {text for _, text in telegram.PENDING_VOICE.values()}
