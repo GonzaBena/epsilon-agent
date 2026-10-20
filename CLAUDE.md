@@ -125,4 +125,6 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, plantillas, MCP.
 - Memoria para quien quiera conversar con un modelo (se apoyará en los archivos de
   `conversations/`).
+- Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
+  guardada en `docs/idea-documentacion.md`, para retomar con una V1.
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).
