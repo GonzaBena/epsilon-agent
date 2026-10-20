@@ -145,12 +145,23 @@ code {
   outline-offset: 2px;
 }
 .icon-link {
-  display: grid;
-  place-items: center;
-  width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
   height: 44px;
+  padding: 0 10px;
   border-radius: 10px;
   color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+/* Con lugar, el botón dice «Configuración»; en pantallas angostas queda solo el ícono. */
+@media (max-width: 62rem) {
+  .icon-label {
+    display: none;
+  }
 }
 
 /* El título de la conversación va al centro del header. */
