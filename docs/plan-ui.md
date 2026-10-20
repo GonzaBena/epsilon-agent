@@ -7,8 +7,8 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
 
 - **Solo lo que funciona.** Fuera: Memoria, Docs, Sesión, Resúmenes y el avatar.
   Dentro, con función real: Chat, Notas (`/ver`), Archivos (`/archivos`),
-  Facturas y tickets (`/archivos tickets`). Uso, Canales y Configuración van en la barra de
-  arriba (ver «Barra de arriba, Canales y Uso» al final).
+  Facturas y tickets (`/archivos tickets`) y, abajo de todo, Configuración. Canales y Uso van
+  en la barra de arriba (ver «Barra de arriba, Canales y Uso» al final).
 - **Sin buscador por ahora.** El «Buscar» del mockup apunta a conversaciones,
   que todavía no existen; la búsqueda de notas ya está en `/buscar`.
 - **Paneles que se contraen.** Izquierdo: columna de íconos (64px) con el «+»
@@ -68,9 +68,10 @@ PDF no tienen miniatura: llevan un ícono.
 Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA).
 
 - **Barra de arriba** (en las cuatro páginas, repetida a mano; un test vigila que coincidan):
-  Chat · Canales · Uso, con la actual marcada (`aria-current`), y a la derecha el modelo y el
-  engranaje de Configuración. Uso y Configuración salieron del menú de la izquierda. Se dejaron
-  afuera Memoria y Docs del diseño: todavía no existen.
+  Chat · Canales · Uso, con la actual marcada (`aria-current`), y a la derecha el modelo (que
+  también lleva a Configuración). Uso salió del menú de la izquierda; **Configuración sigue ahí,
+  abajo de todo** (un engranaje arriba, como en el diseño, no se encontraba). Se dejaron afuera
+  Memoria y Docs del diseño: todavía no existen.
 - **Interruptores** (`button role="switch"`, pista lima, perilla; sin animación si el sistema pide
   menos movimiento) para todo ajuste de sí/no: en `/config` van dentro del formulario (se guardan
   con «Guardar»); en Canales actúan al instante.

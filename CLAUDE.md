@@ -33,8 +33,8 @@ instalarlo, cargar sus claves y usarlo.
   la respeta al reiniciar). La web no se puede apagar desde la web.
 - `channels/web.py` y `channels/web_static/` (index.html, config.html, canales.html, uso.html,
   style.css, app.js, config.js, canales.js, uso.js, shell.js): web local (FastAPI). Solo traduce
-  HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso y el
-  engranaje de Configuración. `/config` edita ajustes (el reinicio es siempre manual: la página
+  HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso; Configuración va
+  abajo de todo en el menú de la izquierda. `/config` edita ajustes (el reinicio es siempre manual: la página
   avisa por qué y con qué comando); los de sí/no son interruptores. `/canales` muestra cada canal y
   prende/apaga Telegram de verdad. `/uso` muestra el gasto de IA (períodos, peticiones de hoy,
   pesos si cargaste `USD_ARS`). `shell.js` maneja los paneles que se contraen y los datos del

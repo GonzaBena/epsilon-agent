@@ -705,8 +705,8 @@ def test_both_pages_have_the_same_menu():
 def test_menu_has_the_expected_sections_and_no_dead_links():
     labels = [label for _, _, label in menu_items(page("index.html"))]
 
-    # Uso, Canales y Configuración están en la barra de arriba.
-    assert labels == ["Chat", "Notas", "Archivos", "Facturas y tickets"]
+    # Canales y Uso están en la barra de arriba; Configuración, abajo de todo en este menú.
+    assert labels == ["Chat", "Notas", "Archivos", "Facturas y tickets", "Configuración"]
     # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
     for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
         assert gone not in page("index.html") and gone not in page("config.html")
@@ -1939,17 +1939,19 @@ def test_every_page_has_the_same_top_bar_and_marks_where_you_are():
         assert [t for _, t, here in links if here] == ([current[name]] if current[name] else []), name
 
 
-def test_the_gear_goes_to_the_settings_and_is_current_only_there():
+def test_settings_is_the_last_item_of_the_left_menu_and_is_current_only_on_its_page():
     for name in PAGES:
-        tag = re.search(r'<a class="icon-link"[^>]*>', page(name)).group(0)
-        assert 'href="/config"' in tag and 'aria-label="Configuración"' in tag
-        assert ("aria-current" in tag) == (name == "config.html"), name
+        html = page(name)
+        items = re.findall(r'<a class="nav-item"([^>]*)>(.*?)</a>', re.search(r'aria-label="Secciones"[^>]*>(.*?)</nav>', html, re.S).group(1), re.S)
+        attrs, inner = items[-1]
+        assert 'href="/config"' in attrs and "Configuración" in inner, name
+        assert ("aria-current" in attrs) == (name == "config.html"), name
+        assert "icon-link" not in html  # ya no hay botón de configuración arriba
 
 
-def test_the_left_menu_no_longer_repeats_what_the_top_bar_has():
+def test_the_top_bar_only_has_chat_channels_and_usage():
     for name in PAGES:
-        labels = [label for _, _, label in menu_items(page(name))]
-        assert "Uso" not in labels and "Configuración" not in labels and "Canales" not in labels
+        assert [t for _, t, _ in top_links(page(name))] == ["Chat", "Canales", "Uso"]
 
 
 def test_the_channels_page_is_served(client):

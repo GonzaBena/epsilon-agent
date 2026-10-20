@@ -71,8 +71,8 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/nuevo`            | Telegram: empieza una conversación nueva.        |
 | `/ayuda`            | Muestra la ayuda.                                |
 
-**Páginas de la web:** arriba están **Chat**, **Canales** y **Uso**, y el engranaje lleva a la
-**Configuración**. En **Canales** ves el estado de cada canal y podés **apagar y prender el bot de
+**Páginas de la web:** arriba están **Chat**, **Canales** y **Uso**, y la **Configuración** está abajo de todo en el menú
+de la izquierda. En **Canales** ves el estado de cada canal y podés **apagar y prender el bot de
 Telegram sin reiniciar nada** (queda así aunque reinicies el servicio; la web no se puede apagar
 desde sí misma). En **Uso** ves cuántos tokens y cuánto dinero gastó la IA: hoy, esta semana, este
 mes y en total, más la lista de las peticiones de hoy (con hora, acción y canal). Para ver el gasto

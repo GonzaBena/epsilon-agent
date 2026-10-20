@@ -112,7 +112,7 @@ code {
   line-height: 1;
 }
 
-/* Los enlaces de arriba (Chat, Canales, Uso) y el engranaje de Configuración. */
+/* Los enlaces de arriba: Chat, Canales y Uso. */
 .top-nav {
   display: flex;
   align-items: center;
@@ -129,41 +129,18 @@ code {
   font-size: 14px;
   text-decoration: none;
 }
-.top-link:hover,
-.icon-link:hover {
+.top-link:hover {
   background: var(--surface-2);
   color: var(--text);
 }
-.top-link[aria-current="page"],
-.icon-link[aria-current="page"] {
+.top-link[aria-current="page"] {
   background: #1d2019; /* el lima, apenas visible: dónde estás */
   color: var(--text);
 }
-.top-link:focus-visible,
-.icon-link:focus-visible {
+.top-link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.icon-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 44px;
-  height: 44px;
-  padding: 0 10px;
-  border-radius: 10px;
-  color: var(--muted);
-  font-size: 14px;
-  text-decoration: none;
-}
-/* Con lugar, el botón dice «Configuración»; en pantallas angostas queda solo el ícono. */
-@media (max-width: 62rem) {
-  .icon-label {
-    display: none;
-  }
-}
-
 /* El título de la conversación va al centro del header. */
 .crumb {
   flex: 1;
