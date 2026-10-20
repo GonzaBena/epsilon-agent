@@ -54,7 +54,7 @@ def test_even_rejected_requests_carry_the_policy(client):
     assert "content-security-policy" in reply.headers
 
 
-@pytest.mark.parametrize("name", ["app.js", "config.js", "shell.js"])
+@pytest.mark.parametrize("name", ["app.js", "config.js", "shell.js", "markdown.js"])
 def test_js_never_builds_html_from_text(name):
     import re
 
@@ -351,7 +351,7 @@ def test_the_telegram_view_tints_the_stage_and_the_composer_blue():
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="sin node no se puede revisar la sintaxis")
-@pytest.mark.parametrize("name", ["app.js", "biblioteca.js", "canales.js", "config.js", "shell.js", "uso.js"])
+@pytest.mark.parametrize("name", ["app.js", "biblioteca.js", "canales.js", "config.js", "markdown.js", "shell.js", "uso.js"])
 def test_every_script_parses(name):
     # Un error de sintaxis deja la página muerta y ninguna otra prueba lo ve (no ejecutan el JS).
     done = subprocess.run(["node", "--check", str(static_path(name))], capture_output=True, text=True)
@@ -376,3 +376,35 @@ def test_recents_row_carries_the_color_and_the_buttons_float():
     assert re.search(r"\.recent-row \.recent\[aria-current\]\s*\{\s*background:\s*transparent;", css)
     # ...y los botones flotan encima, sin quitarle ancho al título.
     assert re.search(r"\.recent-row \.recent-edit\s*\{\s*position:\s*absolute;", css)
+
+
+# --- Markdown en las respuestas del bot ----------------------------------------
+
+
+def test_the_chat_loads_markdown_it_before_app_js_and_renders_only_bot_replies():
+    html, app = page("index.html"), page("app.js")
+
+    assert html.index("/static/js/vendor/markdown-it.min.js") < html.index("/static/js/markdown.js") < html.index("/static/js/app.js")
+    assert 'message.role === "bot" && !message.error' in app and "window.renderMarkdown(message.text)" in app
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="sin node no se puede correr markdown-it")
+def test_markdown_it_is_configured_so_model_output_cannot_inject_html():
+    # Mismas opciones que js/markdown.js; el ataque tiene que salir como texto o como enlace descartado.
+    script = (
+        "const md = require(process.argv[1])({html:false, linkify:false, breaks:true}).disable('image');"
+        "process.stdout.write(md.render(process.argv[2]));"
+    )
+    attack = '<script>alert(1)</script> <img src=x onerror=alert(1)> [clic](javascript:alert(1)) ![x](http://evil/p.png)'
+    done = subprocess.run(
+        ["node", "-e", script, str(static_path("vendor/markdown-it.min.js")), attack], capture_output=True, text=True
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "<script" not in done.stdout and "<img" not in done.stdout and 'href="javascript' not in done.stdout
+
+
+def test_markdown_js_matches_the_options_the_test_above_checks():
+    source = page("markdown.js")
+
+    assert "html: false" in source and "linkify: false" in source and '.disable("image")' in source

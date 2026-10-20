@@ -26,7 +26,9 @@ pantalla de canales y configuración (están en el mockup, vienen después).
 - **Sesión única** (`web`): recargar la página no pierde un «Guardar» pendiente.
   El historial visible vive en el `localStorage` del navegador.
 - **El contenido es dato:** el frontend lo muestra siempre con `textContent`,
-  nunca como HTML.
+  nunca como HTML. Excepción: las respuestas del bot se dibujan como markdown con
+  markdown-it (copiado en `js/vendor/`, sin CDN) configurado con `html: false` y sin imágenes;
+  `js/markdown.js` parsea su salida con `DOMParser`, sin `innerHTML`.
 - **Frontend sin build**, con HTML, CSS y JS en archivos separados
   (`channels/web_static/index.html`, `style.css`, `app.js`). Sin npm, sin CDN,
   sin fuentes externas.

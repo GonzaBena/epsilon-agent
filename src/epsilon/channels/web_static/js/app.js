@@ -113,7 +113,14 @@ function render(message) {
   if (message.role === "bot") row.append(make("span", "mark", "Ε"));
 
   const body = make("div", "body");
-  body.append(make("p", "text", message.text));
+  if (message.role === "bot" && !message.error) {
+    // Respuestas del bot: markdown (js/markdown.js). Lo tuyo y los errores, texto plano.
+    const text = make("div", "text md");
+    text.append(window.renderMarkdown(message.text));
+    body.append(text);
+  } else {
+    body.append(make("p", "text", message.text));
+  }
 
   // Los botones del núcleo (Guardar, Cancelar, Resumir...).
   if (message.actions && message.actions.length) {

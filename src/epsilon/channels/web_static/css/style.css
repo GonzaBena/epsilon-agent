@@ -948,6 +948,85 @@ body.booting .log {
   color: var(--danger);
 }
 
+/* Markdown de las respuestas: el HTML ya trae sus propios saltos, así que no hace falta pre-wrap. */
+.text.md {
+  white-space: normal;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md table,
+.md blockquote {
+  margin: 0.6em 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 1em 0 0.4em;
+  line-height: 1.3;
+}
+.md h1 {
+  font-size: 1.25rem;
+}
+.md h2 {
+  font-size: 1.125rem;
+}
+.md h3,
+.md h4 {
+  font-size: 1rem;
+}
+.md ul,
+.md ol {
+  padding-left: 1.4em;
+}
+.md a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.md code {
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+  font-family: var(--mono);
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+.md pre {
+  padding: 10px 14px;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+.md pre code {
+  padding: 0;
+  background: none;
+}
+.md blockquote {
+  padding-left: 0.9em;
+  border-left: 3px solid var(--line);
+  opacity: 0.85;
+}
+.md table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.md th,
+.md td {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+}
+.md th {
+  background: var(--surface-2);
+}
+
 /* --- Botones de acción (Guardar, Cancelar, Resumir...) --------------------- */
 .actions {
   display: flex;

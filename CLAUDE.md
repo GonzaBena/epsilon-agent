@@ -95,7 +95,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - La web escucha SOLO en 127.0.0.1, sin login (uso personal; el celular usa
   Telegram). Cada request valida Host y Origin; no sacar esas defensas ni
   exponerla a la red sin agregar contraseña y HTTPS.
-- Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
+- Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML. Única excepción: las respuestas del bot pasan por markdown-it (`js/vendor/`, `js/markdown.js`) con `html: false` e imágenes apagadas, y su salida se parsea con `DOMParser` (nada de `innerHTML`); un test vigila esas opciones.
 - El patrón del id de conversación está en `conversations.py` Y en `app.js`; un test
   vigila que coincidan (si se cambia uno, cambiar el otro).
 - Un enlace `/?cmd=...` solo ejecuta solo los comandos con `links` en `tools.py` (llegan por
