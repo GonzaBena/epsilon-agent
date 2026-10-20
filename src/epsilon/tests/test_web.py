@@ -1355,12 +1355,12 @@ def right_panel():
     return re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
 
 
-def test_the_right_panel_has_a_context_section_between_tools_and_channels():
+def test_the_right_panel_has_a_context_section_after_the_tools():
     right = right_panel()
 
     heading = re.search(r'<h2[^>]*id="h-context"[^>]*>\s*Contexto\s*</h2>', right)
     assert heading
-    assert right.index("h-tools") < heading.start() < right.index("h-side-channels")
+    assert right.index("h-tools") < heading.start()
     assert re.search(r'<ul[^>]*id="context"', right)
     # Vacío no es un hueco: explica qué va a aparecer ahí.
     assert re.search(r'<p[^>]*id="context-empty"[^>]*>[^<]+</p>', right)
@@ -1594,11 +1594,9 @@ def test_config_reports_the_voice_status(cfg, monkeypatch):
     assert cfg.get("/api/config").json()["voice"] == "descargado"
 
 
-def test_the_side_panel_draws_the_voice_status():
-    js = (web.STATIC_DIR / "shell.js").read_text(encoding="utf-8")
+def test_the_voice_status_is_shown_in_the_settings_page():
     html = (web.STATIC_DIR / "config.html").read_text(encoding="utf-8")
 
-    assert "state.voice" in js
     assert 'id="voice-status"' in html and "state.voice" in (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")
 
 
@@ -1628,8 +1626,7 @@ def test_the_api_says_voice_is_off_and_the_mic_button_follows_it(client, monkeyp
 
     assert client.get("/api/config").json()["voice"] == "apagada"
     assert 'state.voice === "apagada"' in js and "voiceOff" in js  # sin botón de micrófono
-    for name in ("shell.js", "config.js"):
-        assert "apagada" in (web.STATIC_DIR / name).read_text(encoding="utf-8")
+    assert "apagada" in (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")
 
 
 # --- Borrar el modelo de voz ---------------------------------------------------
@@ -2140,3 +2137,24 @@ def test_the_telegram_view_tints_the_stage_and_the_composer_blue():
     assert "background: var(--stage-bg)" in re.search(r"\n\.composer \{(.*?)\}", css, re.S).group(0)
     assert re.search(r"--stage-bg: var\(--bg\)", css)  # fuera de Telegram, el fondo de siempre
     assert 'document.body.classList.toggle("view-telegram", on)' in app
+
+
+# --- El panel derecho ya no muestra canales (tienen su página) ---------------------
+
+
+def test_the_right_panel_has_only_tools_and_context():
+    right = right_panel()
+    headings = re.findall(r"<h2[^>]*>\s*(.*?)\s*</h2>", right, re.S)
+
+    assert headings == ["Panel", "Herramientas", "Contexto"] or headings == ["Herramientas", "Contexto"]
+    for gone in ("side-channels", "Administrar canales", "Canales"):
+        assert gone not in right, gone
+
+
+def test_the_shell_script_no_longer_draws_channels_or_voice_in_the_panel():
+    shell, css = page("shell.js"), page("style.css")
+
+    for gone in ("renderSideChannels", "renderSideVoice", "VOICE_ROWS", "side-channels"):
+        assert gone not in shell, gone
+    assert ".side-right .channels" not in css and ".side-link" not in css
+    assert "GEMINI_MODEL" in shell  # lo que sí sigue leyendo: el modelo del header

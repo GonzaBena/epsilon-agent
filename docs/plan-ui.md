@@ -29,7 +29,7 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
 ## Pasos (cada uno con commit y revisión en el navegador)
 
 1. Header y panel izquierdo con su versión contraída. **Hecho.**
-2. Panel derecho (Herramientas, Canales) con su versión contraída, píldoras de
+2. Panel derecho (Herramientas, Contexto; los canales salieron cuando tuvieron su página) con su versión contraída, píldoras de
    atajos sobre el cuadro de texto y la nota «puede equivocarse». **Hecho.**
    Las herramientas y píldoras escriben en el cuadro (reemplazan lo que hubiera)
    y no envían; «Imagen a CSV» abre el selector y deja un ejemplo seleccionado.
@@ -85,6 +85,11 @@ Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA)
   cotización). El registro `usage.jsonl` ahora anota hora, acción y canal (variables de contexto, así
   dos pedidos a la vez no se mezclan); lo anterior se sigue leyendo y muestra «—». Un modelo sin
   precio cargado cuenta sus tokens pero no inventa un costo.
+- El panel derecho del chat ya no muestra «Canales» ni el estado de la voz (el de la voz sigue en
+  `/config`): quedan solo Herramientas y Contexto. `shell.js` conserva únicamente el modelo y la
+  carpeta de datos del header.
+- Mirando la conversación de Telegram, el fondo del chat y del cuadro de texto se tiñen de un
+  azul muy oscuro (`body.view-telegram`, sale de `--telegram`), y tu burbuja también.
 - Verificado en el navegador con datos de prueba: apagar y prender Telegram, el filtro por modelo,
   el cambio a pesos y la tabla sin partirse en líneas.
 

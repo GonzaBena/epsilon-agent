@@ -286,55 +286,7 @@
     refreshRecents(); // y con lo que diga el servidor
   });
 
-  // --- Canales (panel derecho del chat) -------------------------------------------------------
-  // Mismas etiquetas que la pantalla de configuración; si cambian, cambiarlas en los dos.
-  const CHANNEL_NAMES = { web: "Web", telegram: "Telegram" };
-  const STATE_LABELS = {
-    running: "Activo",
-    starting: "Conectando…",
-    skipped: "Sin configurar",
-    stopped: "Detenido",
-    off: "Apagado",
-  };
-  const sideChannels = document.getElementById("side-channels");
-
-  // La voz no es un canal, pero se lee igual de un vistazo: misma fila, mismo estilo.
-  // «Lista» = el modelo está (o se baja solo al primer audio); sin la extra, dice cómo instalarla.
-  const VOICE_ROWS = {
-    apagada: ["skipped", "Apagada"],
-    cargado: ["running", "Lista"],
-    descargado: ["running", "Lista"],
-    descargando: ["starting", "Bajando el modelo…"],
-    "sin descargar": ["skipped", "Se baja con el primer audio"],
-    "no instalado": ["skipped", "Sin instalar"],
-  };
-
-  function renderSideChannels(channels) {
-    if (!sideChannels) return; // la configuración no tiene este panel
-    sideChannels.replaceChildren();
-    for (const [name, info] of Object.entries(channels)) {
-      const row = make("li", `channel ${info.state}`);
-      // El estado va SIEMPRE en palabras; el color solo acompaña.
-      row.append(make("span", "dot"));
-      row.append(make("strong", "", CHANNEL_NAMES[name] || name));
-      row.append(make("span", "state", STATE_LABELS[info.state] || info.state));
-      if (info.detail) row.append(make("span", "detail", info.detail));
-      sideChannels.append(row);
-    }
-  }
-
-  function renderSideVoice(voice) {
-    const found = VOICE_ROWS[voice];
-    if (!sideChannels || !found) return;
-    const row = make("li", `channel ${found[0]}`);
-    row.append(make("span", "dot"));
-    row.append(make("strong", "", "Voz"));
-    row.append(make("span", "state", found[1]));
-    if (voice === "no instalado") row.append(make("span", "detail", "Instalala con: uv sync --extra voz"));
-    sideChannels.append(row);
-  }
-
-  // --- Modelo, carpeta de datos y canales (de la API, sin ningún secreto) ---------------------
+  // --- Modelo y carpeta de datos (de la API, sin ningún secreto) ---------------------
   async function loadInfo() {
     try {
       const response = await fetch("/api/config");
@@ -354,14 +306,12 @@
         path.title = dataDir;
       }
 
-      renderSideChannels(state.channels || {});
-      renderSideVoice(state.voice);
     } catch {
       // Sin conexión: el header queda con sus marcadores; el estado del chat ya lo indica.
     }
   }
 
-  // Al volver a la pestaña, el estado de los canales puede haber cambiado.
+  // Al volver a la pestaña, el modelo pudo haber cambiado.
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
       loadInfo();

@@ -42,7 +42,7 @@ archivos y notas de la conversación.
      `GET /api/conversations/{id}` trae `artifacts` (lo más nuevo primero, sin repetir
      ruta) y cada mensaje el suyo.
 3. Sección «Contexto» del panel. **Hecho.**
-   - Entre «Herramientas» y «Canales». Lista (lo más nuevo primero, sin repetir ruta)
+   - Debajo de «Herramientas» (hoy, la última sección del panel). Lista (lo más nuevo primero, sin repetir ruta)
      con ícono por tipo (imagen, documento, nota) y el nombre en monoespaciado; vacía,
      explica qué va a aparecer.
    - Se carga al abrir una conversación (`data.artifacts`), se completa con cada
