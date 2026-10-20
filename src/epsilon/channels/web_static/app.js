@@ -513,7 +513,13 @@ async function startRecording() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (error) {
-    micMessage("No tengo permiso para usar el micrófono. Habilitalo en el navegador.", true);
+    // NotFoundError = no hay ningún micrófono; el resto (NotAllowedError...) es permiso.
+    micMessage(
+      error && error.name === "NotFoundError"
+        ? "No encontré un micrófono en este equipo."
+        : "No tengo permiso para usar el micrófono. Habilitalo en el navegador.",
+      true,
+    );
     return;
   }
   const chunks = [];
@@ -535,12 +541,24 @@ async function startRecording() {
 
 // Sin micrófono o sin MediaRecorder (navegador viejo, página que no es localhost/https): sin botón.
 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
-  micButton.hidden = false;
   micButton.addEventListener("click", () => {
     if (transcribing) return;
     if (recorder) recorder.stop();
     else startRecording();
   });
+
+  // Solo se muestra si hay un micrófono (kind «audioinput»; la lista no pide permiso).
+  // Si lo enchufás después, «devicechange» lo hace aparecer.
+  async function refreshMic() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      micButton.hidden = !devices.some((device) => device.kind === "audioinput");
+    } catch {
+      micButton.hidden = false; // no se pudo saber: que lo intente y avise
+    }
+  }
+  refreshMic();
+  navigator.mediaDevices.addEventListener("devicechange", refreshMic);
 }
 
 // --- Comandos con un toque: los del estado vacío y los del menú lateral ------------------

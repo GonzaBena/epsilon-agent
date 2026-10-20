@@ -1596,3 +1596,12 @@ def test_the_side_panel_draws_the_voice_status():
 
     assert "state.voice" in js
     assert 'id="voice-status"' in html and "state.voice" in (web.STATIC_DIR / "config.js").read_text(encoding="utf-8")
+
+
+def test_mic_says_when_there_is_no_microphone_and_hides_the_button():
+    js = (web.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+
+    assert "NotFoundError" in js  # un aviso propio: no confundir «no hay micrófono» con «sin permiso»
+    assert "No encontré un micrófono" in js
+    assert "enumerateDevices" in js and "audioinput" in js  # sin dispositivos de entrada, sin botón
+    assert "devicechange" in js  # si lo enchufás después, aparece
