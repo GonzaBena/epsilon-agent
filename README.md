@@ -35,6 +35,8 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `DATA_DIR`                                                   | Carpeta donde se guardan notas, archivos y conversaciones (por defecto, `~/epsilon-data`). Queda fuera del repositorio. |
 | `WEB_PORT`                                                   | Puerto de la web local (por defecto, 8765).                                                                             |
 | `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`                          | Opcionales. Con las dos, el bot responde solo a ese usuario de Telegram.                                                |
+| `TELEGRAM_ENABLED`                                           | Prende (`si`) o apaga (`no`) el bot. Se cambia desde la página Canales, sin reiniciar.                                  |
+| `USD_ARS`                                                    | Opcional: pesos por dólar, cargado a mano. Habilita el botón ARS en la página Uso.                                      |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
@@ -68,6 +70,13 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/menu`             | Ajustes del bot con botones (hoy, la voz).       |
 | `/nuevo`            | Telegram: empieza una conversación nueva.        |
 | `/ayuda`            | Muestra la ayuda.                                |
+
+**Páginas de la web:** arriba están **Chat**, **Canales** y **Uso**, y el engranaje lleva a la
+**Configuración**. En **Canales** ves el estado de cada canal y podés **apagar y prender el bot de
+Telegram sin reiniciar nada** (queda así aunque reinicies el servicio; la web no se puede apagar
+desde sí misma). En **Uso** ves cuántos tokens y cuánto dinero gastó la IA: hoy, esta semana, este
+mes y en total, más la lista de las peticiones de hoy (con hora, acción y canal). Para ver el gasto
+también en pesos, cargá la cotización en Configuración (`USD_ARS`).
 
 **Telegram y la web:** lo que hablás por Telegram queda guardado y la web lo muestra como una
 conversación aparte (con el ícono y el color de Telegram), que se actualiza sola y es **solo de

@@ -7,7 +7,8 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
 
 - **Solo lo que funciona.** Fuera: Memoria, Docs, Sesión, Resúmenes y el avatar.
   Dentro, con función real: Chat, Notas (`/ver`), Archivos (`/archivos`),
-  Facturas y tickets (`/archivos tickets`), Uso (`/uso`) y Configuración.
+  Facturas y tickets (`/archivos tickets`). Uso, Canales y Configuración van en la barra de
+  arriba (ver «Barra de arriba, Canales y Uso» al final).
 - **Sin buscador por ahora.** El «Buscar» del mockup apunta a conversaciones,
   que todavía no existen; la búsqueda de notas ya está en `/buscar`.
 - **Paneles que se contraen.** Izquierdo: columna de íconos (64px) con el «+»
@@ -61,6 +62,30 @@ el foco del teclado, y siempre en pantallas táctiles (`hover: none`). Las imág
 se muestran desde una dirección local del navegador (`blob:`, sin subirlas a ningún
 lado; la CSP lo permite solo para `img-src`) y se liberan al quitar el archivo. Los
 PDF no tienen miniatura: llevan un ícono.
+
+## Barra de arriba, Canales y Uso. **Hecho.**
+
+Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA).
+
+- **Barra de arriba** (en las cuatro páginas, repetida a mano; un test vigila que coincidan):
+  Chat · Canales · Uso, con la actual marcada (`aria-current`), y a la derecha el modelo y el
+  engranaje de Configuración. Uso y Configuración salieron del menú de la izquierda. Se dejaron
+  afuera Memoria y Docs del diseño: todavía no existen.
+- **Interruptores** (`button role="switch"`, pista lima, perilla; sin animación si el sistema pide
+  menos movimiento) para todo ajuste de sí/no: en `/config` van dentro del formulario (se guardan
+  con «Guardar»); en Canales actúan al instante.
+- **`/canales`**: una tarjeta por canal con estado en palabras (el punto de color solo acompaña) y, si
+  se puede, el interruptor. Telegram se apaga y prende de verdad (ver `main.stop_channel` y
+  `telegram.stop()`); la web dice «Siempre activa». Se refresca cada 4 s. Voz **no** es un canal: queda
+  en `/config` con sus dos interruptores.
+- **`/uso`**: tarjetas (Hoy, Esta semana desde el lunes, Este mes, Total), la tabla de las
+  peticiones de hoy (Hora, Acción, Canal, Modelo, tokens y precio) con filtro por modelo, y el
+  conmutador USD/ARS, que solo aparece si cargaste `USD_ARS` (a mano; no se consulta ninguna
+  cotización). El registro `usage.jsonl` ahora anota hora, acción y canal (variables de contexto, así
+  dos pedidos a la vez no se mezclan); lo anterior se sigue leyendo y muestra «—». Un modelo sin
+  precio cargado cuenta sus tokens pero no inventa un costo.
+- Verificado en el navegador con datos de prueba: apagar y prender Telegram, el filtro por modelo,
+  el cambio a pesos y la tabla sin partirse en líneas.
 
 ## Sin verificar
 

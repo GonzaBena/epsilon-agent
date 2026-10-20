@@ -60,3 +60,13 @@ def test_the_readme_lists_every_command():
     for tool in tools.TOOLS:
         if tool.name:
             assert f"`{tool.usage or tool.label}`" in readme, tool.label
+
+
+def test_the_readme_lists_every_setting_a_person_can_edit():
+    from epsilon import config
+
+    readme = (Path(__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+
+    for setting in config.SETTINGS:
+        if setting.editable:
+            assert f"`{setting.key}`" in readme or setting.key in readme, setting.key

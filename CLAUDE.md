@@ -27,13 +27,19 @@ instalarlo, cargar sus claves y usarlo.
   `handle(Message) -> Reply`. No conoce ningún canal. Ver `docs/plan-core.md`.
 - `main.py`: punto de entrada. La web (siempre activa) corre en el hilo
   principal; los demás canales configurados (Telegram) van cada uno en su hilo
-  y, si fallan, mueren solos sin tumbar la web. Se omiten los sin configurar.
-- `channels/web.py` y `channels/web_static/` (index.html, config.html, style.css,
-  app.js, config.js, shell.js): web local (FastAPI). Solo traduce HTTP <-> núcleo. Ver
-  `docs/plan-web.md`. La pantalla `/config` edita ajustes; el reinicio es siempre
-  manual (la página solo avisa por qué hace falta y con qué comando). `shell.js`
-  maneja los paneles que se contraen y los datos del header/menú; el menú está
-  repetido en los dos HTML (un test vigila que coincidan). Ver `docs/plan-ui.md`.
+  y, si fallan, mueren solos sin tumbar la web. Se omiten los sin configurar. También los
+  prende y apaga en caliente (`start_channel` / `stop_channel`, para la página Canales): el canal
+  tiene que exponer `stop()`, y la elección queda en `<NOMBRE>_ENABLED` del `.env` (el servicio
+  la respeta al reiniciar). La web no se puede apagar desde la web.
+- `channels/web.py` y `channels/web_static/` (index.html, config.html, canales.html, uso.html,
+  style.css, app.js, config.js, canales.js, uso.js, shell.js): web local (FastAPI). Solo traduce
+  HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso y el
+  engranaje de Configuración. `/config` edita ajustes (el reinicio es siempre manual: la página
+  avisa por qué y con qué comando); los de sí/no son interruptores. `/canales` muestra cada canal y
+  prende/apaga Telegram de verdad. `/uso` muestra el gasto de IA (períodos, peticiones de hoy,
+  pesos si cargaste `USD_ARS`). `shell.js` maneja los paneles que se contraen y los datos del
+  header/menú; la barra de arriba y el menú están repetidos en cada HTML (un test vigila que
+  coincidan). Ver `docs/plan-ui.md`.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
@@ -48,7 +54,7 @@ instalarlo, cargar sus claves y usarlo.
   lee, con el ícono y el color de Telegram. Ver `docs/plan-conversations.md`.
 - `menu.py`: el `/menu` (ajustes con botones, como BotFather): pantallas como datos. Solo puede
   cambiar los ajustes de sí/no que lista; el mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
-- `state.py`: estado de cada canal (activo, detenido y por qué). `checks.py`:
+- `state.py`: estado de cada canal (activo, detenido y por qué, o apagado a propósito). `checks.py`:
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
 - `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
   panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
