@@ -59,7 +59,8 @@ def block_real_whisper(monkeypatch):
 def voice_on_by_default(monkeypatch):
     """La voz de la PC real (su .env) no cuenta: cada test parte con la voz prendida."""
     monkeypatch.setenv("VOICE_ENABLED", "si")
-    monkeypatch.setenv("TELEGRAM_ENABLED", "si")  # (y se restauran solos si un test los cambia)
+    monkeypatch.setenv("TELEGRAM_ENABLED", "si")
+    monkeypatch.setenv("USD_ARS", "")  # la cotización de la PC real tampoco cuenta  # (y se restauran solos si un test los cambia)
 
 
 @pytest.fixture(autouse=True)

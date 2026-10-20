@@ -396,7 +396,9 @@ COMMANDS = {
 def handle(msg: Message) -> Reply:
     """Punto de entrada único: ver _dispatch. Además, recuerda en la sesión lo que la
     respuesta guardó, para /contexto."""
-    reply = _dispatch(msg)
+    # El canal queda anotado en cada llamada al modelo (página Uso): la sesión dice de dónde viene.
+    with usage.channel("Telegram" if msg.session_id.startswith("telegram:") else "Web"):
+        reply = _dispatch(msg)
     _remember(_session(msg.session_id), reply.artifacts)
     return reply
 

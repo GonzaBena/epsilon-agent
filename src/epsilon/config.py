@@ -59,6 +59,13 @@ def _minutes(value: str) -> str:
     return str(int(value))
 
 
+def _rate(value: str) -> str:
+    value = value.replace(",", ".")
+    if not re.fullmatch(r"\d{1,7}(\.\d{1,4})?", value, re.ASCII) or float(value) <= 0:
+        raise ValueError("La cotización es un número mayor que cero (por ejemplo 1500 o 1450,50).")
+    return str(float(value)) if "." in value else value
+
+
 def _device(value: str) -> str:
     value = value.lower()
     if value not in ("cpu", "cuda"):
@@ -134,6 +141,14 @@ SETTINGS = (
             "para cambiarlo hay que volver a abrirlo."
         ),
         validate=_port,
+    ),
+    # Cotización opcional para ver el gasto también en pesos (página Uso). Se carga a mano: no se
+    # consulta ninguna cotización por internet.
+    Setting(
+        "USD_ARS",
+        "Pesos por dólar (opcional)",
+        live=True,
+        validate=_rate,
     ),
     # Voz (transcribe.py los lee al usar el modelo, no al arrancar).
     Setting(

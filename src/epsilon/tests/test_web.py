@@ -1982,3 +1982,41 @@ def test_the_settings_page_no_longer_shows_channel_status():
 
     assert 'id="channels"' not in html and "renderChannels" not in script
     assert 'id="h-channels"' not in html
+
+
+# --- API de uso ------------------------------------------------------------------
+
+
+def test_the_usage_api_returns_periods_and_todays_calls(client, monkeypatch):
+    from epsilon import usage
+
+    monkeypatch.setattr(usage, "PRICES", {"m": (1.0, 4.0)})
+    monkeypatch.delenv("USD_ARS", raising=False)
+    with usage.channel("Web"), usage.action("Resumen"):
+        usage.record("m", 1_000_000, 0)
+
+    body = client.get("/api/usage").json()
+
+    assert [p["key"] for p in body["periods"]] == ["today", "week", "month", "total"]
+    assert body["periods"][0]["calls"] == 1 and body["periods"][0]["cost"] == 1.0
+    [row] = body["rows"]
+    assert (row["action"], row["channel"], row["model"], row["cost"]) == ("Resumen", "Web", "m", 1.0)
+    assert body["models"] == ["m"] and body["ars_rate"] is None
+
+
+def test_the_usage_api_gives_the_pesos_rate_only_when_it_is_loaded(client, monkeypatch):
+    monkeypatch.setenv("USD_ARS", "1450.5")
+    assert client.get("/api/usage").json()["ars_rate"] == 1450.5
+    for junk in ("", "mucho", "0", "-3"):
+        monkeypatch.setenv("USD_ARS", junk)
+        assert client.get("/api/usage").json()["ars_rate"] is None
+
+
+def test_the_usage_api_is_empty_but_valid_without_a_log(client):
+    body = client.get("/api/usage").json()
+
+    assert body["rows"] == [] and all(p["calls"] == 0 for p in body["periods"])
+
+
+def test_the_usage_api_refuses_foreign_hosts(client):
+    assert client.get("/api/usage", headers={"Origin": "http://evil.example"}).status_code == 403

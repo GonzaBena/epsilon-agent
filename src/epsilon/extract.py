@@ -5,7 +5,7 @@ import sys
 from dotenv import load_dotenv
 from google.genai import types
 
-from epsilon import llm, notes
+from epsilon import llm, notes, usage
 
 
 def img_to_rows(img: bytes, mime: str, fields: list[str]) -> list[dict]:
@@ -19,13 +19,14 @@ def img_to_rows(img: bytes, mime: str, fields: list[str]) -> list[dict]:
         "en la imagen, dejá el valor como texto vacío; no inventes nada."
     )
 
-    answer = llm.generate(
-        # Part.from_bytes empaqueta la imagen para enviarla junto al texto.
-        [types.Part.from_bytes(data=img, mime_type=mime)],
-        prompt,
-        max_tokens=4000,  # tope de salida, para que nada se dispare
-        json_mode=True,  # obliga a responder JSON
-    )
+    with usage.action("Imagen a CSV"):  # para la página Uso
+        answer = llm.generate(
+            # Part.from_bytes empaqueta la imagen para enviarla junto al texto.
+            [types.Part.from_bytes(data=img, mime_type=mime)],
+            prompt,
+            max_tokens=4000,  # tope de salida, para que nada se dispare
+            json_mode=True,  # obliga a responder JSON
+        )
 
     data = json.loads(answer)
 

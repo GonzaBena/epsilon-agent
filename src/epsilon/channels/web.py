@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import checks, config, conversations, core, state, tools, transcribe
+from epsilon import checks, config, conversations, core, state, tools, transcribe, usage
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -374,6 +374,18 @@ def create_app() -> FastAPI:
             # Bytes del modelo que Epsilon bajó y se puede borrar; None si no hay.
             "voice_model_bytes": transcribe.deletable_model(),
         }
+
+    @app.get("/api/usage")
+    def get_usage():
+        """Gasto de IA: por período y las peticiones de hoy. Solo lecturas del registro."""
+        data = usage.report()
+        raw = os.environ.get("USD_ARS", "").strip()
+        try:
+            rate = float(raw) if raw else None
+        except ValueError:
+            rate = None
+        data["ars_rate"] = rate if rate and rate > 0 else None  # None: sin cotización cargada
+        return data
 
     @app.get("/api/config")
     def get_config():

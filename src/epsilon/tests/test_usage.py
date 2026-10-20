@@ -78,3 +78,176 @@ def test_unknown_model_counts_tokens_but_not_cost(tmp_path, monkeypatch):
     assert total["input"] == 1_000_000
     assert total["cost"] == 0.0  # no inventamos un precio
     assert total["unpriced"] == 1  # pero avisamos que quedó sin precio
+
+
+# --- Quién pidió cada llamada: canal, acción y hora ---------------------------
+
+
+def read_lines(tmp_path):
+    import json
+
+    return [json.loads(l) for l in (tmp_path / usage.USAGE_FILE).read_text(encoding="utf-8").splitlines()]
+
+
+def test_a_record_carries_time_and_who_asked(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    with usage.channel("Telegram"), usage.action("Resumen"):
+        usage.record("modelo-a", 100, 10)
+
+    [line] = read_lines(tmp_path)
+    assert line["channel"] == "Telegram" and line["action"] == "Resumen"
+    assert len(line["time"]) == 8 and line["time"][2] == ":"  # HH:MM:SS
+
+
+def test_without_context_the_record_has_no_channel_or_action(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    usage.record("modelo-a", 100, 10)
+
+    [line] = read_lines(tmp_path)
+    assert "channel" not in line and "action" not in line
+
+
+def test_the_context_ends_with_the_block_and_nests(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    with usage.channel("Web"):
+        with usage.action("Imagen a CSV"):
+            usage.record("modelo-a", 1, 1)
+        usage.record("modelo-a", 2, 2)
+    usage.record("modelo-a", 3, 3)
+
+    a, b, c = read_lines(tmp_path)
+    assert (a["channel"], a["action"]) == ("Web", "Imagen a CSV")
+    assert (b["channel"], "action" in b) == ("Web", False)
+    assert "channel" not in c
+
+
+def test_two_threads_do_not_mix_their_channels(tmp_path, monkeypatch):
+    import threading
+
+    use_tmp_data(tmp_path, monkeypatch)
+    gate = threading.Barrier(2)
+
+    def work(name):
+        with usage.channel(name):
+            gate.wait()  # los dos adentro del bloque a la vez
+            usage.record("modelo-a", 1, 1)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in ("Web", "Telegram")]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+
+    assert sorted(l["channel"] for l in read_lines(tmp_path)) == ["Telegram", "Web"]
+
+
+def test_core_notes_the_channel_from_the_session(tmp_path, monkeypatch):
+    from epsilon import core
+
+    use_tmp_data(tmp_path, monkeypatch)
+    seen = []
+    monkeypatch.setattr(core, "_dispatch", lambda msg: seen.append(usage._channel.get()) or core.Reply("ok"))
+
+    core.handle(core.Message(text="x", session_id="telegram:7"))
+    core.handle(core.Message(text="x", session_id="web:20261019-153000-ab12"))
+    core.handle(core.Message(text="x"))
+
+    assert seen == ["Telegram", "Web", "Web"] and usage._channel.get() is None
+
+
+def test_extract_and_summarize_note_their_action(tmp_path, monkeypatch):
+    from epsilon import extract, llm, summarize
+
+    use_tmp_data(tmp_path, monkeypatch)
+    actions = []
+    monkeypatch.setattr(llm, "generate", lambda *a, **k: actions.append(usage._action.get()) or '[{"a": "1"}]')
+    monkeypatch.setattr(summarize, "build_part", lambda path: "parte")
+
+    extract.img_to_rows(b"x", "image/png", ["a"])
+    summarize.summarize(tmp_path / "x.md")
+
+    assert actions == ["Imagen a CSV", "Resumen"]
+
+
+# --- El informe de la página Uso ----------------------------------------------
+
+
+def write(tmp_path, *entries):
+    import json
+
+    with (tmp_path / usage.USAGE_FILE).open("a", encoding="utf-8") as f:
+        for e in entries:
+            f.write((e if isinstance(e, str) else json.dumps(e)) + "\n")
+
+
+def test_report_splits_today_week_month_and_total(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    today = date(2026, 10, 21)  # miércoles: la semana empieza el lunes 19
+    base = {"model": "modelo-a", "input": 1_000_000, "output": 0}
+    write(
+        tmp_path,
+        {**base, "date": "2026-10-21"},  # hoy
+        {**base, "date": "2026-10-19"},  # lunes: esta semana
+        {**base, "date": "2026-10-18"},  # domingo: semana pasada, mismo mes
+        {**base, "date": "2026-09-30"},  # el mes pasado
+    )
+
+    periods = {p["key"]: p for p in usage.report(today)["periods"]}
+
+    assert [periods[k]["calls"] for k in ("today", "week", "month", "total")] == [1, 2, 3, 4]
+    assert periods["month"]["cost"] == 3.0 and periods["total"]["cost"] == 4.0
+    assert [p["label"] for p in usage.report(today)["periods"]] == ["Hoy", "Esta semana", "Este mes", "Total"]
+
+
+def test_report_lists_todays_calls_newest_first_with_their_price(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    today = date(2026, 10, 21)
+    write(
+        tmp_path,
+        {"date": "2026-10-21", "time": "09:12:03", "model": "modelo-a", "input": 1_000_000, "output": 250_000,
+         "action": "Resumen", "channel": "Web"},
+        {"date": "2026-10-21", "time": "10:42:40", "model": "otro-modelo", "input": 10, "output": 5,
+         "action": "Imagen a CSV", "channel": "Telegram"},
+        {"date": "2026-10-20", "time": "23:00:00", "model": "modelo-a", "input": 9, "output": 9},  # ayer: no va
+    )
+
+    report = usage.report(today)
+
+    assert [r["time"] for r in report["rows"]] == ["10:42", "09:12"]
+    first, second = report["rows"]
+    assert first["cost"] is None  # modelo sin precio: no se inventa
+    assert second["cost"] == 2.0 and second["action"] == "Resumen" and second["channel"] == "Web"
+    assert report["models"] == ["modelo-a", "otro-modelo"]
+
+
+def test_old_records_without_time_action_or_channel_still_count(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    write(tmp_path, {"date": "2026-10-21", "model": "modelo-a", "input": 100, "output": 10})
+
+    report = usage.report(date(2026, 10, 21))
+
+    [row] = report["rows"]
+    assert row["time"] == "" and row["action"] is None and row["channel"] is None
+    assert report["periods"][0]["calls"] == 1
+
+
+def test_report_skips_broken_lines_instead_of_failing(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    write(
+        tmp_path,
+        "esto no es json",
+        '{"date": "ayer", "model": "m", "input": 1, "output": 1}',
+        '{"date": "2026-10-21", "model": "modelo-a"}',  # faltan tokens
+        {"date": "2026-10-21", "model": "modelo-a", "input": 5, "output": 5},
+    )
+
+    assert usage.report(date(2026, 10, 21))["periods"][3]["calls"] == 1
+
+
+def test_report_without_a_file_is_all_zeros(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    report = usage.report(date(2026, 10, 21))
+
+    assert [p["calls"] for p in report["periods"]] == [0, 0, 0, 0] and report["rows"] == []

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from google.genai import types
 
-from epsilon import llm, notes
+from epsilon import llm, notes, usage
 
 
 # Tope para notas de texto (~300 KB son unos 75.000 tokens). Ajustalo a gusto.
@@ -36,7 +36,8 @@ def build_part(path: Path):
 
 
 def summarize(path: Path) -> str:
-    return llm.generate([build_part(path)], PROMPT)
+    with usage.action("Resumen"):  # para la página Uso
+        return llm.generate([build_part(path)], PROMPT)
 
 
 def summarize_and_save(path: Path) -> tuple[str, str]:

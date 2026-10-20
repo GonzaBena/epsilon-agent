@@ -526,3 +526,26 @@ def test_enabled_falls_back_to_the_default_when_the_value_is_garbage(monkeypatch
 
     assert config.enabled("VOICE_ENABLED") is False  # no dice «si»
     assert config.enabled("VOICE_CONFIRM") is False
+
+
+# --- Cotización del dólar (opcional) -------------------------------------------
+
+
+@pytest.mark.parametrize("value,saved", [("1500", "1500"), ("1450,50", "1450.5"), ("1450.5", "1450.5"), ("0.5", "0.5")])
+def test_the_dollar_rate_accepts_numbers_with_dot_or_comma(value, saved, env_file, monkeypatch):
+    monkeypatch.delenv("USD_ARS", raising=False)
+
+    config.update({"USD_ARS": value}, [], env_file)
+
+    assert f"USD_ARS='{saved}'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv("USD_ARS")
+
+
+@pytest.mark.parametrize("value", ["0", "0,0", "-5", "mil", "1e3", "1.2.3", "12345678", "1500\nEVIL=1"])
+def test_the_dollar_rate_rejects_anything_else(value, env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({"USD_ARS": value}, [], env_file)
+
+
+def test_the_dollar_rate_is_optional_and_empty_by_default(env_file):
+    assert entry("USD_ARS", env_file)["value"] == ""
