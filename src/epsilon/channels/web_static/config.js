@@ -117,6 +117,12 @@ function renderRestart(pending) {
   }
 }
 
+// Un interruptor (button role="switch") guarda su valor «si» / «no» en .value, igual que un campo
+// de texto: así collectChanges y el resto lo tratan como a los demás. Esto sincroniza lo que se ve.
+function syncSwitch(button) {
+  button.setAttribute("aria-checked", String(button.value === "si"));
+}
+
 function renderSetting(setting) {
   const input = fields[setting.key];
   if (!input) return; // un ajuste que esta página no muestra (solo lectura, por ejemplo)
@@ -147,6 +153,7 @@ function renderSetting(setting) {
     // (el que quedará), no el que usa el proceso ahora.
     const shown = setting.pending_restart ? setting.saved : setting.value;
     input.value = shown;
+    if (input.getAttribute("role") === "switch") syncSwitch(input);
     input.dataset.original = shown; // para saber después si lo cambiaste
     hint.textContent = setting.pending_restart ? `${when} Guardado: falta reiniciar.` : when;
   }
@@ -184,6 +191,15 @@ async function load() {
   } catch (error) {
     show(saveResult, error.message, false);
   }
+}
+
+// Tocar un interruptor lo da vuelta (se guarda con «Guardar», como los demás campos).
+for (const input of Object.values(fields)) {
+  if (input.getAttribute("role") !== "switch") continue;
+  input.addEventListener("click", () => {
+    input.value = input.value === "si" ? "no" : "si";
+    syncSwitch(input);
+  });
 }
 
 // --- Guardar ------------------------------------------------------------------------------

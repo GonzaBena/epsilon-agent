@@ -1771,3 +1771,45 @@ def test_the_open_telegram_conversation_refreshes_itself_and_follows_nuevo():
     assert "setInterval(refreshTelegram" in app
     assert 'c.channel === "telegram"' in block and "openConversation(latest.id)" in block
     assert "innerHTML" not in block
+
+
+# --- Interruptores (sí / no) en la configuración -----------------------------
+
+
+def switch_tags():
+    return re.findall(r"<button[^>]*role=\"switch\"[^>]*>", page("config.html"))
+
+
+def test_the_yes_no_settings_are_switches_not_dropdowns():
+    keys = {re.search(r'data-key="([A-Z_]+)"', tag).group(1) for tag in switch_tags()}
+    yes_no = {s.key for s in config.SETTINGS if s.validate is config._yes_no}
+
+    assert keys == yes_no  # todo ajuste de sí/no tiene su interruptor, y solo esos
+    html = page("config.html")
+    for key in yes_no:
+        assert f'<select id="f-{key}"' not in html
+
+
+def test_every_switch_is_accessible_and_starts_in_line_with_its_default():
+    for tag in switch_tags():
+        key = re.search(r'data-key="([A-Z_]+)"', tag).group(1)
+        assert 'type="button"' in tag
+        assert f'aria-labelledby="label-{key}"' in tag  # tiene nombre
+        assert f'id="label-{key}"' in page("config.html")
+        default = config.BY_KEY[key].default
+        assert f'value="{default}"' in tag and f'aria-checked="{"true" if default == "si" else "false"}"' in tag
+
+
+def test_the_switch_script_flips_the_value_and_keeps_aria_in_sync():
+    script = page("config.js")
+
+    assert 'role") !== "switch"' in script or 'role") === "switch"' in script
+    assert 'input.value === "si" ? "no" : "si"' in script
+    assert 'setAttribute("aria-checked"' in script
+
+
+def test_the_switch_has_a_style_with_focus_and_reduced_motion():
+    css = page("style.css")
+
+    for needed in (".switch {", '.switch[aria-checked="true"]', ".switch:focus-visible", "prefers-reduced-motion"):
+        assert needed in css, needed

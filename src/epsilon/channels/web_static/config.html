@@ -168,24 +168,24 @@
             <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Apagada, no se descarga ni se usa el modelo. Los dos primeros ajustes también se cambian desde el bot con <code>/menu</code>; confirmar vale solo para Telegram.</p>
             <p class="result" id="voice-status" role="status"></p>
 
-            <div class="field">
-              <label for="f-VOICE_ENABLED">Voz (micrófono de la web y notas de voz de Telegram)</label>
-              <select id="f-VOICE_ENABLED" data-key="VOICE_ENABLED"
-                      aria-describedby="hint-VOICE_ENABLED err-VOICE_ENABLED">
-                <option value="si">Sí</option>
-                <option value="no">No</option>
-              </select>
+            <div class="field switch-field">
+              <div class="switch-row">
+                <span class="switch-label" id="label-VOICE_ENABLED">Voz (micrófono de la web y notas de voz de Telegram)</span>
+                <button type="button" class="switch" role="switch" id="f-VOICE_ENABLED" data-key="VOICE_ENABLED"
+                        value="si" aria-checked="true"
+                        aria-labelledby="label-VOICE_ENABLED" aria-describedby="hint-VOICE_ENABLED err-VOICE_ENABLED"><span class="knob"></span></button>
+              </div>
               <p class="hint" id="hint-VOICE_ENABLED"></p>
               <p class="error" id="err-VOICE_ENABLED" role="alert"></p>
             </div>
 
-            <div class="field">
-              <label for="f-VOICE_CONFIRM">Confirmar las notas de voz antes de ejecutarlas</label>
-              <select id="f-VOICE_CONFIRM" data-key="VOICE_CONFIRM"
-                      aria-describedby="hint-VOICE_CONFIRM err-VOICE_CONFIRM">
-                <option value="no">No: se ejecutan directo</option>
-                <option value="si">Sí: Telegram pregunta antes de ejecutar</option>
-              </select>
+            <div class="field switch-field">
+              <div class="switch-row">
+                <span class="switch-label" id="label-VOICE_CONFIRM">Confirmar las notas de voz antes de ejecutarlas (solo Telegram)</span>
+                <button type="button" class="switch" role="switch" id="f-VOICE_CONFIRM" data-key="VOICE_CONFIRM"
+                        value="no" aria-checked="false"
+                        aria-labelledby="label-VOICE_CONFIRM" aria-describedby="hint-VOICE_CONFIRM err-VOICE_CONFIRM"><span class="knob"></span></button>
+              </div>
               <p class="hint" id="hint-VOICE_CONFIRM"></p>
               <p class="error" id="err-VOICE_CONFIRM" role="alert"></p>
             </div>
