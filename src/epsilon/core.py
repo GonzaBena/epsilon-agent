@@ -6,6 +6,7 @@ import re
 from epsilon import menu, tools
 from epsilon.ai import extract, summarize, usage
 from epsilon.data import notes
+from epsilon.memory import store as memory
 from epsilon.settings import config
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
@@ -126,6 +127,22 @@ def _save(text: str) -> Reply:
     # Anteponemos la fecha para saber cuándo anotaste cada cosa.
     saved = notes.save_note("inbox", f"- {date.today().isoformat()} {text}")
     return Reply(saved, artifacts=[_artifact("note", notes.safe_path("inbox.md"))])
+
+
+def _remember_cmd(args: str, session: Session) -> Reply:
+    """/recordar texto: agrega un dato a la memoria (memory.md)."""
+    if not args:
+        return Reply("Uso: /recordar lo que quieras que recuerde")
+    try:
+        line = memory.remember(args)
+    except ValueError as e:
+        return Reply(str(e))
+    return Reply(f"Anotado en la memoria: {line[2:]}")
+
+
+def _memory_cmd(args: str, session: Session) -> Reply:
+    """/memoria: muestra todo lo recordado."""
+    return Reply(memory.read() or "Todavía no recordé nada. Probá con /recordar.")
 
 
 def _watch(args: str) -> Reply:
@@ -385,6 +402,8 @@ COMMANDS = {
     "buscar": lambda args, s: _search(args),
     "archivos": lambda args, s: _files(args),
     "contexto": _context,
+    "recordar": _remember_cmd,
+    "memoria": _memory_cmd,
     "uso": lambda args, s: _usage(args),
     "usage": lambda args, s: _usage(args),
     "resumir": _summarize_cmd,

@@ -32,6 +32,7 @@ core.py main.py tools.py menu.py state.py   el centro: lógica, arranque, regist
 ai/        llm.py extract.py summarize.py usage.py      todo lo que habla con el modelo y su gasto
 data/      notes.py conversations.py library.py         lo que se guarda en DATA_DIR (library: vista de solo lectura)
 voice/     transcribe.py                                Whisper (voz → texto)
+memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
 settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
 channels/  telegram.py web.py web_static/               por dónde se habla con Epsilon
 ```
@@ -79,6 +80,9 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
   panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
   nuevo = una entrada acá + su función en `core.COMMANDS`. Ver `docs/plan-tools.md`.
+- `memory/store.py`: la memoria (`remember`/`read` sobre `DATA_DIR/memory.md`, solo se agrega, una línea con fecha por dato,
+  máx. 500 caracteres, pasa por `config.redact`). Comandos `/recordar texto` y `/memoria`; sin modelo. Más adelante una
+  herramienta MCP usará las mismas dos funciones para que el modelo guarde memoria solo.
 - `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `data/library.py`: la biblioteca de la web (listar con búsqueda, filtro y páginas; abrir; abrir la carpeta). Solo
   lee: todo pasa por `safe_path` y por la lista de extensiones; los resúmenes no se muestran.
@@ -129,8 +133,8 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 
 - Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
   cumpla ese papel serían skills.
-- Memoria para quien quiera conversar con un modelo (se apoyará en los archivos de
-  `conversations/`).
+- Memoria, siguientes pasos: pasársela a la IA (resúmenes, y una charla con el modelo), olvidar/editar líneas,
+  que el modelo guarde sola vía MCP.
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).

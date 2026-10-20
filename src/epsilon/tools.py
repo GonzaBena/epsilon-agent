@@ -101,6 +101,23 @@ TOOLS = (
         menu="Lo que guardaste desde que arrancó el bot",
     ),
     Tool(
+        "/recordar",
+        name="recordar",
+        usage="/recordar texto",
+        help="anotar un dato o preferencia tuya en la memoria",
+        panel="Anotar un dato o preferencia tuya en la memoria",
+        menu="Anotar algo en la memoria",
+        insert="/recordar ",
+        writes=True,
+    ),
+    Tool(
+        "/memoria",
+        name="memoria",
+        help="ver lo que anotaste en la memoria",
+        menu="Ver lo que anotaste en la memoria",
+        insert="/memoria",
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

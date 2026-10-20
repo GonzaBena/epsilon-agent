@@ -112,7 +112,7 @@ cruza entre canales), y la web solo **lee** la conversación de Telegram.
 
 ## Después
 
-- Memoria para quien quiera conversar con un modelo (se apoyará en estos archivos).
+- Memoria con el modelo: la V1 (`/recordar`, `/memoria`, archivo `memory.md`) ya existe; falta pasársela a la IA.
 - «Ver archivadas»: abrir las conversaciones de Telegram que se cerraron.
 - Que la web también pueda escribir en la de Telegram (hoy solo lee).
 
