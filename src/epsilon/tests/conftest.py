@@ -59,3 +59,11 @@ def block_real_whisper(monkeypatch):
 def voice_on_by_default(monkeypatch):
     """La voz de la PC real (su .env) no cuenta: cada test parte con la voz prendida."""
     monkeypatch.setenv("VOICE_ENABLED", "si")
+
+
+@pytest.fixture(autouse=True)
+def never_touch_the_real_data_dir(monkeypatch, tmp_path_factory):
+    """Los datos reales (DATA_DIR) no se tocan: si un test no elige su carpeta, va a una temporal."""
+    from epsilon import notes
+
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path_factory.mktemp("data"))

@@ -21,6 +21,7 @@ class Tool:
     uses_ai: bool = False  # gasta tokens: el panel lo marca con «usa IA»
     writes: bool = False  # escribe en DATA_DIR o cambia el estado de la sesión
     links: tuple[str, ...] = ()  # pedidos completos que /?cmd=... puede ejecutar solos
+    channel: str = ""  # si lo atiende un solo canal (no el núcleo): su nombre, p. ej. «telegram»
 
 
 # El panel de la web muestra solo lo que no tiene otra puerta de entrada: lo que ya está en el
@@ -116,6 +117,12 @@ TOOLS = (
         writes=True,
     ),
     Tool(
+        "/nuevo",
+        name="nuevo",
+        menu="Empezar una conversación nueva (lo anterior queda guardado)",
+        channel="telegram",
+    ),
+    Tool(
         "/ayuda",
         name="ayuda",
         menu="Cómo se usa el bot",
@@ -130,12 +137,14 @@ def help_lines() -> list[str]:
 
 
 def command_names() -> set[str]:
-    """Todos los nombres de comando que el núcleo tiene que entender, alias incluidos."""
+    """Todos los nombres de comando que el núcleo tiene que entender, alias incluidos.
+    Los que atiende un solo canal (/nuevo en Telegram) no cuentan: el núcleo no los conoce."""
     names = set()
     for tool in TOOLS:
-        if tool.name:
+        if tool.name and not tool.channel:
             names.add(tool.name)
-        names.update(tool.aliases)
+        if not tool.channel:
+            names.update(tool.aliases)
     return names
 
 

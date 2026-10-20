@@ -1,4 +1,6 @@
 import asyncio
+from collections import OrderedDict
+from dataclasses import asdict
 from datetime import datetime
 import itertools
 import os
@@ -14,12 +16,13 @@ from telegram.error import InvalidToken, NetworkError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
 
-from epsilon import config, core, state, tools, transcribe
+from epsilon import config, conversations, core, state, tools, transcribe
 
 # Este archivo solo TRADUCE entre Telegram y el núcleo (core.py): convierte lo
 # que llega en un core.Message y dibuja el core.Reply. No decide nada.
@@ -139,12 +142,67 @@ def session_id(chat_id: int) -> str:
     return f"telegram:{chat_id}"
 
 
+# --- Lo que se habla por acá queda en la conversación de Telegram (la ve la web) ----------------
+# Una sola conversación abierta (conversations.for_channel); /nuevo la cierra y arranca otra.
+# Anotarla nunca puede romper el bot: si el disco falla, se avisa en la terminal y sigue.
+
+# Mensaje del bot en Telegram -> (conversación, id del mensaje anotado), para saber en qué
+# mensaje se tocó un botón. En memoria y acotado: tras un reinicio, el toque no se anota.
+MAX_LOGGED = 200
+LOGGED: OrderedDict[tuple[int, int], tuple[str, str]] = OrderedDict()
+
+
+def log_turn(chat_id: int, said: str | None, reply: core.Reply, sent_message_id: int | None) -> None:
+    """Anota lo que dijiste (si hay) y lo que respondió el bot."""
+    try:
+        conversation_id = conversations.for_channel("telegram")
+        if said is not None:
+            conversations.add_message(conversation_id, "user", said)
+        message_id = conversations.add_message(
+            conversation_id,
+            "bot",
+            reply.text,
+            actions=[asdict(a) for a in reply.actions],
+            artifacts=[asdict(a) for a in reply.artifacts],
+        )
+        if sent_message_id is not None:
+            LOGGED[(chat_id, sent_message_id)] = (conversation_id, message_id)
+            while len(LOGGED) > MAX_LOGGED:
+                LOGGED.popitem(last=False)
+    except Exception as e:
+        print(f"No pude anotar la conversación de Telegram: {config.redact(repr(e))}")
+
+
+def log_action(chat_id: int, sent_message_id: int, action_id: str) -> None:
+    """Anota qué botón se tocó, en el mensaje que lo tenía."""
+    found = LOGGED.get((chat_id, sent_message_id))
+    if not found:
+        return
+    try:
+        conversations.add_action(found[0], found[1], action_id)
+    except Exception as e:
+        print(f"No pude anotar la conversación de Telegram: {config.redact(repr(e))}")
+
+
+async def respond(message, context, chat_id: int, msg: core.Message, said: str | None) -> None:
+    """Le pasa el mensaje al núcleo, muestra la respuesta y la anota (con lo que dijiste)."""
+    reply = await ask_core(chat_id, context, msg)
+    sent = await message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+    log_turn(chat_id, said, reply, getattr(sent, "message_id", None))
+
+
+async def on_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/nuevo: la próxima vez que hables, empieza otra conversación de Telegram. Telegram no avisa
+    cuando borrás el chat, así que este es el modo de empezar de cero. Lo anterior queda guardado."""
+    conversations.close_channel("telegram")
+    await update.message.reply_text("Listo: la conversación de Telegram empieza de cero. Lo anterior queda guardado.")
+
+
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Texto y comandos: el núcleo decide qué son."""
     chat_id = update.effective_chat.id
     msg = core.Message(text=update.message.text, session_id=session_id(chat_id))
-    reply = await ask_core(chat_id, context, msg)
-    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+    await respond(update.message, context, chat_id, msg, said=update.message.text)
 
 
 async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,8 +232,8 @@ async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         attachment=core.Attachment(data=data, name=name, mime=mime),
         session_id=session_id(chat_id),
     )
-    reply = await ask_core(chat_id, context, msg)
-    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+    caption = update.message.caption or ""
+    await respond(update.message, context, chat_id, msg, said=f"{name}\n{caption}" if caption.strip() else name)
 
 
 def _audio_suffix(media) -> str:
@@ -265,8 +323,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def run_voice_text(message, context, chat_id: int, text: str):
     """El texto de una nota de voz entra al núcleo como si lo hubieras escrito."""
     msg = core.Message(text=text, session_id=session_id(chat_id))
-    reply = await ask_core(chat_id, context, msg)
-    await message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+    await respond(message, context, chat_id, msg, said=f"🎙 {text}")
 
 
 async def on_voice_answer(query, context, chat_id: int):
@@ -305,9 +362,12 @@ def make_on_button(allowed_user_id: int):
             return
         msg = core.Message(action=query.data, session_id=session_id(chat_id))
         reply = await ask_core(chat_id, context, msg)
+        log_action(chat_id, query.message.message_id, query.data)
         await query.edit_message_text(
             trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked)
         )
+        # El mensaje se editó en el lugar: la respuesta nueva queda anotada para el siguiente toque.
+        log_turn(chat_id, None, reply, query.message.message_id)
 
     return on_button
 
@@ -339,6 +399,7 @@ def build_app(token: str, allowed_user_id: int) -> Application:
     # Los de cualquier otra persona se ignoran sin responder nada.
     only_me = filters.User(user_id=allowed_user_id)
 
+    app.add_handler(CommandHandler("nuevo", on_new, filters=only_me))  # antes que el texto en general
     app.add_handler(MessageHandler(filters.TEXT & only_me, on_text))
     app.add_handler(
         MessageHandler(

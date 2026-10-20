@@ -1,6 +1,6 @@
 import pytest
 
-from epsilon import core
+from epsilon import conversations, core, tools
 from epsilon.channels import telegram
 
 
@@ -69,7 +69,9 @@ def test_every_menu_command_exists_in_core():
     # Si el menú muestra un comando que el núcleo no conoce, no haría nada.
     menu = {c.command for c in telegram.COMMANDS}
 
-    assert menu <= set(core.COMMANDS)
+    # (Los que atiende el propio canal, como /nuevo, no pasan por el núcleo.)
+    own = {t.name for t in tools.TOOLS if t.channel == "telegram"}
+    assert menu <= set(core.COMMANDS) | own
 
 
 # --- Opciones de arranque según el hilo --------------------------------------
@@ -245,6 +247,7 @@ class FakeUpdate:
     async def reply_text(self, text, reply_markup=None):
         self.replies.append(text)
         self.markups.append(reply_markup)
+        return SimpleNamespace(message_id=1000 + len(self.replies))
 
 
 class FakeContext:
@@ -361,7 +364,9 @@ def test_the_audio_is_not_saved_in_the_data_folder(heard, tmp_path, monkeypatch)
     hear(FakeUpdate(voice=FakeMedia()))
 
     assert not any(p.is_relative_to(tmp_path) for p in heard.paths)
-    assert list(tmp_path.iterdir()) == []
+    # Solo la conversación de Telegram (texto); del audio no queda ningún archivo.
+    assert [p.name for p in tmp_path.iterdir()] == ["conversations"]
+    assert not any(p.suffix in (".ogg", ".webm", ".mp3") for p in tmp_path.rglob("*"))
 
 
 def test_transcribing_does_not_block_the_bot(heard):
@@ -601,3 +606,140 @@ def test_pending_notes_are_capped(heard):
 
     assert len(telegram.PENDING_VOICE) == telegram.MAX_PENDING_VOICE
     assert "nota 0" not in {text for _, text in telegram.PENDING_VOICE.values()}
+
+
+# --- La conversación de Telegram: lo que se habla queda anotado para la web --------
+
+
+def telegram_conversation():
+    """(id, mensajes) de la conversación abierta de Telegram."""
+    conversation_id = conversations.current("telegram")
+    return conversation_id, conversations.messages(conversation_id) if conversation_id else []
+
+
+def say_text(text, chat_id=7):
+    update = FakeUpdate(chat_id=chat_id)
+    update.message.text = text
+    asyncio.run(telegram.on_text(update, FakeContext()))
+    return update
+
+
+@pytest.fixture
+def core_says(monkeypatch):
+    replies = []
+    monkeypatch.setattr(
+        core,
+        "handle",
+        lambda msg: replies.pop(0) if replies else core.Reply("ok"),
+    )
+    telegram.LOGGED.clear()
+    return replies
+
+
+def test_a_text_turn_is_saved_with_what_the_reply_saved(core_says):
+    core_says.append(core.Reply("Guardado en inbox.md", artifacts=[core.Artifact("note", "inbox.md")]))
+
+    say_text("+ comprar pan")
+
+    conversation_id, found = telegram_conversation()
+    assert [(m["role"], m["text"]) for m in found] == [("user", "+ comprar pan"), ("bot", "Guardado en inbox.md")]
+    assert conversations.artifacts(conversation_id) == [{"kind": "note", "path": "inbox.md"}]
+    assert conversations.channel(conversation_id) == "telegram"
+
+
+def test_every_turn_goes_to_the_same_conversation(core_says):
+    say_text("uno")
+    say_text("dos")
+
+    assert len(conversations.list_all()) == 1
+    assert [m["text"] for m in telegram_conversation()[1] if m["role"] == "user"] == ["uno", "dos"]
+
+
+def test_a_file_turn_saves_the_name_and_the_caption(core_says):
+    update = FakeUpdate()
+    update.message.document = SimpleNamespace(
+        file_size=10, mime_type="application/pdf", file_name="factura.pdf", get_file=FakeMedia().get_file
+    )
+    update.message.caption = "gastos: fecha, total"
+
+    asyncio.run(telegram.on_file(update, FakeContext()))
+
+    assert telegram_conversation()[1][0]["text"] == "factura.pdf\ngastos: fecha, total"
+
+
+def test_a_voice_note_is_saved_as_what_was_heard(heard):
+    hear(FakeUpdate(voice=FakeMedia()))
+
+    assert [m["text"] for m in telegram_conversation()[1]][0] == "🎙 + comprar pan"
+
+
+def test_a_confirmed_voice_note_is_saved_only_when_it_runs(heard, monkeypatch):
+    update = ask_to_confirm(heard, monkeypatch)
+    assert telegram_conversation()[1] == []  # esperando: todavía no se ejecutó nada
+    [[run, _]] = update.markups[0].inline_keyboard
+
+    tap(run.callback_data)
+
+    assert [m["text"] for m in telegram_conversation()[1]] == ["🎙 + comprar pan", "Guardado en inbox.md"]
+
+
+def test_a_tapped_button_is_noted_on_the_message_that_had_it(core_says):
+    core_says.append(core.Reply("¿Resumir?", actions=[core.Action("resumir:1", "Resumir"), core.Action("nada:1", "No")]))
+    core_says.append(core.Reply("Listo"))
+    update = say_text("hola")
+    # El mensaje de Telegram que tenía los botones (el primero que mandó el bot).
+    sent_id = 1001
+
+    query = FakeQuery("resumir:1")
+    query.message.message_id = sent_id
+    asyncio.run(telegram.make_on_button(42)(SimpleNamespace(callback_query=query), FakeContext()))
+
+    found = telegram_conversation()[1]
+    assert found[1]["used"] is True and found[1]["chosen"] == "resumir:1"
+    assert found[-1]["text"] == "Listo"
+    assert update.replies[0] == "¿Resumir?"
+
+
+def test_a_disk_problem_does_not_break_the_bot(core_says, monkeypatch, capsys):
+    def broken(name):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(conversations, "for_channel", broken)
+
+    update = say_text("hola")
+
+    assert update.replies == ["ok"]  # igual contestó
+    assert "No pude anotar la conversación" in capsys.readouterr().out
+
+
+def test_nuevo_closes_the_conversation_and_the_next_message_starts_another(core_says):
+    say_text("viejo")
+    first, _ = telegram_conversation()
+    update = FakeUpdate()
+
+    asyncio.run(telegram.on_new(update, FakeContext()))
+    assert "empieza de cero" in update.replies[0] and conversations.current("telegram") is None
+    say_text("nuevo")
+
+    second, _ = telegram_conversation()
+    assert second != first
+    assert [c["id"] for c in conversations.list_all()] == [second]
+    assert conversations.messages(first)[0]["text"] == "viejo"
+
+
+def test_nuevo_is_wired_before_the_generic_text_handler_and_only_for_me():
+    app = telegram.build_app("123:abc", 42)
+    handlers = [h for h in app.handlers[0]]
+    names = [type(h).__name__ for h in handlers]
+
+    assert names.index("CommandHandler") < names.index("MessageHandler")
+    command = next(h for h in handlers if type(h).__name__ == "CommandHandler")
+    assert command.commands == {"nuevo"}
+
+
+def test_the_telegram_conversation_never_stores_the_bot_token(core_says, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TOKEN", "123456789:AAH-ejemplo_de_token_de_telegram_vKjP")
+
+    say_text("mi token: 123456789:AAH-ejemplo_de_token_de_telegram_vKjP")
+
+    assert "AAH-ejemplo" not in " ".join(m["text"] for m in telegram_conversation()[1])

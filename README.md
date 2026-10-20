@@ -66,6 +66,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/contexto`         | Lista lo que guardaste desde que arrancó el bot. |
 | `/uso`              | Tokens y precio gastados, hoy y en total.        |
 | `/menu`             | Ajustes del bot con botones (hoy, la voz).       |
+| `/nuevo`            | Telegram: empieza una conversación nueva.        |
 | `/ayuda`            | Muestra la ayuda.                                |
 
 **Imagen a CSV:** adjuntá una imagen con un texto como `gastos: fecha, proveedor, total`.
