@@ -476,8 +476,10 @@ composer.addEventListener("submit", (event) => {
   submit();
 });
 
-// Enter envía; Shift+Enter hace un salto de línea.
+// Enter envía; Shift+Enter hace un salto de línea. Con las sugerencias abiertas, las flechas
+// eligen, Enter o Tab insertan y Escape cierra (ver «Sugerencias de comandos» más abajo).
 input.addEventListener("keydown", (event) => {
+  if (handleSuggestKey(event)) return;
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     submit();
@@ -489,7 +491,10 @@ function resizeInput() {
   input.style.height = "auto";
   input.style.height = `${input.scrollHeight}px`;
 }
-input.addEventListener("input", resizeInput);
+input.addEventListener("input", () => {
+  resizeInput();
+  updateSuggestions();
+});
 
 // --- Voz: dictar al cuadro de texto -------------------------------------------------------
 // Graba con el micrófono, el servidor transcribe y el texto queda en el cuadro SIN enviarse,
@@ -663,11 +668,86 @@ async function loadTools() {
     if (!response.ok) return;
     const data = await response.json();
     renderTools(data.tools);
+    commandList = data.commands;
     linkCommands = data.link_commands;
   } catch {
     // Sin servidor: el estado de arriba ya lo indica.
   }
 }
+
+// --- Sugerencias de comandos: al escribir «/» aparecen arriba del cuadro ----------------------------
+// Solo mientras el texto sea «/» + letras (sin espacio): ahí se está eligiendo el comando. Si
+// ninguno encaja no se muestra nada. Insertar escribe «/nombre » en el cuadro, no envía.
+const suggestList = document.getElementById("suggest");
+let commandList = []; // salen de GET /api/tools (tools.py): {name, usage, desc}
+let suggestions = []; // los que encajan con lo escrito
+let suggestIndex = 0; // el elegido con las flechas
+
+function closeSuggestions() {
+  suggestions = [];
+  suggestList.hidden = true;
+  suggestList.replaceChildren();
+  input.removeAttribute("aria-activedescendant");
+}
+
+function paintSuggestions() {
+  suggestList.replaceChildren();
+  suggestions.forEach((command, index) => {
+    const row = make("li", "suggest-item");
+    row.id = `suggest-${index}`;
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(index === suggestIndex));
+    row.append(make("span", "suggest-name", command.usage), make("span", "suggest-desc", command.desc));
+    // mousedown (no click) para que el cuadro de texto no pierda el foco.
+    row.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      pickSuggestion(index);
+    });
+    suggestList.append(row);
+  });
+  input.setAttribute("aria-activedescendant", `suggest-${suggestIndex}`);
+  suggestList.children[suggestIndex].scrollIntoView({ block: "nearest" });
+}
+
+function updateSuggestions() {
+  const match = /^\/([a-záéíóúñ]*)$/i.exec(input.value);
+  if (!match || readOnly) return closeSuggestions();
+  const typed = match[1].toLowerCase();
+  suggestions = commandList.filter((command) => command.name.startsWith(typed));
+  // Si ya escribiste el comando entero y es el único, no hay nada que completar: Enter lo envía.
+  if (!suggestions.length || (suggestions.length === 1 && suggestions[0].name === typed)) {
+    return closeSuggestions();
+  }
+  suggestIndex = 0;
+  suggestList.hidden = false;
+  paintSuggestions();
+}
+
+function pickSuggestion(index) {
+  const command = suggestions[index];
+  closeSuggestions();
+  insertText(`/${command.name} `);
+}
+
+// Devuelve true si la tecla era de las sugerencias (y ya la atendió).
+function handleSuggestKey(event) {
+  if (suggestList.hidden || event.isComposing) return false;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    suggestIndex = (suggestIndex + step + suggestions.length) % suggestions.length;
+    paintSuggestions();
+  } else if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+    pickSuggestion(suggestIndex);
+  } else if (event.key === "Escape") {
+    closeSuggestions();
+  } else {
+    return false;
+  }
+  event.preventDefault();
+  return true;
+}
+
+input.addEventListener("blur", closeSuggestions);
 
 // --- Contexto: lo que esta conversación creó o guardó ---------------------------------------------
 // La lista viene del servidor (rutas que él armó); acá solo se muestra, como texto. Tocar un

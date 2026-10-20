@@ -37,6 +37,16 @@ def test_tool_rows_only_list_commands_the_core_knows(client):
             assert row["insert"].strip().lstrip("/") in core.COMMANDS, row["insert"]
 
 
+def test_command_suggestions_only_offer_commands_the_core_knows(client):
+    # Al escribir «/», el cuadro sugiere estos: ninguno puede ser un comando que el núcleo no entiende.
+    commands = client.get("/api/tools").json()["commands"]
+
+    assert {c["name"] for c in commands} >= {"ver", "buscar", "ayuda"}
+    for command in commands:
+        assert command["name"] in core.COMMANDS, command["name"]
+        assert command["desc"]
+
+
 def test_the_tools_panel_skips_what_the_menu_and_the_shortcuts_already_offer(client):
     # /ver, /archivos y /uso están en el menú de la izquierda; «Guardar nota», en los atajos.
     labels = {row["label"] for row in client.get("/api/tools").json()["tools"]}

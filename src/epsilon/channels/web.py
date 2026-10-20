@@ -214,6 +214,16 @@ def create_app() -> FastAPI:
                 for tool in tools.TOOLS
                 if tool.panel
             ],
+            # Los comandos que sugiere el cuadro de texto al escribir «/».
+            "commands": [
+                {
+                    "name": tool.name,
+                    "usage": tool.usage or tool.label,
+                    "desc": tool.help or tool.menu or tool.panel or "",
+                }
+                for tool in tools.TOOLS
+                if tool.name and not tool.channel
+            ],
             "link_commands": tools.link_commands(),
         }
 

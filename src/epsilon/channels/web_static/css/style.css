@@ -1113,6 +1113,48 @@ body.booting .log {
   border-color: var(--accent);
 }
 
+/* Sugerencias de comandos: flotan arriba del cuadro, sin mover el resto. */
+.row {
+  position: relative;
+}
+.suggest {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  z-index: 5;
+}
+.suggest-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: calc(var(--radius) - 4px);
+  cursor: pointer;
+}
+.suggest-item[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+.suggest-name {
+  flex: none;
+  font-family: ui-monospace, monospace;
+}
+.suggest-desc {
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 textarea {
   flex: 1;
   min-width: 0;

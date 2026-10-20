@@ -140,6 +140,8 @@
         </div>
 
         <div class="row">
+          <!-- Sugerencias de comandos: aparecen al escribir «/» (app.js). -->
+          <ul id="suggest" class="suggest" role="listbox" aria-label="Comandos" hidden></ul>
           <button id="attach" class="icon-btn" type="button" aria-label="Adjuntar imagen o PDF">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
                  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -148,7 +150,7 @@
           </button>
           <input id="file" type="file" accept="image/*,application/pdf" hidden>
 
-          <textarea id="input" rows="1" aria-label="Mensaje"
+          <textarea id="input" rows="1" aria-label="Mensaje" aria-controls="suggest" aria-autocomplete="list"
                     placeholder="Escribí un mensaje o un comando"></textarea>
 
           <!-- Micrófono: graba, transcribe y deja el texto en el cuadro SIN enviarlo.
