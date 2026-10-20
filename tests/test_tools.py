@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import epsilon
+
 from epsilon import core, tools
 from epsilon.channels import telegram
 
@@ -55,7 +57,7 @@ def test_a_panel_row_either_writes_text_or_runs_an_action():
 
 def test_the_readme_lists_every_command():
     # El README es lo primero que lee quien instala Epsilon: si se agrega un comando, tiene que figurar.
-    readme = (Path(__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+    readme = (Path(epsilon.__file__).parents[2] / "README.md").read_text(encoding="utf-8")
 
     for tool in tools.TOOLS:
         if tool.name:
@@ -65,7 +67,7 @@ def test_the_readme_lists_every_command():
 def test_the_readme_lists_every_setting_a_person_can_edit():
     from epsilon import config
 
-    readme = (Path(__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+    readme = (Path(epsilon.__file__).parents[2] / "README.md").read_text(encoding="utf-8")
 
     for setting in config.SETTINGS:
         if setting.editable:

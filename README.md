@@ -130,7 +130,7 @@ La voz es opcional y el modelo (~1,6 GB) solo se baja con el primer audio. Si no
 ## Desarrollo
 
 ```bash
-uv run pytest      # los tests nunca llaman a Gemini ni cargan Whisper
+uv run pytest      # los tests (carpeta tests/) nunca llaman a Gemini ni cargan Whisper
 ```
 
 Dónde está cada cosa:

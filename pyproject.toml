@@ -36,3 +36,7 @@ dev = [
     "httpx2>=2.14.0",
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+# Los tests viven fuera del paquete, en tests/ (un archivo o carpeta por cada parte del código).
+testpaths = ["tests"]
