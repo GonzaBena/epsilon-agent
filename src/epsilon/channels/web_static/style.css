@@ -5,16 +5,20 @@
   --bg: #0e0f10; /* fondo de la página */
   --side: #141516; /* paneles laterales */
   --surface: #151718; /* compositor, chips */
-  --bubble: #1e2318; /* tu burbuja: un verde muy oscuro */
+  --bubble: color-mix(in srgb, var(--accent) 6%, var(--surface)); /* tu burbuja: el acento, apenas visible */
   --surface-2: #1b1e1f; /* tus mensajes, botones secundarios */
   --line: #26292b; /* bordes finos */
   --text: #e8e9e6;
   --muted: #a1a6a1; /* textos secundarios (7:1 sobre el fondo) */
   --accent: #b8fd2c; /* lima: lo único con color */
   --on-accent: #0e0f10; /* texto sobre el lima */
+  /* Los fondos suaves salen del acento: si cambiás --accent, todo lo demás lo acompaña. */
+  --accent-soft: color-mix(in srgb, var(--accent) 7%, var(--bg)); /* dónde estás, opción elegida */
+  --accent-card: color-mix(in srgb, var(--accent) 6%, var(--side)); /* tarjeta destacada */
+  --accent-line: color-mix(in srgb, var(--accent) 15%, var(--line)); /* borde de la tarjeta destacada */
   --danger: #ff9b8a;
   --telegram: #5bb8f5; /* azul de Telegram: marca las conversaciones de ese canal (7:1 sobre --side) */
-  --telegram-bg: #14232e; /* el mismo azul, apenas visible, de fondo */
+  --telegram-bg: color-mix(in srgb, var(--telegram) 9%, var(--side)); /* el mismo azul, apenas visible, de fondo */
 
   --t: 0.18s; /* duración al abrir y contraer los paneles */
   --column: 47.5rem; /* ancho de la conversación (760px) */
@@ -143,7 +147,7 @@ code {
   color: var(--text);
 }
 .top-link[aria-current="page"] {
-  background: #1d2019; /* el lima, apenas visible: dónde estás */
+  background: var(--accent-soft); /* el lima, apenas visible: dónde estás */
   color: var(--text);
 }
 .top-link:focus-visible {
@@ -1711,8 +1715,8 @@ a.ghost {
   border-radius: 12px;
 }
 .usage-card.today {
-  background: #1a1f14;
-  border-color: #3a4429;
+  background: var(--accent-card);
+  border-color: var(--accent-line);
 }
 .usage-label {
   color: var(--muted);
@@ -1765,7 +1769,7 @@ a.ghost {
   font-size: 12px;
 }
 .chip[aria-pressed="true"] {
-  background: #1d2019;
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--text);
 }

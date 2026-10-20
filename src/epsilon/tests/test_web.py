@@ -2102,3 +2102,26 @@ def test_the_readme_images_exist():
     assert paths, "el README no muestra el logo"
     for path in paths:
         assert (root / path).is_file(), path
+
+
+# --- Los colores suaves salen del acento --------------------------------------
+
+
+def test_soft_backgrounds_are_derived_from_the_accent_not_hard_coded():
+    css = page("style.css")
+    root = re.search(r":root \{(.*?)\n\}", css, re.S).group(1)
+
+    for token in ("--bubble", "--accent-soft", "--accent-card", "--accent-line"):
+        line = re.search(rf"{token}:\s*([^;]+);", root).group(1)
+        assert "color-mix" in line and "var(--accent)" in line, token
+    assert "color-mix" in re.search(r"--telegram-bg:\s*([^;]+);", root).group(1)
+    # Los verdes oscuros de antes (derivados a mano del lima viejo) ya no están escritos a mano.
+    for old in ("#1d2019", "#1a1f14", "#3a4429", "#1e2318"):
+        assert old not in css, old
+
+
+def test_the_derived_tokens_are_the_ones_the_styles_use():
+    css = page("style.css")
+
+    for token in ("var(--accent-soft)", "var(--accent-card)", "var(--accent-line)", "var(--bubble)"):
+        assert token in css, token
