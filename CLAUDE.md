@@ -30,7 +30,7 @@ programa»; cada carpeta, una capa):
 ```
 core.py main.py tools.py menu.py state.py   el centro: lógica, arranque, registro, /menu, estado de canales
 ai/        llm.py extract.py summarize.py usage.py      todo lo que habla con el modelo y su gasto
-data/      notes.py conversations.py                    lo que se guarda en DATA_DIR
+data/      notes.py conversations.py library.py         lo que se guarda en DATA_DIR (library: vista de solo lectura)
 voice/     transcribe.py                                Whisper (voz → texto)
 settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
 channels/  telegram.py web.py web_static/               por dónde se habla con Epsilon
@@ -49,9 +49,11 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   tiene que exponer `stop()`, y la elección queda en `<NOMBRE>_ENABLED` del `.env` (el servicio
   la respeta al reiniciar). La web no se puede apagar desde la web.
 - `channels/web.py` y `channels/web_static/` (las páginas `*.html` en la raíz, `css/style.css`,
-  `js/` con app, config, canales, uso y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
-  HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso; Configuración va
-  abajo de todo en el menú de la izquierda. `/config` edita ajustes (el reinicio es siempre manual: la página
+  `js/` con app, config, canales, uso, biblioteca y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
+  HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso; en el menú de la izquierda, Chat · Biblioteca y
+  Configuración abajo de todo. `/biblioteca` muestra notas, archivos y tickets en una cuadrícula con buscador y
+  filtros, **solo lectura** (no crea conversaciones): al tocar uno se abre ahí mismo y se puede abrir su carpeta
+  en el gestor de archivos (`xdg-open`, solo con pantalla). Sin miniaturas de fotos por ahora: todo lleva ícono. `/config` edita ajustes (el reinicio es siempre manual: la página
   avisa por qué y con qué comando); los de sí/no son interruptores. `/canales` muestra cada canal y
   prende/apaga Telegram de verdad. `/uso` muestra el gasto de IA (períodos, peticiones de hoy,
   pesos si cargaste `USD_ARS`). `shell.js` maneja los paneles que se contraen y los datos del
@@ -77,6 +79,8 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
   nuevo = una entrada acá + su función en `core.COMMANDS`. Ver `docs/plan-tools.md`.
 - `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
+- `data/library.py`: la biblioteca de la web (listar con búsqueda, filtro y páginas; abrir; abrir la carpeta). Solo
+  lee: todo pasa por `safe_path` y por la lista de extensiones; los resúmenes no se muestran.
 - `ai/llm.py`: ÚNICO lugar que llama a Gemini.
 - `voice/transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
   el modelo se baja solo y se descarga de memoria tras un rato). Ver `docs/plan-voz.md`.

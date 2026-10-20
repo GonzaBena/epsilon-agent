@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Biblioteca · Epsilon</title>
+  <link rel="icon" href="/static/img/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Estructura de la página. El estilo está en style.css, la lógica en biblioteca.js y el
+       esqueleto (paneles, menú) en shell.js. Las tarjetas las dibuja biblioteca.js con lo que
+       responde GET /api/library. Es de solo lectura. -->
+  <script src="/static/js/shell.js" defer></script>
+  <script src="/static/js/biblioteca.js" defer></script>
+</head>
+<body class="settings-page">
+
+  <header class="top">
+    <a class="brand" href="/">
+      <img class="brand-logo" src="/static/img/apple-touch-icon.png" alt="" width="30" height="30">
+      <h1>Epsilon</h1>
+    </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a class="top-link" href="/">Chat</a>
+      <a class="top-link" href="/canales">Canales</a>
+      <a class="top-link" href="/uso">Uso</a>
+    </nav>
+    <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Biblioteca</span></p>
+    <div class="top-actions">
+      <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
+    </div>
+  </header>
+
+  <div class="shell" data-left="open" data-right="open">
+
+    <!-- Menú lateral. Es el mismo en config.html (si cambia uno, cambia el otro:
+         un test lo vigila). Contraído, queda una columna de íconos; las
+         etiquetas siguen ahí para los lectores de pantalla. -->
+    <aside class="side side-left" id="left" aria-label="Menú principal">
+      <a class="new-chat" id="new-chat" href="/?nuevo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="label">Nuevo chat</span>
+      </a>
+
+      <p class="side-title">Menú</p>
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-item" href="/">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20.5l1.4-4.4A8 8 0 1 1 21 12z"/></svg>
+          <span class="label">Chat</span>
+        </a>
+        <a class="nav-item" href="/biblioteca" aria-current="page">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="label">Biblioteca</span>
+        </a>
+        <a class="nav-item" href="/config">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+          <span class="label">Configuración</span>
+        </a>
+      </nav>
+
+      <section class="recents" aria-labelledby="h-recents">
+        <h2 class="side-title" id="h-recents">Recientes</h2>
+        <ul class="recents-list" id="recents"></ul>
+      </section>
+
+      <div class="local-card" id="local-card">
+        <strong>Local</strong>
+        <span class="local-path" id="local-path"></span>
+      </div>
+
+      <button type="button" class="panel-toggle" data-toggle="left"
+              aria-expanded="true" aria-controls="left" aria-label="Cerrar el menú" title="Cerrar el menú">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+      </button>
+    </aside>
+
+    <div class="stage">
+      <main class="settings library-page">
+        <h2 class="page-title">Biblioteca</h2>
+        <p class="help">Tus notas, archivos y tickets. Es solo para ver: para cambiar algo, usá el chat o abrí la carpeta.</p>
+
+        <div class="library-bar">
+          <input id="library-search" class="library-search" type="search" maxlength="100"
+                 placeholder="Buscar por nombre o carpeta" aria-label="Buscar en la biblioteca" autocomplete="off">
+        </div>
+        <div class="library-chips" id="library-chips" role="group" aria-label="Filtrar por tipo"></div>
+
+        <p class="result" id="library-result" role="status"></p>
+        <ul class="library-grid" id="library-grid"></ul>
+        <button type="button" class="library-more" id="library-more" hidden>Cargar más</button>
+
+        <!-- Vista de un elemento: aparece sobre la cuadrícula al tocar una tarjeta. -->
+        <section class="library-viewer" id="library-viewer" aria-label="Elemento abierto" hidden>
+          <div class="viewer-head">
+            <button type="button" class="viewer-back" id="viewer-back">← Volver</button>
+            <h3 class="viewer-name" id="viewer-name"></h3>
+          </div>
+          <p class="viewer-path">
+            <code id="viewer-path"></code>
+            <button type="button" class="viewer-btn" id="viewer-copy">Copiar ruta</button>
+            <button type="button" class="viewer-btn" id="viewer-reveal" hidden>Mostrar en la carpeta</button>
+          </p>
+          <p class="result" id="viewer-result" role="status"></p>
+          <div class="viewer-body" id="viewer-body"></div>
+        </section>
+      </main>
+    </div>
+
+  </div>
+
+</body>
+</html>

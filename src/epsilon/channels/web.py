@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
 from epsilon.ai import usage
-from epsilon.data import conversations
+from epsilon.data import conversations, library
 from epsilon.settings import checks, config
 from epsilon.voice import transcribe
 
@@ -109,6 +109,10 @@ class ConfigIn(BaseModel):
 
 class ChannelIn(BaseModel):
     enabled: bool
+
+
+class RevealIn(BaseModel):
+    path: str = Field(max_length=300)
 
 
 class TitleIn(BaseModel):
@@ -391,6 +395,54 @@ def create_app() -> FastAPI:
         data["ars_rate"] = rate if rate and rate > 0 else None  # None: sin cotización cargada
         return data
 
+    # --- Biblioteca: notas, archivos y tickets, solo lectura -----------------
+
+    def library_file(path: str):
+        """La ruta real de un archivo de la biblioteca, o 404 (nunca sale de DATA_DIR)."""
+        try:
+            return library.resolve(path)
+        except ValueError:
+            raise HTTPException(404, "Ese archivo no existe") from None
+
+    @app.get("/api/library")
+    def get_library(
+        q: str = Query("", max_length=100),
+        kind: str = Query("", pattern="^(note|file|ticket)?$"),
+        offset: int = Query(0, ge=0),
+        limit: int = Query(40, ge=1, le=100),
+    ):
+        data = library.search(q, kind, offset, limit)
+        data["items"] = [asdict(e) for e in data["items"]]
+        data["root"] = library.root()
+        data["can_reveal"] = library.can_reveal()
+        return data
+
+    @app.get("/api/library/text")
+    def get_library_text(path: str = Query(max_length=300)):
+        library_file(path)
+        try:
+            return library.read_text(path)
+        except ValueError:
+            raise HTTPException(415, "Ese archivo no es de texto") from None
+
+    @app.get("/api/library/file")
+    def get_library_file(path: str = Query(max_length=300)):
+        """Imágenes y PDF, con su tipo fijado por la extensión (el navegador no adivina nada)."""
+        file = library_file(path)
+        media = library.media_type(file)
+        if media is None:
+            raise HTTPException(415, "Ese archivo no se abre así")
+        return FileResponse(file, media_type=media, content_disposition_type="inline")
+
+    @app.post("/api/library/reveal")
+    def reveal_in_folder(body: RevealIn):
+        library_file(body.path)
+        try:
+            library.reveal(body.path)
+        except OSError as e:
+            raise HTTPException(409, str(e)) from None
+        return {"ok": True}
+
     @app.get("/api/config")
     def get_config():
         return config_state()
@@ -435,6 +487,10 @@ def create_app() -> FastAPI:
     @app.get("/uso", include_in_schema=False)
     def usage_page():
         return FileResponse(STATIC_DIR / "uso.html")
+
+    @app.get("/biblioteca", include_in_schema=False)
+    def library_page():
+        return FileResponse(STATIC_DIR / "biblioteca.html")
 
     @app.get("/canales", include_in_schema=False)
     def channels_page():
