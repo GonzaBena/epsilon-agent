@@ -90,6 +90,7 @@ def _artifact(kind: str, path) -> Artifact:
 @dataclass
 class Session:
     pending_csv: dict | None = None  # CSV esperando Guardar / Cancelar
+    pending_forget: tuple[int, str] | None = None  # (número, línea) de /olvidar esperando confirmar
     folder: str | None = None  # modo /ticket: carpeta de la próxima imagen
     files: dict[str, str] = field(default_factory=dict)  # id -> ruta, esperando Resumir
     counter: int = 0  # para numerar los archivos de arriba
@@ -141,8 +142,58 @@ def _remember_cmd(args: str, session: Session) -> Reply:
 
 
 def _memory_cmd(args: str, session: Session) -> Reply:
-    """/memoria: muestra todo lo recordado."""
-    return Reply(memory.read() or "Todavía no recordé nada. Probá con /recordar.")
+    """/memoria: muestra lo recordado, numerado para poder señalar una línea."""
+    lines = memory.lines()
+    if not lines:
+        return Reply("Todavía no recordé nada. Probá con /recordar.")
+    return Reply("\n".join(f"{n}. {line.removeprefix('- ')}" for n, line in enumerate(lines, 1)))
+
+
+def _line_number(text: str) -> int | None:
+    return int(text) if re.fullmatch(r"\d{1,6}", text) else None
+
+
+def _forget_cmd(args: str, session: Session) -> Reply:
+    """/olvidar N: muestra la línea N de la memoria y pide confirmar antes de borrarla."""
+    n = _line_number(args)
+    if n is None:
+        return Reply("Uso: /olvidar número (los números están en /memoria)")
+    try:
+        _, line = memory.line_at(n)
+    except ValueError as e:
+        return Reply(str(e))
+    session.pending_forget = (n, line)
+    return Reply(
+        f"¿Olvidar esto?\n{n}. {line.removeprefix('- ')}",
+        actions=[Action("olvidar", "Olvidar"), Action("conservar", "Conservar")],
+    )
+
+
+def _confirm_forget(action: str, session: Session) -> Reply:
+    # Como con el CSV: se saca el pendiente y no se puede confirmar dos veces.
+    pending, session.pending_forget = session.pending_forget, None
+    if not pending:
+        return Reply("No hay nada pendiente.")
+    if action == "conservar":
+        return Reply("Listo, queda en la memoria.")
+    try:
+        memory.forget(*pending)
+    except ValueError as e:
+        return Reply(str(e))
+    return Reply("Olvidado.")
+
+
+def _edit_cmd(args: str, session: Session) -> Reply:
+    """/editar N texto: cambia el texto de la línea N (conserva su fecha)."""
+    number, _, text = args.partition(" ")
+    n = _line_number(number)
+    if n is None or not text.strip():
+        return Reply("Uso: /editar número texto nuevo (los números están en /memoria)")
+    try:
+        line = memory.edit(n, text)
+    except ValueError as e:
+        return Reply(str(e))
+    return Reply(f"Cambiado: {n}. {line.removeprefix('- ')}")
 
 
 def _watch(args: str) -> Reply:
@@ -388,6 +439,8 @@ def _handle_action(action: str, session: Session) -> Reply:
         return _menu_action(file_id)
     if name in ("guardar", "cancelar"):
         return _confirm_csv(name, session)
+    if name in ("olvidar", "conservar"):
+        return _confirm_forget(name, session)
     if name in ("resumir", "nada"):
         return _file_button(name, file_id, session)
     return Reply("No entiendo esa acción.")
@@ -404,6 +457,8 @@ COMMANDS = {
     "contexto": _context,
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
+    "olvidar": _forget_cmd,
+    "editar": _edit_cmd,
     "uso": lambda args, s: _usage(args),
     "usage": lambda args, s: _usage(args),
     "resumir": _summarize_cmd,

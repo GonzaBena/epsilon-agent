@@ -81,7 +81,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
   nuevo = una entrada acá + su función en `core.COMMANDS`. Ver `docs/plan-tools.md`.
 - `memory/store.py`: la memoria (`remember`/`read` sobre `DATA_DIR/memory.md`, solo se agrega, una línea con fecha por dato,
-  máx. 500 caracteres, pasa por `config.redact`). Comandos `/recordar texto` y `/memoria`; sin modelo. Más adelante una
+  máx. 500 caracteres, pasa por `config.redact`). Comandos `/recordar texto`, `/memoria` (numerada), `/olvidar N` (pide confirmar) y `/editar N texto`; sin modelo. Olvidar y editar reescriben el archivo (excepción a «solo agregar», por archivo temporal). Más adelante una
   herramienta MCP usará las mismas dos funciones para que el modelo guarde memoria solo.
 - `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `data/library.py`: la biblioteca de la web (listar con búsqueda, filtro y páginas; abrir; abrir la carpeta). Solo
@@ -133,8 +133,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 
 - Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
   cumpla ese papel serían skills.
-- Memoria, siguientes pasos: pasársela a la IA (resúmenes, y una charla con el modelo), olvidar/editar líneas,
-  que el modelo guarde sola vía MCP.
+- Memoria, siguientes pasos: pasársela a la IA (resúmenes, y una charla con el modelo), que el modelo guarde sola vía MCP.
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).

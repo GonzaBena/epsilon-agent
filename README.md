@@ -72,6 +72,8 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/contexto`         | Lista lo que guardaste desde que arrancó el bot. |
 | `/recordar texto`   | Anota un dato o preferencia tuya en la memoria.  |
 | `/memoria`          | Muestra lo que anotaste en la memoria.           |
+| `/olvidar número`   | Borra una línea de la memoria (pide confirmar).  |
+| `/editar número texto` | Cambia una línea de la memoria.               |
 | `/uso`              | Tokens y precio gastados, hoy y en total.        |
 | `/menu`             | Ajustes del bot con botones (hoy, la voz).       |
 | `/nuevo`            | Telegram: empieza una conversación nueva.        |
