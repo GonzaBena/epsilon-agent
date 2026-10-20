@@ -365,11 +365,12 @@ attachButton.addEventListener("click", () => {
   fileInput.click();
 });
 // «Imagen a CSV»: la píldora y la fila del panel de herramientas hacen lo mismo.
+function armCsv() {
+  wantsCsv = true;
+  fileInput.click();
+}
 for (const element of document.querySelectorAll("[data-csv]")) {
-  element.addEventListener("click", () => {
-    wantsCsv = true;
-    fileInput.click();
-  });
+  element.addEventListener("click", armCsv);
 }
 // Si cerrás el selector sin elegir nada, el atajo no queda "armado".
 fileInput.addEventListener("cancel", () => {
@@ -591,6 +592,45 @@ for (const element of document.querySelectorAll("[data-insert]")) {
   element.addEventListener("click", () => insertText(element.dataset.insert));
 }
 
+// --- Herramientas: las filas salen de GET /api/tools (tools.py) --------------------------------
+// Tocar una fila escribe su comando en el cuadro (o, en «Imagen a CSV», abre el selector de
+// archivos). Si el servidor no responde, el panel queda vacío: los atajos de arriba siguen.
+const toolsList = document.getElementById("tools");
+let linkCommands = []; // los pedidos que /?cmd=... puede ejecutar solos (solo lecturas)
+
+function renderTools(tools) {
+  toolsList.replaceChildren();
+  for (const tool of tools) {
+    const button = make("button", "tool");
+    button.type = "button";
+    const head = make("span", "tool-head");
+    head.append(make("span", "tool-name", tool.label));
+    if (tool.uses_ai) {
+      const tag = make("span", "tool-tag", "usa IA");
+      tag.title = "Usa el modelo de IA: gasta tokens";
+      head.append(tag);
+    }
+    button.append(head, make("span", "tool-desc", tool.desc));
+    if (tool.action === "csv") button.addEventListener("click", armCsv);
+    else button.addEventListener("click", () => insertText(tool.insert));
+    const row = make("li");
+    row.append(button);
+    toolsList.append(row);
+  }
+}
+
+async function loadTools() {
+  try {
+    const response = await fetch("/api/tools");
+    if (!response.ok) return;
+    const data = await response.json();
+    renderTools(data.tools);
+    linkCommands = data.link_commands;
+  } catch {
+    // Sin servidor: el estado de arriba ya lo indica.
+  }
+}
+
 // --- Contexto: lo que esta conversación creó o guardó ---------------------------------------------
 // La lista viene del servidor (rutas que él armó); acá solo se muestra, como texto. Tocar un
 // ítem ESCRIBE el comando útil en el cuadro de texto (como las herramientas); no lo envía.
@@ -677,9 +717,9 @@ document.getElementById("recents").addEventListener("click", (event) => {
 });
 
 // --- Al llegar a la página (también desde otra: /?nuevo, /?c=..., /?cmd=...) -----------------
-// SOLO estos comandos se ejecutan solos al llegar por un enlace: son lecturas.
-// Nada que escriba o que llame al modelo. Cualquier otro valor se ignora.
-const ALLOWED_COMMANDS = ["/ver", "/archivos", "/archivos tickets", "/uso"];
+// SOLO los comandos que el servidor declara como de enlace (linkCommands, de tools.py) se
+// ejecutan solos al llegar: son lecturas, nada que escriba o llame al modelo. Cualquier otro
+// valor se ignora.
 
 async function start() {
   const params = new URLSearchParams(window.location.search);
@@ -697,7 +737,8 @@ async function start() {
   }
 
   const command = params.get("cmd");
-  if (command && ALLOWED_COMMANDS.includes(command)) runCommand(command);
+  await loadTools();
+  if (command && linkCommands.includes(command)) runCommand(command);
 }
 
 // --- Estado de la conexión ----------------------------------------------------------

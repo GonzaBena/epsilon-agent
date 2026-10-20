@@ -66,20 +66,25 @@ archivos y notas de la conversación.
 - Si un archivo se borra a mano, el panel sigue mostrando su nombre y el comando
   da «no encontré».
 
-## Para más adelante: registro de herramientas
+## Registro de herramientas (`tools.py`). **Hecho.**
 
-Hoy cada comando está escrito en varios lugares: el texto de ayuda y los
-manejadores (`core.py`), el menú de Telegram (`channels/telegram.py`), las filas del
-panel (`index.html`) y la lista de ejecución automática (`ALLOWED_COMMANDS` en
-`app.js`). Los tests los mantienen alineados.
+Cada herramienta se declara una sola vez en `tools.TOOLS` (`Tool`: etiqueta, nombre del
+comando, línea de ayuda, texto del panel, texto del menú de Telegram, qué escribe el panel,
+si usa IA, si escribe, qué pedidos puede ejecutar un enlace). De ahí salen:
 
-Un **registro** (`tools.py`) declararía cada herramienta una sola vez (nombre,
-descripción, si solo lee, si usa IA, si se ejecuta sola desde un enlace) y de ahí
-saldrían la ayuda, el menú de Telegram, `GET /api/tools` (el panel se dibujaría
-desde la API) y la lista de ejecución automática (que pasaría al servidor, donde un
-test garantiza que sean solo lecturas).
+- `core.HELP`: las líneas de herramientas (el resto del texto sigue escrito en `core.py`).
+- El menú de Telegram (`telegram.COMMANDS`).
+- `GET /api/tools`: las filas del panel y `link_commands`, los pedidos que `/?cmd=...`
+  ejecuta solo. `app.js` dibuja las filas con `textContent` y ya no lleva `ALLOWED_COMMANDS`.
 
-Se decidió **no hacerlo todavía**: no hace falta para la etiqueta ni para el
-contexto, y toca el núcleo y Telegram, que funcionan. **Se retoma al agregar la
-próxima herramienta real** (MCP, un comando nuevo) o un canal nuevo (la voz con Whisper no cuenta: es una forma de entrada, audio → texto antes del núcleo): ahí agregar un
-comando pasaría de tocar 5 archivos a escribir una entrada.
+Las funciones que hacen el trabajo siguen en `core.COMMANDS`; `tests/test_tools.py` vigila
+que ambas listas tengan los mismos nombres (alias incluidos) y que todo lo que se ejecuta
+desde un enlace solo lea (ni escribe ni usa IA). El menú de la izquierda sigue escrito en
+los dos HTML (un test cuida que sus comandos estén permitidos).
+
+**Qué muestra el panel.** Solo lo que no tiene otra puerta de entrada: lo que ya está en el
+menú de la izquierda (`/ver`, `/archivos`, `/uso`) o en los atajos sobre el cuadro de texto
+(«Guardar nota») no lleva `panel`. Quedan «Imagen a CSV», `/buscar`, `/resumir` y `/ticket`;
+las que gastan tokens siguen con «usa IA». Para mostrar otra, se le pone `panel` en `tools.py`.
+
+**Agregar una herramienta nueva** = una entrada en `TOOLS` + su función en `core.COMMANDS`.

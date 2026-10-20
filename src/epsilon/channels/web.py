@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import checks, config, conversations, core, state, transcribe
+from epsilon import checks, config, conversations, core, state, tools, transcribe
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -176,6 +176,25 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"ok": True}
+
+    @app.get("/api/tools")
+    def tools_list():
+        # Lo que el panel de herramientas dibuja y los pedidos que la web ejecuta sola
+        # desde un enlace (/?cmd=...). Todo sale de tools.py.
+        return {
+            "tools": [
+                {
+                    "label": tool.label,
+                    "desc": tool.panel,
+                    "insert": tool.insert,
+                    "action": tool.action,
+                    "uses_ai": tool.uses_ai,
+                }
+                for tool in tools.TOOLS
+                if tool.panel
+            ],
+            "link_commands": tools.link_commands(),
+        }
 
     # Los endpoints son "def" (no "async def") a propósito: FastAPI los corre
     # en un hilo aparte, así core.handle() puede esperar a Gemini sin trabar

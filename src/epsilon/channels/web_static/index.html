@@ -181,20 +181,11 @@
       <div class="side-body">
         <section aria-labelledby="h-tools">
           <h2 class="side-title" id="h-tools">Herramientas</h2>
-          <!-- Tocar una fila escribe el comando en el cuadro de texto (no lo envía):
-               así podés agregarle lo que falta, como el nombre de la nota.
-               «usa IA» marca las que gastan tokens (el texto dice «IA» y no el nombre del
-               modelo, que puede cambiar); un test cuida que solo esas la tengan. -->
-          <ul class="tools">
-            <li><button type="button" class="tool" data-insert="+ "><span class="tool-name">+ texto</span><span class="tool-desc">Guardar una nota en inbox</span></button></li>
-            <li><button type="button" class="tool" data-csv><span class="tool-head"><span class="tool-name">Imagen a CSV</span><span class="tool-tag" title="Usa el modelo de IA: gasta tokens">usa IA</span></span><span class="tool-desc">Pasar una imagen a una tabla: adjuntala y escribí «nombre: campos»</span></button></li>
-            <li><button type="button" class="tool" data-insert="/ver "><span class="tool-name">/ver</span><span class="tool-desc">Leer una nota (por defecto, inbox)</span></button></li>
-            <li><button type="button" class="tool" data-insert="/buscar "><span class="tool-name">/buscar</span><span class="tool-desc">Buscar una palabra en tus notas</span></button></li>
-            <li><button type="button" class="tool" data-insert="/archivos "><span class="tool-name">/archivos</span><span class="tool-desc">Listar lo guardado, lo más nuevo primero</span></button></li>
-            <li><button type="button" class="tool" data-insert="/resumir "><span class="tool-head"><span class="tool-name">/resumir</span><span class="tool-tag" title="Usa el modelo de IA: gasta tokens">usa IA</span></span><span class="tool-desc">Resumir una nota o archivo guardado</span></button></li>
-            <li><button type="button" class="tool" data-insert="/ticket"><span class="tool-name">/ticket</span><span class="tool-desc">Guardar la próxima imagen en tickets/</span></button></li>
-            <li><button type="button" class="tool" data-insert="/uso"><span class="tool-name">/uso</span><span class="tool-desc">Tokens y precio gastados</span></button></li>
-          </ul>
+          <!-- Las filas las dibuja app.js con lo que devuelve GET /api/tools (viene de tools.py).
+               Tocar una fila escribe el comando en el cuadro de texto (no lo envía): así
+               podés agregarle lo que falta, como el nombre de la nota. «usa IA» marca las que
+               gastan tokens (el texto dice «IA» y no el nombre del modelo, que puede cambiar). -->
+          <ul class="tools" id="tools"></ul>
         </section>
 
         <section aria-labelledby="h-context">

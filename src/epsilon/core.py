@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 import re
 
-from epsilon import extract, notes, summarize, usage
+from epsilon import extract, notes, summarize, tools, usage
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -12,14 +12,8 @@ TICKETS_DIR = "tickets"
 # mensaje que se devuelve cuando se escribe algo que no se entiende.
 HELP = (
     "Qué puedo hacer:\n\n"
-    "+ texto → guardar una nota en inbox\n"
-    "/ver [nota] → leer una nota (por defecto inbox)\n"
-    "/buscar palabra → buscar en las notas\n"
-    "/archivos [texto] → listar lo guardado (los 10 más nuevos)\n"
-    "/resumir nombre → resumir una nota o archivo guardado\n"
-    "/ticket → guardar la próxima imagen o PDF en tickets/ (mandala como archivo)\n"
-    "/contexto → lo que guardaste desde que arrancó el bot\n"
-    "/uso → tokens y precio gastados (hoy y total)\n\n"
+    + "\n".join(tools.help_lines())
+    + "\n\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
     "Si me mandás una nota de voz, la paso a texto y hago lo que pediste.\n"
     "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
@@ -359,7 +353,8 @@ def _handle_action(action: str, session: Session) -> Reply:
 
 # --- Punto de entrada --------------------------------------------------------
 
-# Comando -> función. Para sumar un comando nuevo, se agrega una línea acá.
+# Comando -> función. Un comando nuevo se declara en tools.py y se agrega una línea acá
+# (un test vigila que las dos listas coincidan).
 COMMANDS = {
     "ver": lambda args, s: _watch(args),
     "buscar": lambda args, s: _search(args),

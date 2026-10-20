@@ -20,7 +20,7 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
   chat»); más adelante crearía una guardada en el servidor.
 - **Menú escrito en cada HTML** (sin plantillas); un test vigila que sea igual.
 - **Comandos por enlace** (`/?cmd=...`): solo se ejecutan solos los de una lista
-  de lecturas (`ALLOWED_COMMANDS` en `app.js`); nunca los que escriben o llaman
+  de lecturas (`links` en `tools.py`, vía `/api/tools`); nunca los que escriben o llaman
   al modelo.
 - El preview de CSV sigue como texto; la tabla del mockup necesita filas
   estructuradas desde el núcleo (cambio aparte).

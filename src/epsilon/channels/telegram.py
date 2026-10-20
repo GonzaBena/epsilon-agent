@@ -18,7 +18,7 @@ from telegram.ext import (
     filters,
 )
 
-from epsilon import config, core, state, transcribe
+from epsilon import config, core, state, tools, transcribe
 
 # Este archivo solo TRADUCE entre Telegram y el núcleo (core.py): convierte lo
 # que llega en un core.Message y dibuja el core.Reply. No decide nada.
@@ -33,21 +33,11 @@ MAX_CHARS = 4000
 MAX_DOWNLOAD = 20 * 1024 * 1024
 
 # Lista de comandos que se muestran en el menú de Telegram.
-# OJO: esto es solo el MENÚ. Cada comando tiene que existir en core.COMMANDS;
+# Sale de tools.TOOLS. Es solo el MENÚ: cada comando tiene que existir en core.COMMANDS;
 # si falta uno, aparece en la lista pero no hace nada (hay un test que lo vigila).
 # Reglas de Telegram: nombres en minúscula, sin "/", hasta 32 caracteres
 # (letras, números y guion bajo); descripción de 1 a 256 caracteres.
-COMMANDS = [
-    BotCommand("ver", "Ver una nota (por defecto, inbox)"),
-    BotCommand("buscar", "Buscar texto en todas las notas"),
-    BotCommand("archivos", "Listar lo guardado (opcional: filtrar por nombre)"),
-    BotCommand("resumir", "Resumir una nota o archivo guardado"),
-    BotCommand("ticket", "Guardar la próxima imagen como ticket"),
-    BotCommand("cancelar", "Cancelar el /ticket en espera"),
-    BotCommand("contexto", "Lo que guardaste desde que arrancó el bot"),
-    BotCommand("uso", "Tokens y precio gastados (hoy y total)"),
-    BotCommand("ayuda", "Cómo se usa el bot"),
-]
+COMMANDS = [BotCommand(tool.name, tool.menu) for tool in tools.TOOLS if tool.menu]
 
 
 # --- Configuración -----------------------------------------------------------

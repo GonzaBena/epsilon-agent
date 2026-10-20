@@ -3,7 +3,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from epsilon import config, conversations, core, notes
+from epsilon import config, conversations, core, notes, tools
 from epsilon.channels import web
 
 
@@ -715,13 +715,15 @@ def test_every_menu_item_has_a_text_label_even_when_only_the_icon_shows():
 
 def test_menu_commands_are_ones_the_chat_page_may_run_from_a_link():
     # La página ejecuta por sí sola un comando que llega en la URL (?cmd=...) solo
-    # si está en esta lista, y la lista es solo de lecturas (nada de escribir ni
-    # de llamar al modelo).
-    js = page("app.js")
-    allowed = re.search(r"ALLOWED_COMMANDS\s*=\s*\[(.*?)\]", js, re.S).group(1)
-    allowed = re.findall(r'"([^"]+)"', allowed)
+    # si el servidor lo declara (tools.py), y esos son solo lecturas (nada de escribir
+    # ni de llamar al modelo). La lista ya no está escrita en app.js.
+    allowed = tools.link_commands()
 
     assert sorted(allowed) == ["/archivos", "/archivos tickets", "/uso", "/ver"]
+    for tool in tools.TOOLS:
+        if tool.links:
+            assert not tool.writes and not tool.uses_ai, tool.label
+    assert "ALLOWED_COMMANDS" not in page("app.js")
     for href, command, label in menu_items(page("index.html")):
         if command:
             assert command in allowed, command
@@ -779,32 +781,30 @@ def test_the_config_page_has_no_right_panel():
     assert 'id="right"' not in html and "has-right" not in html
 
 
-def test_tool_rows_only_list_commands_the_core_knows():
+def test_tool_rows_only_list_commands_the_core_knows(client):
     # Si se cambia o saca un comando del núcleo, el panel no puede seguir ofreciéndolo.
-    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
-    inserts = re.findall(r'data-insert="([^"]*)"', right)
+    rows = client.get("/api/tools").json()["tools"]
 
-    assert inserts, "el panel de herramientas no tiene filas"
-    for text in inserts:
-        if text.startswith("/"):
-            assert text.strip().lstrip("/") in core.COMMANDS, text
-        else:
-            assert text == "+ "  # guardar una nota
+    assert rows, "el panel de herramientas no tiene filas"
+    for row in rows:
+        if row["insert"].startswith("/"):
+            assert row["insert"].strip().lstrip("/") in core.COMMANDS, row["insert"]
 
 
-def test_every_core_command_the_help_mentions_is_in_the_tools_panel():
-    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
-    shown = {t.strip().lstrip("/") for t in re.findall(r'data-insert="([^"]*)"', right) if t.startswith("/")}
+def test_the_tools_panel_skips_what_the_menu_and_the_shortcuts_already_offer(client):
+    # /ver, /archivos y /uso están en el menú de la izquierda; «Guardar nota», en los atajos.
+    labels = {row["label"] for row in client.get("/api/tools").json()["tools"]}
 
-    for command in ("ver", "buscar", "archivos", "resumir", "ticket", "uso"):
-        assert command in shown, command
+    assert labels == {"Imagen a CSV", "/buscar", "/resumir", "/ticket"}
 
 
 def test_tool_rows_are_buttons_that_fill_the_message_box_without_sending():
-    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
+    # Las filas las dibuja app.js: botones que solo escriben en el cuadro (insertText), sin enviar.
+    render = re.search(r"function renderTools.*?\n}\n", js("app.js"), re.S).group(0)
 
-    for tag in re.findall(r"<[^>]*data-insert=[^>]*>", right):
-        assert tag.startswith("<button") and 'type="button"' in tag, tag
+    assert 'make("button", "tool")' in render and 'button.type = "button"' in render
+    assert "insertText(tool.insert)" in render
+    assert "sendMessage" not in render and "submit" not in render
 
 
 def test_quick_actions_sit_above_the_message_box():
@@ -1259,47 +1259,38 @@ def test_the_recents_list_can_hold_many_conversations():
 # --- Panel de herramientas: «Imagen a CSV» y la etiqueta «usa IA» ------------
 
 
-def tool_rows():
-    """Las filas del panel: [(texto del nombre, ¿tiene la etiqueta 'usa IA'?)]."""
-    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
-    rows = re.findall(r'<button[^>]*class="tool"[^>]*>(.*?)</button>', right, re.S)
-    result = []
-    for row in rows:
-        name = re.search(r'<span class="tool-name">(.*?)</span>', row).group(1)
-        result.append((name, 'class="tool-tag"' in row and "usa IA" in row))
-    return result
+def tool_rows(client):
+    """Las filas del panel, como las manda el servidor: [(nombre, ¿tiene la etiqueta 'usa IA'?)]."""
+    return [(row["label"], row["uses_ai"]) for row in client.get("/api/tools").json()["tools"]]
 
 
-def test_the_tools_panel_has_an_image_to_csv_row_that_works_like_the_pill():
+def test_the_tools_panel_has_an_image_to_csv_row_that_works_like_the_pill(client):
     html = chat_html()
-    right = re.search(r'<aside[^>]*id="right".*?</aside>', html, re.S).group(0)
+    row = next(r for r in client.get("/api/tools").json()["tools"] if r["label"] == "Imagen a CSV")
 
-    row = re.search(r'<button[^>]*class="tool"[^>]*data-csv[^>]*>', right)
-    assert row and 'type="button"' in row.group(0)
-    assert "Imagen a CSV" in right
-    # La píldora y la fila hacen lo mismo: las dos llevan data-csv, y app.js las atiende juntas.
+    assert row["action"] == "csv"
+    # La píldora y la fila hacen lo mismo: las dos usan armCsv() de app.js.
     assert re.search(r'<button[^>]*id="pill-csv"[^>]*data-csv', html)
-    assert "[data-csv]" in js("app.js")
+    assert "[data-csv]" in js("app.js") and 'tool.action === "csv"' in js("app.js")
 
 
-def test_only_the_tools_that_spend_tokens_say_they_use_ai():
-    # Si una herramienta pasa a usar (o dejar de usar) el modelo, hay que cambiar esta lista y su fila.
-    assert {name for name, tagged in tool_rows() if tagged} == {"/resumir", "Imagen a CSV"}
+def test_only_the_tools_that_spend_tokens_say_they_use_ai(client):
+    # Si una herramienta pasa a usar (o dejar de usar) el modelo, hay que cambiarla en tools.py.
+    assert {name for name, tagged in tool_rows(client) if tagged} == {"/resumir", "Imagen a CSV"}
 
 
-def test_every_tool_row_is_listed_once():
-    names = [name for name, _ in tool_rows()]
+def test_every_tool_row_is_listed_once(client):
+    names = [name for name, _ in tool_rows(client)]
 
     assert len(names) == len(set(names))
-    assert {"+ texto", "Imagen a CSV", "/ver", "/buscar", "/archivos", "/resumir", "/ticket", "/uso"} == set(names)
 
 
-def test_the_ai_tag_explains_itself_and_does_not_name_the_model():
-    right = re.search(r'<aside[^>]*id="right".*?</aside>', chat_html(), re.S).group(0)
-    tag = re.search(r'<span class="tool-tag"[^>]*>', right).group(0)
+def test_the_ai_tag_explains_itself_and_does_not_name_the_model(client):
+    render = re.search(r"function renderTools.*?\n}\n", js("app.js"), re.S).group(0)
 
-    assert "title=" in tag  # el tooltip dice qué significa
-    assert "Gemini" not in right  # el modelo puede cambiar: el texto habla de «IA»
+    assert '"usa IA"' in render and "tag.title" in render  # el tooltip dice qué significa
+    assert "Gemini" not in render  # el modelo puede cambiar: el texto habla de «IA»
+    assert "Gemini" not in str(client.get("/api/tools").json())
 
 
 def test_the_tag_has_a_style():

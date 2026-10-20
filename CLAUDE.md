@@ -47,6 +47,9 @@ instalarlo, cargar sus claves y usarlo.
   `docs/plan-conversations.md`.
 - `state.py`: estado de cada canal (activo, detenido y por qué). `checks.py`:
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
+- `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
+  panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
+  nuevo = una entrada acá + su función en `core.COMMANDS`. Ver `docs/plan-tools.md`.
 - `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `llm.py`: ÚNICO lugar que llama a Gemini.
 - `transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
@@ -64,8 +67,8 @@ instalarlo, cargar sus claves y usarlo.
 - Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML.
 - El patrón del id de conversación está en `conversations.py` Y en `app.js`; un test
   vigila que coincidan (si se cambia uno, cambiar el otro).
-- Un enlace `/?cmd=...` solo ejecuta solo los comandos de `ALLOWED_COMMANDS` (app.js):
-  lecturas, nunca los que escriben o llaman al modelo.
+- Un enlace `/?cmd=...` solo ejecuta solo los comandos con `links` en `tools.py` (llegan por
+  `/api/tools`): lecturas, nunca los que escriben o llaman al modelo; un test lo vigila.
 - Las claves nunca salen del servidor: ni a la web, ni a logs, ni a mensajes de
   error. Solo se informa si están cargadas y su largo. Todo valor se valida
   (sin saltos de línea) antes de escribirlo en el `.env`. Los logs y mensajes de
@@ -100,7 +103,4 @@ instalarlo, cargar sus claves y usarlo.
   `docs/plan-conversations.md`, «Después»).
 - Confirmación opcional de las notas de voz en Telegram (apagada por defecto, en la
   configuración; hoy se ejecutan directo; ver `docs/plan-voz.md`).
-- Registro de herramientas (`tools.py`): fuente única de los comandos. Postergado a
-  propósito; retomarlo al agregar la próxima herramienta real (MCP, un comando) o un canal nuevo (ver
-  `docs/plan-tools.md`, «Para más adelante»).
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).
