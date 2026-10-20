@@ -758,13 +758,18 @@ async function start() {
   if ([...params.keys()].length) window.history.replaceState(null, "", "/");
 
   const requested = params.get("c") || "";
-  if (params.has("nuevo")) {
-    await startNewChat();
-  } else {
-    // Una conversación pedida en la URL, o la que tenías abierta, o una nueva.
-    const id = CONVERSATION_ID.test(requested) ? requested : recallCurrent();
-    if (id) await openConversation(id);
-    else await startNewChat();
+  try {
+    if (params.has("nuevo")) {
+      await startNewChat();
+    } else {
+      // Una conversación pedida en la URL, o la que tenías abierta, o una nueva.
+      const id = CONVERSATION_ID.test(requested) ? requested : recallCurrent();
+      if (id) await openConversation(id);
+      else await startNewChat();
+    }
+  } finally {
+    // Ya sabemos qué mostrar (o falló): el chat deja de estar en blanco.
+    document.body.classList.remove("booting");
   }
 
   const command = params.get("cmd");

@@ -372,3 +372,11 @@ def test_the_shell_script_no_longer_draws_channels_or_voice_in_the_panel():
         assert gone not in shell, gone
     assert ".side-right .channels" not in css and ".side-link" not in css
     assert "GEMINI_MODEL" in shell  # lo que sí sigue leyendo: el modelo del header
+
+
+def test_chat_waits_for_its_conversation_before_showing_the_greeting():
+    # Sin esto, al volver al chat se ve un instante «chat nuevo» y después salta a la última conversación.
+    assert re.search(r"<body[^>]*class=\"booting\"", chat_html())
+    assert 'classList.remove("booting")' in js("app.js")
+    css = js("style.css")
+    assert re.search(r"body\.booting \.log\s*\{\s*opacity:\s*0;", css)

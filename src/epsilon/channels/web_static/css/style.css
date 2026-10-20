@@ -838,6 +838,18 @@ body.view-telegram {
 }
 
 /* Cada hijo de la conversación se centra en la columna. */
+/* Al llegar a la página el chat espera (body.booting) y aparece con un fundido corto. */
+.log {
+  transition: opacity 0.15s;
+}
+body.booting .log {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .log {
+    transition: none;
+  }
+}
 .log > * {
   width: 100%;
   max-width: var(--column);

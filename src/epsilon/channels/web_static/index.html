@@ -13,7 +13,9 @@
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/app.js" defer></script>
 </head>
-<body>
+<!-- «booting»: el chat se queda en blanco hasta saber qué conversación abrir (app.js lo saca). Así no se
+     ve un instante el saludo de «chat nuevo» antes de la última conversación. -->
+<body class="booting">
 
   <header class="top">
     <a class="brand" href="/">
