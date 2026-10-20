@@ -24,6 +24,22 @@ instalarlo, cargar sus claves y usarlo.
 
 ## Estructura
 
+Todo el código está en `src/epsilon/`, agrupado por responsabilidad (la raíz del paquete es «el
+programa»; cada carpeta, una capa):
+
+```
+core.py main.py tools.py menu.py state.py   el centro: lógica, arranque, registro, /menu, estado de canales
+ai/        llm.py extract.py summarize.py usage.py      todo lo que habla con el modelo y su gasto
+data/      notes.py conversations.py                    lo que se guarda en DATA_DIR
+voice/     transcribe.py                                Whisper (voz → texto)
+settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
+channels/  telegram.py web.py web_static/               por dónde se habla con Epsilon
+```
+
+Los tests están en `tests/` con las mismas carpetas (`tests/ai/`, `tests/data/`, …). **Al agregar un
+módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpetas nuevas, p. ej.
+`memory/`, `integrations/`) y importarlo como `from epsilon.<carpeta> import <módulo>`.
+
 - `core.py`: toda la lógica (comandos, confirmaciones, estado por sesión; `/contexto` lista lo guardado en la sesión, en memoria).
   `handle(Message) -> Reply`. No conoce ningún canal. Ver `docs/plan-core.md`.
 - `main.py`: punto de entrada. La web (siempre activa) corre en el hilo
@@ -43,10 +59,10 @@ instalarlo, cargar sus claves y usarlo.
   coincidan). Ver `docs/plan-ui.md`.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
-- `config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
+- `settings/config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
   que escribe el `.env`; también `redact()` y el filtro de logs. Ver
   `docs/plan-config.md`.
-- `conversations.py`: conversaciones como archivos (`DATA_DIR/conversations/<id>.jsonl`,
+- `data/conversations.py`: conversaciones como archivos (`DATA_DIR/conversations/<id>.jsonl`,
   una línea por mensaje, solo se agrega). Cada mensaje lleva un id; un botón tocado y
   un renombrado son líneas nuevas que se combinan al leer (nunca se edita). Ids de
   conversación generados por el servidor y validados con un patrón estricto; lo
@@ -55,16 +71,16 @@ instalarlo, cargar sus claves y usarlo.
   lee, con el ícono y el color de Telegram. Ver `docs/plan-conversations.md`.
 - `menu.py`: el `/menu` (ajustes con botones, como BotFather): pantallas como datos. Solo puede
   cambiar los ajustes de sí/no que lista; el mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
-- `state.py`: estado de cada canal (activo, detenido y por qué, o apagado a propósito). `checks.py`:
+- `state.py`: estado de cada canal (activo, detenido y por qué, o apagado a propósito). `settings/checks.py`:
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
 - `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
   panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
   nuevo = una entrada acá + su función en `core.COMMANDS`. Ver `docs/plan-tools.md`.
-- `notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
-- `llm.py`: ÚNICO lugar que llama a Gemini.
-- `transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
+- `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
+- `ai/llm.py`: ÚNICO lugar que llama a Gemini.
+- `voice/transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
   el modelo se baja solo y se descarga de memoria tras un rato). Ver `docs/plan-voz.md`.
-- `extract.py`, `summarize.py`: lógica de imagen→CSV y resúmenes.
+- `ai/extract.py`, `ai/summarize.py`: lógica de imagen→CSV y resúmenes. `ai/usage.py`: el registro del gasto.
 
 ## Reglas del proyecto
 

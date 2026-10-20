@@ -3,7 +3,10 @@ from datetime import date
 from pathlib import Path
 import re
 
-from epsilon import config, extract, menu, notes, summarize, tools, usage
+from epsilon import menu, tools
+from epsilon.ai import extract, summarize, usage
+from epsilon.data import notes
+from epsilon.settings import config
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"

@@ -43,7 +43,7 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
 1. `transcribe.py` sin canales: cargar bajo demanda, descargar tras inactividad,
    candado, errores claros (falta la extra, falta el modelo, audio ilegible o muy
    largo). Tests con un modelo falso y reloj controlado. **Hecho** (`transcribe.py`,
-   `tests/test_transcribe.py`; `conftest.py` bloquea cargar o bajar Whisper de verdad).
+   `tests/voice/test_transcribe.py`; `conftest.py` bloquea cargar o bajar Whisper de verdad).
    Todavía no está conectado a ningún canal ni declarada la extra `voz`: eso es el paso 2.
 2. Instalar la extra, dejar que se descargue el modelo y probar con un audio real.
    **Hecho** (CPU, `int8`, audio de prueba de 13,6 s en mp3 y en webm/opus):

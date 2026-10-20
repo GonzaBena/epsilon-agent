@@ -3,7 +3,8 @@ import logging
 import os
 import threading
 
-from epsilon import config, state
+from epsilon import state
+from epsilon.settings import config
 
 # Canales disponibles: nombre -> módulo. Para sumar uno (Slack...) se agrega una
 # línea acá; el módulo tiene que exponer is_configured(env) y run(), y puede

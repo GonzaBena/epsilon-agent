@@ -22,7 +22,10 @@ from telegram.ext import (
     filters,
 )
 
-from epsilon import config, conversations, core, state, tools, transcribe
+from epsilon import core, state, tools
+from epsilon.data import conversations
+from epsilon.settings import config
+from epsilon.voice import transcribe
 
 # Este archivo solo TRADUCE entre Telegram y el núcleo (core.py): convierte lo
 # que llega en un core.Message y dibuja el core.Reply. No decide nada.

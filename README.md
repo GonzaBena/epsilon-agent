@@ -138,7 +138,10 @@ Dónde está cada cosa:
 - `core.py`: la lógica (comandos, confirmaciones, estado de la sesión). No conoce ningún canal.
 - `channels/web.py` y `channels/telegram.py`: traducen entre cada canal y el núcleo.
 - `tools.py`: el **registro de herramientas**, la fuente única de los comandos.
-- `llm.py` es el único lugar que llama a Gemini; `transcribe.py`, el único que carga Whisper.
+- `ai/` (Gemini y el gasto), `data/` (notas y conversaciones), `voice/` (Whisper) y `settings/`
+  (el `.env` y las pruebas de conexión): una carpeta por responsabilidad. `ai/llm.py` es el único
+  lugar que llama a Gemini; `voice/transcribe.py`, el único que carga Whisper.
+- `tests/`: los tests, con las mismas carpetas que el código.
 - `docs/`: los planes de diseño de cada parte (`plan-*.md`).
 
 ### Agregar una herramienta

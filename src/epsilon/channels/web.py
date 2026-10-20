@@ -10,7 +10,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import checks, config, conversations, core, state, tools, transcribe, usage
+from epsilon import core, state, tools
+from epsilon.ai import usage
+from epsilon.data import conversations
+from epsilon.settings import checks, config
+from epsilon.voice import transcribe
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que

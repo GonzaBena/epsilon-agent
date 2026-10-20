@@ -1,7 +1,8 @@
 import threading
 from types import SimpleNamespace
 
-from epsilon import config, main
+from epsilon import main
+from epsilon.settings import config
 from epsilon.channels import telegram, web
 
 TELEGRAM_ENV = {"TELEGRAM_TOKEN": "abc", "ALLOWED_USER_ID": "123"}

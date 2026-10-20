@@ -1,6 +1,7 @@
 import pytest
 
-from epsilon import core, notes
+from epsilon import core
+from epsilon.data import notes
 
 
 @pytest.fixture(autouse=True)

@@ -1,6 +1,8 @@
 from datetime import date
 
-from epsilon import core, notes, usage
+from epsilon import core
+from epsilon.ai import usage
+from epsilon.data import notes
 
 
 def use_tmp_data(tmp_path, monkeypatch):

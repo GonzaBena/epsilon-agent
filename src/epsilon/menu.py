@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from epsilon import config
+from epsilon.settings import config
 
 # El /menu: ajustes que se cambian desde el propio chat, con botones. Cada pantalla es una
 # entrada de SCREENS; para sumar un ajuste hay que agregarlo en una pantalla (y que exista en

@@ -65,7 +65,7 @@ def test_the_readme_lists_every_command():
 
 
 def test_the_readme_lists_every_setting_a_person_can_edit():
-    from epsilon import config
+    from epsilon.settings import config
 
     readme = (Path(epsilon.__file__).parents[2] / "README.md").read_text(encoding="utf-8")
 

@@ -1,6 +1,7 @@
 import pytest
 
-from epsilon import llm, state
+from epsilon import state
+from epsilon.ai import llm
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +17,7 @@ def block_real_model(monkeypatch):
 @pytest.fixture(autouse=True)
 def never_touch_the_real_env_file(monkeypatch, tmp_path):
     """Si un test escribe configuración sin pasar su propia ruta, va a un archivo temporal."""
-    from epsilon import config
+    from epsilon.settings import config
 
     monkeypatch.setattr(config, "ENV_FILE", tmp_path / "never-the-real.env")
 
@@ -41,7 +42,7 @@ def clean_channel_state():
 def block_real_whisper(monkeypatch):
     """Cargar o bajar Whisper de verdad (1,6 GB) es lo último que debe pasar en un test.
     También deja el módulo de voz limpio: sin modelo cargado ni temporizadores."""
-    from epsilon import transcribe
+    from epsilon.voice import transcribe
 
     def forbidden(*args, **kwargs):
         raise RuntimeError("Un test intentó cargar o descargar Whisper de verdad")
@@ -66,7 +67,7 @@ def voice_on_by_default(monkeypatch):
 @pytest.fixture(autouse=True)
 def never_touch_the_real_data_dir(monkeypatch, tmp_path_factory):
     """Los datos reales (DATA_DIR) no se tocan: si un test no elige su carpeta, va a una temporal."""
-    from epsilon import notes
+    from epsilon.data import notes
 
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path_factory.mktemp("data"))
 

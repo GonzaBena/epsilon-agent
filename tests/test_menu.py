@@ -2,7 +2,8 @@ import os
 
 import pytest
 
-from epsilon import config, core, menu
+from epsilon import core, menu
+from epsilon.settings import config
 from epsilon.channels import telegram
 
 
