@@ -197,3 +197,255 @@ def test_telegram_is_marked_running_only_after_it_connects(monkeypatch):
 
 def test_contexto_is_in_the_telegram_menu():
     assert "contexto" in [c.command for c in telegram.COMMANDS]
+
+
+# --- Notas de voz y audios ----------------------------------------------------
+# Se transcriben en local (transcribe.py) y el texto entra al núcleo como cualquier mensaje:
+# se muestra «🎙 «…»» y el pedido se ejecuta directo, sin pedir confirmación.
+
+import asyncio
+import threading
+from pathlib import Path
+from types import SimpleNamespace
+
+from epsilon import transcribe
+
+
+class FakeFile:
+    def __init__(self, data=b"OggS-audio"):
+        self.data = data
+
+    async def download_as_bytearray(self):
+        return bytearray(self.data)
+
+
+class FakeMedia:
+    def __init__(self, size=1000, name=None, mime="audio/ogg"):
+        self.file_size, self.file_name, self.mime_type = size, name, mime
+        self.downloaded = False
+
+    async def get_file(self):
+        self.downloaded = True
+        return FakeFile()
+
+
+class FakeUpdate:
+    def __init__(self, voice=None, audio=None, document=None, chat_id=7):
+        self.voice, self.audio, self.document = voice, audio, document
+        self.replies = []
+        self.message = SimpleNamespace(
+            voice=voice, audio=audio, document=document, photo=None, caption=None, reply_text=self.reply_text
+        )
+        self.effective_chat = SimpleNamespace(id=chat_id)
+
+    async def reply_text(self, text, reply_markup=None):
+        self.replies.append(text)
+
+
+class FakeContext:
+    def __init__(self):
+        self.actions = []
+        self.bot = SimpleNamespace(send_chat_action=self.send_chat_action)
+
+    async def send_chat_action(self, chat_id, action):
+        self.actions.append(action)
+
+
+@pytest.fixture
+def heard(monkeypatch):
+    """Lo que «oye» Whisper (de mentira) y qué le llegó al núcleo."""
+    seen = SimpleNamespace(text="+ comprar pan", paths=[], threads=[], messages=[], error=None)
+
+    def fake_audio_to_text(path):
+        seen.paths.append(Path(path))
+        seen.threads.append(threading.current_thread())
+        assert Path(path).exists()  # mientras se transcribe, el archivo está
+        if seen.error:
+            raise seen.error
+        return seen.text
+
+    def fake_handle(msg):
+        seen.messages.append(msg)
+        return core.Reply("Guardado en inbox.md")
+
+    monkeypatch.setattr(transcribe, "audio_to_text", fake_audio_to_text)
+    monkeypatch.setattr(core, "handle", fake_handle)
+    return seen
+
+
+def hear(update):
+    context = FakeContext()
+    asyncio.run(telegram.on_voice(update, context))
+    return context
+
+
+def test_a_voice_note_shows_what_was_understood_and_then_answers_it(heard):
+    update = FakeUpdate(voice=FakeMedia())
+
+    hear(update)
+
+    assert update.replies == ["🎙 «+ comprar pan»", "Guardado en inbox.md"]
+    [msg] = heard.messages
+    assert msg.text == "+ comprar pan" and msg.attachment is None and msg.action is None
+    assert msg.session_id == "telegram:7"  # la misma sesión que si lo hubiera escrito
+
+
+def test_no_confirmation_is_asked_the_request_runs_right_away(heard):
+    update = FakeUpdate(voice=FakeMedia())
+
+    hear(update)
+
+    assert len(heard.messages) == 1  # ya se ejecutó
+    assert not any("¿" in r for r in update.replies)
+
+
+def test_music_style_audio_and_audio_documents_work_too(heard):
+    for update in (
+        FakeUpdate(audio=FakeMedia(name="nota.mp3", mime="audio/mpeg")),
+        FakeUpdate(document=FakeMedia(name="grabacion.m4a", mime="audio/mp4")),
+    ):
+        hear(update)
+        assert update.replies[0] == "🎙 «+ comprar pan»"
+
+
+def test_voice_problems_are_shown_as_they_are_and_nothing_reaches_the_core(heard):
+    for error in (
+        transcribe.VoiceError("No entendí nada en el audio."),
+        transcribe.VoiceNotInstalled("La voz no está instalada. Instalala con: uv sync --extra voz"),
+        transcribe.VoiceDownloading("Estoy descargando el modelo de voz (unos 1,6 GB, una sola vez). Mandá el audio de nuevo en unos minutos."),
+    ):
+        heard.error = error
+        update = FakeUpdate(voice=FakeMedia())
+
+        hear(update)
+
+        assert update.replies == [str(error)]
+    assert heard.messages == []
+
+
+def test_an_unexpected_failure_gives_a_short_message(heard):
+    heard.error = RuntimeError("detalle interno /ruta/secreta")
+    update = FakeUpdate(voice=FakeMedia())
+
+    hear(update)
+
+    assert update.replies == ["No pude procesar el audio."]
+    assert heard.messages == []
+
+
+def test_the_temporary_audio_is_always_deleted(heard):
+    hear(FakeUpdate(voice=FakeMedia()))
+    heard.error = transcribe.VoiceError("x")
+    hear(FakeUpdate(voice=FakeMedia()))
+    heard.error = RuntimeError("boom")
+    hear(FakeUpdate(voice=FakeMedia()))
+
+    assert len(heard.paths) == 3
+    assert not any(p.exists() for p in heard.paths)
+
+
+def test_the_audio_is_not_saved_in_the_data_folder(heard, tmp_path, monkeypatch):
+    from epsilon import notes
+
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path)
+
+    hear(FakeUpdate(voice=FakeMedia()))
+
+    assert not any(p.is_relative_to(tmp_path) for p in heard.paths)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_transcribing_does_not_block_the_bot(heard):
+    # Transcribir tarda segundos: corre en otro hilo, no en el que atiende a Telegram.
+    seen_loop = []
+
+    async def run():
+        seen_loop.append(threading.current_thread())
+        await telegram.on_voice(FakeUpdate(voice=FakeMedia()), FakeContext())
+
+    asyncio.run(run())
+
+    assert heard.threads[0] is not seen_loop[0]
+
+
+def test_a_too_big_audio_is_refused_before_downloading_it(heard):
+    media = FakeMedia(size=telegram.MAX_DOWNLOAD + 1)
+    update = FakeUpdate(voice=media)
+
+    hear(update)
+
+    assert "20 MB" in update.replies[0]
+    assert not media.downloaded and heard.messages == []
+
+
+def test_a_long_transcription_is_trimmed_for_telegram(heard):
+    heard.text = "palabra " * 2000
+
+    update = FakeUpdate(voice=FakeMedia())
+    hear(update)
+
+    assert len(update.replies[0]) <= telegram.MAX_CHARS + 10
+
+
+def test_the_chat_shows_typing_while_it_transcribes(heard):
+    # Con un error el núcleo no se llama: si hay «escribiendo…», vino de la transcripción.
+    heard.error = transcribe.VoiceError("No entendí nada en el audio.")
+
+    context = hear(FakeUpdate(voice=FakeMedia()))
+
+    assert context.actions
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("nota.mp3", ".mp3"),
+        ("Grabacion.M4A", ".m4a"),
+        (None, ".ogg"),
+        ("sin_extension", ".ogg"),
+        ("raro.verylongext", ".ogg"),  # demasiado larga
+        ("a.m 4a", ".ogg"),  # con espacio
+        ("x.sh;rm", ".ogg"),  # con símbolos
+        ("../../x.ogg", ".ogg"),  # solo cuenta el nombre, y esta extensión es simple
+    ],
+)
+def test_the_temporary_file_extension_is_always_simple(name, expected):
+    assert telegram._audio_suffix(FakeMedia(name=name)) == expected
+
+
+def test_voice_handlers_only_answer_the_authorized_user():
+    from telegram import Chat, Message, Update, User, Voice
+    from telegram.ext import MessageHandler
+    from datetime import datetime
+
+    app = telegram.build_app("123456789:AAH-ejemplo_de_token_de_telegram_vKjP", 42)
+    handlers = [h for group in app.handlers.values() for h in group if isinstance(h, MessageHandler)]
+
+    def update_from(user_id):
+        message = Message(
+            1, datetime.now(), Chat(user_id, "private"), from_user=User(user_id, "x", False),
+            voice=Voice("fid", "uid", 3),
+        )
+        return Update(1, message=message)
+
+    answering = lambda user_id: [h for h in handlers if h.check_update(update_from(user_id))]
+
+    assert any(h.callback is telegram.on_voice for h in answering(42))
+    assert answering(99) == []  # un desconocido no activa nada (ni la transcripción)
+
+
+def test_each_kind_of_audio_reaches_the_voice_handler_and_other_files_do_not():
+    from telegram import Audio, Chat, Document, Message, Update, User
+    from telegram.ext import MessageHandler
+    from datetime import datetime
+
+    app = telegram.build_app("123456789:AAH-ejemplo_de_token_de_telegram_vKjP", 42)
+    handlers = [h for group in app.handlers.values() for h in group if isinstance(h, MessageHandler)]
+
+    def goes_to(**media):
+        message = Message(1, datetime.now(), Chat(42, "private"), from_user=User(42, "x", False), **media)
+        return {h.callback for h in handlers if h.check_update(Update(1, message=message))}
+
+    assert telegram.on_voice in goes_to(audio=Audio("a", "u", 3))
+    assert telegram.on_voice in goes_to(document=Document("d", "u", file_name="g.m4a", mime_type="audio/mp4"))
+    assert telegram.on_voice not in goes_to(document=Document("d", "u", file_name="x.pdf", mime_type="application/pdf"))

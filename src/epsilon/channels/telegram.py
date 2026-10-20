@@ -1,6 +1,9 @@
 import asyncio
 from datetime import datetime
 import os
+from pathlib import Path
+import re
+import tempfile
 import threading
 
 from telegram import Bot, BotCommand, BotCommandScopeChat
@@ -15,7 +18,7 @@ from telegram.ext import (
     filters,
 )
 
-from epsilon import core, state
+from epsilon import config, core, state, transcribe
 
 # Este archivo solo TRADUCE entre Telegram y el núcleo (core.py): convierte lo
 # que llega en un core.Message y dibuja el core.Reply. No decide nada.
@@ -185,6 +188,54 @@ async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions))
 
 
+def _audio_suffix(media) -> str:
+    """Extensión del archivo temporal: la del nombre si es corta y simple, si no .ogg (las
+    notas de voz de Telegram). Nunca sale texto raro de acá: solo letras y números."""
+    suffix = Path(media.file_name or "").suffix.lower()
+    return suffix if re.fullmatch(r"\.[a-z0-9]{1,5}", suffix) else ".ogg"
+
+
+async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Nota de voz o audio: se transcribe en local y el texto entra al núcleo como si lo
+    hubieras escrito. Primero se muestra lo entendido y el pedido se ejecuta directo, sin
+    pedir confirmación (sería lo mismo que escribir)."""
+    chat_id = update.effective_chat.id
+    media = update.message.voice or update.message.audio or update.message.document
+
+    # Si pesa más de lo que Telegram deja bajar, avisamos antes de intentar.
+    if media.file_size and media.file_size > MAX_DOWNLOAD:
+        await update.message.reply_text("Ese audio pesa más de 20 MB; no puedo bajarlo.")
+        return
+
+    await context.bot.send_chat_action(chat_id, ChatAction.TYPING)  # «escribiendo…» mientras tarda
+    path = None
+    try:
+        file = await media.get_file()
+        data = bytes(await file.download_as_bytearray())
+        # Un archivo temporal FUERA de DATA_DIR (el audio no se guarda) que se borra siempre.
+        with tempfile.NamedTemporaryFile(suffix=_audio_suffix(media), delete=False) as temp:
+            temp.write(data)
+            path = Path(temp.name)
+        # Transcribir tarda segundos: en otro hilo, para no trabar al bot.
+        text = await asyncio.to_thread(transcribe.audio_to_text, path)
+    except transcribe.VoiceError as e:
+        await update.message.reply_text(str(e))  # ya viene redactado para el usuario
+        return
+    except Exception as e:
+        print(f"Error con un audio: {config.redact(repr(e))}")  # el detalle, a la terminal
+        await update.message.reply_text("No pude procesar el audio.")
+        return
+    finally:
+        if path:
+            path.unlink(missing_ok=True)
+
+    # Lo entendido va en un mensaje aparte, para ver qué escuchó; después, la respuesta al pedido.
+    await update.message.reply_text(f"🎙 «{text[: MAX_CHARS - 10]}»")
+    msg = core.Message(text=text, session_id=session_id(chat_id))
+    reply = await ask_core(chat_id, context, msg)
+    await update.message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions))
+
+
 def make_on_button(allowed_user_id: int):
     async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Botones: el id del botón viaja al núcleo como acción."""
@@ -237,6 +288,12 @@ def build_app(token: str, allowed_user_id: int) -> Application:
         MessageHandler(
             (filters.PHOTO | filters.Document.IMAGE | filters.Document.PDF) & only_me,
             on_file,
+        )
+    )
+    app.add_handler(
+        MessageHandler(
+            (filters.VOICE | filters.AUDIO | filters.Document.Category("audio/")) & only_me,
+            on_voice,
         )
     )
     app.add_handler(CallbackQueryHandler(make_on_button(allowed_user_id)))

@@ -57,7 +57,12 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
    - Hallazgo de la prueba real: `faster-whisper` 1.2.1 no anda con `av` 19 (`metadata_errors`);
      la extra fija `av<19` y un test lo vigila. Sin esto, todo audio fallaba.
    - El modelo ya estaba en la caché de Hugging Face: no hizo falta bajar nada.
-3. Telegram: notas de voz y archivos de audio.
+3. Telegram: notas de voz y archivos de audio. **Hecho.** `on_voice` (notas de voz, audios y
+   documentos `audio/*`, solo del ID autorizado): baja el audio a un archivo temporal fuera
+   de `DATA_DIR` (se borra siempre), transcribe en otro hilo (no traba al bot), manda
+   «🎙 «…»» y después responde al pedido sin confirmación. Problemas de voz (no instalada,
+   descargando, sin voz, muy largo) se muestran tal cual; un fallo inesperado da «No pude
+   procesar el audio». Más de 20 MB se rechaza antes de bajarlo. La ayuda lo menciona.
 4. Web: endpoint `/api/transcribe` (JSON/Multipart, mismas defensas que `/api/upload`)
    y botón de micrófono.
 5. Configuración: ajustes de idioma, minutos de inactividad y dispositivo en `/config`;

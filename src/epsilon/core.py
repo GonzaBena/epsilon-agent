@@ -21,6 +21,7 @@ HELP = (
     "/contexto → lo que guardaste desde que arrancó el bot\n"
     "/uso → tokens y precio gastados (hoy y total)\n\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
+    "Si me mandás una nota de voz, la paso a texto y hago lo que pediste.\n"
     "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
     "la paso a CSV."
 )
