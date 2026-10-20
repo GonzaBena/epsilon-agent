@@ -2083,3 +2083,40 @@ a.ghost {
   color: var(--danger);
   font-size: 13px;
 }
+
+/* --- Recientes: el color es de TODA la fila y los botones flotan encima ---------------- */
+/* Antes el fondo de la conversación actual (y el del hover) lo llevaba solo el enlace, que se
+   achicaba por el lugar de los botones. Ahora lo lleva la fila entera; los botones aparecen al
+   pasar el mouse (o con el foco) sobre ella y no le quitan ancho al título mientras no se ven. */
+.recent-row {
+  position: relative;
+  border-radius: 8px;
+}
+.recent-row:not(.from-telegram):hover,
+.recent-row:not(.from-telegram):focus-within,
+.recent-row:not(.from-telegram):has(.recent[aria-current]) {
+  background: var(--surface-2);
+}
+.recent-row .recent:hover,
+.recent-row .recent[aria-current] {
+  background: transparent; /* el fondo ya lo pone la fila */
+}
+.recent-row .recent-edit {
+  position: absolute;
+  top: 50%;
+  right: 36px;
+  translate: 0 -50%;
+}
+.recent-row .recent-delete {
+  right: 2px;
+}
+/* Cuando los botones se ven, el título se corta antes de llegar a ellos. */
+.recent-row:hover .recent,
+.recent-row:focus-within .recent {
+  padding-right: 72px;
+}
+@media (hover: none) {
+  .recent-row .recent {
+    padding-right: 72px;
+  }
+}

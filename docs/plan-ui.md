@@ -6,9 +6,9 @@ mockup (header, menú lateral, paneles) sin dejar nada que no funcione.
 ## Decisiones
 
 - **Solo lo que funciona.** Fuera: Memoria, Docs, Sesión, Resúmenes y el avatar.
-  Dentro, con función real: Chat, Notas (`/ver`), Archivos (`/archivos`),
-  Facturas y tickets (`/archivos tickets`) y, abajo de todo, Configuración. Canales y Uso van
-  en la barra de arriba (ver «Barra de arriba, Canales y Uso» al final).
+  Dentro, con función real: Chat, Biblioteca (ver «Biblioteca y transiciones» al final; reemplazó a
+  Notas, Archivos y Facturas y tickets, que corrían comandos en el chat) y, abajo de todo,
+  Configuración. Canales y Uso van en la barra de arriba (ver «Barra de arriba, Canales y Uso»).
 - **Sin buscador por ahora.** El «Buscar» del mockup apunta a conversaciones,
   que todavía no existen; la búsqueda de notas ya está en `/buscar`.
 - **Paneles que se contraen.** Izquierdo: columna de íconos (64px) con el «+»
@@ -113,3 +113,30 @@ Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA)
 - La suavidad de la animación al contraer: en la pestaña automatizada los
   fotogramas llegan a saltos. Sin transición, las 4 combinaciones de paneles
   llegan al ancho correcto (verificado).
+
+## Biblioteca y transiciones
+
+- **`/biblioteca`** es una página propia, de **solo lectura**: notas, archivos y tickets en una
+  cuadrícula con buscador, filtros (Todo · Notas · Archivos · Tickets, con cantidades) y «Cargar más»
+  (la lista llega de a 40). Abrirla no crea ninguna conversación, que era el problema de los tres
+  accesos anteriores (cada uno ejecutaba un comando en el chat).
+- **Clasificación** (`data/library.py`): tickets = lo que está en `tickets/`; notas = `.md` y `.txt`;
+  archivos = el resto (PDF, CSV, imágenes sueltas). Los resúmenes no se muestran, igual que en `/archivos`.
+- **Todo lleva ícono**, también las fotos: no hay miniaturas por ahora (cargar muchas fotos grandes
+  sería pesado; si hace falta, se agregan miniaturas chicas más adelante).
+- **Al tocar una tarjeta** se abre ahí mismo: texto (notas y CSV), imagen, o un enlace a una pestaña
+  nueva para el PDF (la página prohíbe mostrarse dentro de otra, así que no se incrusta). Se ve la ruta
+  completa, un botón para copiarla y «Mostrar en la carpeta» (`xdg-open`, solo si el equipo tiene
+  pantalla; si no, el botón no aparece).
+- **Seguridad:** todo pasa por `safe_path` y por la lista de extensiones; sin SVG ni HTML; las notas se
+  muestran con `textContent`; imágenes y PDF salen con el tipo fijado por la extensión y `nosniff`;
+  «Mostrar en la carpeta» solo recibe una ruta de `DATA_DIR`, nunca un comando.
+- **View Transitions:** `@view-transition { navigation: auto }` funde una página con la siguiente (el
+  header y el menú llevan `view-transition-name`, así se quedan quietos), y la Biblioteca usa
+  `document.startViewTransition` al abrir un elemento, volver y filtrar. Con «reducir movimiento» o sin
+  soporte, el cambio es directo.
+- **El chat espera en blanco** (`body.booting`) hasta saber qué conversación abrir, para que no se vea un
+  instante el saludo de «chat nuevo» antes de la última conversación; aparece con un fundido corto.
+- **Recientes:** el fondo de la conversación actual (y del hover) es de toda la fila; los botones de
+  renombrar y eliminar flotan a la derecha, aparecen al pasar el mouse o con el foco, y no le quitan
+  ancho al título mientras no se ven.

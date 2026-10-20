@@ -366,3 +366,13 @@ def test_deleting_a_conversation_asks_first_without_browser_dialogs():
     for dialog in ("confirm(", "alert(", "prompt("):
         assert dialog not in code
     assert 'method: "DELETE"' in code and "deleteConfirm" in code
+
+
+def test_recents_row_carries_the_color_and_the_buttons_float():
+    css = js("style.css")
+
+    # El fondo de la actual y del hover es de toda la fila (no del enlace, que se achicaba)...
+    assert re.search(r"\.recent-row:not\(\.from-telegram\):has\(\.recent\[aria-current\]\)", css)
+    assert re.search(r"\.recent-row \.recent\[aria-current\]\s*\{\s*background:\s*transparent;", css)
+    # ...y los botones flotan encima, sin quitarle ancho al título.
+    assert re.search(r"\.recent-row \.recent-edit\s*\{\s*position:\s*absolute;", css)

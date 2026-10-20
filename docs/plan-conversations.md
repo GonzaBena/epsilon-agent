@@ -115,3 +115,20 @@ cruza entre canales), y la web solo **lee** la conversación de Telegram.
 - Memoria para quien quiera conversar con un modelo (se apoyará en estos archivos).
 - «Ver archivadas»: abrir las conversaciones de Telegram que se cerraron.
 - Que la web también pueda escribir en la de Telegram (hoy solo lee).
+
+## Eliminar una conversación
+
+- **De verdad.** `DELETE /api/conversations/{id}` borra el archivo (`conversations.delete`). Es la única
+  excepción a «solo se agrega» y se decidió así a propósito: «eliminar» tiene que eliminar (ocultarla
+  dejaría datos que la persona cree borrados). No se puede deshacer.
+- **No toca lo que la conversación guardó** (notas, CSV, tickets): eso es de `DATA_DIR` y se ve en la
+  Biblioteca.
+- **Confirmación en la propia lista** de «Recientes» (sin ventanas del navegador): «¿Eliminar "título"?»
+  con Cancelar (el foco arranca ahí) y Eliminar. Si era la conversación abierta, se pasa a un chat nuevo.
+- **Telegram:** su conversación también se puede eliminar; si era la abierta, el próximo mensaje empieza
+  otra. Un botón viejo tocado sobre una conversación eliminada no la vuelve a crear (`add_action` no
+  hace nada si el archivo no existe).
+- **Seguridad:** el id se valida con el patrón estricto y se comprueba que cae dentro de `DATA_DIR`; se
+  borra la ruta sin resolver, así que un enlace simbólico se borra a sí mismo y nunca el archivo al que
+  apunta; el candado de los canales evita cruzarse con Telegram abriendo o cerrando la suya. El estado
+  pendiente de esa conversación (`web:<id>`) se descarta.
