@@ -48,6 +48,9 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
    Todavía no está conectado a ningún canal ni declarada la extra `voz`: eso es el paso 2.
 2. Instalar la extra, dejar que se descargue el modelo y
    probar con un audio real para medir velocidad y memoria en tu PC.
+   **Hecho a medias:** extra `voz` declarada e instalada (`faster-whisper` 1.2.1) y el
+   modelo ya estaba en la caché de Hugging Face (no hubo que bajar nada). Falta la prueba
+   con un audio real (velocidad y RAM).
 3. Telegram: notas de voz y archivos de audio.
 4. Web: endpoint `/api/transcribe` (JSON/Multipart, mismas defensas que `/api/upload`)
    y botón de micrófono.

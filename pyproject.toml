@@ -16,6 +16,12 @@ dependencies = [
     "uvicorn>=0.54.0",
 ]
 
+[project.optional-dependencies]
+# Voz (Whisper local): uv sync --extra voz. Opcional: quien no la quiera no descarga nada.
+voz = [
+    "faster-whisper>=1.2.1",
+]
+
 [project.scripts]
 epsilon = "epsilon.main:main"
 
