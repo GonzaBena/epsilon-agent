@@ -310,10 +310,21 @@ def create_app() -> FastAPI:
             "pending_restart": config.pending_restart(),
             "channels": state.snapshot(),  # activo / detenido (con su motivo) / omitido
             "voice": transcribe.status(),  # apagada / cargado / descargado / descargando / sin descargar / no instalado
+            # Bytes del modelo que Epsilon bajó y se puede borrar; None si no hay.
+            "voice_model_bytes": transcribe.deletable_model(),
         }
 
     @app.get("/api/config")
     def get_config():
+        return config_state()
+
+    @app.post("/api/voice/delete-model")
+    def delete_voice_model():
+        """Libera el disco del modelo de voz. Solo el que bajó Epsilon, y con la voz apagada."""
+        try:
+            transcribe.delete_model()
+        except transcribe.VoiceError as e:
+            raise HTTPException(409, str(e)) from None
         return config_state()
 
     @app.put("/api/config")

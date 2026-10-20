@@ -190,6 +190,15 @@
               <p class="error" id="err-VOICE_CONFIRM" role="alert"></p>
             </div>
 
+            <!-- Solo si la voz está apagada y Epsilon bajó el modelo (lo decide config.js). -->
+            <div class="field" id="voice-model" hidden>
+              <p class="help" id="voice-model-text"></p>
+              <div class="test-row">
+                <button type="button" class="ghost danger" id="voice-model-delete">Borrar el modelo de voz</button>
+                <p class="result" id="voice-model-result" role="status"></p>
+              </div>
+            </div>
+
             <div class="field">
               <label for="f-WHISPER_LANGUAGE">Idioma (es, en, pt… o «auto» para detectarlo)</label>
               <input id="f-WHISPER_LANGUAGE" data-key="WHISPER_LANGUAGE" type="text" placeholder="es"

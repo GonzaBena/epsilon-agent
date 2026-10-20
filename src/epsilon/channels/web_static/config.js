@@ -29,6 +29,12 @@ const restartList = document.getElementById("restart-list");
 const channelsList = document.getElementById("channels");
 const dataDir = document.getElementById("data-dir");
 const voiceStatus = document.getElementById("voice-status");
+const voiceModel = document.getElementById("voice-model");
+const voiceModelText = document.getElementById("voice-model-text");
+const voiceModelDelete = document.getElementById("voice-model-delete");
+const voiceModelResult = document.getElementById("voice-model-result");
+const DELETE_LABEL = "Borrar el modelo de voz";
+let deleteArmed = false;
 
 // El estado de la voz que informa el servidor, dicho en una frase.
 const VOICE_TEXTS = {
@@ -153,8 +159,21 @@ function render(state) {
   }
   renderChannels(state.channels);
   voiceStatus.textContent = VOICE_TEXTS[state.voice] || "";
+  renderVoiceModel(state);
   renderRestart(state.pending_restart);
   resetClear();
+}
+
+// El botón de borrar el modelo solo aparece con la voz apagada y si Epsilon lo bajó.
+function renderVoiceModel(state) {
+  const bytes = state.voice_model_bytes;
+  voiceModel.hidden = !(state.voice === "apagada" && bytes);
+  deleteArmed = false;
+  voiceModelDelete.textContent = DELETE_LABEL;
+  if (bytes) {
+    const gigabytes = (bytes / 1024 ** 3).toFixed(1).replace(".", ",");
+    voiceModelText.textContent = `El modelo de voz ocupa ${gigabytes} GB en el disco. Si lo borrás y volvés a prender la voz, se vuelve a bajar.`;
+  }
 }
 
 async function load() {
@@ -258,6 +277,30 @@ for (const button of document.querySelectorAll("[data-clear]")) {
     save({}, [key]);
   });
 }
+
+// --- Borrar el modelo de voz (en dos pasos, como las claves) ----------------------------------
+voiceModelDelete.addEventListener("click", async () => {
+  if (busy) return;
+  if (!deleteArmed) {
+    deleteArmed = true;
+    voiceModelDelete.textContent = "¿Seguro? Borrar el modelo";
+    return;
+  }
+  deleteArmed = false;
+  voiceModelDelete.textContent = DELETE_LABEL;
+  show(voiceModelResult, "Borrando…", true);
+  setBusy(true);
+  try {
+    const { response, data } = await request("/api/voice/delete-model", { method: "POST" });
+    if (!response.ok) throw new Error(data.detail || "No se pudo borrar el modelo.");
+    render(data);
+    show(voiceModelResult, "Modelo borrado.", true);
+  } catch (error) {
+    show(voiceModelResult, error.message, false);
+  } finally {
+    setBusy(false);
+  }
+});
 
 // --- Probar conexión --------------------------------------------------------------------------
 for (const button of document.querySelectorAll("[data-test]")) {

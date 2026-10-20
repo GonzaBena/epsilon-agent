@@ -1,9 +1,11 @@
+import json
 import threading
 import types
+from types import SimpleNamespace
 
 import pytest
 
-from epsilon import transcribe
+from epsilon import notes, transcribe
 
 
 class FakeModel:
@@ -398,3 +400,111 @@ def test_turning_it_back_on_restores_the_normal_status(monkeypatch):
     monkeypatch.setattr(transcribe, "_cached", lambda: True)
 
     assert transcribe.status() == "descargado"
+
+
+# --- Borrar el modelo: solo el que bajó Epsilon, y con la voz apagada ----------
+
+
+@pytest.fixture
+def cache(tmp_path, monkeypatch):
+    """Una caché de Hugging Face de mentira, y DATA_DIR aparte para la marca."""
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setattr(notes, "DATA_DIR", data)
+    repo = tmp_path / "hub" / "models--org--faster-whisper-large-v3-turbo"
+    (repo / "blobs").mkdir(parents=True)
+    (repo / "snapshots" / "abc123").mkdir(parents=True)
+    (repo / "blobs" / "weights").write_bytes(b"x" * 1000)
+    (repo / "snapshots" / "abc123" / "model.bin").symlink_to(repo / "blobs" / "weights")
+    transcribe._reset()
+    return SimpleNamespace(repo=repo, snapshot=repo / "snapshots" / "abc123", data=data)
+
+
+def wrote_marker(cache):
+    transcribe._remember_download(cache.snapshot)
+
+
+def test_a_finished_download_leaves_a_mark_so_the_model_can_be_deleted_later(cache, monkeypatch):
+    monkeypatch.setattr(transcribe, "_download", lambda: cache.snapshot)
+
+    transcribe._run_download()
+
+    assert json.loads((cache.data / transcribe.MARKER).read_text())["path"] == str(cache.snapshot)
+    assert transcribe.deletable_model() == 1000  # el peso real (blobs), sin contar los enlaces
+
+
+def test_a_model_epsilon_did_not_download_cannot_be_deleted(cache, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")  # sin marca: ni siquiera apagada
+
+    assert transcribe.deletable_model() is None
+    with pytest.raises(transcribe.VoiceError, match="no borro nada"):
+        transcribe.delete_model()
+    assert cache.repo.exists()
+
+
+def test_the_model_stays_if_the_voice_is_on(cache):
+    wrote_marker(cache)
+
+    with pytest.raises(transcribe.VoiceError, match="Apagá la voz"):
+        transcribe.delete_model()
+    assert cache.repo.exists() and (cache.data / transcribe.MARKER).exists()
+
+
+def test_deleting_removes_the_model_and_the_mark_and_unloads_it(cache, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    wrote_marker(cache)
+    transcribe._model = object()
+
+    freed = transcribe.delete_model()
+
+    assert freed == 1000 and not cache.repo.exists()
+    assert not (cache.data / transcribe.MARKER).exists() and transcribe._model is None
+    assert transcribe.deletable_model() is None
+
+
+def test_deleting_is_refused_while_a_download_or_a_transcription_runs(cache, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    wrote_marker(cache)
+    release = threading.Event()
+    transcribe._download_thread = threading.Thread(target=release.wait, daemon=True)
+    transcribe._download_thread.start()
+
+    with pytest.raises(transcribe.VoiceError, match="se está bajando"):
+        transcribe.delete_model()
+    release.set()
+    transcribe._download_thread.join()
+
+    with transcribe._lock, pytest.raises(transcribe.VoiceError, match="audio en proceso"):
+        transcribe.delete_model()
+    assert cache.repo.exists()
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "not json",
+        '{"model": "otro", "path": "/x/models--a--whisper/snapshots/s"}',  # de otro modelo
+        '{"model": "large-v3-turbo", "path": "/etc"}',  # no es una carpeta de snapshots
+        '{"model": "large-v3-turbo"}',  # sin ruta
+    ],
+)
+def test_a_damaged_or_foreign_mark_never_deletes_anything(cache, monkeypatch, bad):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    (cache.data / transcribe.MARKER).write_text(bad)
+
+    assert transcribe.deletable_model() is None
+    with pytest.raises(transcribe.VoiceError):
+        transcribe.delete_model()
+
+
+def test_a_mark_pointing_outside_a_whisper_model_folder_deletes_nothing(cache, tmp_path, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+    other = tmp_path / "hub" / "models--org--otra-cosa"
+    (other / "snapshots" / "s").mkdir(parents=True)
+    (cache.data / transcribe.MARKER).write_text(
+        json.dumps({"model": transcribe.MODEL, "path": str(other / "snapshots" / "s")})
+    )
+
+    with pytest.raises(transcribe.VoiceError):
+        transcribe.delete_model()
+    assert other.exists()

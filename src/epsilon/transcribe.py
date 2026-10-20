@@ -1,13 +1,15 @@
 import ctypes
 import gc
+import json
 import math
 import os
 import re
+import shutil
 from pathlib import Path
 import threading
 import time
 
-from epsilon import config
+from epsilon import config, notes
 
 # ÚNICO lugar que carga y usa Whisper (como llm.py con Gemini). Pasa un audio a texto, en
 # esta PC: no gasta tokens y el audio no sale de acá. No conoce ningún canal: lo usan los
@@ -81,11 +83,11 @@ def _cached() -> bool:
     return True
 
 
-def _download() -> None:
-    """Descarga el modelo (puede tardar minutos). Corre en un hilo aparte."""
+def _download():
+    """Descarga el modelo (puede tardar minutos). Corre en un hilo aparte. Devuelve su carpeta."""
     from faster_whisper.utils import download_model
 
-    download_model(MODEL)
+    return download_model(MODEL)
 
 
 def _build_model():
@@ -103,6 +105,77 @@ _last_used = 0.0
 _timer: threading.Timer | None = None
 _download_thread: threading.Thread | None = None
 _download_error: str | None = None
+
+
+# --- Borrar el modelo (solo si lo bajó Epsilon) ---------------------------------------------------
+# Al terminar de bajar el modelo se anota en DATA_DIR dónde quedó. Esa marca es lo único que
+# habilita borrarlo: un modelo que ya estaba en la caché de Hugging Face (de otro programa, o
+# bajado antes de que existiera la marca) no se toca nunca.
+
+MARKER = ".voice-model.json"
+
+
+def _remember_download(folder) -> None:
+    try:
+        notes.safe_path(MARKER).write_text(
+            json.dumps({"model": MODEL, "path": str(folder)}), encoding="utf-8"
+        )
+    except OSError as e:
+        print(f"No pude anotar la descarga del modelo de voz: {config.redact(repr(e))}")
+
+
+def _repo_dir() -> Path | None:
+    """La carpeta del modelo en la caché, si la marca existe y apunta a algo que parece uno:
+    <caché>/models--<org>--<nombre>/snapshots/<versión>, con «whisper» en el nombre."""
+    try:
+        data = json.loads(notes.safe_path(MARKER).read_text(encoding="utf-8"))
+        folder = Path(data["path"])
+        if data["model"] != MODEL or folder.parent.name != "snapshots":
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    repo = folder.parent.parent
+    if not (repo.name.startswith("models--") and "whisper" in repo.name.lower() and repo.is_dir()):
+        return None
+    return repo
+
+
+def _folder_size(folder: Path) -> int:
+    """Lo que ocupa en disco (los enlaces de snapshots/ no cuentan: el peso está en blobs/)."""
+    return sum(p.lstat().st_size for p in folder.rglob("*") if p.is_file() and not p.is_symlink())
+
+
+def deletable_model() -> int | None:
+    """Cuántos bytes ocupa el modelo que Epsilon bajó, o None si no hay nada que se pueda borrar."""
+    repo = _repo_dir()
+    return _folder_size(repo) if repo else None
+
+
+def delete_model() -> int:
+    """Borra el modelo que Epsilon bajó y devuelve los bytes liberados. Solo con la voz apagada
+    y sin audio ni descarga en curso. Lanza VoiceError (mensaje listo para mostrar)."""
+    global _model
+    if config.enabled("VOICE_ENABLED"):
+        raise VoiceError("Apagá la voz antes de borrar el modelo.")
+    repo = _repo_dir()
+    if repo is None:
+        raise VoiceError("No hay un modelo que Epsilon haya bajado: no borro nada.")
+    if _download_thread is not None and _download_thread.is_alive():
+        raise VoiceError("El modelo se está bajando; esperá a que termine.")
+    if not _lock.acquire(blocking=False):
+        raise VoiceError("Hay un audio en proceso; probá de nuevo en un momento.")
+    try:
+        freed = _folder_size(repo)
+        _model = None  # primero se suelta de la memoria; después, del disco
+        _release_memory()
+        shutil.rmtree(repo)
+        notes.safe_path(MARKER).unlink(missing_ok=True)
+    except OSError as e:
+        print(f"Error al borrar el modelo de voz: {config.redact(repr(e))}")
+        raise VoiceError("No pude borrar el modelo de voz.") from None
+    finally:
+        _lock.release()
+    return freed
 
 
 def _now() -> float:
@@ -160,7 +233,9 @@ def unload_if_idle() -> None:
 def _run_download() -> None:
     global _download_error
     try:
-        _download()
+        folder = _download()
+        if folder:
+            _remember_download(folder)
     except Exception as e:
         print(f"Error al descargar el modelo de voz: {config.redact(repr(e))}")
         _download_error = config.redact(str(e))[:200] or "error desconocido"
