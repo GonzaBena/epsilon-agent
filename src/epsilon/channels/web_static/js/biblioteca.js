@@ -42,6 +42,7 @@ const state = {
   root: "",
   canReveal: false,
   loading: false,
+  shown: false, // ¿ya se dibujó la cuadrícula alguna vez?
 };
 let requestId = 0; // si llega tarde la respuesta de una búsqueda vieja, se descarta
 let searchTimer = null;
@@ -80,6 +81,15 @@ function ago(seconds) {
   return new Date(seconds * 1000).toLocaleDateString("es-AR");
 }
 
+// Cambia la pantalla con una transición suave (View Transitions): el navegador saca una foto de
+// lo de antes y la funde con lo nuevo, así el contenido no "salta". Sin soporte, o si pedís menos
+// animaciones, el cambio es directo.
+function transition(update) {
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!document.startViewTransition || calm) return update();
+  return document.startViewTransition(update).updateCallbackDone;
+}
+
 function show(node, text, ok) {
   node.textContent = text;
   node.className = `result ${ok ? "ok" : "fail"}`;
@@ -108,7 +118,10 @@ async function load(reset) {
     show(result, "No pude leer la biblioteca. ¿Está andando Epsilon?", false);
   }
   state.loading = false;
-  render();
+  // Filtrar o buscar cambia toda la cuadrícula: con transición. Cargar más solo agrega al final.
+  if (reset && state.shown) transition(render);
+  else render();
+  state.shown = true;
 }
 
 function renderChips() {
@@ -163,52 +176,66 @@ function fileUrl(item) {
   return `/api/library/file?${new URLSearchParams({ path: item.path })}`;
 }
 
-async function openItem(item) {
-  document.getElementById("viewer-name").textContent = item.name;
-  document.getElementById("viewer-path").textContent = fullPath(item);
-  viewerResult.textContent = "";
-  viewerBody.replaceChildren();
-  document.getElementById("viewer-reveal").hidden = !state.canReveal;
-  document.getElementById("viewer-copy").textContent = "Copiar ruta";
-  viewer.item = item;
-  viewer.hidden = false;
-  grid.hidden = chipsBox.hidden = moreButton.hidden = true;
-  document.querySelector(".library-bar").hidden = true;
-  document.getElementById("viewer-back").focus();
-
+// Arma lo que va dentro de la vista ANTES de mostrarla, para que no aparezca vacía y después salte.
+async function buildBody(item) {
   if (item.type === "image") {
     const image = make("img", "viewer-image");
     image.alt = item.name;
     image.src = fileUrl(item);
-    viewerBody.append(image);
-  } else if (item.type === "pdf") {
+    await image.decode().catch(() => {}); // si falla, el navegador muestra su ícono de imagen rota
+    return [image];
+  }
+  if (item.type === "pdf") {
     // Un PDF no se puede incrustar (la página prohíbe mostrarse dentro de otra): va en una pestaña.
     const link = make("a", "viewer-btn", "Abrir el PDF en una pestaña nueva");
     link.href = fileUrl(item);
     link.target = "_blank";
     link.rel = "noopener";
-    viewerBody.append(link);
-  } else {
-    try {
-      const response = await fetch(`/api/library/text?${new URLSearchParams({ path: item.path })}`);
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      if (viewer.item !== item) return; // ya abriste otro
-      viewerBody.append(make("pre", "viewer-text", data.text || "(vacío)"));
-      if (data.truncated) viewerBody.append(make("p", "help", "Se muestra solo el principio: el archivo es muy largo."));
-    } catch {
-      show(viewerResult, "No pude abrir ese archivo.", false);
-    }
+    return [link];
   }
+  const response = await fetch(`/api/library/text?${new URLSearchParams({ path: item.path })}`);
+  if (!response.ok) throw new Error();
+  const data = await response.json();
+  const nodes = [make("pre", "viewer-text", data.text || "(vacío)")];
+  if (data.truncated) nodes.push(make("p", "help", "Se muestra solo el principio: el archivo es muy largo."));
+  return nodes;
+}
+
+async function openItem(item) {
+  viewer.item = item;
+  let body = [];
+  let failed = false;
+  try {
+    body = await buildBody(item);
+  } catch {
+    failed = true;
+  }
+  if (viewer.item !== item) return; // ya abriste otro
+
+  await transition(() => {
+    document.getElementById("viewer-name").textContent = item.name;
+    document.getElementById("viewer-path").textContent = fullPath(item);
+    document.getElementById("viewer-reveal").hidden = !state.canReveal;
+    document.getElementById("viewer-copy").textContent = "Copiar ruta";
+    viewerResult.textContent = "";
+    viewerBody.replaceChildren(...body);
+    if (failed) show(viewerResult, "No pude abrir ese archivo.", false);
+    viewer.hidden = false;
+    grid.hidden = chipsBox.hidden = moreButton.hidden = true;
+    document.querySelector(".library-bar").hidden = true;
+  });
+  document.getElementById("viewer-back").focus();
 }
 
 function closeItem() {
-  viewer.hidden = true;
   viewer.item = null;
-  viewerBody.replaceChildren();
-  grid.hidden = chipsBox.hidden = false;
-  document.querySelector(".library-bar").hidden = false;
-  render();
+  transition(() => {
+    viewer.hidden = true;
+    viewerBody.replaceChildren();
+    grid.hidden = chipsBox.hidden = false;
+    document.querySelector(".library-bar").hidden = false;
+    render();
+  });
 }
 
 document.getElementById("viewer-back").addEventListener("click", closeItem);

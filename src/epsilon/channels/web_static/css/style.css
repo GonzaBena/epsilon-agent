@@ -1990,3 +1990,26 @@ a.ghost {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* --- Transiciones entre pantallas (View Transitions) ---------------------------- */
+/* Al pasar de una página a otra, el navegador funde lo viejo con lo nuevo en vez de cortar.
+   El header y el menú de la izquierda llevan nombre: son el mismo elemento en todas las páginas,
+   así se quedan quietos y solo se funde el contenido. */
+@view-transition {
+  navigation: auto;
+}
+.top {
+  view-transition-name: top-bar;
+}
+.side-left {
+  view-transition-name: side-menu;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.16s;
+}
+@media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
+}

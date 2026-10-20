@@ -152,3 +152,24 @@ def test_library_page_has_no_inline_script_or_style():
     assert not re.search(r"<script(?![^>]*\bsrc=)", html)
     assert "style=" not in html and "<style" not in html
     assert not re.search(r"\son\w+=", html)
+
+
+# --- Transiciones (View Transitions) ----------------------------------------------------------
+
+
+def test_pages_cross_fade_instead_of_popping():
+    css = js("style.css")
+
+    # Entre páginas: el navegador funde en vez de cortar, y quien pide menos animación no las ve.
+    assert re.search(r"@view-transition\s*\{\s*navigation:\s*auto;", css)
+    assert re.search(r"prefers-reduced-motion:\s*reduce\)\s*\{\s*@view-transition\s*\{\s*navigation:\s*none;", css)
+    # El header y el menú llevan nombre para quedarse quietos mientras se funde el contenido.
+    assert "view-transition-name: top-bar" in css and "view-transition-name: side-menu" in css
+
+
+def test_library_swaps_screens_with_a_transition_and_a_fallback():
+    code = js("biblioteca.js")
+
+    assert "document.startViewTransition" in code
+    assert "prefers-reduced-motion" in code  # sin animación, el cambio es directo
+    assert "if (!document.startViewTransition" in code  # y sin soporte, también

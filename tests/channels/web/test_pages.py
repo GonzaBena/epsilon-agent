@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 import re
 from pathlib import Path
 
@@ -346,3 +348,12 @@ def test_the_telegram_view_tints_the_stage_and_the_composer_blue():
     assert "background: var(--stage-bg)" in re.search(r"\n\.composer \{(.*?)\}", css, re.S).group(0)
     assert re.search(r"--stage-bg: var\(--bg\)", css)  # fuera de Telegram, el fondo de siempre
     assert 'document.body.classList.toggle("view-telegram", on)' in app
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="sin node no se puede revisar la sintaxis")
+@pytest.mark.parametrize("name", ["app.js", "biblioteca.js", "canales.js", "config.js", "shell.js", "uso.js"])
+def test_every_script_parses(name):
+    # Un error de sintaxis deja la página muerta y ninguna otra prueba lo ve (no ejecutan el JS).
+    done = subprocess.run(["node", "--check", str(static_path(name))], capture_output=True, text=True)
+
+    assert done.returncode == 0, done.stderr
