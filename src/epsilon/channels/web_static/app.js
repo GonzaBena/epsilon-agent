@@ -21,6 +21,8 @@ const thumbImg = document.getElementById("thumb-img");
 const thumbPdf = document.getElementById("thumb-pdf");
 const drop = document.getElementById("drop");
 const statusLabel = document.getElementById("status");
+const micButton = document.getElementById("mic");
+const micStatus = document.getElementById("mic-status");
 const newChatLink = document.getElementById("new-chat");
 
 // --- Estado -----------------------------------------------------------------
@@ -456,6 +458,90 @@ function resizeInput() {
   input.style.height = `${input.scrollHeight}px`;
 }
 input.addEventListener("input", resizeInput);
+
+// --- Voz: dictar al cuadro de texto -------------------------------------------------------
+// Graba con el micrófono, el servidor transcribe y el texto queda en el cuadro SIN enviarse,
+// para que lo revises (igual que las herramientas del panel). El audio no se guarda.
+let recorder = null;       // el MediaRecorder mientras se graba
+let transcribing = false;  // true mientras el servidor transcribe
+
+function micMessage(text, isError) {
+  micStatus.textContent = text;
+  micStatus.classList.toggle("error", Boolean(isError));
+  micStatus.hidden = !text;
+}
+
+function setRecording(on) {
+  micButton.classList.toggle("recording", on);
+  micButton.setAttribute("aria-pressed", String(on));
+  const label = on ? "Parar y transcribir" : "Dictar con la voz";
+  micButton.setAttribute("aria-label", label);
+  micButton.title = label;
+}
+
+async function sendAudio(blob) {
+  transcribing = true;
+  micButton.disabled = true;
+  micMessage("Transcribiendo…", false);
+  try {
+    const form = new FormData();
+    form.append("file", blob, "voz.webm");
+    const response = await fetch("/api/transcribe", { method: "POST", body: form });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(typeof data.detail === "string" ? data.detail : "No pude transcribir el audio.");
+    }
+    // Se suma a lo que ya tenías escrito; no envía nada.
+    const spoken = String(data.text || "").trim();
+    const current = input.value.trim();
+    insertText(current ? `${current} ${spoken}` : spoken);
+    micMessage("", false);
+  } catch (error) {
+    micMessage(
+      error instanceof TypeError ? "No pude conectar con Epsilon. ¿Sigue corriendo?" : error.message,
+      true,
+    );
+  } finally {
+    transcribing = false;
+    micButton.disabled = false;
+  }
+}
+
+async function startRecording() {
+  micMessage("", false);
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    micMessage("No tengo permiso para usar el micrófono. Habilitalo en el navegador.", true);
+    return;
+  }
+  const chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) chunks.push(event.data);
+  });
+  recorder.addEventListener("stop", () => {
+    for (const track of stream.getTracks()) track.stop(); // apaga el micrófono
+    const type = recorder.mimeType || "audio/webm";
+    recorder = null;
+    setRecording(false);
+    if (chunks.length) sendAudio(new Blob(chunks, { type }));
+  });
+  recorder.start();
+  setRecording(true);
+  micMessage("Grabando… tocá el micrófono para parar.", false);
+}
+
+// Sin micrófono o sin MediaRecorder (navegador viejo, página que no es localhost/https): sin botón.
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
+  micButton.hidden = false;
+  micButton.addEventListener("click", () => {
+    if (transcribing) return;
+    if (recorder) recorder.stop();
+    else startRecording();
+  });
+}
 
 // --- Comandos con un toque: los del estado vacío y los del menú lateral ------------------
 // Los del menú son enlaces (/?cmd=...) para que también funcionen desde la

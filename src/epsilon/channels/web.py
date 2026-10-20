@@ -2,6 +2,7 @@ from dataclasses import asdict
 import os
 from pathlib import Path
 import socket
+import tempfile
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -9,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from epsilon import checks, config, conversations, core, state
+from epsilon import checks, config, conversations, core, state, transcribe
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -217,6 +218,33 @@ def create_app() -> FastAPI:
         attachment = core.Attachment(data=data, name=name, mime=mime)
         msg = core.Message(text=text, attachment=attachment, session_id=session_for(cid))
         return reply_json(core.handle(msg), cid)
+
+    @app.post("/api/transcribe")
+    def transcribe_audio(file: UploadFile = File(...)):
+        """Voz -> texto para el cuadro de escritura. NO ejecuta nada: el navegador deja el
+        texto en el cuadro y vos decidís si lo mandás. El audio es dato: no se guarda."""
+        if not (file.content_type or "").startswith("audio/"):
+            raise HTTPException(415, "Solo audio")
+        data = file.file.read(MAX_UPLOAD + 1)
+        if len(data) > MAX_UPLOAD:
+            raise HTTPException(413, "Ese audio pesa más de 20 MB")
+
+        path = None
+        try:
+            # Archivo temporal FUERA de DATA_DIR (Whisper lo lee por ruta); se borra siempre.
+            # El nombre lo elige el sistema: nada del cliente forma parte de la ruta.
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp:
+                temp.write(data)
+                path = Path(temp.name)
+            return {"text": transcribe.audio_to_text(path)}
+        except transcribe.VoiceError as e:
+            raise HTTPException(422, str(e)) from None  # ya viene redactado para el usuario
+        except Exception as e:
+            print(f"Error con un audio: {config.redact(repr(e))}")  # el detalle, a la terminal
+            raise HTTPException(500, "No pude procesar el audio.") from None
+        finally:
+            if path:
+                path.unlink(missing_ok=True)
 
     # --- Conversaciones guardadas ---------------------------------------------
     # Un id que no tiene la forma exacta (o que no existe) es siempre un 404:

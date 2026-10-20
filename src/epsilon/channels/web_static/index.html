@@ -142,6 +142,17 @@
           </button>
           <input id="file" type="file" accept="image/*,application/pdf" hidden>
 
+          <!-- Micrófono: graba, transcribe y deja el texto en el cuadro SIN enviarlo.
+               Se muestra solo si el navegador puede grabar (app.js). -->
+          <button id="mic" class="icon-btn" type="button" aria-label="Dictar con la voz"
+                  title="Dictar con la voz" aria-pressed="false" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3"/>
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+            </svg>
+          </button>
+
           <textarea id="input" rows="1" aria-label="Mensaje"
                     placeholder="Escribí un mensaje o un comando"></textarea>
 
@@ -149,6 +160,8 @@
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
+
+        <p id="mic-status" class="mic-status" role="status" hidden></p>
 
         <p class="disclaimer">Epsilon puede equivocarse al leer imágenes. Revisá los datos antes de guardar.</p>
       </form>

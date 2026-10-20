@@ -67,8 +67,18 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
    del texto transcripto, «más X» pasa a `+ X` y «barra uso» a `/uso`. En el medio no se toca.
    Pendiente: Whisper se comió el «más» inicial de una frase corta (probable recorte del
    detector de voz); se mide con una grabación corta.
-4. Web: endpoint `/api/transcribe` (JSON/Multipart, mismas defensas que `/api/upload`)
-   y botón de micrófono.
+4. Web: endpoint `/api/transcribe` y botón de micrófono. **Hecho.**
+   - `POST /api/transcribe` (multipart, solo `audio/*`, tope de 20 MB; mismas defensas de
+     Host/Origin que `/api/upload`). Devuelve `{text}` y NO toca el núcleo ni guarda nada: el
+     audio va a un archivo temporal fuera de `DATA_DIR` que se borra siempre. Problemas de voz
+     → 422 con el mensaje; un fallo inesperado → 500 «No pude procesar el audio.» (detalle a la
+     terminal, redactado).
+   - Botón de micrófono junto al clip (oculto si el navegador no puede grabar). Un toque graba,
+     otro para y transcribe; el texto se SUMA al cuadro sin enviarse. Los avisos («Grabando…»,
+     «Transcribiendo…», errores) salen en una línea bajo el cuadro. Al parar se apaga el micrófono.
+   - Verificado en el navegador con un micrófono falso (tono): grabación real en webm/opus,
+     envío real, texto en el cuadro, nada enviado. El permiso del micrófono y la voz real
+     quedan por probar con tu navegador.
 5. Configuración: ajustes de idioma, minutos de inactividad y dispositivo en `/config`;
    estado de la voz en el panel (cargado / descargado / no instalado). Docs.
 

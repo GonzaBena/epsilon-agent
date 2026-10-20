@@ -967,6 +967,35 @@ textarea::placeholder {
   background: var(--surface-2);
 }
 
+/* Micrófono: mientras graba se pone rojo y late; transcribiendo, queda quieto y apagado. */
+.icon-btn.recording {
+  color: var(--danger);
+  background: var(--surface-2);
+  animation: rec 1.4s ease-in-out infinite;
+}
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+@keyframes rec {
+  50% {
+    opacity: 0.55;
+  }
+}
+.mic-status {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.mic-status.error {
+  color: var(--danger);
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.recording {
+    animation: none;
+  }
+}
+
 .send {
   flex: none;
   min-height: 2.75rem;
