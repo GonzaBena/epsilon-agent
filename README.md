@@ -69,6 +69,11 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/nuevo`            | Telegram: empieza una conversación nueva.        |
 | `/ayuda`            | Muestra la ayuda.                                |
 
+**Telegram y la web:** lo que hablás por Telegram queda guardado y la web lo muestra como una
+conversación aparte (con el ícono y el color de Telegram), que se actualiza sola y es **solo de
+lectura**: para responder, usá Telegram. Telegram no avisa cuando borrás un chat, así que para
+empezar una conversación de cero escribí `/nuevo` (la anterior queda guardada en disco).
+
 **Imagen a CSV:** adjuntá una imagen con un texto como `gastos: fecha, proveedor, total`.
 Epsilon muestra lo que leyó y **espera tu confirmación** antes de guardar (la IA puede
 equivocarse al leer imágenes, así que conviene revisar los datos).

@@ -43,8 +43,9 @@ instalarlo, cargar sus claves y usarlo.
   una línea por mensaje, solo se agrega). Cada mensaje lleva un id; un botón tocado y
   un renombrado son líneas nuevas que se combinan al leer (nunca se edita). Ids de
   conversación generados por el servidor y validados con un patrón estricto; lo
-  guardado (también el título) pasa por `config.redact`. Ver
-  `docs/plan-conversations.md`.
+  guardado (también el título) pasa por `config.redact`. Lo que se habla por Telegram queda en una
+  conversación de canal (línea `meta`, una abierta a la vez, `/nuevo` la cierra) que la web solo
+  lee, con el ícono y el color de Telegram. Ver `docs/plan-conversations.md`.
 - `menu.py`: el `/menu` (ajustes con botones, como BotFather): pantallas como datos. Solo puede
   cambiar los ajustes de sí/no que lista; el mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
 - `state.py`: estado de cada canal (activo, detenido y por qué). `checks.py`:
@@ -101,6 +102,4 @@ instalarlo, cargar sus claves y usarlo.
 - Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, plantillas, MCP.
 - Memoria para quien quiera conversar con un modelo (se apoyará en los archivos de
   `conversations/`).
-- Conversaciones compartidas entre la web y Telegram (hoy cada canal tiene la suya; ver
-  `docs/plan-conversations.md`, «Después»).
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).

@@ -82,7 +82,36 @@ servidor (en `DATA_DIR`), para llenar «Recientes» y hacer real el «Nuevo chat
   el header y la lista no la tomen por una nueva.
 - Verificado en el navegador con 25 conversaciones.
 
+## La conversación de Telegram en la web. **Hecho.**
+
+Lo que se habla por Telegram queda en estos mismos archivos y la web lo muestra. No es una
+sesión compartida: cada canal sigue con su propio estado en el núcleo (un CSV pendiente no se
+cruza entre canales), y la web solo **lee** la conversación de Telegram.
+
+- **Un archivo por conversación de canal.** Primera línea `{"type":"meta","channel":"telegram"}`;
+  al cerrarla, una última `{"type":"closed"}`. Siguen siendo solo de agregar. Sin línea meta
+  (todo lo anterior) la conversación es «web».
+- **Una abierta por canal.** `conversations.for_channel("telegram")` devuelve la abierta o crea
+  otra; `/nuevo` la cierra (`close_channel`), y si pasa de 1 MB se cierra sola
+  (`MAX_BYTES`). Cerrar no cuenta como actividad (no reordena «Recientes»).
+- **Telegram no avisa cuando se borra el chat**, así que no hay forma de reiniciar solos: `/nuevo`
+  es el reinicio explícito. Lo anterior queda en disco, sin listarse (hoy no hay «ver archivadas»).
+- **Qué se anota** (`telegram.log_turn`): texto, archivos (nombre y pie), notas de voz («🎙 …»,
+  solo cuando se ejecutan), las respuestas con sus botones y lo que guardaron (el panel de
+  Contexto funciona). El botón tocado se anota en el mensaje que lo tenía (el vínculo
+  mensaje de Telegram → mensaje anotado está en memoria, hasta 200; tras un reinicio el toque
+  no se anota). Si el disco falla, el bot sigue y avisa en la terminal. Todo pasa por `redact`.
+- **API:** la lista y cada conversación traen `channel`. Escribir en una conversación que no
+  es de la web (`/api/message`, `/api/upload`, botones) responde 409: lo vigila el servidor.
+- **Interfaz:** en «Recientes» y en el título lleva el ícono de Telegram, una franja azul
+  (`--telegram`) y el texto «Telegram» (el color no es la única señal). El cuadro de texto queda
+  inactivo (`inert`) con un aviso. Mientras se mira, se refresca cada 5 s (solo con la pestaña a
+  la vista) y pasa sola a la nueva si se usa `/nuevo`.
+- Verificado en el navegador con datos de prueba: ícono, color, solo lectura, refresco en vivo y
+  salto a la conversación nueva.
+
 ## Después
 
 - Memoria para quien quiera conversar con un modelo (se apoyará en estos archivos).
-- Conversaciones compartidas con Telegram, si hace falta.
+- «Ver archivadas»: abrir las conversaciones de Telegram que se cerraron.
+- Que la web también pueda escribir en la de Telegram (hoy solo lee).
