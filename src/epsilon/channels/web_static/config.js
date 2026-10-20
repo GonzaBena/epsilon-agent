@@ -11,13 +11,6 @@
 "use strict";
 
 // --- Textos fijos ---------------------------------------------------------------
-const CHANNEL_NAMES = { web: "Web", telegram: "Telegram" };
-const STATE_LABELS = {
-  running: "Activo",
-  starting: "Conectando…",
-  skipped: "Sin configurar",
-  stopped: "Detenido",
-};
 const MAX_DOTS = 64; // para que una clave larguísima no desborde el campo
 
 // --- Elementos ---------------------------------------------------------------------
@@ -26,7 +19,6 @@ const saveButton = document.getElementById("save");
 const saveResult = document.getElementById("save-result");
 const restartBox = document.getElementById("restart");
 const restartList = document.getElementById("restart-list");
-const channelsList = document.getElementById("channels");
 const dataDir = document.getElementById("data-dir");
 const voiceStatus = document.getElementById("voice-status");
 const voiceModel = document.getElementById("voice-model");
@@ -93,19 +85,6 @@ async function request(path, options) {
 }
 
 // --- Dibujar el estado que responde la API ---------------------------------------------
-function renderChannels(channels) {
-  channelsList.replaceChildren();
-  for (const [name, info] of Object.entries(channels)) {
-    const row = make("li", `channel ${info.state}`);
-    // El estado va SIEMPRE en palabras; el color solo acompaña.
-    row.append(make("span", "dot"));
-    row.append(make("strong", "", CHANNEL_NAMES[name] || name));
-    row.append(make("span", "state", STATE_LABELS[info.state] || info.state));
-    if (info.detail) row.append(make("span", "detail", info.detail));
-    channelsList.append(row);
-  }
-}
-
 function renderRestart(pending) {
   restartList.replaceChildren();
   restartBox.hidden = pending.length === 0;
@@ -164,7 +143,6 @@ function render(state) {
     renderSetting(setting);
     if (setting.key === "DATA_DIR") dataDir.textContent = setting.value;
   }
-  renderChannels(state.channels);
   voiceStatus.textContent = VOICE_TEXTS[state.voice] || "";
   renderVoiceModel(state);
   renderRestart(state.pending_restart);

@@ -17,11 +17,17 @@
       <span class="mark" aria-hidden="true">Ε</span>
       <h1>Epsilon</h1>
     </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a class="top-link" href="/" aria-current="page">Chat</a>
+      <a class="top-link" href="/canales">Canales</a>
+      <a class="top-link" href="/uso">Uso</a>
+    </nav>
     <!-- El título de la conversación actual lo pone shell.js. -->
     <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb" data-dynamic>Conversación nueva</span></p>
     <div class="top-actions">
       <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
       <span id="status" class="status" role="status">Conectando…</span>
+      <a class="icon-link" href="/config" aria-label="Configuración" title="Configuración"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></a>
     </div>
   </header>
 
@@ -53,14 +59,6 @@
         <a class="nav-item" href="/?cmd=%2Farchivos%20tickets" data-command="/archivos tickets">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
           <span class="label">Facturas y tickets</span>
-        </a>
-        <a class="nav-item" href="/?cmd=%2Fuso" data-command="/uso">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
-          <span class="label">Uso</span>
-        </a>
-        <a class="nav-item" href="/config">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
-          <span class="label">Configuración</span>
         </a>
       </nav>
 
@@ -205,7 +203,7 @@
         <section aria-labelledby="h-side-channels">
           <h2 class="side-title" id="h-side-channels">Canales</h2>
           <ul class="channels" id="side-channels"></ul>
-          <a class="side-link" href="/config">Administrar en Configuración</a>
+          <a class="side-link" href="/canales">Administrar canales</a>
         </section>
       </div>
     </aside>

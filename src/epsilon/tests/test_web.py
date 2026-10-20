@@ -671,7 +671,7 @@ def test_secret_fields_are_password_inputs_without_a_value():
 
 import re
 
-PAGES = ["index.html", "config.html"]
+PAGES = ["index.html", "config.html", "canales.html"]
 
 
 def page(name):
@@ -680,7 +680,7 @@ def page(name):
 
 def menu_items(html):
     """Los <a class="nav-item"> del menú: [(href, data-command, texto)]."""
-    nav = re.search(r"<nav[^>]*>(.*?)</nav>", html, re.S).group(1)
+    nav = re.search(r'<nav[^>]*aria-label="Secciones"[^>]*>(.*?)</nav>', html, re.S).group(1)
     items = re.findall(r'<a class="nav-item"([^>]*)>(.*?)</a>', nav, re.S)
     result = []
     for attrs, inner in items:
@@ -698,13 +698,15 @@ def test_both_pages_load_the_shared_shell_script():
 
 def test_both_pages_have_the_same_menu():
     # El menú está escrito en cada HTML (sin plantillas): este test evita que se desfasen.
-    assert menu_items(page("index.html")) == menu_items(page("config.html"))
+    for name in PAGES:
+        assert menu_items(page("index.html")) == menu_items(page(name)), name
 
 
 def test_menu_has_the_expected_sections_and_no_dead_links():
     labels = [label for _, _, label in menu_items(page("index.html"))]
 
-    assert labels == ["Chat", "Notas", "Archivos", "Facturas y tickets", "Uso", "Configuración"]
+    # Uso, Canales y Configuración están en la barra de arriba.
+    assert labels == ["Chat", "Notas", "Archivos", "Facturas y tickets"]
     # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
     for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
         assert gone not in page("index.html") and gone not in page("config.html")
@@ -1913,3 +1915,70 @@ def test_the_channels_api_refuses_foreign_origins_and_bad_bodies(client, switcha
     assert client.put("/api/channels/telegram", json={"enabled": False}, headers=evil).status_code == 403
     assert client.put("/api/channels/telegram", json={"enabled": "quizás"}).status_code == 422
     assert client.put("/api/channels/telegram", json={}).status_code == 422
+
+
+# --- Barra de arriba y página Canales ----------------------------------------
+
+
+def top_links(html):
+    """Los enlaces de la barra de arriba: [(href, texto, ¿es la página actual?)]."""
+    nav = re.search(r'<nav class="top-nav"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    return [
+        (m.group(2), m.group(4).strip(), "aria-current" in m.group(1) + m.group(3))
+        for m in re.finditer(r'<a class="top-link"([^>]*?)href="([^"]*)"([^>]*)>(.*?)</a>', nav, re.S)
+    ]
+
+
+def test_every_page_has_the_same_top_bar_and_marks_where_you_are():
+    expected = [("/", "Chat"), ("/canales", "Canales"), ("/uso", "Uso")]
+    current = {"index.html": "Chat", "canales.html": "Canales", "config.html": None}
+
+    for name in PAGES:
+        links = top_links(page(name))
+        assert [(h, t) for h, t, _ in links] == expected, name
+        assert [t for _, t, here in links if here] == ([current[name]] if current[name] else []), name
+
+
+def test_the_gear_goes_to_the_settings_and_is_current_only_there():
+    for name in PAGES:
+        tag = re.search(r'<a class="icon-link"[^>]*>', page(name)).group(0)
+        assert 'href="/config"' in tag and 'aria-label="Configuración"' in tag
+        assert ("aria-current" in tag) == (name == "config.html"), name
+
+
+def test_the_left_menu_no_longer_repeats_what_the_top_bar_has():
+    for name in PAGES:
+        labels = [label for _, _, label in menu_items(page(name))]
+        assert "Uso" not in labels and "Configuración" not in labels and "Canales" not in labels
+
+
+def test_the_channels_page_is_served(client):
+    reply = client.get("/canales")
+
+    assert reply.status_code == 200 and "canales.js" in reply.text
+
+
+def test_the_channels_page_loads_its_own_script_and_the_shell():
+    html = page("canales.html")
+
+    assert '/static/canales.js' in html and '/static/shell.js' in html and '/static/config.js' not in html
+    assert 'id="channel-cards"' in html and 'role="status"' in html
+
+
+def test_the_channels_script_draws_cards_with_text_content_and_a_real_switch():
+    script = page("canales.js")
+
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
+    assert "innerHTML" not in code
+    assert '"/api/channels"' in script and "PUT" in script
+    assert 'setAttribute("role", "switch")' in script and "aria-checked" in script
+    assert "channel.switchable" in script  # la web no lleva interruptor
+    for state in ("running", "starting", "skipped", "stopped", "off"):
+        assert state in script, state
+
+
+def test_the_settings_page_no_longer_shows_channel_status():
+    html, script = page("config.html"), page("config.js")
+
+    assert 'id="channels"' not in html and "renderChannels" not in script
+    assert 'id="h-channels"' not in html

@@ -19,9 +19,15 @@
       <span class="mark" aria-hidden="true">Ε</span>
       <h1>Epsilon</h1>
     </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a class="top-link" href="/">Chat</a>
+      <a class="top-link" href="/canales">Canales</a>
+      <a class="top-link" href="/uso">Uso</a>
+    </nav>
     <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Configuración</span></p>
     <div class="top-actions">
       <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
+      <a class="icon-link" href="/config" aria-label="Configuración" title="Configuración" aria-current="page"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></a>
     </div>
   </header>
 
@@ -54,14 +60,6 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
           <span class="label">Facturas y tickets</span>
         </a>
-        <a class="nav-item" href="/?cmd=%2Fuso" data-command="/uso">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
-          <span class="label">Uso</span>
-        </a>
-        <a class="nav-item" href="/config" aria-current="page">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
-          <span class="label">Configuración</span>
-        </a>
       </nav>
 
       <section class="recents" aria-labelledby="h-recents">
@@ -91,12 +89,7 @@
           <p>Para aplicarlos, reiniciá Epsilon:</p>
           <p><code>systemctl --user restart epsilon</code></p>
           <p class="hint">Si lo abriste a mano, cerralo y ejecutá <code>uv run epsilon</code> de nuevo.
-            Si algo falla al arrancar, el motivo aparece en la consola y acá, en Canales.</p>
-        </section>
-
-        <section aria-labelledby="h-channels">
-          <h3 id="h-channels">Canales</h3>
-          <ul id="channels" class="channels"></ul>
+            Si algo falla al arrancar, el motivo aparece en la consola y en la página Canales.</p>
         </section>
 
         <form id="form" novalidate autocomplete="off">

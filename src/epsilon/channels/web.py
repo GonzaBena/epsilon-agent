@@ -411,6 +411,10 @@ def create_app() -> FastAPI:
     def home():
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/canales", include_in_schema=False)
+    def channels_page():
+        return FileResponse(STATIC_DIR / "canales.html")
+
     @app.get("/config", include_in_schema=False)
     def config_page():
         return FileResponse(STATIC_DIR / "config.html")

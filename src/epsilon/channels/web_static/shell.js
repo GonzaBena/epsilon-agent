@@ -294,6 +294,7 @@
     starting: "Conectando…",
     skipped: "Sin configurar",
     stopped: "Detenido",
+    off: "Apagado",
   };
   const sideChannels = document.getElementById("side-channels");
 

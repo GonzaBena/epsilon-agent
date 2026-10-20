@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canales · Epsilon</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Estructura de la página. El estilo está en style.css, la lógica en
+       canales.js y el esqueleto (paneles, menú) en shell.js. Las tarjetas de
+       los canales las dibuja canales.js con lo que responde GET /api/channels. -->
+  <script src="/static/shell.js" defer></script>
+  <script src="/static/canales.js" defer></script>
+</head>
+<body class="settings-page">
+
+  <header class="top">
+    <a class="brand" href="/">
+      <span class="mark" aria-hidden="true">Ε</span>
+      <h1>Epsilon</h1>
+    </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a class="top-link" href="/">Chat</a>
+      <a class="top-link" href="/canales" aria-current="page">Canales</a>
+      <a class="top-link" href="/uso">Uso</a>
+    </nav>
+    <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Canales</span></p>
+    <div class="top-actions">
+      <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
+      <a class="icon-link" href="/config" aria-label="Configuración" title="Configuración"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></a>
+    </div>
+  </header>
+
+  <div class="shell" data-left="open" data-right="open">
+
+    <!-- Menú lateral. Es el mismo en config.html (si cambia uno, cambia el otro:
+         un test lo vigila). Contraído, queda una columna de íconos; las
+         etiquetas siguen ahí para los lectores de pantalla. -->
+    <aside class="side side-left" id="left" aria-label="Menú principal">
+      <a class="new-chat" id="new-chat" href="/?nuevo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="label">Nuevo chat</span>
+      </a>
+
+      <p class="side-title">Menú</p>
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-item" href="/">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20.5l1.4-4.4A8 8 0 1 1 21 12z"/></svg>
+          <span class="label">Chat</span>
+        </a>
+        <a class="nav-item" href="/?cmd=%2Fver" data-command="/ver">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+          <span class="label">Notas</span>
+        </a>
+        <a class="nav-item" href="/?cmd=%2Farchivos" data-command="/archivos">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span class="label">Archivos</span>
+        </a>
+        <a class="nav-item" href="/?cmd=%2Farchivos%20tickets" data-command="/archivos tickets">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
+          <span class="label">Facturas y tickets</span>
+        </a>
+      </nav>
+
+      <section class="recents" aria-labelledby="h-recents">
+        <h2 class="side-title" id="h-recents">Recientes</h2>
+        <ul class="recents-list" id="recents"></ul>
+      </section>
+
+      <div class="local-card" id="local-card">
+        <strong>Local</strong>
+        <span class="local-path" id="local-path"></span>
+      </div>
+
+      <button type="button" class="panel-toggle" data-toggle="left"
+              aria-expanded="true" aria-controls="left" aria-label="Cerrar el menú" title="Cerrar el menú">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+      </button>
+    </aside>
+
+    <div class="stage">
+      <main class="settings channels-page">
+        <h2 class="page-title">Canales</h2>
+        <p class="help">Por dónde hablás con Epsilon. Apagar un canal lo detiene de verdad (el bot deja de escuchar) y queda así
+          aunque reinicies el servicio; lo prendés de nuevo desde acá, sin reiniciar nada.</p>
+        <p class="result" id="channels-result" role="status"></p>
+        <ul class="channel-cards" id="channel-cards"></ul>
+      </main>
+    </div>
+
+  </div>
+
+</body>
+</html>
