@@ -294,3 +294,72 @@ def test_a_new_or_web_conversation_can_still_be_written(client):
 
     assert post_message(client, text="+ uno", conversation_id=fresh).status_code == 200
     assert post_message(client, text="+ dos", conversation_id=fresh).status_code == 200
+
+
+# --- Eliminar una conversación -------------------------------------------------------------
+
+
+def test_delete_a_conversation_removes_it_for_real(client, tmp_path):
+    cid = new_conversation(client)
+    chat(client, cid, "+ una nota")
+
+    reply = client.delete(f"/api/conversations/{cid}")
+
+    assert reply.status_code == 200 and reply.json() == {"ok": True}
+    assert not (tmp_path / "conversations" / f"{cid}.jsonl").exists()
+    assert client.get(f"/api/conversations/{cid}").status_code == 404
+    assert cid not in [c["id"] for c in client.get("/api/conversations").json()["conversations"]]
+
+
+def test_deleting_a_conversation_keeps_the_notes_it_saved(client, tmp_path):
+    cid = new_conversation(client)
+    chat(client, cid, "+ una nota")
+
+    client.delete(f"/api/conversations/{cid}")
+
+    assert "una nota" in (tmp_path / "inbox.md").read_text()
+
+
+def test_delete_twice_or_unknown_is_a_404(client):
+    cid = new_conversation(client)
+    chat(client, cid, "/ayuda")
+
+    assert client.delete(f"/api/conversations/{cid}").status_code == 200
+    assert client.delete(f"/api/conversations/{cid}").status_code == 404
+    assert client.delete("/api/conversations/20261019-153000-ab12").status_code == 404
+
+
+@pytest.mark.parametrize("bad", ["abc", "..%2F..%2Fetc%2Fpasswd", "20261019-153000-ab12%0A", "20261019-153000-AB12"])
+def test_delete_never_builds_a_path_from_a_bad_id(client, tmp_path, bad):
+    outside = tmp_path / "x.jsonl"
+    outside.write_text("no tocar")
+
+    assert client.delete(f"/api/conversations/{bad}").status_code == 404
+    assert outside.read_text() == "no tocar"
+
+
+def test_delete_drops_the_pending_state_of_that_conversation(client):
+    cid = new_conversation(client)
+    chat(client, cid, "/ticket")  # deja algo pendiente en la sesión de esa conversación
+    assert core.SESSIONS.get(f"web:{cid}")
+
+    client.delete(f"/api/conversations/{cid}")
+
+    assert f"web:{cid}" not in core.SESSIONS
+
+
+def test_the_telegram_conversation_can_be_deleted_from_the_web(client):
+    telegram_talk("hola")
+    cid = next(c["id"] for c in client.get("/api/conversations").json()["conversations"] if c["channel"] == "telegram")
+
+    assert client.delete(f"/api/conversations/{cid}").status_code == 200
+    assert conversations.current("telegram") is None
+
+
+def test_delete_needs_a_local_origin_like_every_route(client):
+    cid = new_conversation(client)
+    chat(client, cid, "/ayuda")
+
+    assert client.delete(f"/api/conversations/{cid}", headers={"origin": "http://evil.example"}).status_code == 403
+    assert client.delete(f"/api/conversations/{cid}", headers={"host": "ejemplo.com"}).status_code == 403
+    assert client.get(f"/api/conversations/{cid}").status_code == 200  # sigue ahí

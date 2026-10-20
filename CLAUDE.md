@@ -65,7 +65,8 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   que escribe el `.env`; también `redact()` y el filtro de logs. Ver
   `docs/plan-config.md`.
 - `data/conversations.py`: conversaciones como archivos (`DATA_DIR/conversations/<id>.jsonl`,
-  una línea por mensaje, solo se agrega). Cada mensaje lleva un id; un botón tocado y
+  una línea por mensaje, solo se agrega; la única excepción es eliminar una conversación entera, que
+  borra su archivo de verdad y no toca lo que guardó en notas o archivos). Cada mensaje lleva un id; un botón tocado y
   un renombrado son líneas nuevas que se combinan al leer (nunca se edita). Ids de
   conversación generados por el servidor y validados con un patrón estricto; lo
   guardado (también el título) pasa por `config.redact`. Lo que se habla por Telegram queda en una

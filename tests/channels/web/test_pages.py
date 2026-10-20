@@ -357,3 +357,12 @@ def test_every_script_parses(name):
     done = subprocess.run(["node", "--check", str(static_path(name))], capture_output=True, text=True)
 
     assert done.returncode == 0, done.stderr
+
+
+def test_deleting_a_conversation_asks_first_without_browser_dialogs():
+    code = re.sub(r"//.*", "", js("shell.js"))
+
+    # La confirmación va en la propia lista, no en una ventana del navegador.
+    for dialog in ("confirm(", "alert(", "prompt("):
+        assert dialog not in code
+    assert 'method: "DELETE"' in code and "deleteConfirm" in code

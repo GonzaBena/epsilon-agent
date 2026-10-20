@@ -153,7 +153,10 @@ def add_message(
 
 def add_action(conversation_id: str, message_id: str, action_id: str) -> None:
     """Anota que se tocó el botón `action_id` del mensaje `message_id` (así, al reabrir,
-    ese mensaje sale con su botón elegido y los demás apagados)."""
+    ese mensaje sale con su botón elegido y los demás apagados). Si la conversación ya no existe
+    (por ejemplo, se eliminó), no hace nada: un botón viejo no la vuelve a crear."""
+    if not _path(conversation_id).exists():
+        return
     _append(conversation_id, {"type": "action", "message": str(message_id)[:100], "id": str(action_id)[:100]})
 
 
@@ -167,6 +170,23 @@ def set_title(conversation_id: str, text: str) -> str:
     clean = " ".join(config.redact(str(text)).split())[:TITLE_MAX]
     _append(conversation_id, {"type": "title", "text": clean}, keep_mtime=True)
     return _title(path)
+
+
+def delete(conversation_id: str) -> bool:
+    """Elimina una conversación DE VERDAD (borra su archivo; no se puede deshacer). True si existía.
+
+    Es la única excepción a «solo se agrega»: se pidió expresamente. No toca lo que la conversación
+    guardó (notas, archivos, CSV): eso es de DATA_DIR, no de la conversación. Se hace con el candado
+    de los canales, para no cruzarse con Telegram abriendo o cerrando la suya."""
+    _path(conversation_id)  # ValueError si el id no es válido; y comprueba que cae dentro de DATA_DIR
+    # Se borra la ruta SIN resolver: si fuera un enlace simbólico, se borra el enlace y nunca el
+    # archivo al que apunta.
+    target = notes.DATA_DIR / FOLDER / f"{conversation_id}.jsonl"
+    with _channel_lock:
+        if not target.is_file() and not target.is_symlink():
+            return False
+        target.unlink()
+        return True
 
 
 # --- Conversaciones de un canal (Telegram) ---------------------------------------

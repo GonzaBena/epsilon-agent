@@ -93,6 +93,8 @@ Epsilon muestra lo que leyó y **espera tu confirmación** antes de guardar (la 
 equivocarse al leer imágenes, así que conviene revisar los datos).
 
 Todo lo que se guarda es **crear o agregar**: Epsilon nunca pisa un archivo existente.
+La única excepción es **eliminar una conversación** (el tacho en «Recientes», con confirmación): borra su
+archivo de verdad y no se puede deshacer. Lo que esa conversación guardó en tus notas y archivos queda donde está.
 
 ### Correrlo como servicio
 

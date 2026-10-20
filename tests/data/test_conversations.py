@@ -693,3 +693,82 @@ def test_what_a_channel_conversation_saves_is_still_redacted(monkeypatch):
     conversation_id = talk(text=f"mi token es {TOKEN}")
 
     assert TOKEN not in (folder(notes.DATA_DIR) / f"{conversation_id}.jsonl").read_text(encoding="utf-8")
+
+
+# --- Eliminar ----------------------------------------------------------------
+
+
+def test_delete_removes_the_file_for_real(tmp_path):
+    conversations.add_message(VALID, "user", "hola")
+
+    assert conversations.delete(VALID) is True
+
+    assert not (folder(tmp_path) / f"{VALID}.jsonl").exists()
+    assert conversations.messages(VALID) is None
+    assert VALID not in [c["id"] for c in conversations.list_all()]
+
+
+def test_delete_says_false_when_it_does_not_exist():
+    assert conversations.delete(VALID) is False
+
+
+@pytest.mark.parametrize("bad", ["../../etc/passwd", "../x", "", "abc", f"{VALID}\n", f"{VALID}/../x"])
+def test_delete_refuses_ids_that_are_not_ours(bad, tmp_path):
+    outside = tmp_path / "x.jsonl"
+    outside.write_text("no tocar")
+
+    with pytest.raises(ValueError):
+        conversations.delete(bad)
+    assert outside.read_text() == "no tocar"
+
+
+def test_delete_only_touches_that_conversation(tmp_path):
+    other = "20261019-153001-cd34"
+    conversations.add_message(VALID, "user", "una")
+    conversations.add_message(other, "user", "otra")
+
+    conversations.delete(VALID)
+
+    assert conversations.messages(other) is not None
+
+
+def test_delete_does_not_touch_what_the_conversation_saved(tmp_path):
+    note = notes.safe_path("inbox.md")
+    note.write_text("comprar pan\n")
+    conversations.add_message(VALID, "bot", "Guardado", artifacts=[{"kind": "note", "path": "inbox.md"}])
+
+    conversations.delete(VALID)
+
+    assert note.read_text() == "comprar pan\n"
+
+
+def test_delete_of_a_symlink_removes_only_the_link(tmp_path):
+    real = tmp_path / "real.jsonl"
+    real.write_text('{"type": "message", "id": "a", "role": "user", "text": "hola"}\n')
+    folder(tmp_path).mkdir()
+    (folder(tmp_path) / f"{VALID}.jsonl").symlink_to(real)
+
+    assert conversations.delete(VALID) is True
+
+    assert real.exists()  # el archivo al que apuntaba no se tocó
+    assert not (folder(tmp_path) / f"{VALID}.jsonl").is_symlink()
+
+
+def test_the_open_telegram_conversation_can_be_deleted_and_the_next_message_starts_another():
+    first = conversations.for_channel("telegram")
+    conversations.add_message(first, "user", "hola")
+
+    conversations.delete(first)
+
+    assert conversations.current("telegram") is None
+    second = conversations.for_channel("telegram")
+    assert second != first and conversations.channel(second) == "telegram"
+
+
+def test_an_old_button_does_not_bring_a_deleted_conversation_back(tmp_path):
+    conversations.add_message(VALID, "bot", "¿Guardo?", actions=[{"id": "guardar", "label": "Guardar"}])
+    conversations.delete(VALID)
+
+    conversations.add_action(VALID, "abc12345", "guardar")  # un toque tardío (por ejemplo, desde Telegram)
+
+    assert not (folder(tmp_path) / f"{VALID}.jsonl").exists()

@@ -325,6 +325,16 @@ def create_app() -> FastAPI:
         except FileNotFoundError:
             raise HTTPException(404, "No existe esa conversación") from None
 
+    @app.delete("/api/conversations/{conversation_id}")
+    def delete_conversation(conversation_id: str):
+        """Elimina la conversación de verdad (su archivo). Lo que guardó en tus notas y archivos
+        queda: eso no es de la conversación."""
+        if not conversations.is_valid_id(conversation_id) or not conversations.delete(conversation_id):
+            raise HTTPException(404, "No existe esa conversación")
+        # Un «Guardar» o un archivo pendientes de ESA conversación ya no tienen a dónde ir.
+        core.SESSIONS.pop(session_for(conversation_id), None)
+        return {"ok": True}
+
     # --- Canales: ver su estado y prender / apagar los que se pueden --------------
     # main se importa acá adentro: él importa a la web (por nombre) y no al revés.
 

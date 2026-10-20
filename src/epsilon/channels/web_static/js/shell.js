@@ -110,6 +110,7 @@
     return svg;
   }
   const PENCIL = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z";
+  const TRASH = "M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6";
   const PLANE = "M22 2 11 13M22 2l-7 20-4-9-9-4z"; // el avioncito de Telegram
 
   const recentsList = document.getElementById("recents");
@@ -123,6 +124,8 @@
   const PAGE = 20; // cuántas se piden de entrada, y cuántas más agrega «Ver más»
   let shown = PAGE; // cuántas se piden ahora (no baja: al refrescar se conserva)
   let editingId = null; // la conversación que se está renombrando
+  let deletingId = null; // la conversación que está pidiendo confirmación para eliminarse
+  let recentsError = ""; // un aviso arriba de la lista (por ejemplo, si no se pudo eliminar)
 
   function recallCurrent() {
     try {
@@ -158,7 +161,7 @@
   // force: dibujar aunque se esté renombrando. Si no, una respuesta que llega (o volver a la
   // pestaña) recrearía el cuadro de texto y se perdería lo que estabas escribiendo.
   function renderRecents(force = false) {
-    if (editingId && !force) return;
+    if ((editingId || deletingId) && !force) return;
     const current = conversations.find((c) => c.id === currentId);
     // El título del header: el de la conversación abierta, o «nueva» si todavía no tiene mensajes.
     if (isChat) {
@@ -171,6 +174,11 @@
     if (!recentsList) return;
 
     recentsList.replaceChildren();
+    if (recentsError) {
+      const warning = make("li", "recents-error", recentsError);
+      warning.setAttribute("role", "alert");
+      recentsList.append(warning);
+    }
     // Una conversación nueva todavía no tiene archivo (nace con el primer mensaje): no está en la
     // lista del servidor, pero se muestra arriba para que se vea dónde estás.
     if (isChat && currentId && !current) {
@@ -184,6 +192,7 @@
     for (const conversation of conversations) {
       const item = make("li", conversation.channel === "telegram" ? "recent-row from-telegram" : "recent-row");
       if (conversation.id === editingId) item.append(renameInput(conversation));
+      else if (conversation.id === deletingId) item.append(deleteConfirm(conversation));
       else item.append(...conversationRow(conversation));
       recentsList.append(item);
     }
@@ -237,7 +246,74 @@
       editingId = conversation.id;
       renderRecents(true);
     });
-    return [link, edit];
+
+    const remove = make("button", "recent-edit recent-delete");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Eliminar «${conversation.title}»`);
+    remove.title = "Eliminar";
+    remove.append(icon(TRASH));
+    remove.addEventListener("click", () => {
+      recentsError = "";
+      deletingId = conversation.id;
+      renderRecents(true);
+    });
+    return [link, edit, remove];
+  }
+
+  // Eliminar pide confirmación ahí mismo (sin ventanas del navegador): no se puede deshacer.
+  function deleteConfirm(conversation) {
+    const box = make("div", "recent-confirm");
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", `¿Eliminar «${conversation.title}»?`);
+    box.append(make("p", "recent-confirm-title", `¿Eliminar «${conversation.title}»?`));
+    box.append(make("p", "recent-confirm-note", "No se puede deshacer. Lo que guardó en tus notas y archivos no se borra."));
+    const buttons = make("div", "recent-confirm-buttons");
+    const yes = make("button", "recent-confirm-yes", "Eliminar");
+    yes.type = "button";
+    yes.addEventListener("click", () => finishDelete(conversation.id, true));
+    const no = make("button", "recent-confirm-no", "Cancelar");
+    no.type = "button";
+    no.addEventListener("click", () => finishDelete(conversation.id, false));
+    box.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finishDelete(conversation.id, false);
+    });
+    buttons.append(no, yes);
+    box.append(buttons);
+    // El foco va a «Cancelar»: Enter sin querer no elimina nada.
+    queueMicrotask(() => no.focus());
+    return box;
+  }
+
+  async function finishDelete(id, confirmed) {
+    deletingId = null;
+    if (!confirmed) {
+      renderRecents(true);
+      recentsList.querySelector(`[data-id="${id}"]`)?.focus(); // el foco vuelve a donde estaba
+      return;
+    }
+    try {
+      const response = await fetch(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+      // Un 404 es que ya no estaba (otra pestaña la eliminó): para nosotros, lo mismo.
+      if (!response.ok && response.status !== 404) throw new Error();
+    } catch {
+      recentsError = "No pude eliminarla. Probá de nuevo.";
+      renderRecents(true);
+      return;
+    }
+    if (id === currentId) {
+      if (isChat) {
+        // Estabas en esa conversación: se pasa a un chat nuevo (app.js lo arma al llegar).
+        window.location.assign("/?nuevo");
+        return;
+      }
+      try {
+        localStorage.removeItem(CURRENT_KEY);
+      } catch {
+        // Sin almacenamiento no pasa nada grave.
+      }
+      currentId = null;
+    }
+    await refreshRecents();
   }
 
   // Renombrar en el lugar: Enter guarda, Escape cancela (y soltar el foco también cancela).
