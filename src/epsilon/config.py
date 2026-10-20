@@ -66,6 +66,15 @@ def _device(value: str) -> str:
     return value
 
 
+def _yes_no(value: str) -> str:
+    value = value.lower()
+    if value == "sí":
+        value = "si"  # en el .env se guarda siempre sin tilde
+    if value not in ("si", "no"):
+        raise ValueError("Tiene que ser «si» o «no».")
+    return value
+
+
 @dataclass(frozen=True)
 class Setting:
     key: str  # nombre de la variable en el .env
@@ -150,6 +159,21 @@ SETTINGS = (
         ),
         validate=_device,
     ),
+    # Voz por Telegram (channels/telegram.py los lee en cada audio; se cambian también con /menu).
+    Setting(
+        "TELEGRAM_VOICE",
+        "Recibir notas de voz por Telegram",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    Setting(
+        "VOICE_CONFIRM",
+        "Confirmar las notas de voz antes de ejecutarlas",
+        live=True,
+        default="no",
+        validate=_yes_no,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
@@ -210,6 +234,13 @@ def status(env_file: Path | None = None) -> list[dict]:
             entry["saved"] = saved[s.key] or ""
         result.append(entry)
     return result
+
+
+def enabled(key: str) -> bool:
+    """¿Un ajuste de sí/no está en «si»? Vacío o sin definir usa su valor por defecto; cualquier otra cosa vale «no»."""
+    setting = BY_KEY[key]
+    value = os.environ.get(key, setting.default).strip().lower()
+    return (value or setting.default) == "si"
 
 
 def pending_restart(env_file: Path | None = None) -> list[dict]:

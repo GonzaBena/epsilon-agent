@@ -5,7 +5,7 @@ Telegram) y hace cuatro cosas:
 
 - guarda **notas** y **archivos** en una carpeta tuya;
 - pasa **imágenes a CSV** (tickets, planillas, facturas);
-- **resume** notas, PDFs e imágenes con IA (Gemini);
+- **resume** notas, PDFs e imágenes con IA (Gemini o modelo seleccionado);
 - entiende **notas de voz** (opcional, se transcriben en tu PC con Whisper).
 
 Está pensado para ser simple y barato: lo que no necesita IA no la usa, los prompts son cortos
@@ -28,14 +28,14 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
    <http://127.0.0.1:8765/config>: ahí se editan las claves, el modelo y el puerto, y hay un
    botón «Probar conexión» que no gasta tokens.
 
-| Variable | Para qué sirve |
-| --- | --- |
-| `GEMINI_API_KEY` | Clave de Gemini. Sin ella no se pueden leer imágenes ni resumir. |
-| `GEMINI_MODEL` | Modelo a usar (por defecto, `gemini-3.1-flash-lite`). |
-| `DATA_DIR` | Carpeta donde se guardan notas, archivos y conversaciones (por defecto, `~/epsilon-data`). Queda fuera del repositorio. |
-| `WEB_PORT` | Puerto de la web local (por defecto, 8765). |
-| `TELEGRAM_TOKEN`, `ALLOWED_USER_ID` | Opcionales. Con las dos, el bot responde solo a ese usuario de Telegram. |
-| `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`). |
+| Variable                                                     | Para qué sirve                                                                                                          |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                                             | Clave de Gemini. Sin ella no se pueden leer imágenes ni resumir.                                                        |
+| `GEMINI_MODEL`                                               | Modelo a usar (por defecto, `gemini-3.1-flash-lite`).                                                                   |
+| `DATA_DIR`                                                   | Carpeta donde se guardan notas, archivos y conversaciones (por defecto, `~/epsilon-data`). Queda fuera del repositorio. |
+| `WEB_PORT`                                                   | Puerto de la web local (por defecto, 8765).                                                                             |
+| `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`                          | Opcionales. Con las dos, el bot responde solo a ese usuario de Telegram.                                                |
+| `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
 
 Los cambios hechos desde `/config` se guardan en el `.env`, pero **el reinicio es manual**: la
 página avisa cuándo hace falta. El modelo de voz (unos 1,6 GB) se baja solo la primera vez que
@@ -52,18 +52,18 @@ uv run epsilon     # o: uv run python -m epsilon.main
 Abre la web en <http://127.0.0.1:8765> y, si Telegram está configurado, el bot. En el chat
 podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 
-| Comando | Qué hace |
-| --- | --- |
-| `+ texto` | Guarda una nota en inbox. |
-| `/ver [nota]` | Lee una nota (por defecto, inbox). |
-| `/buscar palabra` | Busca en las notas. |
-| `/archivos [texto]` | Lista lo guardado (lo más nuevo primero). |
-| `/resumir nombre` | Resume una nota o archivo guardado. *Usa IA.* |
-| `/ticket` | Guarda la próxima imagen o PDF en `tickets/`. |
-| `/cancelar` | Cancela el `/ticket` que quedó en espera. |
-| `/contexto` | Lista lo que guardaste desde que arrancó el bot. |
-| `/uso` | Tokens y precio gastados, hoy y en total. |
-| `/ayuda` | Muestra la ayuda. |
+| Comando             | Qué hace                                         |
+| ------------------- | ------------------------------------------------ |
+| `+ texto`           | Guarda una nota en inbox.                        |
+| `/ver [nota]`       | Lee una nota (por defecto, inbox).               |
+| `/buscar palabra`   | Busca en las notas.                              |
+| `/archivos [texto]` | Lista lo guardado (lo más nuevo primero).        |
+| `/resumir nombre`   | Resume una nota o archivo guardado. _Usa IA._    |
+| `/ticket`           | Guarda la próxima imagen o PDF en `tickets/`.    |
+| `/cancelar`         | Cancela el `/ticket` que quedó en espera.        |
+| `/contexto`         | Lista lo que guardaste desde que arrancó el bot. |
+| `/uso`              | Tokens y precio gastados, hoy y en total.        |
+| `/ayuda`            | Muestra la ayuda.                                |
 
 **Imagen a CSV:** adjuntá una imagen con un texto como `gastos: fecha, proveedor, total`.
 Epsilon muestra lo que leyó y **espera tu confirmación** antes de guardar (la IA puede

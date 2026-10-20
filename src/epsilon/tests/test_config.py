@@ -489,3 +489,40 @@ def test_language_and_idle_minutes_apply_at_once_but_device_waits_for_a_restart(
     assert "WHISPER_DEVICE" not in os.environ
     assert entry("WHISPER_DEVICE", env_file)["pending_restart"] is True
     assert "modelo de voz" in entry("WHISPER_DEVICE", env_file)["reason"]
+
+
+# --- Voz por Telegram: recibir y confirmar (sí / no) --------------------------
+
+
+def test_telegram_voice_settings_default_to_receive_without_confirming(env_file):
+    assert entry("TELEGRAM_VOICE", env_file)["value"] == "si"
+    assert entry("VOICE_CONFIRM", env_file)["value"] == "no"
+    assert config.enabled("TELEGRAM_VOICE") is True
+    assert config.enabled("VOICE_CONFIRM") is False
+
+
+@pytest.mark.parametrize("key", ["TELEGRAM_VOICE", "VOICE_CONFIRM"])
+@pytest.mark.parametrize("value,saved", [("si", "si"), ("SÍ", "si"), ("No", "no")])
+def test_yes_no_settings_are_saved_without_accent_and_apply_at_once(key, value, saved, env_file, monkeypatch):
+    monkeypatch.delenv(key, raising=False)
+
+    config.update({key: value}, [], env_file)
+
+    assert f"{key}='{saved}'" in env_file.read_text(encoding="utf-8")
+    assert os.environ[key] == saved  # son live: no hace falta reiniciar
+    assert entry(key, env_file)["pending_restart"] is False
+    monkeypatch.delenv(key)
+
+
+@pytest.mark.parametrize("value", ["talvez", "true", "1", "si\nEVIL=1"])
+def test_yes_no_settings_reject_anything_else(value, env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({"VOICE_CONFIRM": value}, [], env_file)
+
+
+def test_enabled_falls_back_to_the_default_when_the_value_is_garbage(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_VOICE", "quizás")
+    monkeypatch.setenv("VOICE_CONFIRM", "")
+
+    assert config.enabled("TELEGRAM_VOICE") is False  # no dice «si»
+    assert config.enabled("VOICE_CONFIRM") is False

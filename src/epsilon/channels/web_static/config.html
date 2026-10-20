@@ -165,8 +165,30 @@
 
           <section aria-labelledby="h-voice">
             <h3 id="h-voice">Voz</h3>
-            <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>.</p>
+            <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Los dos primeros ajustes valen solo para Telegram y también se cambian desde el bot con <code>/menu</code>.</p>
             <p class="result" id="voice-status" role="status"></p>
+
+            <div class="field">
+              <label for="f-TELEGRAM_VOICE">Recibir notas de voz por Telegram</label>
+              <select id="f-TELEGRAM_VOICE" data-key="TELEGRAM_VOICE"
+                      aria-describedby="hint-TELEGRAM_VOICE err-TELEGRAM_VOICE">
+                <option value="si">Sí</option>
+                <option value="no">No</option>
+              </select>
+              <p class="hint" id="hint-TELEGRAM_VOICE"></p>
+              <p class="error" id="err-TELEGRAM_VOICE" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-VOICE_CONFIRM">Confirmar las notas de voz antes de ejecutarlas</label>
+              <select id="f-VOICE_CONFIRM" data-key="VOICE_CONFIRM"
+                      aria-describedby="hint-VOICE_CONFIRM err-VOICE_CONFIRM">
+                <option value="no">No: se ejecutan directo</option>
+                <option value="si">Sí: Telegram pregunta antes de ejecutar</option>
+              </select>
+              <p class="hint" id="hint-VOICE_CONFIRM"></p>
+              <p class="error" id="err-VOICE_CONFIRM" role="alert"></p>
+            </div>
 
             <div class="field">
               <label for="f-WHISPER_LANGUAGE">Idioma (es, en, pt… o «auto» para detectarlo)</label>
