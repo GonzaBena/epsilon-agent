@@ -85,6 +85,7 @@ try {
 let readOnly = false;
 function setReadOnly(on) {
   readOnly = on;
+  document.body.classList.toggle("view-telegram", on); // fondo azulado (style.css): estás en Telegram
   composer.inert = on;
   composer.classList.toggle("readonly", on);
   readonlyNote.hidden = !on;

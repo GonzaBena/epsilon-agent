@@ -18,6 +18,7 @@
   --accent-line: color-mix(in srgb, var(--accent) 15%, var(--line)); /* borde de la tarjeta destacada */
   --danger: #ff9b8a;
   --telegram: #5bb8f5; /* azul de Telegram: marca las conversaciones de ese canal (7:1 sobre --side) */
+  --stage-bg: var(--bg); /* el fondo de la conversación y del cuadro de texto; en Telegram se tiñe de azul */
   --telegram-bg: color-mix(in srgb, var(--telegram) 9%, var(--side)); /* el mismo azul, apenas visible, de fondo */
 
   --t: 0.18s; /* duración al abrir y contraer los paneles */
@@ -234,7 +235,13 @@ code {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg);
+  background: var(--stage-bg);
+  transition: background var(--t);
+}
+/* Mirando la conversación de Telegram: un azul muy oscuro de fondo y tu burbuja también azulada. */
+body.view-telegram {
+  --stage-bg: color-mix(in srgb, var(--telegram) 8%, var(--bg));
+  --bubble: color-mix(in srgb, var(--telegram) 12%, var(--surface));
 }
 /* La configuración es una página larga: hace scroll en el escenario. */
 .settings-page .stage {
@@ -1010,7 +1017,7 @@ code {
 .composer {
   padding: 0.75rem 1rem 1rem;
   border-top: 1px solid var(--line);
-  background: var(--bg);
+  background: var(--stage-bg);
 }
 .composer > * {
   max-width: var(--column);

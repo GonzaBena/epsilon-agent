@@ -2125,3 +2125,18 @@ def test_the_derived_tokens_are_the_ones_the_styles_use():
 
     for token in ("var(--accent-soft)", "var(--accent-card)", "var(--accent-line)", "var(--bubble)"):
         assert token in css, token
+
+
+# --- Fondo azulado en la conversación de Telegram ------------------------------
+
+
+def test_the_telegram_view_tints_the_stage_and_the_composer_blue():
+    css, app = page("style.css"), page("app.js")
+    view = re.search(r"body\.view-telegram \{(.*?)\}", css, re.S).group(1)
+
+    assert "--stage-bg: color-mix" in view and "var(--telegram)" in view  # sale del azul de Telegram
+    assert "--bubble:" in view  # tu burbuja también
+    assert "background: var(--stage-bg)" in re.search(r"\n\.stage \{(.*?)\}", css, re.S).group(0)
+    assert "background: var(--stage-bg)" in re.search(r"\n\.composer \{(.*?)\}", css, re.S).group(0)
+    assert re.search(r"--stage-bg: var\(--bg\)", css)  # fuera de Telegram, el fondo de siempre
+    assert 'document.body.classList.toggle("view-telegram", on)' in app
