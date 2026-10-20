@@ -35,6 +35,8 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `DATA_DIR`                                                   | Carpeta donde se guardan notas, archivos y conversaciones (por defecto, `~/epsilon-data`). Queda fuera del repositorio. |
 | `WEB_PORT`                                                   | Puerto de la web local (por defecto, 8765).                                                                             |
 | `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`                          | Opcionales. Con las dos, el bot responde solo a ese usuario de Telegram.                                                |
+| `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
+| `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
 
 Los cambios hechos desde `/config` se guardan en el `.env`, pero **el reinicio es manual**: la
@@ -83,6 +85,17 @@ systemctl --user status epsilon
 journalctl --user -u epsilon -f      # logs
 systemctl --user restart epsilon     # después de cambiar el código o la configuración
 ```
+
+### Ahorrar espacio si no usás voz
+
+La voz es opcional y el modelo (~1,6 GB) solo se baja con el primer audio. Si no la querés:
+
+- **Nunca la instales:** con `uv sync` a secas no se baja nada, y un audio responde cómo activarla.
+- **Si ya la instalaste y no la usás:** apagala (`VOICE_ENABLED=no`, en `/config` o con `/menu` desde
+  Telegram). Apagada, no se descarga ni se usa nada.
+- **Para recuperar el disco:** con la voz apagada, `/config` ofrece «Borrar el modelo de voz». Solo
+  borra el modelo que Epsilon bajó (nunca uno de otro programa). Para sacar también el paquete,
+  corré `uv sync` sin `--extra voz`.
 
 ## Seguridad
 

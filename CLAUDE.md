@@ -45,6 +45,8 @@ instalarlo, cargar sus claves y usarlo.
   conversación generados por el servidor y validados con un patrón estricto; lo
   guardado (también el título) pasa por `config.redact`. Ver
   `docs/plan-conversations.md`.
+- `menu.py`: el `/menu` (ajustes con botones, como BotFather): pantallas como datos. Solo puede
+  cambiar los ajustes de sí/no que lista; el mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
 - `state.py`: estado de cada canal (activo, detenido y por qué). `checks.py`:
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
 - `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
@@ -101,6 +103,4 @@ instalarlo, cargar sus claves y usarlo.
   `conversations/`).
 - Conversaciones compartidas entre la web y Telegram (hoy cada canal tiene la suya; ver
   `docs/plan-conversations.md`, «Después»).
-- Confirmación opcional de las notas de voz en Telegram (apagada por defecto, en la
-  configuración; hoy se ejecutan directo; ver `docs/plan-voz.md`).
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).

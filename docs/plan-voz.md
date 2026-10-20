@@ -27,9 +27,8 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
 - **Idioma**: español por defecto (`WHISPER_LANGUAGE`, editable; vacío = detectar).
 - **Telegram**: la nota de voz se transcribe y el pedido **se ejecuta directo, sin
   pedir confirmación** (si no, sería lo mismo que escribir). Antes de la respuesta
-  va un mensaje aparte con lo entendido («🎙 «…»») para ver qué escuchó. Una confirmación
-  opcional (apagada por defecto, en la configuración) queda como idea para más adelante:
-  agregaría fricción, por eso no se hace ahora.
+  va un mensaje aparte con lo entendido («🎙 «…»») para ver qué escuchó. La confirmación
+  es opcional (ver «Interruptor, confirmación y /menu» más abajo).
 - **Web**: botón de micrófono en el cuadro de texto. Graba, transcribe y **deja el
   texto en el cuadro sin enviarlo**, para revisarlo y corregirlo (igual que las
   herramientas del panel). El micrófono funciona en `localhost`.
@@ -88,6 +87,29 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
      instalado). Se ve en la sección «Voz» y como una fila «Voz» en «Canales» del panel.
    - El botón de micrófono pasó junto al de enviar.
    - `cuda` necesita las librerías de NVIDIA (no están instaladas): hoy solo `cpu` está probado.
+
+6. Interruptor, confirmación y `/menu`. **Hecho.**
+   - `VOICE_ENABLED` (sí por defecto) es UN interruptor para todos los canales: apagado,
+     `transcribe.audio_to_text` se niega (un solo lugar), Telegram ni descarga el audio, la
+     web esconde el micrófono y `/api/transcribe` responde 422. `GET /api/config` trae
+     `voice: "apagada"`. Si no usás voz, tampoco se baja nada: el modelo solo se descarga con
+     el primer audio.
+   - `VOICE_CONFIRM` (no por defecto, solo Telegram): la nota se transcribe y el bot muestra
+     «🎙 «…» ¿Lo ejecuto?» con **Ejecutar** y **Cancelar**; hasta entonces no se ejecuta nada.
+     El texto queda en memoria en `telegram.PENDING_VOICE` (hasta 20; se pierde al reiniciar:
+     el botón responde «Ese audio ya no está; mandalo de nuevo»), no en el botón, porque
+     Telegram deja 64 bytes. Cada pendiente es de su chat.
+   - `/menu` (`menu.py`): ajustes con botones. Un solo mensaje que se edita en el lugar
+     (principal → Voz → interruptores), así el chat no crece. Los dos ajustes son `live`.
+     Solo cambia las claves que `menu.SCREENS` lista; cualquier otro id se rechaza. Para sumar
+     una configuración, una entrada en una pantalla. Pensado solo para Telegram (la web tiene
+     `/config`).
+   - **Borrar el modelo** (`/config`, sección Voz): botón en dos pasos, solo con la voz apagada
+     y solo si **Epsilon lo bajó**: al terminar la descarga anota en `DATA_DIR/.voice-model.json`
+     dónde quedó, y sin esa marca no se borra nada (un modelo de otro programa en la caché de
+     Hugging Face, o bajado antes de que existiera la marca, no se toca). Se niega si hay una
+     descarga o un audio en curso. Quitar el paquete (`faster-whisper` y sus librerías) NO lo
+     hace la app: se hace con `uv sync` sin `--extra voz`.
 
 ## Sin verificar hasta probarlo
 
