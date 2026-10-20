@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from epsilon import core, tools
 from epsilon.channels import telegram
 
@@ -49,3 +51,12 @@ def test_a_panel_row_either_writes_text_or_runs_an_action():
     for tool in tools.TOOLS:
         if tool.panel:
             assert bool(tool.insert) != bool(tool.action), tool.label
+
+
+def test_the_readme_lists_every_command():
+    # El README es lo primero que lee quien instala Epsilon: si se agrega un comando, tiene que figurar.
+    readme = (Path(__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+
+    for tool in tools.TOOLS:
+        if tool.name:
+            assert f"`{tool.usage or tool.label}`" in readme, tool.label
