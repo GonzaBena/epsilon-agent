@@ -329,3 +329,42 @@ def test_releasing_memory_never_breaks_where_malloc_trim_does_not_exist(monkeypa
     monkeypatch.setattr(transcribe.ctypes, "CDLL", no_libc)
 
     transcribe._release_memory()  # no lanza
+
+
+# --- Palabras de comando dichas en voz alta ----------------------------------
+
+
+@pytest.mark.parametrize(
+    "heard, expected",
+    [
+        ("Más comprar pan.", "+ comprar pan."),
+        ("mas, comprar pan", "+ comprar pan"),
+        ("MÁS: llamar a Ana", "+ llamar a Ana"),
+        ("Barra uso.", "/uso"),
+        ("Barra, ver inbox", "/ver inbox"),
+        ("barra archivos tickets.", "/archivos tickets"),
+    ],
+)
+def test_spoken_command_words_become_symbols(heard, expected):
+    assert transcribe.spoken_commands(heard) == expected
+
+
+@pytest.mark.parametrize(
+    "heard",
+    [
+        "Más",  # sola, sin nada que guardar
+        "Barra",  # sola, sin comando
+        "Comprar más pan",  # «más» en el medio no es comando
+        "La barra uso",  # «barra» en el medio tampoco
+        "Masa madre",  # empieza igual, pero es otra palabra
+        "Barrabás uso",
+        "Barra 123",  # un comando es una palabra, no un número
+    ],
+)
+def test_other_texts_are_left_alone(heard):
+    assert transcribe.spoken_commands(heard) == heard
+
+
+def test_audio_to_text_applies_the_translation(voice, audio):
+    voice.texts = ("Más", "comprar pan.")
+    assert transcribe.audio_to_text(audio) == "+ comprar pan."

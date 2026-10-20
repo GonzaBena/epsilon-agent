@@ -63,6 +63,10 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
    «🎙 «…»» y después responde al pedido sin confirmación. Problemas de voz (no instalada,
    descargando, sin voz, muy largo) se muestran tal cual; un fallo inesperado da «No pude
    procesar el audio». Más de 20 MB se rechaza antes de bajarlo. La ayuda lo menciona.
+   **Palabras de comando** (`transcribe.spoken_commands`, vale para todo canal): al principio
+   del texto transcripto, «más X» pasa a `+ X` y «barra uso» a `/uso`. En el medio no se toca.
+   Pendiente: Whisper se comió el «más» inicial de una frase corta (probable recorte del
+   detector de voz); se mide con una grabación corta.
 4. Web: endpoint `/api/transcribe` (JSON/Multipart, mismas defensas que `/api/upload`)
    y botón de micrófono.
 5. Configuración: ajustes de idioma, minutos de inactividad y dispositivo en `/config`;

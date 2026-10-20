@@ -2,6 +2,7 @@ import ctypes
 import gc
 import math
 import os
+import re
 from pathlib import Path
 import threading
 import time
@@ -210,6 +211,28 @@ def status() -> str:
     return "descargado" if _cached() else "sin descargar"
 
 
+# --- Palabras de comando dichas en voz alta ------------------------------------------------------
+
+# Whisper escribe lo que oye: «más» y «barra» llegan como palabras, no como + y /.
+_SEP = r"[\s,.:;]+"
+_SPOKEN_NOTE = re.compile(rf"(?:m[aá]s){_SEP}(?=\S)(.+)", re.IGNORECASE | re.DOTALL)
+_SPOKEN_COMMAND = re.compile(rf"barra{_SEP}([a-záéíóúñ]+)(.*)", re.IGNORECASE | re.DOTALL)
+
+
+def spoken_commands(text: str) -> str:
+    """«Más comprar pan» -> «+ comprar pan»; «Barra uso.» -> «/uso». Solo al principio.
+
+    Una sola palabra inicial («más», «barra») sin nada después queda igual."""
+    note = _SPOKEN_NOTE.fullmatch(text.strip())
+    if note:
+        return f"+ {note.group(1).strip()}"
+    command = _SPOKEN_COMMAND.fullmatch(text.strip())
+    if command:
+        rest = command.group(2).strip(" ,.:;")
+        return f"/{command.group(1).lower()}" + (f" {rest}" if rest else "")
+    return text
+
+
 # --- Lo único que usan los canales ---------------------------------------------------------------
 
 
@@ -246,4 +269,4 @@ def audio_to_text(path: Path) -> str:
 
     if not text:
         raise VoiceError("No entendí nada en el audio.")
-    return text
+    return spoken_commands(text)
