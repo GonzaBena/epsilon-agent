@@ -24,6 +24,7 @@ const statusLabel = document.getElementById("status");
 const micButton = document.getElementById("mic");
 const micStatus = document.getElementById("mic-status");
 const newChatLink = document.getElementById("new-chat");
+const readonlyNote = document.getElementById("readonly-note");
 
 // --- Estado -----------------------------------------------------------------
 const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
@@ -78,6 +79,17 @@ try {
   // Nada que borrar.
 }
 
+// Una conversación de otro canal (Telegram) solo se lee: el cuadro de texto queda inactivo (inert
+// lo deshabilita entero, con foco y teclado) y los botones viejos no hacen nada. El servidor
+// también lo rechaza (409), esto es solo para que no parezca que se puede.
+let readOnly = false;
+function setReadOnly(on) {
+  readOnly = on;
+  composer.inert = on;
+  composer.classList.toggle("readonly", on);
+  readonlyNote.hidden = !on;
+}
+
 // shell.js escucha esto para actualizar «Recientes» y el título del header.
 function announce() {
   window.dispatchEvent(new CustomEvent("epsilon:conversation", { detail: { id: conversationId } }));
@@ -109,7 +121,7 @@ function render(message) {
       const button = make("button", "action", action.label);
       button.type = "button";
       button.dataset.id = action.id;
-      if (message.used) {
+      if (message.used || readOnly) {
         // Grupo ya resuelto (por ejemplo, al recargar): ningún botón vuelve a funcionar.
         button.dataset.locked = "1";
         button.disabled = true;
@@ -140,12 +152,25 @@ function addMessage(message) {
 // Deja la pantalla sin mensajes (el saludo vuelve a mostrarse si hace falta).
 function clearScreen() {
   for (const node of log.querySelectorAll(".msg")) node.remove();
+  setReadOnly(false); // openConversation lo vuelve a poner si es de Telegram
   setContext([]); // lo guardado es de ESTA conversación
   clearFile(); // un archivo a medio adjuntar no tiene que irse a otra conversación
   empty.hidden = false;
 }
 
 // Abre una conversación: dibuja lo que el servidor tiene guardado.
+// Dibuja una conversación que el servidor devolvió (también cuando se refresca sola).
+let shownCount = 0; // cuántos mensajes hay dibujados de la conversación abierta
+function showConversation(data) {
+  for (const node of log.querySelectorAll(".msg")) node.remove();
+  setReadOnly(data.channel === "telegram");
+  for (const message of data.messages) render(message); // ya traen used / chosen
+  shownCount = data.messages.length;
+  setContext(data.artifacts || []);
+  empty.hidden = data.messages.length > 0;
+  scrollToEnd();
+}
+
 async function openConversation(id) {
   const token = ++loadToken;
   conversationId = id;
@@ -155,11 +180,7 @@ async function openConversation(id) {
     const response = await fetch(`/api/conversations/${id}`);
     if (token !== loadToken) return; // ya abriste otra mientras esta cargaba
     if (response.ok) {
-      const data = await response.json();
-      for (const message of data.messages) render(message); // ya traen used / chosen
-      setContext(data.artifacts || []);
-      empty.hidden = data.messages.length > 0;
-      scrollToEnd();
+      showConversation(await response.json());
     }
     // Un 404 es una conversación nueva que todavía no tiene mensajes: pantalla vacía.
   } catch {
@@ -284,7 +305,7 @@ function refreshButtons() {
 
 // --- Botones de acción ----------------------------------------------------------
 function pressAction(message, box, action) {
-  if (busy || message.used) return;
+  if (busy || message.used || readOnly) return;
 
   // Marcamos el mensaje como resuelto: ningún botón de este grupo se puede
   // volver a tocar, y el elegido queda resaltado.
@@ -302,6 +323,7 @@ function pressAction(message, box, action) {
 
 // --- Archivo adjunto -------------------------------------------------------------
 function setFile(file) {
+  if (readOnly) return;
   if (file.size > MAX_UPLOAD) {
     addMessage({ role: "bot", error: true, text: "Ese archivo pesa más de 20 MB." });
     return;
@@ -366,6 +388,7 @@ attachButton.addEventListener("click", () => {
 });
 // «Imagen a CSV»: la píldora y la fila del panel de herramientas hacen lo mismo.
 function armCsv() {
+  if (readOnly) return;
   wantsCsv = true;
   fileInput.click();
 }
@@ -588,6 +611,7 @@ for (const element of document.querySelectorAll("[data-command]")) {
 // Así podés agregarle lo que falta (el nombre de la nota, la palabra a buscar).
 // Reemplazan lo que hubiera escrito: son para empezar un comando nuevo.
 function insertText(text) {
+  if (readOnly) return; // en la conversación de Telegram no se escribe
   input.value = text;
   resizeInput();
   input.focus();
@@ -762,6 +786,38 @@ async function checkHealth() {
     setStatus(false);
   }
 }
+
+// --- Conversación de Telegram abierta: se refresca sola ---------------------------------------
+// Lo que hablás por Telegram llega al servidor, no al navegador. Mientras mirás esa conversación
+// (y la pestaña está a la vista), se vuelve a pedir cada pocos segundos; si ya hay otra de
+// Telegram (por /nuevo), pasa a esa. Una conversación de la web no se refresca sola.
+const TELEGRAM_POLL_MS = 5000;
+async function refreshTelegram() {
+  if (!readOnly || document.hidden || !conversationId) return;
+  const token = loadToken;
+  try {
+    const list = await fetch("/api/conversations?limit=50");
+    if (!list.ok || token !== loadToken) return;
+    const latest = (await list.json()).conversations.find((c) => c.channel === "telegram");
+    if (latest && latest.id !== conversationId) {
+      await openConversation(latest.id); // empezó otra (/nuevo)
+      return;
+    }
+    const response = await fetch(`/api/conversations/${conversationId}`);
+    if (!response.ok || token !== loadToken) return;
+    const data = await response.json();
+    const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 80; // ¿estaba al final?
+    if (data.messages.length !== shownCount) {
+      const before = log.scrollTop;
+      showConversation(data);
+      if (!stick) log.scrollTop = before; // no te saca de donde estabas leyendo
+      announce(); // «Recientes»: puede haber cambiado
+    }
+  } catch {
+    // Sin conexión: se reintenta en el próximo turno.
+  }
+}
+setInterval(refreshTelegram, TELEGRAM_POLL_MS);
 
 // --- Primer arranque: avisar si falta la clave de Gemini ---------------------------------
 // La API dice solo si la clave está cargada (nunca su valor). Si no se puede

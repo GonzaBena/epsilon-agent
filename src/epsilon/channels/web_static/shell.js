@@ -110,6 +110,7 @@
     return svg;
   }
   const PENCIL = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z";
+  const PLANE = "M22 2 11 13M22 2l-7 20-4-9-9-4z"; // el avioncito de Telegram
 
   const recentsList = document.getElementById("recents");
   const crumb = document.getElementById("crumb");
@@ -145,7 +146,7 @@
         const open = await fetch(`/api/conversations/${encodeURIComponent(currentId)}`);
         if (open.ok) {
           const found = await open.json();
-          conversations = [{ id: found.id, title: found.title, updated: "" }, ...conversations];
+          conversations = [{ id: found.id, title: found.title, channel: found.channel, updated: "" }, ...conversations];
         }
       }
     } catch {
@@ -160,7 +161,13 @@
     if (editingId && !force) return;
     const current = conversations.find((c) => c.id === currentId);
     // El título del header: el de la conversación abierta, o «nueva» si todavía no tiene mensajes.
-    if (isChat) crumb.textContent = current ? current.title : NEW_TITLE;
+    if (isChat) {
+      const fromTelegram = Boolean(current && current.channel === "telegram");
+      crumb.classList.toggle("from-telegram", fromTelegram);
+      // El ícono acompaña al título: una conversación de Telegram se reconoce de un vistazo.
+      if (fromTelegram) crumb.replaceChildren(icon(PLANE), make("span", "", current.title));
+      else crumb.textContent = current ? current.title : NEW_TITLE;
+    }
     if (!recentsList) return;
 
     recentsList.replaceChildren();
@@ -175,7 +182,7 @@
     }
 
     for (const conversation of conversations) {
-      const item = make("li", "recent-row");
+      const item = make("li", conversation.channel === "telegram" ? "recent-row from-telegram" : "recent-row");
       if (conversation.id === editingId) item.append(renameInput(conversation));
       else item.append(...conversationRow(conversation));
       recentsList.append(item);
@@ -204,7 +211,18 @@
   function conversationRow(conversation) {
     // Enlace y no botón: abre en otra pestaña con Ctrl+clic, y en la configuración
     // (donde no hay chat) simplemente lleva a esa conversación. app.js lo atrapa en el chat.
-    const link = make("a", "recent", conversation.title);
+    const link = make("a", "recent");
+    // Las de Telegram llevan el ícono del canal (y un color propio, por CSS); el texto
+    // «Telegram» acompaña para quien no ve el color ni el ícono.
+    if (conversation.channel === "telegram") {
+      link.classList.add("from-telegram");
+      const mark = make("span", "channel-mark");
+      mark.append(icon(PLANE));
+      link.append(mark, make("span", "recent-title", conversation.title));
+      link.setAttribute("aria-label", `Telegram: ${conversation.title}`);
+    } else {
+      link.textContent = conversation.title;
+    }
     link.href = `/?c=${conversation.id}`;
     link.dataset.id = conversation.id;
     link.title = conversation.title; // el título entero, por si se corta

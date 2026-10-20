@@ -1379,9 +1379,13 @@ def test_clicking_a_context_item_writes_the_command_without_sending_it():
 
 def test_a_new_chat_and_opening_one_reset_the_context():
     app = js("app.js")
-    for name in ("clearScreen", "openConversation"):
+    def body_of(name):
         body = app[app.index(f"function {name}") :]
-        assert "setContext(" in body[: body.index("\n}\n")], name
+        return body[: body.index("\n}\n")]
+
+    assert "setContext(" in body_of("clearScreen")
+    # Abrir una conversación la dibuja con showConversation, que también carga el contexto.
+    assert "showConversation(" in body_of("openConversation") and "setContext(" in body_of("showConversation")
 
 
 def test_the_context_has_a_style():
@@ -1716,3 +1720,54 @@ def test_a_new_or_web_conversation_can_still_be_written(client):
 
     assert post_message(client, text="+ uno", conversation_id=fresh).status_code == 200
     assert post_message(client, text="+ dos", conversation_id=fresh).status_code == 200
+
+
+# --- La conversación de Telegram en la web: ícono, color, solo lectura -------
+
+
+def test_telegram_conversations_are_marked_with_an_icon_a_color_and_a_word():
+    shell, css = js("shell.js"), (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert 'conversation.channel === "telegram"' in shell and "channel-mark" in shell
+    assert "Telegram: " in shell  # el nombre del canal también para quien no ve color ni ícono
+    for needed in ("--telegram:", ".recent-row.from-telegram", ".channel-mark", ".crumb .from-telegram"):
+        assert needed in css, needed
+
+
+def test_the_telegram_color_is_not_the_only_signal_and_differs_from_the_accent():
+    css = (web.STATIC_DIR / "style.css").read_text(encoding="utf-8")
+    accent = re.search(r"--accent:\s*(#[0-9a-f]+)", css).group(1)
+    telegram_color = re.search(r"--telegram:\s*(#[0-9a-f]+)", css).group(1)
+
+    assert telegram_color != accent
+
+
+def test_the_chat_page_has_a_hidden_read_only_note_before_the_composer():
+    html = chat_html()
+    note = re.search(r'<p id="readonly-note"[^>]*>', html).group(0)
+
+    assert "hidden" in note
+    assert html.index('id="readonly-note"') < html.index('id="composer"')
+    assert "Telegram" in html[html.index('id="readonly-note"') :][:600]
+
+
+def test_a_telegram_conversation_turns_the_composer_off_and_old_buttons_do_nothing():
+    app = js("app.js")
+
+    assert 'setReadOnly(data.channel === "telegram")' in app
+    assert "composer.inert = on" in app
+    for guarded in ("function insertText", "function armCsv", "function setFile"):
+        body = app[app.index(guarded) :]
+        assert "if (readOnly) return" in body[:200], guarded
+    assert "readOnly" in app[app.index("function pressAction") :][:200]
+
+
+def test_the_open_telegram_conversation_refreshes_itself_and_follows_nuevo():
+    app = js("app.js")
+    block = app[app.index("async function refreshTelegram") :]
+    block = block[: block.index("\n}\n")]
+
+    assert "!readOnly || document.hidden" in block  # solo si la mirás
+    assert "setInterval(refreshTelegram" in app
+    assert 'c.channel === "telegram"' in block and "openConversation(latest.id)" in block
+    assert "innerHTML" not in block

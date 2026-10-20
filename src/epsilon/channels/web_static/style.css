@@ -13,6 +13,8 @@
   --accent: #b8f26b; /* lima: lo único con color */
   --on-accent: #0e0f10; /* texto sobre el lima */
   --danger: #ff9b8a;
+  --telegram: #5bb8f5; /* azul de Telegram: marca las conversaciones de ese canal (7:1 sobre --side) */
+  --telegram-bg: #14232e; /* el mismo azul, apenas visible, de fondo */
 
   --t: 0.18s; /* duración al abrir y contraer los paneles */
   --column: 47.5rem; /* ancho de la conversación (760px) */
@@ -330,6 +332,61 @@ code {
 .recent:hover,
 .recent[aria-current] {
   background: var(--surface-2);
+}
+
+/* La conversación de Telegram: ícono + azul propio + franja a la izquierda. El color acompaña, no
+   informa solo (el ícono y el texto «Telegram» dicen lo mismo). */
+.recent-row.from-telegram {
+  background: var(--telegram-bg);
+  border-left: 3px solid var(--telegram);
+  border-radius: 8px;
+}
+.recent-row.from-telegram .recent:hover,
+.recent-row.from-telegram .recent[aria-current] {
+  background: transparent; /* la fila ya tiene su fondo azul: no se pinta dos veces */
+}
+.recent.from-telegram {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.channel-mark {
+  display: inline-grid;
+  flex: none;
+  color: var(--telegram);
+}
+.recent-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crumb .from-telegram {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--telegram);
+}
+
+/* Aviso de «solo lectura» y el cuadro de texto apagado. */
+.readonly-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  max-width: var(--column);
+  padding: 8px 12px;
+  background: var(--telegram-bg);
+  border-left: 3px solid var(--telegram);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.readonly-note svg {
+  flex: none;
+  color: var(--telegram);
+}
+.composer.readonly {
+  opacity: 0.45;
 }
 
 /* Cada fila de «Recientes»: la conversación y, al lado, el botón de renombrar. */
