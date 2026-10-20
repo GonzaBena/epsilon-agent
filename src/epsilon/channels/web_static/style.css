@@ -1643,3 +1643,205 @@ a.ghost {
     display: none;
   }
 }
+
+/* --- Página Uso de IA --------------------------------------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.usage-page {
+  max-width: 70rem;
+}
+.usage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.usage-head .page-title {
+  margin-bottom: 0.25rem;
+}
+.usage-head .help {
+  margin: 0;
+}
+.seg {
+  display: flex;
+  padding: 3px;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.seg button,
+.chip {
+  font-family: inherit;
+  cursor: pointer;
+}
+.seg button {
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #c9cdc9;
+  font-size: 14px;
+  font-weight: 500;
+}
+.seg button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.usage-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 1rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.usage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.25rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.usage-card.today {
+  background: #1a1f14;
+  border-color: #3a4429;
+}
+.usage-label {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.usage-card.today .usage-label {
+  color: var(--accent);
+}
+.usage-cost {
+  font-size: 1.9rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.usage-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.usage-table-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.usage-table-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  min-height: 2.75rem;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid #2c3032;
+  border-radius: 999px;
+  color: #c9cdc9;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.chip[aria-pressed="true"] {
+  background: #1d2019;
+  border-color: var(--accent);
+  color: var(--text);
+}
+.seg button:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.table-wrap {
+  overflow-x: auto;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.usage-table {
+  width: 100%;
+  min-width: 46rem;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.usage-table th,
+.usage-table td {
+  padding: 12px 16px;
+  text-align: left;
+  white-space: nowrap; /* una cifra o un modelo no se parte en dos líneas: la tabla hace scroll */
+}
+.usage-table thead th {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.usage-table tbody tr {
+  border-bottom: 1px solid #1e2022;
+}
+.usage-table tbody tr:hover td {
+  background: #171819;
+}
+.usage-table tfoot {
+  background: var(--bg);
+}
+.usage-table tfoot th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.usage-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.usage-table .mono {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.usage-table .muted {
+  color: var(--muted);
+}
+.usage-table .strong {
+  font-weight: 500;
+}
+.usage-table .total {
+  color: var(--accent);
+  font-weight: 600;
+}
+.usage-table .empty-row {
+  padding: 2rem 16px;
+  color: var(--muted);
+  text-align: center;
+}
+.pill-model {
+  display: inline-block;
+  padding: 3px 10px;
+  background: var(--bg);
+  border: 1px solid #2c3032;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 12px;
+}

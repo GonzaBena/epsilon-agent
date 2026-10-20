@@ -671,7 +671,7 @@ def test_secret_fields_are_password_inputs_without_a_value():
 
 import re
 
-PAGES = ["index.html", "config.html", "canales.html"]
+PAGES = ["index.html", "config.html", "canales.html", "uso.html"]
 
 
 def page(name):
@@ -1931,7 +1931,7 @@ def top_links(html):
 
 def test_every_page_has_the_same_top_bar_and_marks_where_you_are():
     expected = [("/", "Chat"), ("/canales", "Canales"), ("/uso", "Uso")]
-    current = {"index.html": "Chat", "canales.html": "Canales", "config.html": None}
+    current = {"index.html": "Chat", "canales.html": "Canales", "uso.html": "Uso", "config.html": None}
 
     for name in PAGES:
         links = top_links(page(name))
@@ -2020,3 +2020,41 @@ def test_the_usage_api_is_empty_but_valid_without_a_log(client):
 
 def test_the_usage_api_refuses_foreign_hosts(client):
     assert client.get("/api/usage", headers={"Origin": "http://evil.example"}).status_code == 403
+
+
+# --- Página Uso de IA ----------------------------------------------------------
+
+
+def test_the_usage_page_is_served(client):
+    reply = client.get("/uso")
+
+    assert reply.status_code == 200 and "uso.js" in reply.text
+
+
+def test_the_usage_page_has_the_table_cards_and_a_hidden_currency_switch():
+    html = page("uso.html")
+
+    for needed in ('id="usage-cards"', 'id="usage-rows"', 'id="usage-foot"', 'id="model-filter"'):
+        assert needed in html, needed
+    assert re.search(r'id="currency"[^>]*hidden', html)  # solo aparece con la cotización cargada
+    assert "<caption" in html and html.count('scope="col"') == 7  # tabla accesible
+    for column in ("Hora", "Acción", "Canal", "Modelo", "Tokens entrada", "Tokens salida", "Precio est."):
+        assert column in html, column
+
+
+def test_the_usage_script_never_uses_innerhtml_and_handles_missing_data():
+    script = page("uso.js")
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
+
+    assert "innerHTML" not in code and '"/api/usage"' in script
+    assert "sin precio" in script  # un modelo sin precio no inventa un costo
+    assert "Todavía no hubo peticiones hoy." in script
+    assert "state.data.ars_rate" in script  # los pesos dependen de la cotización cargada
+    assert 'aria-pressed' in script
+
+
+def test_the_usage_page_has_styles():
+    css = page("style.css")
+
+    for needed in (".usage-cards", ".usage-card.today", ".usage-table", ".seg button", ".chip", ".sr-only"):
+        assert needed in css, needed
