@@ -191,7 +191,8 @@ async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def _audio_suffix(media) -> str:
     """Extensión del archivo temporal: la del nombre si es corta y simple, si no .ogg (las
     notas de voz de Telegram). Nunca sale texto raro de acá: solo letras y números."""
-    suffix = Path(media.file_name or "").suffix.lower()
+    # getattr: una nota de voz (Voice) no tiene file_name; un audio o un documento, sí.
+    suffix = Path(getattr(media, "file_name", None) or "").suffix.lower()
     return suffix if re.fullmatch(r"\.[a-z0-9]{1,5}", suffix) else ".ogg"
 
 

@@ -221,7 +221,10 @@ class FakeFile:
 
 class FakeMedia:
     def __init__(self, size=1000, name=None, mime="audio/ogg"):
-        self.file_size, self.file_name, self.mime_type = size, name, mime
+        self.file_size, self.mime_type = size, mime
+        # Como en Telegram: una nota de voz (Voice) NO tiene file_name; un audio o documento, sí.
+        if name is not None:
+            self.file_name = name
         self.downloaded = False
 
     async def get_file(self):
@@ -411,6 +414,25 @@ def test_the_chat_shows_typing_while_it_transcribes(heard):
 )
 def test_the_temporary_file_extension_is_always_simple(name, expected):
     assert telegram._audio_suffix(FakeMedia(name=name)) == expected
+
+
+def test_a_real_telegram_voice_has_no_file_name_and_still_works():
+    # El bug real: Voice no tiene file_name, y el bot respondía «No pude procesar el audio».
+    from telegram import Audio, Document, Voice
+
+    assert not hasattr(Voice("f", "u", 3), "file_name")
+    assert telegram._audio_suffix(Voice("f", "u", 3)) == ".ogg"
+    assert telegram._audio_suffix(Audio("f", "u", 3, file_name="a.mp3")) == ".mp3"
+    assert telegram._audio_suffix(Document("f", "u", file_name="g.m4a")) == ".m4a"
+
+
+def test_the_real_telegram_objects_have_everything_on_voice_reads():
+    # Lo que on_voice toca de un audio, en los tres tipos reales (no en los de mentira).
+    from telegram import Audio, Document, Voice
+
+    for media in (Voice("f", "u", 3), Audio("f", "u", 3), Document("f", "u")):
+        for attribute in ("file_size", "mime_type", "get_file"):
+            assert hasattr(media, attribute), (type(media).__name__, attribute)
 
 
 def test_voice_handlers_only_answer_the_authorized_user():
