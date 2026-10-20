@@ -576,3 +576,120 @@ def test_count_ignores_foreign_files_and_empty_folder(tmp_path):
     (folder(tmp_path) / "no-es-un-id.jsonl").write_text("x")
 
     assert conversations.count() == 1
+
+
+# --- Conversaciones de un canal (Telegram) -----------------------------------
+
+
+def talk(channel_name="telegram", text="hola"):
+    """Un mensaje en la conversación abierta del canal; devuelve su id."""
+    conversation_id = conversations.for_channel(channel_name)
+    conversations.add_message(conversation_id, "user", text)
+    return conversation_id
+
+
+def test_a_channel_conversation_starts_with_a_meta_line_and_keeps_the_same_id():
+    first = talk()
+    second = talk(text="otra cosa")
+
+    assert first == second
+    assert [e["type"] for e in lines(notes.DATA_DIR, first)] == ["meta", "message", "message"]
+
+
+def test_the_channel_is_known_from_the_file_and_web_is_the_default():
+    telegram_id = talk()
+    web_id = conversations.new_id()
+    conversations.add_message(web_id, "user", "desde la web")
+
+    assert conversations.channel(telegram_id) == "telegram"
+    assert conversations.channel(web_id) == "web"
+    assert conversations.channel("20261019-153000-ffff") is None
+
+
+def test_a_conversation_with_an_unknown_channel_in_its_meta_line_counts_as_web(tmp_path):
+    path = folder(tmp_path) / f"{VALID}.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"type": "meta", "channel": "otro"}\n{"type": "message", "role": "user", "text": "x"}\n')
+
+    assert conversations.channel(VALID) == "web"
+
+
+def test_the_telegram_conversation_has_a_fixed_title_unless_renamed():
+    conversation_id = talk(text="mi primer mensaje")
+
+    assert conversations.title(conversation_id) == "Telegram"
+    conversations.set_title(conversation_id, "Compras")
+    assert conversations.title(conversation_id) == "Compras"
+    conversations.set_title(conversation_id, "")
+    assert conversations.title(conversation_id) == "Telegram"
+
+
+def test_closing_starts_a_new_conversation_and_hides_the_old_one_from_the_list():
+    old = talk(text="viejo")
+    assert conversations.close_channel("telegram") is True
+    assert conversations.current("telegram") is None
+    new = talk(text="nuevo")
+
+    assert new != old
+    listed = [c["id"] for c in conversations.list_all()]
+    assert new in listed and old not in listed
+    assert conversations.count() == 1
+    assert conversations.messages(old)[0]["text"] == "viejo"  # sigue en disco, legible por id
+
+
+def test_closing_when_nothing_is_open_does_nothing():
+    assert conversations.close_channel("telegram") is False
+    assert conversations.count() == 0
+
+
+def test_the_list_shows_one_telegram_conversation_next_to_the_web_ones_with_their_channel():
+    web_id = conversations.new_id()
+    conversations.add_message(web_id, "user", "web")
+    telegram_id = talk()
+    for n in range(3):  # tres días de Telegram: siguen siendo una sola entrada
+        conversations.close_channel("telegram")
+        telegram_id = talk(text=f"día {n}")
+
+    listed = {c["id"]: c["channel"] for c in conversations.list_all()}
+
+    assert listed == {web_id: "web", telegram_id: "telegram"}
+
+
+def test_a_conversation_that_grows_past_the_limit_is_closed_and_the_next_message_starts_another(monkeypatch):
+    first = talk()
+    monkeypatch.setattr(conversations, "MAX_BYTES", 10)
+
+    assert conversations.current("telegram") is None  # se cerró sola
+    second = talk(text="sigue")
+
+    assert second != first and conversations.count() == 1
+    assert [e["type"] for e in lines(notes.DATA_DIR, first)][-1] == "closed"
+
+
+def test_closing_is_not_activity_so_it_does_not_reorder_recent():
+    web_id = conversations.new_id()
+    conversations.add_message(web_id, "user", "web")
+    telegram_id = talk()
+    path = folder(notes.DATA_DIR) / f"{telegram_id}.jsonl"
+    before = path.stat().st_mtime_ns
+
+    conversations.close_channel("telegram")
+
+    assert path.stat().st_mtime_ns == before
+
+
+def test_only_known_channels_other_than_web_can_be_opened():
+    for bad in ("web", "otro", "../x", ""):
+        with pytest.raises(ValueError):
+            conversations.for_channel(bad)
+        with pytest.raises(ValueError):
+            conversations.current(bad)
+        with pytest.raises(ValueError):
+            conversations.close_channel(bad)
+
+
+def test_what_a_channel_conversation_saves_is_still_redacted(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TOKEN", TOKEN)
+    conversation_id = talk(text=f"mi token es {TOKEN}")
+
+    assert TOKEN not in (folder(notes.DATA_DIR) / f"{conversation_id}.jsonl").read_text(encoding="utf-8")

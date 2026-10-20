@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import threading
 
 from epsilon import config, notes
 
@@ -15,6 +16,12 @@ from epsilon import config, notes
 #   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "artifacts": [...], "error": true, "ts": ...}
 #   {"type": "action", "message": "a1b2c3d4", "id": "guardar", "ts": ...}   <- se tocó un botón de ESE mensaje
 #   {"type": "title", "text": "Compras", "ts": ...}                          <- se renombró (gana la última)
+#
+# Conversaciones de otro canal (Telegram), además de las de la web:
+#   {"type": "meta", "channel": "telegram", "ts": ...}   <- primera línea: de qué canal es
+#   {"type": "closed", "ts": ...}                          <- última línea: ya no se sigue (/nuevo)
+# Una conversación de canal queda ABIERTA hasta que alguien la cierra (o pasa de MAX_BYTES). Solo
+# hay una abierta por canal, y es la única que se lista: las cerradas siguen en disco.
 #
 # Como el archivo es solo de agregar, nada se edita: «qué botón se tocó» y «el nombre nuevo»
 # son líneas nuevas, y al LEER se combinan (cada mensaje sale con used/chosen ya resueltos).
@@ -32,6 +39,11 @@ MAX_TEXT = 20_000
 # a DATA_DIR; se revisa al escribir Y al leer (el archivo se puede editar a mano).
 ARTIFACT_KINDS = ("file", "csv", "note", "summary")
 ARTIFACT_PATH_MAX = 300
+
+# Canales conocidos. «web» es el de siempre (sin línea meta); lo demás se anota al crear.
+CHANNELS = ("web", "telegram")
+CHANNEL_TITLES = {"telegram": "Telegram"}  # título fijo: una conversación así no tiene «primer mensaje»
+MAX_BYTES = 1024 * 1024  # una conversación de canal más grande se cierra sola y arranca otra
 
 UNTITLED = "Conversación sin título"
 TITLE_LENGTH = 40  # el título automático (primera línea de tu primer mensaje)
@@ -156,6 +168,90 @@ def set_title(conversation_id: str, text: str) -> str:
     return _title(path)
 
 
+# --- Conversaciones de un canal (Telegram) ---------------------------------------
+
+_channel_lock = threading.Lock()  # dos mensajes casi a la vez no abren dos conversaciones
+
+
+def channel(conversation_id: str) -> str | None:
+    """De qué canal es («web» o «telegram»). None si no existe. Lanza ValueError si el id no es válido."""
+    path = _path(conversation_id)
+    return _channel(path) if path.exists() else None
+
+
+def _channel(path: Path) -> str:
+    """El canal está en la primera línea; sin línea meta (o con un canal raro), es «web»."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as f:
+            first = json.loads(f.readline())
+    except (OSError, ValueError):
+        return "web"
+    if isinstance(first, dict) and first.get("type") == "meta" and first.get("channel") in CHANNELS:
+        return first["channel"]
+    return "web"
+
+
+def _is_closed(path: Path) -> bool:
+    """¿La última línea es «closed»? Se lee solo el final del archivo."""
+    try:
+        with path.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 2048))
+            tail = f.read().decode("utf-8", errors="replace").strip().splitlines()
+        last = json.loads(tail[-1]) if tail else None
+    except (OSError, ValueError):
+        return False
+    return isinstance(last, dict) and last.get("type") == "closed"
+
+
+def _open_one(name: str) -> str | None:
+    """La conversación abierta de un canal: la más nueva de ese canal, si no está cerrada."""
+    for path in sorted(_files(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if _channel(path) == name:
+            return None if _is_closed(path) else path.stem
+    return None
+
+
+def current(name: str) -> str | None:
+    """El id de la conversación abierta de un canal, o None. Si pasó de MAX_BYTES la cierra
+    (y devuelve None: la próxima vez nace otra)."""
+    if name not in CHANNELS or name == "web":
+        raise ValueError("Canal no válido")
+    with _channel_lock:
+        found = _open_one(name)
+        if found and _path(found).stat().st_size > MAX_BYTES:
+            _append(found, {"type": "closed"}, keep_mtime=True)
+            return None
+        return found
+
+
+def for_channel(name: str) -> str:
+    """La conversación abierta de un canal; si no hay, crea una (con su línea meta). El llamador
+    agrega un mensaje enseguida, así no queda un archivo vacío."""
+    if name not in CHANNELS or name == "web":
+        raise ValueError("Canal no válido")
+    with _channel_lock:
+        found = _open_one(name)
+        if found and _path(found).stat().st_size <= MAX_BYTES:
+            return found
+        if found:
+            _append(found, {"type": "closed"}, keep_mtime=True)
+        conversation_id = new_id()
+        _append(conversation_id, {"type": "meta", "channel": name})
+        return conversation_id
+
+
+def close_channel(name: str) -> bool:
+    """Cierra la conversación abierta de un canal (/nuevo). True si había una."""
+    if name not in CHANNELS or name == "web":
+        raise ValueError("Canal no válido")
+    with _channel_lock:
+        found = _open_one(name)
+        if found:
+            _append(found, {"type": "closed"}, keep_mtime=True)
+        return bool(found)
+
+
 # --- Leer --------------------------------------------------------------------
 
 
@@ -240,6 +336,7 @@ def _title(path: Path) -> str:
     primer mensaje recortada. Recorre el archivo entero, porque un renombrado puede estar al final."""
     custom: str | None = None
     automatic: str | None = None
+    fixed: str | None = None
     try:
         with path.open(encoding="utf-8", errors="replace") as f:
             for line in f:
@@ -249,14 +346,16 @@ def _title(path: Path) -> str:
                     continue
                 if not isinstance(entry, dict):
                     continue
-                if entry.get("type") == "title":
+                if entry.get("type") == "meta":
+                    fixed = CHANNEL_TITLES.get(entry.get("channel"))
+                elif entry.get("type") == "title":
                     custom = str(entry.get("text", "")).strip() or None  # vacío = volver al automático
                 elif automatic is None and entry.get("type") == "message" and entry.get("role") == "user":
                     first_line = str(entry.get("text", "")).strip().split("\n")[0].strip()
                     automatic = first_line[:TITLE_LENGTH] or None
     except OSError:
         pass
-    return custom or automatic or UNTITLED
+    return custom or fixed or automatic or UNTITLED
 
 
 def _files() -> list[Path]:
@@ -272,21 +371,32 @@ def _files() -> list[Path]:
     ]
 
 
+def _visible() -> list[Path]:
+    """Las que se listan: las de la web, y de cada canal solo la abierta."""
+    result = []
+    for path in _files():
+        name = _channel(path)
+        if name == "web" or not _is_closed(path):
+            result.append(path)
+    return result
+
+
 def count() -> int:
-    """Cuántas conversaciones hay en total (para saber si «Ver más» tiene algo que mostrar)."""
-    return len(_files())
+    """Cuántas conversaciones se listan (para saber si «Ver más» tiene algo que mostrar)."""
+    return len(_visible())
 
 
 def list_all(limit: int = 50) -> list[dict]:
-    """Las conversaciones, la más reciente primero: [{id, title, updated}].
+    """Las conversaciones, la más reciente primero: [{id, title, channel, updated}].
 
     Solo aparecen las que tienen al menos un mensaje (el archivo nace con el primero)."""
-    candidates = _files()
+    candidates = _visible()
     newest_first = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
     return [
         {
             "id": p.stem,
             "title": _title(p),
+            "channel": _channel(p),
             "updated": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
         }
         for p in newest_first
