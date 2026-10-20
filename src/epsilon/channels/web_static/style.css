@@ -5,12 +5,12 @@
   --bg: #0e0f10; /* fondo de la página */
   --side: #141516; /* paneles laterales */
   --surface: #151718; /* compositor, chips */
-  --bubble: #1e2318;      /* tu burbuja: un verde muy oscuro */
+  --bubble: #1e2318; /* tu burbuja: un verde muy oscuro */
   --surface-2: #1b1e1f; /* tus mensajes, botones secundarios */
   --line: #26292b; /* bordes finos */
   --text: #e8e9e6;
   --muted: #a1a6a1; /* textos secundarios (7:1 sobre el fondo) */
-  --accent: #b8f26b; /* lima: lo único con color */
+  --accent: #b8fd2c; /* lima: lo único con color */
   --on-accent: #0e0f10; /* texto sobre el lima */
   --danger: #ff9b8a;
   --telegram: #5bb8f5; /* azul de Telegram: marca las conversaciones de ese canal (7:1 sobre --side) */
@@ -96,6 +96,15 @@ code {
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+/* El logo de la marca (arriba a la izquierda). El archivo es un cuadrado entero: el borde
+   redondeado lo pone el CSS. */
+.brand-logo {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
 }
 
 /* La marca Ε: el único adorno de la página. */
@@ -1360,7 +1369,9 @@ a.ghost {
   height: 1.25rem;
   background: #a9aea9;
   border-radius: 50%;
-  transition: transform var(--t), background var(--t);
+  transition:
+    transform var(--t),
+    background var(--t);
 }
 .switch[aria-checked="true"] .knob {
   background: var(--on-accent);
@@ -1532,7 +1543,6 @@ a.ghost {
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
-
 
 /* --- Página Canales ---------------------------------------------------------- */
 .channel-cards {

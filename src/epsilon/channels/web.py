@@ -423,6 +423,11 @@ def create_app() -> FastAPI:
     def home():
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        # Los navegadores lo piden solos en la raíz, aunque la página declare otro.
+        return FileResponse(STATIC_DIR / "img" / "favicon.ico", media_type="image/x-icon")
+
     @app.get("/uso", include_in_schema=False)
     def usage_page():
         return FileResponse(STATIC_DIR / "uso.html")

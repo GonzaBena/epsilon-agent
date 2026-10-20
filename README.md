@@ -1,4 +1,8 @@
-# Epsilon
+<p align="center">
+  <img src="docs/img/icon-192.png" alt="Logo de Epsilon" width="96" height="96">
+</p>
+
+<h1 align="center">Epsilon</h1>
 
 Agente personal para uso propio. Se usa desde una web local (y, si querés, desde un bot de
 Telegram) y hace cuatro cosas:

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -916,11 +917,14 @@ def test_no_lowercase_epsilon_anywhere_in_the_web_files(name):
     assert LOWERCASE not in text, name
 
 
-def test_every_brand_mark_in_the_html_is_the_capital_epsilon():
-    for name in ("index.html", "config.html"):
-        marks = re.findall(r'class="mark"[^>]*>(.)<', page(name))
-        assert marks, name
-        assert all(m == BRAND for m in marks), (name, [hex(ord(m)) for m in marks])
+def test_every_letter_mark_in_the_html_is_the_capital_epsilon():
+    # El header usa el logo (imagen); la letra queda en el saludo del chat. Las demás páginas no
+    # llevan ninguna letra suelta.
+    marks = re.findall(r'class="mark"[^>]*>(.)<', page("index.html"))
+    assert marks
+    assert all(m == BRAND for m in marks), [hex(ord(m)) for m in marks]
+    for name in ("config.html", "canales.html", "uso.html"):
+        assert 'class="mark"' not in page(name), name
 
 
 def test_the_marks_drawn_by_the_scripts_are_the_capital_epsilon():
@@ -2060,3 +2064,41 @@ def test_the_usage_page_has_styles():
 
     for needed in (".usage-cards", ".usage-card.today", ".usage-table", ".seg button", ".chip", ".sr-only"):
         assert needed in css, needed
+
+
+# --- Marca: logo y favicon -------------------------------------------------------
+
+
+def test_every_page_declares_the_favicons_and_they_exist():
+    for name in PAGES:
+        html = page(name)
+        assert 'rel="icon" href="/static/img/favicon.ico"' in html, name
+        assert 'sizes="32x32" href="/static/img/favicon-32.png"' in html, name
+        assert 'rel="apple-touch-icon" href="/static/img/apple-touch-icon.png"' in html, name
+        for path in re.findall(r'(?:href|src)="/static/(img/[^"]+)"', html):
+            assert (web.STATIC_DIR / path).is_file(), (name, path)
+
+
+def test_the_browser_default_favicon_path_works(client):
+    reply = client.get("/favicon.ico")
+
+    assert reply.status_code == 200 and reply.headers["content-type"] == "image/x-icon"
+    assert reply.content == (web.STATIC_DIR / "img" / "favicon.ico").read_bytes()
+    assert client.get("/static/img/favicon-32.png").status_code == 200
+
+
+def test_every_page_uses_the_logo_in_the_header_with_empty_alt():
+    for name in PAGES:
+        tag = re.search(r'<img class="brand-logo"[^>]*>', page(name)).group(0)
+        assert 'alt=""' in tag  # decorativo: el nombre «Epsilon» ya está al lado
+        assert 'width="30"' in tag and 'height="30"' in tag  # no mueve la página al cargar
+
+
+def test_the_readme_images_exist():
+    readme = (Path(web.__file__).parents[3] / "README.md").read_text(encoding="utf-8")
+    root = Path(web.__file__).parents[3]
+
+    paths = re.findall(r'<img[^>]*src="([^"]+)"', readme) + re.findall(r"!\[[^\]]*\]\(([^)]+)\)", readme)
+    assert paths, "el README no muestra el logo"
+    for path in paths:
+        assert (root / path).is_file(), path

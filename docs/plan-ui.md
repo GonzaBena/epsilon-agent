@@ -88,6 +88,18 @@ Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA)
 - Verificado en el navegador con datos de prueba: apagar y prender Telegram, el filtro por modelo,
   el cambio a pesos y la tabla sin partirse en líneas.
 
+## Marca: logo y favicon. **Hecho.**
+
+- Las imágenes del README y del repositorio viven en `docs/img/` (`icon-192.png` es el logo del
+  README; `og-social-preview.png`, 1280×640, es para subir a GitHub en Settings → Social preview).
+- Las de la web viven en `channels/web_static/img/` y salen como `/static/img/...`:
+  `favicon.ico` + `favicon-32.png` + `apple-touch-icon.png` en el `<head>` de cada página, y
+  `/favicon.ico` en la raíz (los navegadores lo piden solos). El logo del header es
+  `apple-touch-icon.png` (un cuadrado entero: el redondeo lo pone el CSS, clase `.brand-logo`).
+- `bot-avatar-512.png` es la foto del bot: se sube a mano en @BotFather (`/setuserpic`). `tray-24.png`
+  y `tray-48.png` quedan para un ícono de bandeja si algún día hay una app de escritorio; hoy no se usan.
+- Un test comprueba que todo lo que las páginas y el README enlazan existe.
+
 ## Sin verificar
 
 - El comportamiento en ventana angosta (no se pudo achicar la ventana del navegador).
