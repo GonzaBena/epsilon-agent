@@ -171,6 +171,10 @@ class TitleIn(BaseModel):
     title: str = Field(max_length=200)
 
 
+class PinIn(BaseModel):
+    pinned: bool
+
+
 def read_image_or_pdf(file: UploadFile) -> tuple[bytes, str]:
     """Los bytes y el tipo de un archivo subido. Mismos tipos que acepta Telegram: imágenes y PDFs, hasta MAX_UPLOAD."""
     mime = file.content_type or ""
@@ -407,7 +411,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/conversations")
     def list_conversations(limit: int = Query(50, ge=1, le=200)):
-        # limit: cuántas devolver (la web pide más con «Ver más»); total: cuántas hay en realidad.
+        # limit: cuántas «Recientes» devolver (la web pide más con «Ver más»; las ancladas y las de canal
+        # salen siempre); total: cuántas hay en realidad.
         return {"conversations": conversations.list_all(limit), "total": conversations.count()}
 
     @app.post("/api/conversations")
@@ -452,6 +457,17 @@ def create_app() -> FastAPI:
             return {"title": conversations.set_title(conversation_id, body.title)}
         except FileNotFoundError:
             raise HTTPException(404, "No existe esa conversación") from None
+
+    @app.put("/api/conversations/{conversation_id}/pin")
+    def pin_conversation(conversation_id: str, body: PinIn):
+        if not conversations.is_valid_id(conversation_id):
+            raise HTTPException(404, "No existe esa conversación")
+        try:
+            return {"pinned": conversations.set_pinned(conversation_id, body.pinned)}
+        except FileNotFoundError:
+            raise HTTPException(404, "No existe esa conversación") from None
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
 
     @app.put("/api/conversations/{conversation_id}/limit")
     def set_conversation_limit(conversation_id: str, body: LimitIn):

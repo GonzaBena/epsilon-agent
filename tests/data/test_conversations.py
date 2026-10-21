@@ -953,3 +953,39 @@ def test_simultaneous_starts_write_one_meta_and_one_limit(data_dir, monkeypatch)
 
     written = [l["type"] for l in lines(data_dir, VALID)]
     assert written == ["meta", "limit"]
+
+
+# --- Anclar -------------------------------------------------------------------
+
+
+def test_pinning_is_the_last_pin_line_and_does_not_reorder_the_list(tmp_path):
+    make(tmp_path, "20261019-100000-aaaa", "vieja", 1_000)
+    make(tmp_path, "20261019-110000-bbbb", "nueva", 2_000)
+
+    assert conversations.set_pinned("20261019-100000-aaaa", True) is True
+    listed = {c["title"]: c["pinned"] for c in conversations.list_all()}
+    assert listed == {"vieja": True, "nueva": False}
+    assert [c["title"] for c in conversations.list_all()] == ["nueva", "vieja"]  # anclar no la hace «reciente»
+
+    assert conversations.set_pinned("20261019-100000-aaaa", False) is False
+    assert not any(c["pinned"] for c in conversations.list_all())
+
+
+def test_the_limit_cuts_only_the_recents_and_never_a_pinned_one(tmp_path):
+    for i in range(5):
+        make(tmp_path, f"20261019-10000{i}-aaaa", f"c{i}", 1_000 + i)
+    conversations.set_pinned("20261019-100000-aaaa", True)  # la más vieja
+
+    titles = [c["title"] for c in conversations.list_all(limit=2)]
+
+    assert titles == ["c4", "c3", "c0"]
+    assert conversations.count() == 5
+
+
+def test_pinning_a_missing_or_channel_conversation_fails(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        conversations.set_pinned(VALID, True)
+    cid = conversations.for_channel("telegram")
+    conversations.add_message(cid, "user", "hola")
+    with pytest.raises(ValueError):
+        conversations.set_pinned(cid, True)

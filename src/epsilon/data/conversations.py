@@ -19,6 +19,7 @@ from epsilon.settings import config
 #   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "artifacts": [...], "error": true, "ai": true, "ts": ...}
 #   {"type": "action", "message": "a1b2c3d4", "id": "guardar", "ts": ...}   <- se tocó un botón de ESE mensaje
 #   {"type": "title", "text": "Compras", "ts": ...}                          <- se renombró (gana la última)
+#   {"type": "pin", "value": true, "ts": ...}                                <- se ancló / desancló (gana la última)
 #
 # Modo IA (solo web): una conversación que se creó para hablar con la IA lleva, al principio,
 #   {"type": "meta", "channel": "web", "mode": "ai"}
@@ -196,6 +197,19 @@ def set_title(conversation_id: str, text: str) -> str:
     clean = " ".join(config.redact(str(text)).split())[:TITLE_MAX]
     _append(conversation_id, {"type": "title", "text": clean}, keep_mtime=True)
     return _title(path)
+
+
+def set_pinned(conversation_id: str, value: bool) -> bool:
+    """Ancla o desancla una conversación de la web (agrega una línea; gana la última). Devuelve cómo
+    queda. Lanza FileNotFoundError si no existe y ValueError si es de un canal: esas ya tienen su
+    propia sección en la lista."""
+    path = _path(conversation_id)
+    if not path.exists():
+        raise FileNotFoundError("No existe esa conversación")
+    if _channel(path) != "web":
+        raise ValueError("Solo se pueden anclar conversaciones de la web")
+    _append(conversation_id, {"type": "pin", "value": bool(value)}, keep_mtime=True)
+    return _pinned(path)
 
 
 def delete(conversation_id: str) -> bool:
@@ -488,6 +502,23 @@ def _title(path: Path) -> str:
     return custom or fixed or automatic or UNTITLED
 
 
+def _pinned(path: Path) -> bool:
+    """¿Está anclada? Gana la última línea `pin`; solo cuentan las de la web."""
+    value = False
+    try:
+        with path.open(encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict) and entry.get("type") == "pin":
+                    value = entry.get("value") is True
+    except OSError:
+        return False
+    return value and _channel(path) == "web"
+
+
 def _files() -> list[Path]:
     """Los archivos de conversaciones: solo los que tienen un id nuestro y, si es un symlink,
     que no salga de DATA_DIR."""
@@ -517,18 +548,29 @@ def count() -> int:
 
 
 def list_all(limit: int = 50) -> list[dict]:
-    """Las conversaciones, la más reciente primero: [{id, title, channel, updated}].
+    """Las conversaciones, la más reciente primero: [{id, title, channel, mode, pinned, updated}].
 
-    Solo aparecen las que tienen al menos un mensaje (el archivo nace con el primero)."""
-    candidates = _visible()
-    newest_first = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    Las ancladas y las de canal salen siempre (tienen su propia sección en la web); `limit` corta
+    solo las demás («Recientes»). Solo aparecen las que tienen al menos un mensaje (el archivo nace
+    con el primero)."""
+    newest_first = sorted(_visible(), key=lambda p: p.stat().st_mtime, reverse=True)
+    pinned = {p: _pinned(p) for p in newest_first}
+    recents_left = limit
+    chosen = []
+    for p in newest_first:
+        if pinned[p] or _channel(p) != "web":
+            chosen.append(p)
+        elif recents_left > 0:
+            recents_left -= 1
+            chosen.append(p)
     return [
         {
             "id": p.stem,
             "title": _title(p),
             "channel": _channel(p),
             "mode": mode(p.stem),
+            "pinned": pinned[p],
             "updated": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
         }
-        for p in newest_first
+        for p in chosen
     ]

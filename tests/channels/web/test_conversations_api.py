@@ -489,3 +489,24 @@ def test_put_limit_with_a_huge_number_is_a_422_not_a_500(client, ai_web):
     )
 
     assert reply.status_code == 422
+
+
+# --- Anclar -----------------------------------------------------------------
+
+
+def test_pin_endpoint_pins_and_unpins_and_the_list_says_so(client):
+    cid = new_conversation(client)
+    chat(client, cid, "+ algo")
+
+    assert client.put(f"/api/conversations/{cid}/pin", json={"pinned": True}).json() == {"pinned": True}
+    assert client.get("/api/conversations").json()["conversations"][0]["pinned"] is True
+    assert client.put(f"/api/conversations/{cid}/pin", json={"pinned": False}).json() == {"pinned": False}
+    assert client.get("/api/conversations").json()["conversations"][0]["pinned"] is False
+
+
+def test_pin_endpoint_rejects_unknown_ids_and_bad_bodies(client):
+    assert client.put("/api/conversations/20260101-000000-abcd/pin", json={"pinned": True}).status_code == 404
+    assert client.put("/api/conversations/no-es-un-id/pin", json={"pinned": True}).status_code == 404
+    cid = new_conversation(client)
+    chat(client, cid, "+ algo")
+    assert client.put(f"/api/conversations/{cid}/pin", json={"pinned": "tal vez"}).status_code == 422
