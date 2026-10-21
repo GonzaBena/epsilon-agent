@@ -67,6 +67,13 @@ def _rate(value: str) -> str:
     return str(float(value)) if "." in value else value
 
 
+def _usd_limit(value: str) -> str:
+    value = value.replace(",", ".")
+    if not re.fullmatch(r"\d{1,4}(\.\d{1,4})?", value, re.ASCII) or not 0.01 <= float(value) <= 1000:
+        raise ValueError("El límite es un monto en dólares entre 0,01 y 1000 (por ejemplo 0,50).")
+    return str(float(value)) if "." in value else value
+
+
 def _device(value: str) -> str:
     value = value.lower()
     if value not in ("cpu", "cuda"):
@@ -151,6 +158,14 @@ SETTINGS = (
         "Pesos por dólar (opcional)",
         live=True,
         validate=_rate,
+    ),
+    # Tope de costo (US$) con el que nace cada conversación de modo IA; después se cambia en cada una.
+    Setting(
+        "CHAT_LIMIT_USD",
+        "Límite de costo por chat con IA (US$)",
+        live=True,
+        default="0.50",
+        validate=_usd_limit,
     ),
     # Voz (transcribe.py los lee al usar el modelo, no al arrancar).
     Setting(

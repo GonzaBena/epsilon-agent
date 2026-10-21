@@ -4,8 +4,8 @@ from pathlib import Path
 import re
 
 from epsilon import menu, tools
-from epsilon.ai import extract, summarize, usage
-from epsilon.data import notes
+from epsilon.ai import chat, extract, summarize, usage
+from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 from epsilon.settings import config
 
@@ -45,6 +45,7 @@ class Message:
     attachment: Attachment | None = None
     session_id: str = "default"  # cada canal pone el suyo
     action: str | None = None  # id del botón tocado, si fue un botón
+    conversation_id: str | None = None  # la conversación guardada (web); define si es de modo IA
 
 
 @dataclass
@@ -75,6 +76,8 @@ class Reply:
     artifacts: list[Artifact] = field(default_factory=list)
     # True: los botones van uno por fila (un menú); False: todos en una fila (Guardar / Cancelar).
     stacked: bool = False
+    # True: la escribió la IA del chat (la conversación lo anota para armar la charla del modelo).
+    ai: bool = False
 
 
 def _artifact(kind: str, path) -> Artifact:
@@ -446,6 +449,38 @@ def _handle_action(action: str, session: Session) -> Reply:
     return Reply("No entiendo esa acción.")
 
 
+# --- Modo IA -----------------------------------------------------------------
+
+
+def _is_ai_conversation(msg: Message) -> bool:
+    return bool(msg.conversation_id) and conversations.is_valid_id(msg.conversation_id) and (
+        conversations.mode(msg.conversation_id) == "ai"
+    )
+
+
+def _uses_ai(msg: Message) -> bool:
+    """¿Este mensaje va a llamar al modelo? Texto libre (el chat), comandos con IA, imagen con pedido
+    de extracción y el botón Resumir. Todo lo demás (notas, /ver, /memoria…) no."""
+    if msg.action:
+        return msg.action.partition(":")[0] == "resumir"
+    if msg.attachment:
+        return parse_request(msg.text) is not None
+    text = msg.text.strip()
+    if text.startswith("/"):
+        command = text[1:].partition(" ")[0].partition("@")[0].lower()
+        return tools.uses_ai_command(command)
+    return bool(text) and not text.startswith("+") and not re.fullmatch(r"cancelar", text, re.IGNORECASE)
+
+
+def _chat(msg: Message) -> Reply:
+    """Texto libre en una conversación de modo IA: responde la IA, con la charla y la memoria."""
+    try:
+        return Reply(chat.answer(msg.conversation_id, msg.text.strip()), ai=True)
+    except Exception as e:
+        print(f"Error en el chat: {config.redact(repr(e))}")  # el detalle, a la terminal
+        return Reply("No pude responder.")
+
+
 # --- Punto de entrada --------------------------------------------------------
 
 # Comando -> función. Un comando nuevo se declara en tools.py y se agrega una línea acá
@@ -474,8 +509,11 @@ def handle(msg: Message) -> Reply:
     """Punto de entrada único: ver _dispatch. Además, recuerda en la sesión lo que la
     respuesta guardó, para /contexto."""
     # El canal queda anotado en cada llamada al modelo (página Uso): la sesión dice de dónde viene.
+    # En modo IA también se anota la conversación: cada una suma lo que gasta (chat, resúmenes…).
+    ai_conversation = _is_ai_conversation(msg)
     with usage.channel("Telegram" if msg.session_id.startswith("telegram:") else "Web"):
-        reply = _dispatch(msg)
+        with usage.conversation(msg.conversation_id if ai_conversation else None):
+            reply = _dispatch(msg)
     _remember(_session(msg.session_id), reply.artifacts)
     return reply
 
@@ -486,6 +524,11 @@ def _dispatch(msg: Message) -> Reply:
     Puede tardar (llama al modelo): los canales asíncronos tienen que
     correrla en otro hilo para no trabarse."""
     session = _session(msg.session_id)
+    ai_conversation = _is_ai_conversation(msg)
+
+    # En modo IA, lo que llama al modelo no corre si la conversación llegó al límite.
+    if ai_conversation and _uses_ai(msg) and (blocked := chat.status(msg.conversation_id))["blocked"]:
+        return Reply(blocked["reason"])
 
     if msg.action:
         return _handle_action(msg.action, session)
@@ -509,5 +552,8 @@ def _dispatch(msg: Message) -> Reply:
         handler = COMMANDS.get(command)
         if handler:
             return handler(args.strip(), session)
+
+    if ai_conversation and text and not text.startswith("/"):
+        return _chat(msg)
 
     return Reply(HELP)

@@ -446,3 +446,134 @@ def test_inside_one_reply_the_last_saved_item_is_the_newest():
     core._remember(session, [core.Artifact("file", "a.pdf"), core.Artifact("note", "b.md")])
 
     assert [a.path for a in session.artifacts] == ["b.md", "a.pdf"]
+
+
+# --- Modo IA ---------------------------------------------------------------------------
+
+from epsilon.ai import usage  # noqa: E402
+from epsilon.data import conversations  # noqa: E402
+
+AI_CID = "20261020-130000-aaaa"
+
+
+@pytest.fixture
+def ai_mode(monkeypatch):
+    """Una conversación de modo IA con precio cargado; llm.chat falso que gasta US$ 1 por llamada."""
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
+    monkeypatch.setenv("CHAT_LIMIT_USD", "")
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
+    calls = []
+
+    def fake_chat(turns, system, max_tokens=1500):
+        calls.append(turns)
+        usage.record("modelo-a", 1_000_000, 0)
+        return "respuesta de la IA"
+
+    monkeypatch.setattr(core.chat.llm, "chat", fake_chat)
+
+    return calls
+
+
+def ai_say(text, limit=5.0, cid=AI_CID, session_id="web:ai"):
+    conversations.start(cid, "ai", limit)
+    conversations.add_message(cid, "user", text)
+    return core.handle(core.Message(text=text, session_id=session_id, conversation_id=cid))
+
+
+def test_ai_mode_free_text_goes_to_chat_and_is_tagged(ai_mode):
+    reply = ai_say("explicame esto")
+
+    assert reply.text == "respuesta de la IA" and reply.ai is True
+    assert ai_mode == [[("user", "explicame esto")]]
+    spent = usage.for_conversation(AI_CID)
+    assert spent["calls"] == 1 and spent["context"] == 1_000_000
+
+
+def test_normal_conversation_free_text_still_shows_help_and_never_calls_chat(ai_mode):
+    conversations.add_message(AI_CID, "user", "hola")
+
+    reply = core.handle(core.Message(text="hola", session_id="web:n", conversation_id=AI_CID))
+
+    assert reply.text == core.HELP and not reply.ai and ai_mode == []
+
+
+def test_without_conversation_and_telegram_never_chat(ai_mode):
+    assert say("hola").text == core.HELP
+    assert say("hola", session_id="telegram:1").text == core.HELP
+    assert ai_mode == []
+
+
+def test_unknown_slash_and_plus_notes_do_not_go_to_ai_in_ai_mode(ai_mode):
+    assert ai_say("/inventado").text == core.HELP
+    assert "inbox" in ai_say("+ comprar pan").text
+    assert ai_mode == []
+
+
+def test_blocked_conversation_blocks_ai_things_but_not_plain_commands(ai_mode, monkeypatch):
+    ai_say("uno", limit=1.0)  # gasta US$ 1: ya está en el límite
+    assert len(ai_mode) == 1
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("la conversación bloqueada llamó al modelo")
+
+    monkeypatch.setattr(core.chat.llm, "chat", forbidden)
+    monkeypatch.setattr(core.summarize, "summarize_and_save", forbidden)
+    monkeypatch.setattr(core.extract, "img_to_rows", forbidden)
+    notes.save_note("inbox", "- algo")
+    s = "web:ai"
+    cid = AI_CID
+
+    def go(**kw):
+        return core.handle(core.Message(session_id=s, conversation_id=cid, **kw))
+
+    for reply in (
+        go(text="otra pregunta"),
+        go(text="/resumir inbox"),
+        go(action="resumir:1"),
+        go(text="gastos: fecha, total", attachment=core.Attachment(b"x", "f.jpg", "image/jpeg")),
+    ):
+        assert "límite" in reply.text and not reply.ai
+
+    assert "algo" in go(text="/ver").text  # sin IA: sigue andando
+    assert go(text="/memoria").text
+
+
+def test_raising_the_limit_unblocks(ai_mode):
+    ai_say("uno", limit=1.0)
+    assert "límite" in core.handle(core.Message(text="dos", session_id="web:ai", conversation_id=AI_CID)).text
+
+    conversations.set_limit(AI_CID, 5)
+
+    assert core.handle(core.Message(text="dos", session_id="web:ai", conversation_id=AI_CID)).text == "respuesta de la IA"
+
+
+def test_model_without_price_blocks_everything_that_uses_ai(ai_mode, monkeypatch):
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-sin-precio")
+
+    reply = ai_say("hola")
+
+    assert "precio" in reply.text and ai_mode == []
+
+
+def test_resumir_cost_in_ai_conversation_counts_toward_limit(ai_mode, monkeypatch):
+    notes.save_note("inbox", "- algo")
+
+    def fake_summarize(path):
+        usage.record("modelo-a", 1_000_000, 0)  # lo que haría llm.generate
+        return "inbox-resumen", "texto"
+
+    monkeypatch.setattr(core.summarize, "summarize_and_save", fake_summarize)
+    ai_say("/resumir inbox", limit=5)
+
+    assert usage.for_conversation(AI_CID)["cost"] == 1.0
+
+
+def test_chat_failure_returns_short_message(ai_mode, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("falló con AIzaSyD-ejemplo_de_clave_larga_QzXw")
+
+    monkeypatch.setattr(core.chat.llm, "chat", boom)
+
+    reply = ai_say("hola")
+
+    assert reply.text == "No pude responder." and not reply.ai

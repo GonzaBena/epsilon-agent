@@ -41,6 +41,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`                          | Opcionales. Con las dos, el bot responde solo a ese usuario de Telegram.                                                |
 | `TELEGRAM_ENABLED`                                           | Prende (`si`) o apaga (`no`) el bot. Se cambia desde la página Canales, sin reiniciar.                                  |
 | `USD_ARS`                                                    | Opcional: pesos por dólar, cargado a mano. Habilita el botón ARS en la página Uso.                                      |
+| `CHAT_LIMIT_USD`                                             | Opcional: límite de costo (US$) con el que nace cada chat con IA; se cambia en cada conversación. Por defecto 0.50.     |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |

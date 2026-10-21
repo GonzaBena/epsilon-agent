@@ -550,3 +550,26 @@ def test_the_dollar_rate_rejects_anything_else(value, env_file):
 
 def test_the_dollar_rate_is_optional_and_empty_by_default(env_file):
     assert entry("USD_ARS", env_file)["value"] == ""
+
+
+# --- Límite de costo del chat con IA ---------------------------------------------
+
+
+@pytest.mark.parametrize("value,saved", [("0.5", "0.5"), ("2", "2"), ("0,25", "0.25"), ("1000", "1000")])
+def test_chat_limit_accepts_dollar_amounts(value, saved, env_file, monkeypatch):
+    monkeypatch.delenv("CHAT_LIMIT_USD", raising=False)
+
+    config.update({"CHAT_LIMIT_USD": value}, [], env_file)
+
+    assert f"CHAT_LIMIT_USD='{saved}'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv("CHAT_LIMIT_USD")
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "abc", "1001", "1\n2", "0.001", "1e2"])
+def test_chat_limit_rejects_anything_else(value, env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({"CHAT_LIMIT_USD": value}, [], env_file)
+
+
+def test_chat_limit_default_is_fifty_cents(env_file):
+    assert entry("CHAT_LIMIT_USD", env_file)["value"] in ("", "0.50")

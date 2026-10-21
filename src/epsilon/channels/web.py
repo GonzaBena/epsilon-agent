@@ -161,6 +161,7 @@ def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
 
 def to_json(reply: core.Reply) -> dict:
     data = asdict(reply)  # {"text": ..., "actions": [...], "artifacts": [{"kind": ..., "path": ...}]}
+    data.pop("ai")  # solo importa al guardar la conversación (ver reply_json)
     data.pop("stacked")  # cómo se acomodan los botones es cosa de cada canal; la web no lo usa
     return data
 

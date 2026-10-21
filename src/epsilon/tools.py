@@ -188,3 +188,8 @@ def command_names() -> set[str]:
 def link_commands() -> list[str]:
     """Los pedidos que la web ejecuta sola al llegar por un enlace /?cmd=...: solo lecturas."""
     return [command for tool in TOOLS for command in tool.links]
+
+
+def uses_ai_command(name: str) -> bool:
+    """¿Este comando (o alias) llama al modelo? Un nombre desconocido no."""
+    return any(tool.uses_ai for tool in TOOLS if name == tool.name or name in tool.aliases)

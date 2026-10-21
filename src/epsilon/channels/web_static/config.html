@@ -127,6 +127,15 @@
               <p class="error" id="err-USD_ARS" role="alert"></p>
             </div>
 
+            <div class="field">
+              <label for="f-CHAT_LIMIT_USD">Límite de costo por chat con IA (US$)</label>
+              <input id="f-CHAT_LIMIT_USD" data-key="CHAT_LIMIT_USD" type="text" inputmode="decimal"
+                     autocomplete="off" spellcheck="false" placeholder="0.50"
+                     aria-describedby="hint-CHAT_LIMIT_USD err-CHAT_LIMIT_USD">
+              <p class="hint" id="hint-CHAT_LIMIT_USD"></p>
+              <p class="error" id="err-CHAT_LIMIT_USD" role="alert"></p>
+            </div>
+
             <div class="test-row">
               <button type="button" class="secondary" data-test="gemini">Probar conexión</button>
               <p class="result" id="result-gemini" role="status"></p>
