@@ -756,6 +756,12 @@ body.view-telegram {
     visibility 0s linear var(--t);
 }
 
+/* Mientras la página arranca (boot.js lo pone, shell.js lo saca) nada se anima. */
+.no-motion .shell,
+.no-motion .shell * {
+  transition: none !important;
+}
+
 /* Quien pidió menos movimiento no ve ninguna de estas animaciones. */
 @media (prefers-reduced-motion: reduce) {
   .shell,

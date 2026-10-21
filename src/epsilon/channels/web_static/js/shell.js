@@ -400,4 +400,8 @@
   applyNarrow();
   refreshRecents();
   loadInfo();
+
+  // El estado inicial ya está puesto: ahora sí, que los paneles se animen al abrir y cerrar.
+  // Dos cuadros de espera para que el navegador dibuje antes la posición final.
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.remove("no-motion")));
 })();
