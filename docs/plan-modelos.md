@@ -18,6 +18,9 @@
   registro + su prueba de conexión y sus ajustes.
 - Un archivo de configuración propio (hoy los ajustes viven en el `.env`).
 - La barra del chat no avisa cuando el modelo elegido no usa herramientas (contesta sin ellas).
+- Algunos modelos de Ollama dicen soportar herramientas (`capabilities: tools`) y no las usan: `phi4-mini` contesta con
+  texto en vez de pedirlas, y `qwen3:1.7b` las pide con el argumento vacío. Con `qwen3.5:4b` y `gemma4:e4b` andan.
+  Epsilon se fía de lo que Ollama declara, así que no puede avisar de estos casos.
 - Quizá, más adelante, una regla simple por tamaño (p. ej. «PDF de más de N páginas usa el modelo fuerte»).
 
 ## Reglas que siguen valiendo
