@@ -1,6 +1,6 @@
 import pytest
 
-from epsilon.ai import chat, usage
+from epsilon.ai import chat, llm, permissions, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store
 
@@ -160,3 +160,86 @@ def test_default_limit_ignores_a_hand_edited_value_out_of_range(monkeypatch, val
     monkeypatch.setenv("CHAT_LIMIT_USD", value)
 
     assert chat.default_limit() == chat.DEFAULT_LIMIT
+
+
+# --- turno con herramientas -----------------------------------------------------------
+
+PERM = [{"id": "perm:si", "label": "Sí"}, {"id": "perm:siempre", "label": "Siempre"}, {"id": "perm:no", "label": "No"}]
+
+
+def test_turns_skips_permission_questions():
+    conversations.start(CID, "ai", 1)
+    conversations.add_message(CID, "user", "buscame el ticket")
+    conversations.add_message(CID, "bot", "¿Puedo usar /ver?", actions=PERM)
+    conversations.add_message(CID, "bot", "Encontré el ticket.", ai=True)
+
+    assert chat.turns(CID, "gracias")[:2] == [("user", "buscame el ticket"), ("model", "Encontré el ticket.")]
+
+
+def test_turns_after_a_refused_permission_does_not_pair_anything():
+    conversations.start(CID, "ai", 1)
+    conversations.add_message(CID, "user", "buscame el ticket")
+    conversations.add_message(CID, "bot", "¿Puedo usar /ver?", actions=PERM)
+    conversations.add_message(CID, "bot", "Listo, no la uso.")
+    conversations.add_message(CID, "user", "otra cosa")
+
+    assert chat.turns(CID, "otra cosa") == [("user", "otra cosa")]
+
+
+@pytest.fixture
+def captured(monkeypatch):
+    calls = []
+
+    def fake(history, system, tools, max_tokens=1500):
+        calls.append({"history": list(history), "tools": tools, "action": usage._action.get()})
+        return llm.Step("ok", [], "turno-modelo")
+
+    monkeypatch.setattr(llm, "chat_tools", fake)
+    return calls
+
+
+def test_step_offers_only_non_denied_tools_by_id(captured):
+    chat.step(chat.begin(CID, "hola"))
+
+    names = [spec.name for spec in captured[0]["tools"]]
+    assert names == [tools_id(t) for t in permissions.offered()]
+    assert names and all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
+
+
+def tools_id(tool):
+    from epsilon import tools
+
+    return tools.ai_id(tool)
+
+
+def test_step_stops_offering_tools_after_the_cap(captured):
+    turn = chat.begin(CID, "hola")
+    turn.steps = chat.MAX_TOOL_STEPS
+
+    chat.step(turn)
+
+    assert captured[0]["tools"] == []
+
+
+def test_step_appends_model_turn_and_counts(captured):
+    turn = chat.begin(CID, "hola")
+
+    step = chat.step(turn)
+
+    assert turn.steps == 1 and step.text == "ok"
+    assert turn.history[-1] == "turno-modelo"
+
+
+def test_add_results_appends_one_turn(captured):
+    turn = chat.begin(CID, "hola")
+    before = len(turn.history)
+
+    chat.add_results(turn, [("ver", "hecho"), ("memoria", "nada")])
+
+    assert len(turn.history) == before + 1
+
+
+def test_step_cost_is_recorded_as_chat_action(captured):
+    chat.step(chat.begin(CID, "hola"))
+
+    assert captured[0]["action"] == "Chat"
