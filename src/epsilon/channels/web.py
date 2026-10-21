@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import socket
 import tempfile
+import threading
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -11,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
-from epsilon.ai import chat, usage
+from epsilon.ai import chat, permissions, usage
 from epsilon.data import conversations, library
 from epsilon.settings import checks, config
 from epsilon.voice import transcribe
@@ -127,6 +128,33 @@ class RevealIn(BaseModel):
 
 class LimitIn(BaseModel):
     usd: object  # el número lo valida conversations.set_limit (mensaje claro, sin repetir el valor)
+
+
+class PermissionsIn(BaseModel):
+    states: dict[str, str] = Field(max_length=50)  # id de herramienta -> allow | ask | deny
+
+
+# permissions.save escribe por un archivo temporal de nombre fijo: un guardado a la vez.
+PERMISSIONS_LOCK = threading.Lock()
+
+
+def permissions_view() -> dict:
+    """Lo que la página de permisos dibuja: cada herramienta de la IA con su estado."""
+    saved = permissions.load()
+    return {
+        "states": list(permissions.STATES),
+        "tools": [
+            {
+                "id": tools.ai_id(tool),
+                "label": tool.label,
+                "desc": tool.help or tool.panel or "",
+                "kind": tool.ai,
+                "state": saved[tools.ai_id(tool)],
+                "default": permissions.default_state(tool),
+            }
+            for tool in tools.ai_tools()
+        ],
+    }
 
 
 class TitleIn(BaseModel):
@@ -352,6 +380,20 @@ def create_app() -> FastAPI:
             "artifacts": conversations.artifacts(conversation_id),  # lo guardado, para «Contexto»
             **mode_json(conversation_id),  # «normal» o «ai» (con contexto, costo y límite)
         }
+
+    @app.get("/api/permissions")
+    def get_permissions():
+        return permissions_view()
+
+    @app.put("/api/permissions")
+    def put_permissions(body: PermissionsIn):
+        """Guarda el estado de todas las herramientas; si algo no cierra, no escribe nada."""
+        try:
+            with PERMISSIONS_LOCK:
+                permissions.save(body.states)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        return permissions_view()
 
     @app.put("/api/conversations/{conversation_id}/title")
     def rename_conversation(conversation_id: str, body: TitleIn):
