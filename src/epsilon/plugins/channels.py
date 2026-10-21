@@ -217,7 +217,7 @@ def settings_for(plugin: Plugin) -> list[config.Setting]:
     """Los ajustes de un plugin como los entiende config: los de su manifiesto (se editan en
     Configuración) más el interruptor <NOMBRE>_ENABLED (en la página Canales, «no» por defecto)."""
     result = [
-        config.Setting(s.key, s.label, secret=s.secret, live=True, validate=_validator(s))
+        config.Setting(s.key, s.label, secret=s.secret, live=True, validate=_validator(s), group=plugin.label)
         for s in plugin.settings
     ]
     result.append(

@@ -418,3 +418,12 @@ def test_the_channels_script_names_plugins_from_the_api_and_asks_before_turning_
     assert "invalid:" in script  # un plugin con manifiesto roto se muestra con su motivo
     code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
     assert "innerHTML" not in code
+
+
+def test_the_config_page_draws_plugin_fields_itself_with_text_content():
+    html, script = page("config.html"), page("config.js")
+
+    assert 'id="plugin-settings"' in html
+    assert "setting.group" in script and "plugin-settings" in script
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
+    assert "innerHTML" not in code

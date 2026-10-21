@@ -125,3 +125,30 @@ def test_a_plugin_whose_is_configured_raises_gives_409_with_the_reason(client, p
     reply = client.put("/api/channels/fake", json={"enabled": True, "confirmed": True})
 
     assert reply.status_code == 409 and "RuntimeError" in reply.json()["detail"]
+
+
+# --- Los ajustes de un plugin se cargan desde Configuración -------------------
+
+
+def test_config_lists_plugin_settings_grouped_by_plugin_even_if_added_while_running(client, plugins):
+    make_plugin(plugins, "fake", TOML, CODE)  # se copia con Epsilon ya andando
+
+    settings = {s["key"]: s for s in client.get("/api/config").json()["settings"]}
+
+    assert settings["FAKE_TOKEN"]["group"] == "Fake"
+    assert settings["FAKE_ENABLED"].get("group", "") == ""  # el interruptor vive en Canales
+    assert settings["GEMINI_API_KEY"]["group"] == ""
+
+
+def test_a_plugin_token_can_be_saved_from_the_config_api(client, plugins, monkeypatch):
+    make_plugin(plugins, "fake", TOML, CODE)
+    monkeypatch.setenv("FAKE_TOKEN", "")
+    monkeypatch.delenv("FAKE_TOKEN")
+    client.get("/api/config")  # la página lo descubre
+
+    reply = client.put("/api/config", json={"changes": {"FAKE_TOKEN": TOKEN}, "clear": []})
+
+    assert reply.status_code == 200
+    entry = next(s for s in reply.json()["settings"] if s["key"] == "FAKE_TOKEN")
+    assert entry["set"] is True and TOKEN not in reply.text
+    monkeypatch.delenv("FAKE_TOKEN")

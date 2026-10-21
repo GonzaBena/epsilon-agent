@@ -44,6 +44,9 @@ for (const input of document.querySelectorAll("[data-key]")) {
   fields[input.dataset.key] = input;
 }
 
+const pluginSection = document.getElementById("plugin-settings");
+const pluginFields = new Map(); // ajuste -> su bloque, para los campos que dibujamos nosotros
+
 let busy = false;
 let clearArmed = null; // ajuste cuyo «Borrar» está esperando confirmación
 
@@ -102,6 +105,57 @@ function syncSwitch(button) {
   button.setAttribute("aria-checked", String(button.value === "si"));
 }
 
+// Los ajustes de los plugins no están escritos en el HTML: se dibujan acá, uno por ajuste, con la
+// misma forma que los fijos (etiqueta, campo, ayuda y error) y todo con textContent.
+function drawPluginField(setting) {
+  const block = make("div", "field");
+  const id = `f-${setting.key}`;
+  const label = make("label", "", `${setting.group}: ${setting.label}`);
+  label.htmlFor = id;
+  const input = make("input");
+  input.id = id;
+  input.dataset.key = setting.key;
+  input.autocomplete = setting.secret ? "new-password" : "off";
+  input.spellcheck = false;
+  input.type = setting.secret ? "password" : "text";
+  input.setAttribute("aria-describedby", `hint-${setting.key} err-${setting.key}`);
+  if (setting.secret) {
+    const row = make("div", "secret-row");
+    const clear = make("button", "ghost danger", "Borrar");
+    clear.type = "button";
+    clear.dataset.clear = setting.key;
+    clear.hidden = true;
+    bindClear(clear);
+    row.append(input, clear);
+    block.append(label, row);
+  } else {
+    block.append(label, input);
+  }
+  const hint = make("p", "hint");
+  hint.id = `hint-${setting.key}`;
+  const error = make("p", "error");
+  error.id = `err-${setting.key}`;
+  error.setAttribute("role", "alert");
+  block.append(hint, error);
+  pluginSection.append(block);
+  fields[setting.key] = input;
+  pluginFields.set(setting.key, block);
+}
+
+// Dibuja los campos que faltan y saca los de un plugin que ya no está.
+function syncPluginFields(settings) {
+  const wanted = settings.filter((setting) => setting.group);
+  const keys = new Set(wanted.map((setting) => setting.key));
+  for (const [key, block] of pluginFields) {
+    if (keys.has(key)) continue;
+    block.remove();
+    pluginFields.delete(key);
+    delete fields[key];
+  }
+  for (const setting of wanted) if (!pluginFields.has(setting.key)) drawPluginField(setting);
+  pluginSection.hidden = pluginFields.size === 0;
+}
+
 function renderSetting(setting) {
   const input = fields[setting.key];
   if (!input) return; // un ajuste que esta página no muestra (solo lectura, por ejemplo)
@@ -139,6 +193,7 @@ function renderSetting(setting) {
 }
 
 function render(state) {
+  syncPluginFields(state.settings);
   for (const setting of state.settings) {
     renderSetting(setting);
     if (setting.key === "DATA_DIR") dataDir.textContent = setting.value;
@@ -256,7 +311,7 @@ function resetClear() {
   for (const button of document.querySelectorAll("[data-clear]")) button.textContent = "Borrar";
 }
 
-for (const button of document.querySelectorAll("[data-clear]")) {
+function bindClear(button) {
   button.addEventListener("click", () => {
     if (busy) return;
     const key = button.dataset.clear;
@@ -271,6 +326,8 @@ for (const button of document.querySelectorAll("[data-clear]")) {
     save({}, [key]);
   });
 }
+
+for (const button of document.querySelectorAll("[data-clear]")) bindClear(button);
 
 // --- Borrar el modelo de voz (en dos pasos, como las claves) ----------------------------------
 voiceModelDelete.addEventListener("click", async () => {

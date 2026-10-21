@@ -425,6 +425,9 @@ def create_app() -> FastAPI:
         return channels_state()
 
     def config_state() -> dict:
+        from epsilon import main
+
+        main.refresh_plugins()  # un plugin copiado con Epsilon andando ya muestra sus ajustes
         # Sin secretos: de las claves solo sale si están cargadas y su largo.
         return {
             "settings": config.status(),
@@ -510,6 +513,9 @@ def create_app() -> FastAPI:
 
     @app.put("/api/config")
     def put_config(body: ConfigIn):
+        from epsilon import main
+
+        main.refresh_plugins()  # que sus ajustes existan antes de validar lo que llega
         try:
             config.update(body.changes, body.clear)
         except config.ConfigError as e:

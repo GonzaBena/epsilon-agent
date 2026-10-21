@@ -94,6 +94,7 @@ class Setting:
     validate: object = None  # función de arriba; None si no es editable
     default: str = ""  # lo que se usa (y se muestra) si el ajuste no está definido
     page: str = "config"  # en qué página de la web se edita: «config» o «canales»
+    group: str = ""  # de qué plugin es (su nombre): la página de configuración lo dibuja aparte
 
 
 SETTINGS = (
@@ -268,6 +269,7 @@ def status(env_file: Path | None = None) -> list[dict]:
             "editable": s.editable,
             "live": s.live,
             "set": bool(current),
+            "group": s.group,
         }
         if s.secret:
             entry["length"] = len(current) if current else None  # solo el largo
