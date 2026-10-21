@@ -158,4 +158,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Memoria, siguientes pasos: pasársela a los resúmenes; que el modelo guarde sola vía MCP.
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
+- Varios modelos y proveedores (v2): hoy solo Gemini. Primero separar `ai/llm.py` en proveedores (Gemini como único
+  backend), después Anthropic y Ollama, y por último elegir el modelo por tipo de tarea desde Configuración (no se
+  intenta adivinar si una tarea es simple o intensa). Ver `docs/plan-modelos.md`.
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).
