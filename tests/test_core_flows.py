@@ -473,7 +473,7 @@ def ai_mode(monkeypatch):
     monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
     calls = []
 
-    def fake_chat(history, system, tools, max_tokens=1500):
+    def fake_chat(history, system, tools, max_tokens=1500, allow_calls=True):
         calls.append(as_pairs(history))
         usage.record("modelo-a", 1_000_000, 0)
         return ai_step("respuesta de la IA")
@@ -604,7 +604,7 @@ def test_two_simultaneous_requests_cannot_both_pass_the_limit(ai_mode, monkeypat
     conversations.start(AI_CID, "ai", 1.0)  # alcanza para UNA respuesta (cada una cuesta US$ 1)
     calls = []
 
-    def slow_chat(history, system, tools, max_tokens=1500):
+    def slow_chat(history, system, tools, max_tokens=1500, allow_calls=True):
         calls.append(history)
         time.sleep(0.2)  # tiempo de sobra para que el otro pedido llegue al chequeo
         usage.record("modelo-a", 1_000_000, 0)
@@ -636,7 +636,7 @@ def test_requests_in_different_conversations_do_not_wait_for_each_other(ai_mode,
     inside = threading.Event()
     release = threading.Event()
 
-    def blocking_chat(history, system, tools, max_tokens=1500):
+    def blocking_chat(history, system, tools, max_tokens=1500, allow_calls=True):
         inside.set()
         release.wait(timeout=5)
         return ai_step("respuesta")

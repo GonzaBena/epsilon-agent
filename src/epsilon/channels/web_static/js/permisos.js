@@ -95,7 +95,13 @@ function adopt(data) {
 }
 
 async function request(options) {
-  const response = await fetch("/api/permissions", options);
+  let response;
+  try {
+    response = await fetch("/api/permissions", options);
+  } catch {
+    // fetch solo falla así si el servidor no contesta: el mismo aviso que las otras páginas.
+    throw new Error("No pude conectar con Epsilon. ¿Sigue corriendo?");
+  }
   let data = null;
   try {
     data = await response.json();

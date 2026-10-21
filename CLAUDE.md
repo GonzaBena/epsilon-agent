@@ -57,7 +57,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   al día; un plugin nuevo aparece apagado. Prenderlo desde la web exige confirmar (corre dentro de Epsilon y ve
   tus claves). Memoria y voz NO son plugins; las integraciones serán MCP (otro proyecto). Ver `docs/plan-plugins.md`.
 - `channels/web.py` y `channels/web_static/` (las páginas `*.html` en la raíz, `css/style.css`,
-  `js/` con app, config, canales, uso, biblioteca y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
+  `js/` con app, config, canales, uso, biblioteca, permisos y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
   HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso · Permisos; en el menú de la izquierda, Chat · Biblioteca · Permisos y
   Configuración abajo de todo. `/permisos` edita qué herramientas puede usar la IA (permitir / preguntar / bloquear; `GET/PUT /api/permissions`). `/biblioteca` muestra notas, archivos y tickets en una cuadrícula con buscador y
   filtros, **solo lectura** (no crea conversaciones): al tocar uno se abre ahí mismo y se puede abrir su carpeta
@@ -93,7 +93,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `data/library.py`: la biblioteca de la web (listar con búsqueda, filtro y páginas; abrir; abrir la carpeta). Solo
   lee: todo pasa por `safe_path` y por la lista de extensiones; los resúmenes no se muestran.
-- `ai/llm.py`: ÚNICO lugar que llama a Gemini (`generate` de un disparo, `chat` de varios turnos).
+- `ai/llm.py`: ÚNICO lugar que llama a Gemini (`generate` de un disparo, `chat_tools` la llamada con herramientas).
 - `ai/chat.py`: el **modo IA** (conversación libre con la IA, solo web). El modo se elige al crear la conversación
   (línea `meta` con `mode: ai`) y no cambia; las normales nunca usan IA libre. Al modelo le llegan solo lo que
   escribís y lo que la IA contestó (no la salida de comandos ni adjuntos) más la memoria. En modo IA el modelo puede pedir herramientas: `chat.begin/step/add_results` arman el historial y `core` decide y ejecuta según

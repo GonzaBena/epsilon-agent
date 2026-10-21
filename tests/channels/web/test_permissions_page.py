@@ -50,6 +50,12 @@ def test_the_script_guards_leaving_with_unsaved_changes():
     assert "Guardar" in page("permisos.html") and "Quedarse" in page("permisos.html")
 
 
+def test_a_network_failure_shows_the_same_message_as_the_other_pages():
+    message = "No pude conectar con Epsilon. ¿Sigue corriendo?"
+
+    assert message in page("permisos.js") and message in page("config.js")
+
+
 def test_there_are_no_profiles():
     for name in ("permisos.html", "permisos.js"):
         for word in ("Estricto", "Equilibrado", "Libre"):

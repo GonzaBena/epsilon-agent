@@ -167,9 +167,15 @@ def test_turns_after_a_refused_permission_does_not_pair_anything():
 def captured(monkeypatch):
     calls = []
 
-    def fake(history, system, tools, max_tokens=1500):
+    def fake(history, system, tools, max_tokens=1500, allow_calls=True):
         calls.append(
-            {"history": list(history), "tools": tools, "action": usage._action.get(), "max_tokens": max_tokens}
+            {
+                "history": list(history),
+                "tools": tools,
+                "action": usage._action.get(),
+                "max_tokens": max_tokens,
+                "allow_calls": allow_calls,
+            }
         )
         return llm.Step("ok", [], "turno-modelo")
 
@@ -196,15 +202,17 @@ def test_step_caps_the_output_tokens(captured):
     assert 0 < captured[0]["max_tokens"] <= 2000
 
 
-def test_step_stops_offering_tools_after_the_cap(captured):
+def test_step_forbids_calls_after_the_cap_but_keeps_the_declarations(captured):
     turn = chat.begin(CID, "hola")
     turn.steps = chat.MAX_TOOL_STEPS - 1
     chat.step(turn)
     turn.steps = chat.MAX_TOOL_STEPS
     chat.step(turn)
 
-    assert captured[0]["tools"] != []
-    assert captured[1]["tools"] == []
+    # El historial trae llamadas y respuestas de herramientas: sin declaraciones Gemini puede rechazarlo.
+    assert captured[0]["tools"] and captured[1]["tools"] == captured[0]["tools"]
+    assert captured[0]["allow_calls"] is True
+    assert captured[1]["allow_calls"] is False
 
 
 def test_step_appends_model_turn_and_counts(captured):

@@ -377,7 +377,7 @@ def ai_web(monkeypatch):
     monkeypatch.setenv("CHAT_LIMIT_USD", "")
     monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
 
-    def fake_chat(history, system, tools, max_tokens=1500):
+    def fake_chat(history, system, tools, max_tokens=1500, allow_calls=True):
         usage.record("modelo-a", 1_000_000, 0)
         return core.llm.Step("respuesta de la IA", [], core.llm.text_turn("model", "respuesta de la IA"))
 

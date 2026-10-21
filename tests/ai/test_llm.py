@@ -130,6 +130,30 @@ def test_chat_tools_declares_tools_and_disables_automatic_calling(monkeypatch):
     assert config.max_output_tokens == 300
 
 
+def test_chat_tools_by_default_lets_the_model_call(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
+    monkeypatch.setattr(llm.genai, "Client", tools_client(seen=seen))
+    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
+
+    real_chat_tools([llm.text_turn("user", "hola")], "sistema", SPECS)
+
+    assert seen["config"].tool_config is None
+
+
+def test_chat_tools_without_calls_keeps_the_declarations_and_forbids_calling(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
+    monkeypatch.setattr(llm.genai, "Client", tools_client(seen=seen))
+    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
+
+    real_chat_tools([llm.text_turn("user", "hola")], "sistema", SPECS, allow_calls=False)
+
+    config = seen["config"]
+    assert [d.name for d in config.tools[0].function_declarations] == ["ver", "notas"]
+    assert config.tool_config.function_calling_config.mode == llm.types.FunctionCallingConfigMode.NONE
+
+
 def test_chat_tools_without_tools_sends_none(monkeypatch):
     seen = {}
     monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")

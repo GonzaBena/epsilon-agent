@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -34,8 +35,8 @@ def script(tmp_path, monkeypatch):
         conversations.start(cid, "ai", 5)
     s = SimpleNamespace(steps=[], seen=[], tokens=1000)
 
-    def fake(history, system, offered, max_tokens=1500):
-        s.seen.append((list(history), [t.name for t in offered]))
+    def fake(history, system, offered, max_tokens=1500, allow_calls=True):
+        s.seen.append((list(history), [t.name for t in offered] if allow_calls else []))
         usage.record("modelo-a", s.tokens, 0)
         return s.steps.pop(0)
 
@@ -135,7 +136,7 @@ def test_write_tool_asks_with_three_buttons_and_runs_nothing(script):
 
     reply = say("anotá que tengo que comprar pan")
 
-    assert reply.text == "La IA quiere usar + texto con: comprar pan" and not reply.ai
+    assert reply.text == "La IA quiere usar + texto con:\n```\ncomprar pan\n```" and not reply.ai
     assert [(a.id, a.label) for a in reply.actions] == [
         ("perm:si", "Sí"),
         ("perm:siempre", "Sí, por el resto de la conversación"),
@@ -145,13 +146,41 @@ def test_write_tool_asks_with_three_buttons_and_runs_nothing(script):
     assert core.SESSIONS[f"web:{CID}"].pending_tool is not None
 
 
-def test_question_redacts_and_trims_the_argument(script, monkeypatch):
+def test_question_redacts_and_trims_the_argument_and_says_how_much_is_left(script, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
-    script.steps = [step(calls=[("nota", f"{KEY} " + "y" * 1000)])]
+    arg = f"{KEY} " + "y" * 1000  # redactada queda «*** » + 1000 = 1004 caracteres
+    script.steps = [step(calls=[("nota", arg)])]
 
     reply = say("anotá")
 
-    assert KEY not in reply.text and len(reply.text) < 400
+    assert KEY not in reply.text
+    assert reply.text.endswith(f"\n… (y {1004 - core.MAX_QUESTION_ARG} caracteres más)")
+    body = reply.text.split("\n")[2]
+    assert len(body) == core.MAX_QUESTION_ARG
+
+
+@pytest.mark.parametrize(
+    "arg",
+    [
+        "[texto inocente](http://oculto.example)",
+        "visible\n\n[x]: http://oculto.example",
+        "antes\n```\nfuera del bloque\n```\ndespués",
+        "````cuatro```` y `uno`",
+        "*énfasis* \\_escape\\_ <b>html</b>",
+    ],
+)
+def test_question_shows_the_argument_inside_a_fence_it_cannot_close(script, arg):
+    script.steps = [step(calls=[("nota", arg)])]
+
+    reply = say("anotá")
+
+    header, _, rest = reply.text.partition("\n")
+    assert header == "La IA quiere usar + texto con:"
+    fence = rest.partition("\n")[0]
+    assert set(fence) == {"`"} and len(fence) >= 3
+    assert rest == f"{fence}\n{arg}\n{fence}"
+    longest = max((len(run) for run in re.findall("`+", arg)), default=0)
+    assert len(fence) > longest  # ninguna línea del argumento puede cerrar el bloque
 
 
 def test_yes_runs_the_tool_and_resumes_the_turn(script):
@@ -280,6 +309,56 @@ def test_a_new_message_drops_the_pending_question(script):
     assert inbox() == ""
 
 
+def test_question_carries_what_earlier_tools_saved_and_the_end_does_not_repeat_it(script):
+    allow("nota")
+    script.steps = [step(calls=[("nota", "pan"), ("recordar", "me gusta el pan")]), step("listo")]
+
+    question = say("anotá y recordá")
+
+    assert question.actions
+    assert [(a.kind, a.path) for a in question.artifacts] == [("note", "inbox.md")]
+    final = press("perm:si")
+    assert final.text == "listo" and final.artifacts == []
+
+
+def test_ai_note_argument_is_redacted(script, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    allow("nota")
+    script.steps = [step(calls=[("nota", f"mi clave {KEY}")]), step("ok")]
+
+    say("anotá mi clave")
+
+    assert "mi clave ***" in inbox() and KEY not in inbox()
+
+
+def test_every_permission_answer_takes_the_conversation_lock(script, monkeypatch):
+    script.steps = [step(calls=[("nota", "pan")])]
+    say("anotá pan")
+    taken = []
+    real = core._ai_lock
+
+    def recording(cid):
+        taken.append(cid)
+        return real(cid)
+
+    monkeypatch.setattr(core, "_ai_lock", recording)
+
+    reply = press("perm:no")
+
+    assert taken == [CID] and reply.text.startswith("Dijiste que no")
+
+
+def test_no_is_answered_even_when_the_conversation_reached_its_limit(script):
+    script.steps = [step(calls=[("nota", "pan")])]
+    say("anotá pan")
+    conversations.set_limit(CID, 0.01)
+    usage_tokens = 1_000_000
+    with usage.conversation(CID), usage.action("Chat"):
+        usage.record("modelo-a", usage_tokens, 0)  # US$ 1: ya pasó el límite
+
+    assert press("perm:no").text.startswith("Dijiste que no")
+
+
 def test_uses_ai_for_perm_yes_but_not_no():
     assert core._uses_ai(core.Message(action="perm:si"))
     assert core._uses_ai(core.Message(action="perm:siempre"))
@@ -360,6 +439,40 @@ def test_limit_reached_mid_turn_stops_with_the_reason(script):
     assert len(script.seen) == 1
 
 
+def test_a_tool_that_uses_ai_does_not_run_once_the_limit_is_reached(script, monkeypatch):
+    allow("nota")
+    allow("resumir")
+    notes.save_note("viejo", "- algo")
+
+    summarized = []  # sin excepción: _execute la atraparía y el test no vería nada
+    monkeypatch.setattr(
+        core.summarize, "summarize_and_save", lambda path: summarized.append(path) or ("viejo-resumen", "texto")
+    )
+    conversations.set_limit(CID, 1.0)
+    script.tokens = 1_000_000  # la primera llamada ya llega al límite
+    script.steps = [step(calls=[("nota", "pan"), ("resumir", "viejo")]), step("nunca")]
+
+    reply = say("anotá y resumí")
+
+    assert "límite" in reply.text and not reply.ai
+    assert [(a.kind, a.path) for a in reply.artifacts] == [("note", "inbox.md")]
+    assert len(script.seen) == 1
+    assert summarized == []
+
+
+def test_too_many_calls_in_one_step_are_not_run(script, monkeypatch):
+    ran = []
+    monkeypatch.setitem(core.AI_RUNNERS, "buscar", lambda args: ran.append(args) or core.Reply("nada"))
+    script.steps = [step(calls=[("buscar", str(n)) for n in range(10)]), step("ok")]
+
+    say("buscá mucho")
+
+    assert len(ran) == core.MAX_CALLS_PER_STEP == 8
+    sent = results(script.seen[1][0])
+    assert len(sent) == 10
+    assert sent[8:] == ["Demasiadas herramientas a la vez."] * 2
+
+
 def test_calls_after_the_step_cap_are_ignored(script, monkeypatch):
     monkeypatch.setattr(core.chat, "MAX_TOOL_STEPS", 1)
     script.steps = [step(calls=[("buscar", "x")]), step("cierro", calls=[("buscar", "y")])]
@@ -367,4 +480,4 @@ def test_calls_after_the_step_cap_are_ignored(script, monkeypatch):
     reply = say("buscá")
 
     assert reply.text == "cierro" and reply.ai
-    assert script.seen[1][1] == []  # al segundo llamado ya no se le ofrecían herramientas
+    assert script.seen[1][1] == []  # al segundo llamado ya no podía pedir herramientas

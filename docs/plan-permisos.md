@@ -21,16 +21,23 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-permisos-tools-design.md`. 
   pide una (o una que no existe), `decide` da `block`, no se ejecuta y se le contesta «Herramienta no
   disponible.». Los permisos se aplican en código; el prompt no es una defensa.
 - **Las tres respuestas** (botones `perm:si`, `perm:siempre`, `perm:no`) cuando una herramienta en `ask` se
-  pide: la pregunta muestra la herramienta y sus datos (redactados, hasta 300 caracteres).
+  pide: la pregunta muestra la herramienta y sus datos (redactados, hasta 300 caracteres y, si hay más,
+  «… (y N caracteres más)»), dentro de un bloque de código que el texto de la IA no puede cerrar: la web
+  pasa los mensajes por markdown y así un enlace o una definición no esconden nada. Si antes otra
+  herramienta guardó algo en el mismo turno, la pregunta ya lo lleva.
   - **Sí**: corre esta vez.
   - **Sí, por el resto de la conversación**: `permissions.grant` la deja correr sin preguntar en esa
     conversación hasta que Epsilon se reinicie. No pisa un `deny` (se chequea de nuevo al responder).
   - **No**: se corta el turno; no se ejecuta ni se vuelve a llamar al modelo.
-- **Tope de vueltas.** `chat.MAX_TOOL_STEPS` (6) llamadas al modelo por mensaje; pasado el tope ya no se le
-  ofrecen herramientas y, si igual pide alguna, no se ejecuta. Cada vuelta chequea el límite de costo de la
-  conversación (ver `docs/plan-chat-ia.md`).
-- **La pregunta pendiente vive en memoria** (`Session.pending_tool`): se pierde al reiniciar y un mensaje nuevo
-  la descarta. Un botón viejo o de otra conversación contesta «Esa pregunta ya no está vigente».
+- **Tope de vueltas.** Hasta `chat.MAX_TOOL_STEPS` (6) llamadas al modelo por mensaje pueden pedir
+  herramientas, más una última que ya no puede (las declaraciones van igual, con `allow_calls=False`): 7
+  llamadas como mucho. Si igual pide alguna, no se ejecuta. Por respuesta del modelo se atienden hasta
+  `core.MAX_CALLS_PER_STEP` (8) llamadas; las demás reciben «Demasiadas herramientas a la vez.». Cada vuelta
+  chequea el límite de costo de la conversación (ver `docs/plan-chat-ia.md`), y también antes de correr una
+  herramienta que gasta IA (`/resumir`).
+- **La pregunta pendiente vive en memoria** (`Session.pending_tool`): se pierde al reiniciar, y la descarta un
+  mensaje nuevo de texto libre en esa conversación (lo que vuelve a hablar con la IA; un comando o una nota no).
+  Toda respuesta a un permiso (Sí o No) toma el candado de la conversación: dos a la vez no actúan las dos. Un botón viejo o de otra conversación contesta «Esa pregunta ya no está vigente».
 - **Qué ve el modelo.** `chat.begin/step/add_results` arman el historial con sus pedidos y los resultados;
   la salida de las herramientas nunca se guarda como respuesta de la IA.
 - **Web.** `/permisos` (`permisos.html`, `js/permisos.js`) lista cada herramienta con su estado (permitir,

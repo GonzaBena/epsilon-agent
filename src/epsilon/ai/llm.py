@@ -101,11 +101,13 @@ def _declaration(tool: ToolSpec) -> types.FunctionDeclaration:
 
 
 def chat_tools(
-    history: list, system: str, tools: list[ToolSpec], max_tokens: int = 1500
+    history: list, system: str, tools: list[ToolSpec], max_tokens: int = 1500, allow_calls: bool = True
 ) -> Step:
     """Un paso de conversación con herramientas. `history` son turnos (text_turn / results_turn / Step.turn).
 
-    El modelo solo PIDE las llamadas: Epsilon decide si las ejecuta (por eso no hay llamada automática)."""
+    El modelo solo PIDE las llamadas: Epsilon decide si las ejecuta (por eso no hay llamada automática).
+    Con allow_calls=False las herramientas se siguen declarando (el historial las nombra) pero el modelo
+    no puede pedir ninguna: tiene que cerrar con texto."""
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     model = _model()
     response = client.models.generate_content(
@@ -116,6 +118,9 @@ def chat_tools(
             max_output_tokens=max_tokens,  # tope de salida, para controlar el costo
             tools=[types.Tool(function_declarations=[_declaration(t) for t in tools])] if tools else None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            tool_config=None
+            if allow_calls
+            else types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE")),
         ),
     )
     _record_usage(model, response)

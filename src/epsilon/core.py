@@ -523,7 +523,10 @@ def _ai_lock(conversation_id: str) -> threading.Lock:
 MAX_RESULT_CHARS = 4000
 # Tope del argumento que se muestra en la pregunta de permiso.
 MAX_QUESTION_ARG = 300
+# Llamadas a herramientas que se atienden por respuesta del modelo; las demás no se ejecutan.
+MAX_CALLS_PER_STEP = 8
 UNAVAILABLE = "Herramienta no disponible."
+TOO_MANY = "Demasiadas herramientas a la vez."
 STALE = "Esa pregunta ya no está vigente. Escribí de nuevo lo que querías."
 
 
@@ -553,7 +556,7 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         except Exception as e:
             print(f"Error en el chat: {config.redact(repr(e))}")  # el detalle, a la terminal
             return Reply("No pude responder.", artifacts=artifacts)
-        # Pasado el tope de pasos no se le ofrecieron herramientas: si igual pide alguna, no se ejecuta.
+        # Pasado el tope de pasos el modelo ya no podía pedir herramientas: si igual pide alguna, no se ejecuta.
         if not step.calls or turn.steps > chat.MAX_TOOL_STEPS:
             # Sin texto (por ejemplo, la IA bloqueó la respuesta): no se guarda como si fuera una respuesta.
             if not step.text or not step.text.strip():
@@ -567,20 +570,38 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
 def _run_calls(state: PendingTool, session: Session) -> Reply | None:
     """Recorre las llamadas pedidas desde `state.index`. El permiso lo decide el código, no el modelo:
     «run» ejecuta, «block» (bloqueada o desconocida) contesta que no está, «ask» frena y pregunta.
-    Si terminó, deja los resultados en el historial y devuelve None."""
+    Si terminó, deja los resultados en el historial y devuelve None; si hay que frenar (preguntar, o el
+    límite de costo), devuelve esa respuesta."""
     cid = state.turn.conversation_id
     for index in range(state.index, len(state.step.calls)):
         name, args = state.step.calls[index]
+        if index >= MAX_CALLS_PER_STEP:
+            state.results.append((name, TOO_MANY))
+            continue
         decision = permissions.decide(cid, name)
-        if decision == "run":
-            state.results.append((name, _execute(name, args, state.artifacts)))
-        elif decision == "ask":
+        if decision == "ask":
             state.index = index
             session.pending_tool = state
-            return _question(name, args)
+            # Lo que ya guardaron las anteriores va con la pregunta (y no se repite al terminar).
+            question = _question(name, args)
+            question.artifacts, state.artifacts = state.artifacts, []
+            return question
+        if decision == "run":
+            if stop := _run(state, name, args):
+                return stop
         else:
             state.results.append((name, UNAVAILABLE))
     chat.add_results(state.turn, state.results)
+    return None
+
+
+def _run(state: PendingTool, name: str, args: str) -> Reply | None:
+    """Ejecuta una llamada permitida. Una herramienta que gasta IA (/resumir) no corre si la
+    conversación ya llegó a su límite: se corta el turno con el motivo."""
+    tool = _ai_tool(name)
+    if tool and tool.uses_ai and (status := chat.status(state.turn.conversation_id))["blocked"]:
+        return Reply(status["reason"], artifacts=state.artifacts)
+    state.results.append((name, _execute(name, args, state.artifacts)))
     return None
 
 
@@ -606,15 +627,26 @@ def _ai_tool(tool_id: str) -> tools.Tool | None:
 def _question(tool_id: str, args: str) -> Reply:
     """El pedido de permiso: qué herramienta y con qué datos (no es una respuesta de la IA)."""
     tool = _ai_tool(tool_id)
-    shown = config.redact(args)[:MAX_QUESTION_ARG]
+    full = config.redact(args)
+    shown = full[:MAX_QUESTION_ARG]
+    more = f"\n… (y {len(full) - len(shown)} caracteres más)" if len(full) > len(shown) else ""
     return Reply(
-        f"La IA quiere usar {tool.label} con: {shown}",
+        f"La IA quiere usar {tool.label} con:\n{_fenced(shown)}{more}",
         actions=[
             Action("perm:si", "Sí"),
             Action("perm:siempre", "Sí, por el resto de la conversación"),
             Action("perm:no", "No"),
         ],
     )
+
+
+def _fenced(text: str) -> str:
+    """El texto en un bloque de código: la web pasa los mensajes por markdown, y lo que manda la IA
+    tiene que verse tal cual (un enlace o una definición «[x]: …» no pueden esconder nada). La valla es
+    más larga que cualquier tira de comillas invertidas del texto, así el texto no la puede cerrar."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}\n{text}\n{fence}"
 
 
 def _answer_permission(answer: str, msg: Message, session: Session) -> Reply:
@@ -637,8 +669,8 @@ def _answer_permission(answer: str, msg: Message, session: Session) -> Reply:
     # Si mientras esperaba la bloqueaste en la configuración, el «sí» ya no alcanza.
     if permissions.decide(state.turn.conversation_id, name) == "block":
         state.results.append((name, UNAVAILABLE))
-    else:
-        state.results.append((name, _execute(name, args, state.artifacts)))
+    elif stop := _run(state, name, args):
+        return stop
     state.index += 1
     question = _run_calls(state, session)
     if question:
@@ -672,7 +704,7 @@ COMMANDS = {
 # Herramienta de la IA (su id en tools.ai_id) -> función que la ejecuta con el argumento en texto.
 # Sin estado de sesión: las que lo piden reciben una Session() descartable, así la IA no toca la tuya.
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
-    "nota": lambda args: _save("+ " + args),
+    "nota": lambda args: _save("+ " + config.redact(args)),
     "ver": _watch,
     "buscar": _search,
     "archivos": _files,
@@ -692,8 +724,9 @@ def handle(msg: Message) -> Reply:
     ai_conversation = _is_ai_conversation(msg)
     with usage.channel("Telegram" if msg.session_id.startswith("telegram:") else "Web"):
         with usage.conversation(msg.conversation_id if ai_conversation else None):
-            # Lo que usa IA en una conversación de modo IA se hace de a uno (ver _ai_lock).
-            serial = ai_conversation and _uses_ai(msg)
+            # Lo que usa IA en una conversación de modo IA se hace de a uno (ver _ai_lock). Las respuestas
+            # a un permiso también, «No» incluido: un Sí y un No a la vez no pueden actuar los dos.
+            serial = ai_conversation and (_uses_ai(msg) or (msg.action or "").startswith("perm:"))
             lock = _ai_lock(msg.conversation_id) if serial else nullcontext()
             with lock:
                 reply = _dispatch(msg)

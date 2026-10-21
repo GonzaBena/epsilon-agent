@@ -13,7 +13,9 @@ from epsilon.settings import config
 
 DEFAULT_LIMIT = 0.5  # US$, si el ajuste CHAT_LIMIT_USD no está
 MAX_TOKENS = 1500  # tope de salida de cada respuesta
-MAX_TOOL_STEPS = 6  # llamadas al modelo por mensaje; pasado el tope ya no se le ofrecen herramientas
+# Llamadas al modelo por mensaje que pueden pedir herramientas; pasado el tope hay una última que ya no
+# puede pedir ninguna y cierra con texto (hasta MAX_TOOL_STEPS + 1 = 7 llamadas por mensaje).
+MAX_TOOL_STEPS = 6
 
 SYSTEM = (
     "Sos Epsilon, el asistente personal del usuario. Respondé en español, claro y breve. "
@@ -105,10 +107,11 @@ def _specs() -> list[llm.ToolSpec]:
 
 
 def step(turn: Turn) -> llm.Step:
-    """Una llamada al modelo. Pasado el tope de pasos no se ofrecen herramientas, para que cierre con texto."""
-    offered = _specs() if turn.steps < MAX_TOOL_STEPS else []
+    """Una llamada al modelo. Pasado el tope de pasos no puede pedir herramientas, para que cierre con texto.
+    Las declaraciones van igual: el historial ya trae llamadas y respuestas que las nombran."""
+    allow_calls = turn.steps < MAX_TOOL_STEPS
     with usage.action("Chat"):
-        result = llm.chat_tools(turn.history, system_prompt(), offered, MAX_TOKENS)
+        result = llm.chat_tools(turn.history, system_prompt(), _specs(), MAX_TOKENS, allow_calls=allow_calls)
     turn.history.append(result.turn)
     turn.steps += 1
     return result
