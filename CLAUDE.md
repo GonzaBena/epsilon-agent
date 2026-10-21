@@ -86,10 +86,10 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
 - `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
   panel de la web vía `GET /api/tools` y comandos que un enlace `/?cmd=` ejecuta solo). Un comando
-  nuevo = una entrada acá + su función en `core.COMMANDS`. Ver `docs/plan-tools.md`.
+  nuevo = una entrada acá + su función en `core.COMMANDS`. Lo que el modelo lee de cada herramienta de IA: `ai_help` (para qué sirve) y `ai_arg` (qué va en su argumento, dicho SIN la sintaxis del comando: un modelo chico copia el «+ » o el «/recordar»; `core._bare` los quita si igual los manda). Ver `docs/plan-tools.md`.
 - `memory/store.py`: la memoria (`remember`/`read` sobre `DATA_DIR/memory.md`, solo se agrega, una línea con fecha por dato,
-  máx. 500 caracteres, pasa por `config.redact`). Comandos `/recordar texto`, `/memoria` (numerada), `/olvidar N` (pide confirmar) y `/editar N texto`; sin modelo. Olvidar y editar reescriben el archivo (excepción a «solo agregar», por archivo temporal). Más adelante una
-  herramienta MCP usará las mismas dos funciones para que el modelo guarde memoria solo.
+  máx. 500 caracteres, pasa por `config.redact`). Comandos `/recordar texto`, `/memoria` (numerada), `/olvidar N` (pide confirmar) y `/editar N texto`; sin modelo. Olvidar y editar reescriben el archivo (excepción a «solo agregar», por archivo temporal). En modo IA el
+  modelo usa las mismas funciones como herramientas (`recordar`, `memoria`, `editar`, `olvidar`), con permisos.
 - `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `data/library.py`: la biblioteca de la web (listar con búsqueda, filtro y páginas; abrir; abrir la carpeta). Solo
   lee: todo pasa por `safe_path` y por la lista de extensiones; los resúmenes no se muestran.
@@ -156,10 +156,11 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 
 - Más adelante: Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
   cumpla ese papel serían skills.
-- Modo IA, siguientes pasos: MCP, y que el modelo guarde memoria solo; buscar en
-  notas y tickets (p. ej. «¿qué día hice esta compra?») llega con las tools. Telegram en modo IA quedó afuera.
+- Modo IA, siguientes pasos: MCP. El modelo ya guarda memoria solo y busca/lista (`buscar`, `ver`, `archivos`); falta
+  buscar por el CONTENIDO de los tickets (p. ej. «¿qué día hice esta compra?»: `archivos` filtra solo por nombre). Telegram en modo IA quedó afuera.
+  Limitación conocida: en un chat de modo IA, un mensaje que empieza con `/` y no es un comando muestra la ayuda en vez de llegar al modelo (p. ej. una ruta pegada).
 - Archivos en el chat, parte 2: que la IA genere archivos (p. ej. una presentación `.pptx` con `python-pptx`) a partir de los que se mencionan con `@`. Puede ser una herramienta propia de `tools.py` (pasa por los mismos permisos) o MCP. Hoy la respuesta es solo texto.
-- Memoria, siguientes pasos: que el modelo la guarde sola vía MCP. No se le pasa a los resúmenes, salvo que el resumen se pida dentro de un chat de modo IA (ahí ya la recibe).
+- Memoria: el modelo ya la maneja con las herramientas `recordar`/`memoria`/`editar`/`olvidar` (con permisos). No se le pasa a los resúmenes, salvo que el resumen se pida dentro de un chat de modo IA (ahí ya la recibe).
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
 - Más proveedores (Anthropic, OpenAI…): uno por vez, como un archivo nuevo en `ai/providers/`. Y un archivo de configuración propio (hoy los ajustes viven en el `.env`). Ver `docs/plan-modelos.md`.
