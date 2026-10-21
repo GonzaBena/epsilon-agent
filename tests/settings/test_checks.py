@@ -43,7 +43,7 @@ def test_secrets_never_reach_the_message(monkeypatch):
 
 
 def test_known_targets():
-    assert set(checks.CHECKS) == {"gemini", "telegram"}
+    assert set(checks.CHECKS) == {"gemini", "ollama", "telegram"}
 
 
 def test_telegram_check_uses_the_saved_token_not_a_running_one(monkeypatch, tmp_path):
@@ -57,3 +57,34 @@ def test_telegram_check_uses_the_saved_token_not_a_running_one(monkeypatch, tmp_
     checks.CHECKS["telegram"]()
 
     assert seen == [token]
+
+
+def test_the_ollama_check_names_the_default_model_when_it_is_local(monkeypatch):
+    from epsilon.ai import llm
+
+    monkeypatch.setenv("AI_MODEL", "ollama:qwen3")
+    monkeypatch.setattr(llm, "check", lambda provider="gemini": "qwen3" if provider == "ollama" else "x")
+
+    assert "qwen3" in checks.run("ollama")["detail"] and checks.run("ollama")["ok"]
+
+
+def test_the_ollama_check_only_pings_when_the_default_model_is_not_local(monkeypatch):
+    from epsilon.ai import llm
+
+    monkeypatch.setenv("AI_MODEL", "gemini:x")
+    monkeypatch.setattr(llm, "check", lambda provider="gemini": "3 modelos")
+
+    assert checks.run("ollama") == {"ok": True, "detail": "Ollama responde (3 modelos)."}
+
+
+def test_the_ollama_check_reports_a_server_that_is_off(monkeypatch):
+    from epsilon.ai import llm
+
+    def off(provider="gemini"):
+        raise ValueError("No pude conectar con Ollama en 127.0.0.1:11434. ¿Está andando?")
+
+    monkeypatch.setattr(llm, "check", off)
+
+    result = checks.run("ollama")
+
+    assert result["ok"] is False and "127.0.0.1:11434" in result["detail"]

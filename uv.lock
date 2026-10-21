@@ -416,6 +416,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "python-telegram-bot" },
@@ -440,6 +441,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.149.0" },
     { name = "faster-whisper", marker = "extra == 'voz'", specifier = ">=1.2.1" },
     { name = "google-genai", specifier = ">=2.31.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "python-telegram-bot", specifier = ">=22.8" },

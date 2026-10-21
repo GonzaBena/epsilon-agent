@@ -110,9 +110,16 @@ def results_turn(results: list[tuple[str, str]]) -> Message:
     return Message("user", results=[Result(name, result) for name, result in results])
 
 
-def check() -> str:
-    """Prueba la conexión con el proveedor del modelo configurado SIN generar texto (no gasta tokens).
+def check(provider: str = "gemini") -> str:
+    """Prueba la conexión con un proveedor SIN generar texto (no gasta tokens).
 
-    Devuelve el modelo, o lanza ValueError con un mensaje claro (sin claves)."""
-    provider, model = parse_model(model_for())
+    Usa el modelo predeterminado si es de ese proveedor; si no, el de Gemini configurado, o ninguno (Ollama:
+    solo comprueba que responda). Devuelve el modelo, o lanza ValueError con un mensaje claro (sin claves)."""
+    default_provider, name = parse_model(default_model())
+    if default_provider == provider:
+        model = name
+    elif provider == "gemini":
+        model = os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL
+    else:
+        model = ""
     return providers.get(provider).check(model)

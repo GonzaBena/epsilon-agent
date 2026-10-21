@@ -2,11 +2,20 @@ from epsilon.ai import llm
 from epsilon.settings import config
 from epsilon.channels import telegram
 
+def _ollama() -> str:
+    """Ollama responde; y si el modelo predeterminado es suyo, que además lo tenga."""
+    found = llm.check("ollama")
+    if llm.parse_model(llm.default_model())[0] == "ollama":
+        return f"Ollama responde; el modelo {found} está disponible."
+    return f"Ollama responde ({found})."
+
+
 # Pruebas de conexión que se disparan desde la configuración. Ninguna gasta
-# tokens: Gemini valida con los metadatos del modelo y Telegram con getMe.
+# tokens: Gemini valida con los metadatos del modelo, Ollama con la lista de sus modelos y Telegram con getMe.
 # Cada una devuelve un texto o lanza ValueError con un mensaje claro.
 CHECKS = {
     "gemini": lambda: f"Clave válida; el modelo {llm.check()} está disponible.",
+    "ollama": _ollama,
     # Prueba el token GUARDADO (aunque todavía no esté aplicado), así sirve
     # para comprobar lo que se acaba de cargar antes de reiniciar.
     "telegram": lambda: telegram.check(config.saved("TELEGRAM_TOKEN")),

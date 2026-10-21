@@ -2,7 +2,7 @@ import pytest
 
 from epsilon import state
 from epsilon.ai import llm
-from epsilon.ai.providers import gemini
+from epsilon.ai.providers import gemini, ollama
 
 
 @pytest.fixture(autouse=True)
@@ -32,6 +32,16 @@ def block_real_gemini_client(monkeypatch):
         raise RuntimeError("Un test intentó crear un cliente real de Gemini")
 
     monkeypatch.setattr(gemini.genai, "Client", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def block_real_ollama(monkeypatch):
+    """Ningún test habla con un Ollama de verdad."""
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó hablar con Ollama de verdad")
+
+    monkeypatch.setattr(ollama, "_request", forbidden)
 
 
 @pytest.fixture(autouse=True)

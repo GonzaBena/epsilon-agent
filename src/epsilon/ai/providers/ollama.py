@@ -1,0 +1,141 @@
+import base64
+import os
+from urllib.parse import urlsplit
+
+import httpx
+
+from epsilon.ai.messages import Call, File, Message, Step, ToolSpec
+from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
+
+# ÚNICO lugar que habla con Ollama (el servidor local de modelos), por HTTP directo. No hay clave: la
+# dirección es OLLAMA_URL. Los errores no incluyen ni la ruta ni el cuerpo de la respuesta, solo host y puerto.
+
+DEFAULT_URL = "http://127.0.0.1:11434"
+
+
+def _base_url() -> str:
+    return (os.environ.get("OLLAMA_URL") or DEFAULT_URL).rstrip("/")
+
+
+def _request(method: str, path: str, body: dict | None = None, timeout: float = 120.0) -> dict:
+    """El ÚNICO punto de red: pide a Ollama y devuelve el JSON. ValueError con un mensaje claro si falla."""
+    try:
+        response = httpx.request(method, _base_url() + path, json=body, timeout=timeout)
+    except httpx.HTTPError:
+        # Solo el host y el puerto: el texto del error podría traer la dirección completa.
+        raise ValueError(f"No pude conectar con Ollama en {urlsplit(_base_url()).netloc}. ¿Está andando?") from None
+    if response.status_code == 404 and body and body.get("model"):
+        model = body["model"]
+        raise ValueError(f"El modelo «{model}» no está en Ollama. Bajalo con `ollama pull {model}`.")
+    if response.status_code >= 400:
+        raise ValueError(f"Ollama respondió con un error (código {response.status_code}).")
+    try:
+        return response.json()
+    except ValueError:
+        raise ValueError("Ollama respondió algo que no entiendo.") from None
+
+
+def _image(file: File) -> str:
+    if not file.mime.startswith("image/"):
+        what = "PDFs" if file.mime == "application/pdf" else f"archivos {file.mime}"
+        raise ValueError(f"Ollama no lee {what}: solo imágenes. Usá otro modelo para este archivo.")
+    return base64.b64encode(file.data).decode()
+
+
+def _messages(history: list[Message], system: str | None = None) -> list[dict]:
+    """El historial neutro como mensajes de Ollama. Un `raw` de otro proveedor no se usa."""
+    out = [{"role": "system", "content": system}] if system else []
+    for message in history:
+        for result in message.results:
+            out.append({"role": "tool", "tool_name": result.name, "content": result.result})
+        images = [_image(p) for p in message.parts if isinstance(p, File)]
+        if not (message.text or images or message.calls):
+            continue
+        entry = {"role": "assistant" if message.role == "model" else "user", "content": message.text}
+        if images:
+            entry["images"] = images
+        if message.calls:
+            entry["tool_calls"] = [
+                {"function": {"name": c.name, "arguments": {"args": c.args}}} for c in message.calls
+            ]
+        out.append(entry)
+    return out
+
+
+def _tool(tool: ToolSpec) -> dict:
+    # Cada herramienta recibe un único parámetro de texto, "args".
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": {
+                "type": "object",
+                "properties": {"args": {"type": "string", "description": tool.arg_description}},
+                "required": ["args"],
+            },
+        },
+    }
+
+
+def _tokens(data: dict) -> tuple[int, int]:
+    return data.get("prompt_eval_count") or 0, data.get("eval_count") or 0
+
+
+class OllamaProvider(Provider):
+    name = "ollama"
+
+    def generate(self, model, parts, prompt, max_tokens, json_mode):
+        texts = [p for p in parts if isinstance(p, str)]
+        message = {"role": "user", "content": "\n\n".join([*texts, prompt])}
+        images = [_image(p) for p in parts if isinstance(p, File)]
+        if images:
+            message["images"] = images
+        body = {
+            "model": model,
+            "messages": [message],
+            "stream": False,
+            "options": {"num_predict": max_tokens, "temperature": 0},
+        }
+        if json_mode:
+            body["format"] = "json"
+        data = _request("POST", "/api/chat", body)
+        return GenerateResult(data.get("message", {}).get("content", ""), *_tokens(data))
+
+    def chat(self, model, history, system, tools, max_tokens, allow_calls):
+        body = {
+            "model": model,
+            "messages": _messages(history, system),
+            "stream": False,
+            "options": {"num_predict": max_tokens, "temperature": 0},
+        }
+        if tools and allow_calls:
+            body["tools"] = [_tool(t) for t in tools]
+        data = _request("POST", "/api/chat", body)
+        message = data.get("message", {})
+        text = message.get("content") or ""
+        calls = []
+        for call in message.get("tool_calls") or []:
+            function = call.get("function", {})
+            arguments = function.get("arguments")
+            arg = arguments.get("args") if isinstance(arguments, dict) else None
+            calls.append((function.get("name", ""), arg if isinstance(arg, str) else ""))
+        turn = Message("model", [text] if text else [], [Call(name, args) for name, args in calls])
+        return ChatResult(Step(text, calls, turn), *_tokens(data))
+
+    def list_models(self):
+        return [m["name"] for m in _request("GET", "/api/tags", timeout=3).get("models", [])]
+
+    def check(self, model):
+        # Pide la lista de modelos: no genera nada ni gasta. Sin modelo, solo comprueba que responda.
+        names = self.list_models()
+        if not model:
+            return f"{len(names)} modelos"
+        if model not in names and f"{model}:latest" not in names:
+            raise ValueError(f"Ollama está andando pero no tiene el modelo «{model}». Bajalo con `ollama pull {model}`.")
+        return model
+
+    def capabilities(self, model):
+        reported = _request("POST", "/api/show", {"model": model}, timeout=5).get("capabilities") or []
+        # PDF nunca: Ollama no los lee. Sin la lista (Ollama viejo), por seguridad no se asume nada.
+        return Capabilities(tools="tools" in reported, images="vision" in reported, pdf=False)
