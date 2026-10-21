@@ -116,3 +116,18 @@ cualquier mensaje. No es una herramienta del panel ni entra al registro.
 - Velocidad con audios largos (1 y 5 minutos): se midió solo con uno de 13,6 s.
 - (Resuelto) `faster-whisper` 1.2.1 y `ctranslate2` 4.8.3 tienen paquete para Python 3.12.
 - Grabación del micrófono en el navegador (permisos, formato `webm/opus`).
+
+## «Hola <nombre>, …» (palabras de comando, saludo)
+
+Una regla más de `transcribe.spoken_commands`, así vale para todo canal (Telegram y el micrófono de la web):
+«Hola Meli, ¿tengo tareas para hoy?» pasa a `/ia ¿tengo tareas para hoy?`. Solo al principio del audio.
+
+- **Nombre:** `ASSISTANT_NAME` (sección Voz de `/config`, vale al instante). Por defecto `IA, AI`. Acepta hasta 5
+  nombres separados por coma, porque Whisper escribe distinto lo que oye («Meli, Melí, Mely»). Si se define uno,
+  los de siempre dejan de valer. Ignora mayúsculas y tildes en las vocales, y el nombre se busca como texto (no es una
+  expresión regular). El nombre no sale de la memoria: es texto libre para el modelo y sacar de ahí un nombre fiable
+  costaría IA.
+- **Queda igual** si falta el nombre («Hola, ¿qué tal?»), si el saludo no trae pregunta («Hola Meli») o si el
+  nombre es solo el comienzo de otra palabra («Hola Melissa»).
+- **Qué hace `/ia`:** una pregunta suelta con la memoria y las herramientas de la IA, con sus permisos (leer corre
+  sola, escribir pregunta con botones, borrar bloqueada). Ver `ai/ask.py`.

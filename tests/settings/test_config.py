@@ -573,3 +573,20 @@ def test_chat_limit_rejects_anything_else(value, env_file):
 
 def test_chat_limit_default_is_fifty_cents(env_file):
     assert entry("CHAT_LIMIT_USD", env_file)["value"] in ("", "0.50")
+
+
+@pytest.mark.parametrize("value", ["Meli", "Meli, Melí, Mely", "Mi asistente"])
+def test_valid_assistant_names_are_saved_and_apply_at_once(value, env_file):
+    config.update({"ASSISTANT_NAME": value}, [], env_file)
+
+    assert os.environ["ASSISTANT_NAME"] == value and f"ASSISTANT_NAME='{value}'" in env_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "value", [" , ", "a,b,c,d,e,f", "x" * 31, "Meli\nEVIL=1", "Meli;rm", "Meli.*", "<b>Meli</b>"]
+)
+def test_invalid_assistant_names_are_rejected(value, env_file):
+    with pytest.raises(config.ConfigError) as error:
+        config.update({"ASSISTANT_NAME": value}, [], env_file)
+
+    assert "ASSISTANT_NAME" in error.value.errors and not env_file.exists()

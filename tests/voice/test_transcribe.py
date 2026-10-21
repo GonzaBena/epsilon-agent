@@ -511,3 +511,64 @@ def test_a_mark_pointing_outside_a_whisper_model_folder_deletes_nothing(cache, t
     with pytest.raises(transcribe.VoiceError):
         transcribe.delete_model()
     assert other.exists()
+
+
+# --- «Hola <nombre>, …» ---------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "heard, expected",
+    [
+        ("Hola IA, tengo tareas para hoy?", "/ia tengo tareas para hoy?"),
+        ("hola ia tengo tareas", "/ia tengo tareas"),
+        ("Hola, AI: ¿qué día es hoy?", "/ia ¿qué día es hoy?"),
+        ("¡Hola IA! Resumime inbox", "/ia Resumime inbox"),
+    ],
+)
+def test_hello_plus_the_default_name_becomes_an_ia_question(heard, expected):
+    assert transcribe.spoken_commands(heard) == expected
+
+
+@pytest.mark.parametrize(
+    "heard",
+    ["Hola Meli, tengo tareas para hoy?", "hola, MELÍ: tengo tareas para hoy?", "Hola Mely tengo tareas para hoy?"],
+)
+def test_a_configured_name_is_the_one_that_answers(monkeypatch, heard):
+    monkeypatch.setenv("ASSISTANT_NAME", "Meli, Melí, Mely")
+
+    assert transcribe.spoken_commands(heard) == "/ia tengo tareas para hoy?"
+
+
+def test_the_default_names_stop_working_once_another_is_set(monkeypatch):
+    monkeypatch.setenv("ASSISTANT_NAME", "Meli")
+
+    assert transcribe.spoken_commands("Hola IA, qué hora es") == "Hola IA, qué hora es"
+
+
+@pytest.mark.parametrize(
+    "heard",
+    [
+        "Hola",
+        "Hola IA",  # el saludo solo, sin pregunta
+        "Hola IA.",
+        "Hola, ¿qué tal?",  # no lleva el nombre
+        "Hola Iana, qué tal",  # empieza igual que el nombre, pero es otra palabra
+        "Che, hola IA, qué hora es",  # solo al principio
+        "Holandesa IA, qué hora es",
+    ],
+)
+def test_a_greeting_without_the_name_or_a_question_is_left_alone(heard):
+    assert transcribe.spoken_commands(heard) == heard
+
+
+def test_the_name_is_not_a_regex(monkeypatch):
+    monkeypatch.setenv("ASSISTANT_NAME", "a.b")  # el punto es un punto, no «cualquier letra»
+
+    assert transcribe.spoken_commands("Hola axb, qué tal") == "Hola axb, qué tal"
+    assert transcribe.spoken_commands("Hola a.b, qué tal") == "/ia qué tal"
+
+
+def test_audio_to_text_turns_the_greeting_into_an_ia_question(voice, audio):
+    voice.texts = ("Hola IA,", "tengo tareas para hoy?")
+
+    assert transcribe.audio_to_text(audio) == "/ia tengo tareas para hoy?"

@@ -54,6 +54,16 @@ def _language(value: str) -> str:
     return value
 
 
+def _assistant_names(value: str) -> str:
+    """Hasta 5 nombres separados por coma (la voz puede escribirlos distinto): letras, números y espacios."""
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    if not names or len(names) > 5 or not all(re.fullmatch(r"[\w ]{1,30}", name) for name in names):
+        raise ValueError(
+            "Escribí de 1 a 5 nombres separados por coma (hasta 30 letras, números o espacios cada uno)."
+        )
+    return ", ".join(names)
+
+
 def _minutes(value: str) -> str:
     if not re.fullmatch(r"\d{1,4}", value, re.ASCII) or not 1 <= int(value) <= 1440:
         raise ValueError("Los minutos tienen que ser un número entero entre 1 y 1440.")
@@ -191,6 +201,14 @@ SETTINGS = (
             "el nuevo se usa cuando se descargue de memoria o al reiniciar."
         ),
         validate=_device,
+    ),
+    # Cómo se le habla por voz: «Hola <nombre>, …» pasa a /ia (transcribe.py lo lee en cada audio).
+    Setting(
+        "ASSISTANT_NAME",
+        "Nombre del asistente para hablarle por voz",
+        live=True,
+        default="IA, AI",
+        validate=_assistant_names,
     ),
     # Interruptor del canal de Telegram (la página Canales lo prende y apaga en caliente; si está
     # en «no», el servicio tampoco lo arranca). No tiene campo en /config: se maneja desde Canales.

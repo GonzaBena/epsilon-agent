@@ -300,10 +300,49 @@ _SPOKEN_NOTE = re.compile(rf"(?:m[aá]s){_SEP}(?=\S)(.+)", re.IGNORECASE | re.DO
 _SPOKEN_COMMAND = re.compile(rf"barra{_SEP}([a-záéíóúñ]+)(.*)", re.IGNORECASE | re.DOTALL)
 
 
-def spoken_commands(text: str) -> str:
-    """«Más comprar pan» -> «+ comprar pan»; «Barra uso.» -> «/uso». Solo al principio.
+DEFAULT_NAMES = "IA, AI"
+# Whisper puede escribir «Melí» por «Meli»: las vocales aceptan su versión con tilde.
+_ACCENTED = {"a": "aáàä", "e": "eéèë", "i": "iíìï", "o": "oóòö", "u": "uúùü"}
 
-    Una sola palabra inicial («más», «barra») sin nada después queda igual."""
+
+def assistant_names() -> list[str]:
+    """Los nombres con que se le habla por voz (ASSISTANT_NAME; vacío = los de siempre)."""
+    raw = os.environ.get("ASSISTANT_NAME", "").strip() or DEFAULT_NAMES
+    return [name.strip() for name in raw.split(",") if name.strip()]
+
+
+def _name_pattern(name: str) -> str:
+    """El nombre como expresión: sin importar mayúsculas ni tildes, y con espacios flexibles."""
+    parts = []
+    for char in name.lower():
+        if char == " ":
+            parts.append(r"\s+")
+        elif char in _ACCENTED:
+            parts.append(f"[{_ACCENTED[char]}]")
+        else:
+            parts.append(re.escape(char))
+    return "".join(parts)
+
+
+def _spoken_greeting(text: str) -> str | None:
+    """«Hola Meli, tengo tareas?» -> «/ia tengo tareas?» si «Meli» es uno de los nombres; si no, None."""
+    names = "|".join(_name_pattern(name) for name in sorted(assistant_names(), key=len, reverse=True))
+    if not names:
+        return None
+    # El nombre tiene que terminar en una pausa: «Hola Melissa» no es «Hola Meli».
+    pause = r"[\s,.:;!]+"
+    found = re.fullmatch(rf"[¡!\s]*hola{pause}(?:{names}){pause}(?=\S)(.+)", text.strip(), re.IGNORECASE | re.DOTALL)
+    return f"/ia {found.group(1).strip()}" if found else None
+
+
+def spoken_commands(text: str) -> str:
+    """«Más comprar pan» -> «+ comprar pan»; «Barra uso.» -> «/uso»; «Hola Meli, ¿qué tengo?» -> «/ia ¿qué tengo?».
+    Solo al principio.
+
+    Una sola palabra inicial («más», «barra») o un saludo sin pregunta («Hola Meli») queda igual."""
+    greeting = _spoken_greeting(text)
+    if greeting:
+        return greeting
     note = _SPOKEN_NOTE.fullmatch(text.strip())
     if note:
         return f"+ {note.group(1).strip()}"

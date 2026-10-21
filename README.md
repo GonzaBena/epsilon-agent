@@ -45,6 +45,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `CHAT_LIMIT_USD`                                             | Opcional: límite de costo (US$) con el que nace cada chat con IA; se cambia en cada conversación. Por defecto 0.50.     |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
+| `ASSISTANT_NAME`                                              | Nombre para hablarle por voz: «Hola Meli, ¿qué tengo hoy?» equivale a `/ia ¿qué tengo hoy?`. Varios, separados por coma (por defecto, `IA, AI`). |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
 
 Los cambios hechos desde `/config` se guardan en el `.env`, pero **el reinicio es manual**: la

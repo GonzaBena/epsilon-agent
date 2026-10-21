@@ -230,6 +230,15 @@
             </div>
 
             <div class="field">
+              <label for="f-ASSISTANT_NAME">Nombre para hablarle por voz (varios, separados por coma)</label>
+              <input id="f-ASSISTANT_NAME" data-key="ASSISTANT_NAME" type="text" placeholder="IA, AI"
+                     autocomplete="off" spellcheck="false" maxlength="200"
+                     aria-describedby="hint-ASSISTANT_NAME err-ASSISTANT_NAME">
+              <p class="hint" id="hint-ASSISTANT_NAME"></p>
+              <p class="error" id="err-ASSISTANT_NAME" role="alert"></p>
+            </div>
+
+            <div class="field">
               <label for="f-WHISPER_IDLE_MINUTES">Minutos sin usar antes de soltar el modelo</label>
               <input id="f-WHISPER_IDLE_MINUTES" data-key="WHISPER_IDLE_MINUTES" type="text" placeholder="10"
                      inputmode="numeric" autocomplete="off" spellcheck="false"
