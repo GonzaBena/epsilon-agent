@@ -268,7 +268,15 @@ async function openConversation(id) {
 }
 
 // Nuevo chat: pide un id al servidor (no crea ningún archivo hasta el primer mensaje).
+// newChatReady es la promesa de ese pedido: submit() la espera, así un mensaje mandado rápido no
+// sale sin conversation_id (el servidor ignoraría el modo elegido y la conversación quedaría «normal»).
+let newChatReady = null;
 async function startNewChat() {
+  newChatReady = openNewChat();
+  await newChatReady;
+}
+
+async function openNewChat() {
   const token = ++loadToken;
   clearScreen();
   chooseMode("normal");
@@ -525,8 +533,10 @@ window.addEventListener("paste", (event) => {
 });
 
 // --- Enviar ------------------------------------------------------------------
-function submit() {
+async function submit() {
   if (busy) return;
+  await newChatReady; // ya hay id de conversación (si el servidor responde)
+  if (busy) return; // un Enter doble: el segundo ve el cuadro ya vacío y no hace nada
   const text = input.value.trim();
   if (!text && !pendingFile) return;
 

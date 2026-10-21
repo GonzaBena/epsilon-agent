@@ -434,3 +434,16 @@ def test_conversation_list_marks_ai_mode():
 
     assert 'conversation.mode === "ai"' in code
     assert 'make("span", "ai-mark", "IA")' in code  # el texto va como textContent (make)
+
+
+def test_sending_waits_for_the_new_chat_id_so_the_mode_is_not_lost():
+    code = js("app.js")
+
+    # startNewChat guarda su promesa y submit la espera antes de armar el pedido.
+    assert "newChatReady = " in code
+    start = code[code.index("async function startNewChat"):]
+    assert "newChatReady" in start.split("\n}\n")[0]
+    submit = code[code.index("async function submit()"):]
+    body = submit.split("\n}\n")[0]
+    assert "await newChatReady" in body
+    assert body.index("await newChatReady") < body.index("ask(")
