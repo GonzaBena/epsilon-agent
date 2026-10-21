@@ -6,6 +6,7 @@ from epsilon.ai import llm, permissions, usage
 from epsilon.data import conversations
 from epsilon.memory import store as memory
 from epsilon.settings import config
+from epsilon.utils import clock
 
 # El chat con la IA (conversaciones de «modo IA»): qué se le manda al modelo y cuánto lleva gastado
 # la conversación. No conoce ningún canal. Solo se manda lo que escribís y lo que la IA contestó:
@@ -85,9 +86,10 @@ def turns(conversation_id: str, text: str) -> list[tuple[str, str]]:
 
 
 def system_prompt() -> str:
-    """Las instrucciones fijas y, si hay, la memoria (redactada)."""
+    """Las instrucciones fijas, el día de hoy y, si hay, la memoria (redactada)."""
+    base = f"{SYSTEM}\n\nHoy es {clock.today_text()}."
     remembered = config.redact(memory.read()).strip()
-    return f"{SYSTEM}\n\nMemoria:\n{remembered}" if remembered else SYSTEM
+    return f"{base}\n\nMemoria:\n{remembered}" if remembered else base
 
 
 @dataclass

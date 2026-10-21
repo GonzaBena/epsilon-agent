@@ -183,6 +183,17 @@ TOOLS = (
         ai_arg="el número de la línea y después el texto nuevo, p. ej. «3 mi gato se llama Tom»",
     ),
     Tool(
+        "/fecha",
+        name="fecha",
+        help="fecha y hora de ahora",
+        menu="Fecha y hora de ahora",
+        insert="/fecha",
+        aliases=("hora",),
+        links=("/fecha",),
+        ai="read",
+        ai_arg="no lleva argumento: mandalo vacío",
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

@@ -193,7 +193,7 @@ def test_step_offers_only_non_denied_tools_by_id(captured):
 
     names = [spec.name for spec in captured[0]["tools"]]
     assert "ver" not in names and "olvidar" not in names and "resumir" not in names
-    assert len(names) == 7
+    assert len(names) == 8
     assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
 
 
@@ -333,3 +333,9 @@ def test_status_uses_the_chat_model_for_price_and_limit(monkeypatch):
     status = chat.status(CID)
 
     assert status["blocked"] is False
+
+
+def test_system_prompt_says_what_day_it_is(monkeypatch):
+    monkeypatch.setattr(chat.clock, "today_text", lambda moment=None: "miércoles 21 de octubre de 2026")
+
+    assert "Hoy es miércoles 21 de octubre de 2026." in chat.system_prompt()
