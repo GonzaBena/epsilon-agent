@@ -1,6 +1,5 @@
 import pytest
 
-from epsilon import tools
 from epsilon.ai import chat, llm, permissions, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store
@@ -133,29 +132,6 @@ def test_status_context_is_last_chat_input():
     assert chat.status(CID)["context"] == 250
 
 
-# --- answer ---------------------------------------------------------------------------
-
-
-def test_answer_calls_the_model_with_turns_and_tags_the_spend(monkeypatch):
-    seen = {}
-
-    def fake_chat(turns, system, max_tokens=1500):
-        seen.update(turns=turns, system=system, max_tokens=max_tokens)
-        usage.record("modelo-a", 1000, 10)
-        return "respuesta"
-
-    monkeypatch.setattr(chat.llm, "chat", fake_chat)
-    conversations.start(CID, "ai", 1)
-    conversations.add_message(CID, "user", "hola")
-
-    with usage.conversation(CID):
-        assert chat.answer(CID, "hola") == "respuesta"
-
-    assert seen["turns"] == [("user", "hola")]
-    assert 0 < seen["max_tokens"] <= 2000
-    assert usage.for_conversation(CID)["context"] == 1000  # quedó anotado como «Chat»
-
-
 @pytest.mark.parametrize("value", ["0", "-1", "5000", "nan", "inf", "abc", "0.001"])
 def test_default_limit_ignores_a_hand_edited_value_out_of_range(monkeypatch, value):
     monkeypatch.setenv("CHAT_LIMIT_USD", value)
@@ -192,7 +168,9 @@ def captured(monkeypatch):
     calls = []
 
     def fake(history, system, tools, max_tokens=1500):
-        calls.append({"history": list(history), "tools": tools, "action": usage._action.get()})
+        calls.append(
+            {"history": list(history), "tools": tools, "action": usage._action.get(), "max_tokens": max_tokens}
+        )
         return llm.Step("ok", [], "turno-modelo")
 
     monkeypatch.setattr(llm, "chat_tools", fake)
@@ -210,6 +188,12 @@ def test_step_offers_only_non_denied_tools_by_id(captured):
     assert "ver" not in names and "olvidar" not in names and "resumir" not in names
     assert len(names) == 6
     assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
+
+
+def test_step_caps_the_output_tokens(captured):
+    chat.step(chat.begin(CID, "hola"))
+
+    assert 0 < captured[0]["max_tokens"] <= 2000
 
 
 def test_step_stops_offering_tools_after_the_cap(captured):

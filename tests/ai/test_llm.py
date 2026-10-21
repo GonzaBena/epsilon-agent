@@ -7,7 +7,6 @@ from epsilon.ai import llm
 # conftest reemplaza llm.generate por una función que falla. Guardamos acá la
 # real (importada antes de que corra el fixture) para probarla con un cliente falso.
 from epsilon.ai.llm import ToolSpec
-from epsilon.ai.llm import chat as real_chat
 from epsilon.ai.llm import chat_tools as real_chat_tools
 from epsilon.ai.llm import generate as real_generate
 
@@ -52,47 +51,6 @@ def test_generate_records_zero_when_usage_is_missing(monkeypatch):
 
     assert real_generate([], "hola?") == "hola"
     assert recorded[0][1:] == (0, 0)
-
-
-# --- llm.chat: conversación de varios turnos ---------------------------------
-
-
-def test_chat_records_usage(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
-    monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
-    monkeypatch.setattr(llm.genai, "Client", FakeClient)
-    recorded = []
-    monkeypatch.setattr(llm.usage, "record", lambda *args: recorded.append(args))
-
-    answer = real_chat([("user", "hola")], "sistema")
-
-    assert answer == "hola"
-    assert recorded == [("modelo-a", 12, 8)]
-
-
-def test_chat_sends_turns_in_order_with_system(monkeypatch):
-    seen = {}
-
-    class CapturingClient(FakeClient):
-        def generate_content(self, model, contents, config):
-            seen["contents"] = contents
-            seen["system"] = config.system_instruction
-            seen["max"] = config.max_output_tokens
-            return super().generate_content(model, contents, config)
-
-    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
-    monkeypatch.setattr(llm.genai, "Client", CapturingClient)
-    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
-
-    real_chat([("user", "uno"), ("model", "dos"), ("user", "tres")], "sé breve", max_tokens=300)
-
-    assert [(c.role, c.parts[0].text) for c in seen["contents"]] == [
-        ("user", "uno"),
-        ("model", "dos"),
-        ("user", "tres"),
-    ]
-    assert seen["system"] == "sé breve"
-    assert seen["max"] == 300
 
 
 # --- llm.chat_tools: conversación con herramientas ----------------------------
@@ -206,13 +164,6 @@ def test_current_model_uses_env(monkeypatch):
     assert llm.current_model() == "modelo-z"
     monkeypatch.setenv("GEMINI_MODEL", "")
     assert llm.current_model() == llm.DEFAULT_MODEL
-
-
-def test_conftest_blocks_chat():
-    import pytest
-
-    with pytest.raises(RuntimeError):
-        llm.chat([("user", "hola")], "x")
 
 
 # --- llm.check: validar la clave y el modelo sin gastar tokens ---------------

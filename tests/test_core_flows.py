@@ -456,20 +456,29 @@ from epsilon.data import conversations  # noqa: E402
 AI_CID = "20261020-130000-aaaa"
 
 
+def ai_step(text):
+    """Lo que devolvería llm.chat_tools: solo texto, sin llamadas a herramientas."""
+    return core.llm.Step(text, [], core.llm.text_turn("model", text or ""))
+
+
+def as_pairs(history):
+    return [(turn.role, turn.parts[0].text) for turn in history]
+
+
 @pytest.fixture
 def ai_mode(monkeypatch):
-    """Una conversación de modo IA con precio cargado; llm.chat falso que gasta US$ 1 por llamada."""
+    """Una conversación de modo IA con precio cargado; llm.chat_tools falso que gasta US$ 1 por llamada."""
     monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
     monkeypatch.setenv("CHAT_LIMIT_USD", "")
     monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
     calls = []
 
-    def fake_chat(turns, system, max_tokens=1500):
-        calls.append(turns)
+    def fake_chat(history, system, tools, max_tokens=1500):
+        calls.append(as_pairs(history))
         usage.record("modelo-a", 1_000_000, 0)
-        return "respuesta de la IA"
+        return ai_step("respuesta de la IA")
 
-    monkeypatch.setattr(core.chat.llm, "chat", fake_chat)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", fake_chat)
 
     return calls
 
@@ -516,7 +525,7 @@ def test_blocked_conversation_blocks_ai_things_but_not_plain_commands(ai_mode, m
     def forbidden(*args, **kwargs):
         raise AssertionError("la conversación bloqueada llamó al modelo")
 
-    monkeypatch.setattr(core.chat.llm, "chat", forbidden)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", forbidden)
     monkeypatch.setattr(core.summarize, "summarize_and_save", forbidden)
     monkeypatch.setattr(core.extract, "img_to_rows", forbidden)
     notes.save_note("inbox", "- algo")
@@ -572,7 +581,7 @@ def test_chat_failure_returns_short_message(ai_mode, monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("falló con AIzaSyD-ejemplo_de_clave_larga_QzXw")
 
-    monkeypatch.setattr(core.chat.llm, "chat", boom)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", boom)
 
     reply = ai_say("hola")
 
@@ -581,7 +590,7 @@ def test_chat_failure_returns_short_message(ai_mode, monkeypatch):
 
 @pytest.mark.parametrize("empty", [None, "", "   "])
 def test_empty_model_answer_is_a_short_message_not_a_crash(ai_mode, monkeypatch, empty):
-    monkeypatch.setattr(core.chat.llm, "chat", lambda *a, **k: empty)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", lambda *a, **k: ai_step(empty))
 
     reply = ai_say("hola")
 
@@ -595,13 +604,13 @@ def test_two_simultaneous_requests_cannot_both_pass_the_limit(ai_mode, monkeypat
     conversations.start(AI_CID, "ai", 1.0)  # alcanza para UNA respuesta (cada una cuesta US$ 1)
     calls = []
 
-    def slow_chat(turns, system, max_tokens=1500):
-        calls.append(turns)
+    def slow_chat(history, system, tools, max_tokens=1500):
+        calls.append(history)
         time.sleep(0.2)  # tiempo de sobra para que el otro pedido llegue al chequeo
         usage.record("modelo-a", 1_000_000, 0)
-        return "respuesta"
+        return ai_step("respuesta")
 
-    monkeypatch.setattr(core.chat.llm, "chat", slow_chat)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", slow_chat)
     replies = []
 
     def ask(text):
@@ -627,12 +636,12 @@ def test_requests_in_different_conversations_do_not_wait_for_each_other(ai_mode,
     inside = threading.Event()
     release = threading.Event()
 
-    def blocking_chat(turns, system, max_tokens=1500):
+    def blocking_chat(history, system, tools, max_tokens=1500):
         inside.set()
         release.wait(timeout=5)
-        return "respuesta"
+        return ai_step("respuesta")
 
-    monkeypatch.setattr(core.chat.llm, "chat", blocking_chat)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", blocking_chat)
     first = threading.Thread(
         target=lambda: core.handle(core.Message(text="uno", session_id="web:a", conversation_id=AI_CID))
     )
@@ -640,7 +649,7 @@ def test_requests_in_different_conversations_do_not_wait_for_each_other(ai_mode,
     assert inside.wait(timeout=5)
 
     # La otra conversación responde aunque la primera siga esperando al modelo.
-    monkeypatch.setattr(core.chat.llm, "chat", lambda *a, **k: "otra")
+    monkeypatch.setattr(core.chat.llm, "chat_tools", lambda *a, **k: ai_step("otra"))
     reply = core.handle(core.Message(text="hola", session_id="web:b", conversation_id=other))
     release.set()
     first.join()

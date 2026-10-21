@@ -53,24 +53,6 @@ def generate(
     return response.text
 
 
-def chat(turns: list[tuple[str, str]], system: str, max_tokens: int = 1500) -> str:
-    """Conversación de varios turnos. turns = [("user" | "model", texto), ...], el último del usuario.
-
-    `system` son las instrucciones fijas. Anota el gasto igual que generate."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    model = _model()
-    response = client.models.generate_content(
-        model=model,
-        contents=[types.Content(role=role, parts=[types.Part(text=text)]) for role, text in turns],
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,  # tope de salida, para controlar el costo
-        ),
-    )
-    _record_usage(model, response)
-    return response.text
-
-
 @dataclass
 class ToolSpec:
     """Una herramienta que el modelo puede pedir: nombre, para qué sirve y qué va en su argumento."""

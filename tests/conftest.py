@@ -12,7 +12,6 @@ def block_real_model(monkeypatch):
         raise RuntimeError("Un test intentó llamar a Gemini de verdad")
 
     monkeypatch.setattr(llm, "generate", forbidden)
-    monkeypatch.setattr(llm, "chat", forbidden)
     monkeypatch.setattr(llm, "chat_tools", forbidden)
 
 

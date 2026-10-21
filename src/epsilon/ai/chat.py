@@ -118,8 +118,3 @@ def add_results(turn: Turn, results: list[tuple[str, str]]) -> None:
     """Agrega al historial lo que devolvieron las herramientas: [(nombre, resultado)]."""
     turn.history.append(llm.results_turn([(name, config.redact(result)) for name, result in results]))
 
-
-def answer(conversation_id: str, text: str) -> str:
-    """Le pregunta a la IA con la charla y la memoria. El gasto queda anotado como «Chat»."""
-    with usage.action("Chat"):
-        return llm.chat(turns(conversation_id, text), system_prompt(), MAX_TOKENS)

@@ -372,16 +372,16 @@ from epsilon.ai import usage  # noqa: E402
 
 @pytest.fixture
 def ai_web(monkeypatch):
-    """Precio cargado y un llm.chat falso que gasta US$ 1 por respuesta."""
+    """Precio cargado y un llm.chat_tools falso que gasta US$ 1 por respuesta (solo texto)."""
     monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
     monkeypatch.setenv("CHAT_LIMIT_USD", "")
     monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
 
-    def fake_chat(turns, system, max_tokens=1500):
+    def fake_chat(history, system, tools, max_tokens=1500):
         usage.record("modelo-a", 1_000_000, 0)
-        return "respuesta de la IA"
+        return core.llm.Step("respuesta de la IA", [], core.llm.text_turn("model", "respuesta de la IA"))
 
-    monkeypatch.setattr(core.chat.llm, "chat", fake_chat)
+    monkeypatch.setattr(core.chat.llm, "chat_tools", fake_chat)
 
 
 def test_first_message_with_mode_ai_creates_ai_conversation(client, ai_web):
