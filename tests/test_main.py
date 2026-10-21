@@ -1,11 +1,20 @@
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 from epsilon import main
+from epsilon.data import notes
 from epsilon.settings import config
 from epsilon.channels import telegram, web
 
 TELEGRAM_ENV = {"TELEGRAM_TOKEN": "abc", "ALLOWED_USER_ID": "123"}
+
+
+@pytest.fixture(autouse=True)
+def isolated_plugins(tmp_path, monkeypatch):
+    """main() busca plugins en DATA_DIR: que sea una carpeta vacía y no la real."""
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path)
 
 
 class FakeChannel:

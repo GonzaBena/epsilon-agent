@@ -4,11 +4,14 @@ import os
 import threading
 
 from epsilon import state
+from epsilon.plugins import channels as plugin_channels
 from epsilon.settings import config
 
-# Canales disponibles: nombre -> módulo. Para sumar uno (Slack...) se agrega una
-# línea acá; el módulo tiene que exponer is_configured(env) y run(), y puede
-# exponer explain(error) para traducir sus errores a un mensaje claro.
+# Canales disponibles: nombre -> módulo. Para sumar uno incluido se agrega una línea acá; los de
+# terceros (plugins, ver plugins/channels.py y docs/plan-plugins.md) los suma refresh_plugins con
+# el valor «plugin:<nombre>». El módulo tiene que exponer is_configured(env) y run(), y puede
+# exponer explain(error) para traducir sus errores a un mensaje claro (un plugin además tiene
+# que exponer stop()).
 # El ORDEN importa: el primero es el canal principal (la web) y corre en el
 # hilo principal; los demás son opcionales y corren cada uno en su hilo.
 CHANNELS = {
@@ -17,8 +20,49 @@ CHANNELS = {
 }
 
 
+PLUGIN_PREFIX = "plugin:"
+_plugins: dict[str, plugin_channels.Plugin] = {}  # los plugins que conocemos (manifiesto leído)
+_modules: dict[str, object] = {}  # el código de los que ya se importaron (recién al prenderlos)
+INVALID: dict[str, str] = {}  # carpetas de plugins con manifiesto inválido -> motivo
+
+
+def is_plugin(name: str) -> bool:
+    return CHANNELS.get(name, "").startswith(PLUGIN_PREFIX)
+
+
+def refresh_plugins() -> None:
+    """Pone CHANNELS y los ajustes al día con la carpeta de plugins. Solo lee manifiestos: no
+    importa ni ejecuta código de ningún plugin. Un plugin nuevo queda apagado."""
+    found = plugin_channels.discover()
+    INVALID.clear()
+    INVALID.update(found.invalid)
+    for name in [n for n in CHANNELS if is_plugin(n) and n not in found.plugins]:
+        thread = _threads.get(name)
+        if thread is None or not thread.is_alive():  # uno que sigue corriendo se queda hasta apagarlo
+            del CHANNELS[name]
+            _plugins.pop(name, None)
+            _modules.pop(name, None)
+    for name, plugin in found.plugins.items():
+        _plugins[name] = plugin
+        if name not in CHANNELS:
+            CHANNELS[name] = PLUGIN_PREFIX + name
+            if name not in state.snapshot():
+                state.set(name, "off", "Apagado.")
+    config.set_plugin_settings([s for plugin in _plugins.values() for s in plugin_channels.settings_for(plugin)])
+
+
 def load(name: str):
-    """Importa el módulo de un canal."""
+    """Importa el módulo de un canal. El de un plugin se importa una sola vez, y si falla lanza
+    ChannelError con el motivo."""
+    if is_plugin(name):
+        module = _modules.get(name)
+        if module is None:
+            try:
+                module = plugin_channels.load_module(_plugins[name])
+            except plugin_channels.PluginError as e:
+                raise ChannelError(str(e)) from None
+            _modules[name] = module
+        return module
     return importlib.import_module(CHANNELS[name])
 
 
@@ -28,9 +72,21 @@ def switched_off(name: str) -> bool:
     return key in config.BY_KEY and not config.enabled(key)
 
 
+def _usable(name: str, env) -> bool:
+    """¿Está prendido y con su configuración completa? Un canal apagado ni se carga (así un plugin
+    apagado no corre código). Si un plugin prendido no carga, queda «detenido» con el motivo."""
+    if switched_off(name):
+        return False
+    try:
+        return load(name).is_configured(env)
+    except ChannelError as e:
+        state.set(name, "stopped", str(e))
+        return False
+
+
 def enabled_channels(env) -> list[str]:
     """Nombres de los canales que tienen su configuración completa y no están apagados."""
-    return [name for name in CHANNELS if load(name).is_configured(env) and not switched_off(name)]
+    return [name for name in CHANNELS if _usable(name, env)]
 
 
 class ChannelError(Exception):
@@ -43,14 +99,21 @@ _control = threading.Lock()  # prender y apagar de a uno
 
 
 def switchable(name: str) -> bool:
-    """¿Se puede apagar y prender desde la web? Solo los que tienen interruptor y saben detenerse."""
+    """¿Se puede apagar y prender desde la web? Solo los que tienen interruptor y saben detenerse
+    (un plugin siempre: el contrato le exige stop(), y no lo cargamos solo para preguntar)."""
+    if is_plugin(name):
+        return True
     return f"{name.upper()}_ENABLED" in config.BY_KEY and hasattr(load(name), "stop")
 
 
 def start_channel(name: str) -> None:
     """Prende un canal opcional en su propio hilo (si ya está corriendo, no hace nada)."""
     with _control:
-        channel = load(name)
+        try:
+            channel = load(name)
+        except ChannelError as e:
+            state.set(name, "stopped", str(e))
+            raise
         if not channel.is_configured(os.environ):
             raise ChannelError("Falta configurarlo (token y tu ID de usuario).")
         thread = _threads.get(name)
@@ -127,10 +190,17 @@ def main():
     las señales de apagado. Telegram y compañía van en hilos aparte, así que si
     uno falla (token inválido, se cae Telegram) la web sigue funcionando."""
     install_log_redaction()
+    refresh_plugins()
     enabled = enabled_channels(os.environ)
 
     for name in CHANNELS:
         if name not in enabled:
+            if is_plugin(name):
+                # Apagado: refresh_plugins ya lo dejó «off». Prendido: sin configurar, salvo que
+                # no haya cargado (enabled_channels ya anotó el motivo).
+                if not switched_off(name) and state.snapshot().get(name, {}).get("state") != "stopped":
+                    state.set(name, "skipped")
+                continue
             # Apagado a propósito (lo dejaste así desde la web) o sin configurar.
             state.set(name, "off" if switched_off(name) and load(name).is_configured(os.environ) else "skipped")
 
