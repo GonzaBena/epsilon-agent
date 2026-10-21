@@ -78,6 +78,11 @@ def text_turn(role: str, text: str):
     return types.Content(role=role, parts=[types.Part(text=text)])
 
 
+def parts_turn(role: str, parts: list):
+    """Un turno con varias partes: texto (str) y archivos (types.Part), en ese orden."""
+    return types.Content(role=role, parts=[types.Part(text=p) if isinstance(p, str) else p for p in parts])
+
+
 def results_turn(results: list[tuple[str, str]]):
     """El turno del usuario con lo que devolvió cada herramienta: [(nombre, resultado)]."""
     parts = [
