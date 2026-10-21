@@ -32,9 +32,9 @@
 
 * {
   box-sizing: border-box;
-  /* Barras de desplazamiento finas: el pulgar apenas más claro que el borde, sin pista. */
+  /* Barras de desplazamiento finas: el pulgar en el color de acento, sin pista. */
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 35%, var(--line)) transparent;
+  scrollbar-color: var(--accent) transparent;
 }
 
 html,
