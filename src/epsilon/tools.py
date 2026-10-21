@@ -260,6 +260,26 @@ TOOLS = (
         ai_arg="el nombre del archivo o parte de él, como aparece en archivos (puede incluir la carpeta)",
     ),
     Tool(
+        "/csv",
+        name="csv",
+        usage="/csv nombre [filtros]",
+        help="consultar un CSV guardado: filtrar filas y, con «| suma columna», calcular (sin IA)",
+        panel="Consultar un CSV guardado: /csv nombre precio>100 | suma precio",
+        menu="Consultar un CSV guardado (filtrar, sumar…)",
+        insert="/csv ",
+        ai="read",
+        ai_help=(
+            "consultar un CSV guardado SIN leerlo entero: filtra filas y calcula. Primero llamala solo con el nombre "
+            "para ver las columnas. Ejemplos: «gastos fecha>=2026-10-01 comercio~coto | suma total», "
+            "«gastos | suma total por comercio», «gastos | ordenar total desc»"
+        ),
+        ai_arg=(
+            "nombre del CSV, después filtros columna<op>valor (op: = != > >= < <= ~ que es «contiene»; valores con "
+            "espacios entre comillas) y, si querés un cálculo, «| suma|promedio|min|max|cuenta|ordenar columna» "
+            "(con «por columna» para agrupar). Sin filtros ni cálculo devuelve las columnas y ejemplos"
+        ),
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

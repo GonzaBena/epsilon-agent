@@ -185,6 +185,11 @@ def find_files(text: str) -> list[Path]:
     return _match_files(text, summarizable_ext)
 
 
+def find_csv(text: str) -> list[Path]:
+    """Busca CSV guardados cuyo nombre coincida con el texto."""
+    return _match_files(text, {".csv"})
+
+
 def list_files(text: str = "", limit: int = 10) -> tuple[list[Path], int]:
     """Lista lo guardado (notas, archivos y CSV), lo más nuevo primero.
 

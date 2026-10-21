@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import csv
 from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ import weakref
 from epsilon import menu, tools
 from epsilon.ai import ask, attachments, chat, extract, llm, permissions, summarize, usage
 from epsilon.ai.messages import ModelError
-from epsilon.data import conversations, library, notes, todo
+from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
 from epsilon.utils import clima, clock, dolar
@@ -374,6 +375,36 @@ def _not_found(wanted: str) -> Reply:
     )
 
 
+def _one_file(wanted: str, search: Callable[[str], list[Path]]) -> Path | Reply:
+    """El único archivo guardado que coincide con `wanted` (parte del nombre, o la ruta tal como la muestra
+    /archivos), o la respuesta que explica por qué no hay uno: ninguno, o varios (no se adivina)."""
+    found = search(Path(wanted).name)
+    if "/" in wanted:  # con carpeta tiene que ser ESA ruta, no otra parecida
+        found = [p for p in found if str(p.relative_to(notes.DATA_DIR)) == wanted]
+    if not found:
+        return _not_found(wanted)
+    if len(found) > 1:
+        listing = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in found[:5])
+        extra = f"\n(y {len(found) - 5} más)" if len(found) > 5 else ""
+        return Reply(f"Hay varias coincidencias. Probá con un nombre más específico:\n{listing}{extra}")
+    return found[0]
+
+
+def _csv_cmd(args: str) -> Reply:
+    """/csv nombre [filtros] [| operación]: consulta un CSV guardado sin usar el modelo (ver data/tabular.py)."""
+    try:
+        wanted, query = tabular.split_name(args)
+        found = _one_file(wanted, notes.find_csv)
+        if isinstance(found, Reply):
+            return found
+        table = tabular.load(library.resolve(str(found.relative_to(notes.DATA_DIR))))
+        return Reply(config.redact(tabular.query(table, query) if query.strip() else tabular.describe(table)))
+    except ValueError as e:
+        return Reply(str(e))
+    except (OSError, csv.Error):
+        return Reply("No pude leer ese CSV.")
+
+
 SEND_MAX_BYTES = 50 * 1024 * 1024  # lo máximo que Telegram deja subir a un bot
 SEND_MAX_MATCHES = 20
 
@@ -387,16 +418,10 @@ def _send(args: str) -> Reply:
     wanted = args.strip().strip("\"'")
     if not wanted:
         return Reply("Uso: /enviar nombre\nPuede ser parte del nombre: /enviar ticket")
-    found, total = notes.list_files(Path(wanted).name, limit=SEND_MAX_MATCHES)
-    if "/" in wanted:  # la ruta tal como la muestra /archivos (tickets/foto.jpg): tiene que ser esa, no otra parecida
-        found = [p for p in found if str(p.relative_to(notes.DATA_DIR)) == wanted]
-    if not found:
-        return _not_found(wanted)
-    if len(found) > 1:
-        listing = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in found[:5])
-        extra = f"\n(y {len(found) - 5} más)" if len(found) > 5 else ""
-        return Reply(f"Hay varias coincidencias. Probá con un nombre más específico:\n{listing}{extra}")
-    rel = str(found[0].relative_to(notes.DATA_DIR))
+    found = _one_file(wanted, lambda name: notes.list_files(name, limit=SEND_MAX_MATCHES)[0])
+    if isinstance(found, Reply):
+        return found
+    rel = str(found.relative_to(notes.DATA_DIR))
     try:
         path = library.resolve(rel)  # las mismas reglas que la biblioteca: nada fuera de DATA_DIR, ni resúmenes
     except ValueError as e:
@@ -871,6 +896,7 @@ COMMANDS = {
     "tareas": lambda args, s: _tasks_cmd(args),
     "hecho": lambda args, s: _done_cmd(args),
     "enviar": lambda args, s: _send(args),
+    "csv": lambda args, s: _csv_cmd(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -891,7 +917,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv)\b:?)\s*", "", args)
 
 
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
@@ -907,6 +933,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "tareas": lambda args: _tasks_cmd(_bare(args)),
     "hecho": lambda args: _done_cmd(_bare(args)),
     "enviar": lambda args: _send(_bare(args)),
+    "csv": lambda args: _csv_cmd(_bare(args)),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
