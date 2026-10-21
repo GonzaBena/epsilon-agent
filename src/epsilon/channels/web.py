@@ -1,9 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import asdict
 import os
 from pathlib import Path
 import socket
 import tempfile
 import threading
+import time
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -12,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
-from epsilon.ai import chat, permissions, usage
+from epsilon.ai import chat, llm, permissions, providers, usage
 from epsilon.data import conversations, library, notes
 from epsilon.settings import checks, config
 from epsilon.voice import transcribe
@@ -29,6 +32,7 @@ SESSION_ID = "web"
 
 # Mismo tope que Telegram, para que ambos canales acepten lo mismo.
 MAX_UPLOAD = 20 * 1024 * 1024
+MODELS_TIMEOUT = 3.0  # segundos que se espera a cada proveedor para listar sus modelos
 
 # Únicos nombres con los que se acepta que alguien llame a la web.
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
@@ -520,6 +524,7 @@ def create_app() -> FastAPI:
             "voice": transcribe.status(),  # apagada / cargado / descargado / descargando / sin descargar / no instalado
             # Bytes del modelo que Epsilon bajó y se puede borrar; None si no hay.
             "voice_model_bytes": transcribe.deletable_model(),
+            "model": llm.default_model(),  # el predeterminado («proveedor:modelo»), para el botón del encabezado
         }
 
     @app.get("/api/usage")
@@ -585,6 +590,36 @@ def create_app() -> FastAPI:
     @app.get("/api/config")
     def get_config():
         return config_state()
+
+    @app.get("/api/models")
+    def get_models():
+        """Los modelos que se pueden elegir (sin gasto). Un proveedor caído no aporta modelos ni rompe nada:
+        queda en `errors` con su motivo. `providers` son los que respondieron (aunque no tengan modelos)."""
+        names = providers.names()
+        pool = ThreadPoolExecutor(max_workers=max(1, len(names)))
+        futures = {name: pool.submit(providers.get(name).list_models) for name in names}
+        deadline = time.monotonic() + MODELS_TIMEOUT
+        models, up, errors = [], [], {}
+        for name, future in futures.items():
+            try:
+                listed = future.result(timeout=max(0.0, deadline - time.monotonic()))
+            except FutureTimeout:
+                errors[name] = f"El proveedor {name} no respondió a tiempo."
+            except ValueError as e:  # error esperable: su mensaje ya es para el usuario
+                errors[name] = config.redact(str(e))
+            except Exception:
+                errors[name] = f"No pude consultar los modelos de {name}."
+            else:
+                up.append(name)
+                models += [{"id": f"{name}:{model}", "provider": name} for model in listed]
+        pool.shutdown(wait=False, cancel_futures=True)  # uno lento sigue por su cuenta, sin trabar la respuesta
+        return {
+            "models": models,
+            "providers": up,
+            "errors": errors,
+            "default": llm.default_model(),
+            "overrides": [task for task in llm.TASKS if os.environ.get(f"AI_MODEL_{task.upper()}")],
+        }
 
     @app.post("/api/voice/delete-model")
     def delete_voice_model():
