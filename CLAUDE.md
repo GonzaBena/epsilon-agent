@@ -154,13 +154,12 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 
 ## Pendiente
 
-- Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
+- Más adelante: Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
   cumpla ese papel serían skills.
 - Modo IA, siguientes pasos: MCP, y que el modelo guarde memoria solo; buscar en
   notas y tickets (p. ej. «¿qué día hice esta compra?») llega con las tools. Telegram en modo IA quedó afuera.
 - Archivos en el chat, parte 2: que la IA genere archivos (p. ej. una presentación `.pptx` con `python-pptx`) a partir de los que se mencionan con `@`. Puede ser una herramienta propia de `tools.py` (pasa por los mismos permisos) o MCP. Hoy la respuesta es solo texto.
-- Memoria, siguientes pasos: pasársela a los resúmenes; que el modelo guarde sola vía MCP.
+- Memoria, siguientes pasos: que el modelo la guarde sola vía MCP. No se le pasa a los resúmenes, salvo que el resumen se pida dentro de un chat de modo IA (ahí ya la recibe).
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
 - Más proveedores (Anthropic, OpenAI…): uno por vez, como un archivo nuevo en `ai/providers/`. Y un archivo de configuración propio (hoy los ajustes viven en el `.env`). Ver `docs/plan-modelos.md`.
-- Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración y en el botón del modelo).
