@@ -92,6 +92,17 @@ def _usd_limit(value: str) -> str:
     return str(float(value)) if "." in value else value
 
 
+def _whole(low: int, high: int, what: str):
+    """Validador de enteros entre `low` y `high`."""
+
+    def check(value: str) -> str:
+        if not re.fullmatch(r"\d{1,4}", value, re.ASCII) or not low <= int(value) <= high:
+            raise ValueError(f"{what} tiene que ser un número entero entre {low} y {high}.")
+        return str(int(value))
+
+    return check
+
+
 def _device(value: str) -> str:
     value = value.lower()
     if value not in ("cpu", "cuda"):
@@ -184,6 +195,21 @@ SETTINGS = (
         live=True,
         default="0.50",
         validate=_usd_limit,
+    ),
+    # Topes de los archivos que se mencionan con @ en un chat con IA (attachments.py los lee en cada mensaje).
+    Setting(
+        "CHAT_MAX_FILES",
+        "Archivos por mensaje en el chat con IA",
+        live=True,
+        default="5",
+        validate=_whole(1, 20, "La cantidad de archivos"),
+    ),
+    Setting(
+        "CHAT_MAX_MB",
+        "Tamaño máximo de los archivos por mensaje (MB)",
+        live=True,
+        default="15",
+        validate=_whole(1, 100, "El tamaño"),
     ),
     # Voz (transcribe.py los lee al usar el modelo, no al arrancar).
     Setting(

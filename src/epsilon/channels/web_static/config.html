@@ -141,6 +141,24 @@
               <p class="error" id="err-CHAT_LIMIT_USD" role="alert"></p>
             </div>
 
+            <div class="field">
+              <label for="f-CHAT_MAX_FILES">Archivos por mensaje en el chat con IA</label>
+              <input id="f-CHAT_MAX_FILES" data-key="CHAT_MAX_FILES" type="text" inputmode="numeric"
+                     autocomplete="off" spellcheck="false" placeholder="5"
+                     aria-describedby="hint-CHAT_MAX_FILES err-CHAT_MAX_FILES">
+              <p class="hint" id="hint-CHAT_MAX_FILES"></p>
+              <p class="error" id="err-CHAT_MAX_FILES" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-CHAT_MAX_MB">Tamaño máximo de los archivos por mensaje (MB)</label>
+              <input id="f-CHAT_MAX_MB" data-key="CHAT_MAX_MB" type="text" inputmode="numeric"
+                     autocomplete="off" spellcheck="false" placeholder="15"
+                     aria-describedby="hint-CHAT_MAX_MB err-CHAT_MAX_MB">
+              <p class="hint" id="hint-CHAT_MAX_MB"></p>
+              <p class="error" id="err-CHAT_MAX_MB" role="alert"></p>
+            </div>
+
             <div class="test-row">
               <button type="button" class="secondary" data-test="gemini">Probar conexión</button>
               <p class="result" id="result-gemini" role="status"></p>

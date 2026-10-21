@@ -575,6 +575,25 @@ def test_chat_limit_default_is_fifty_cents(env_file):
     assert entry("CHAT_LIMIT_USD", env_file)["value"] in ("", "0.50")
 
 
+@pytest.mark.parametrize("key,value", [("CHAT_MAX_FILES", "8"), ("CHAT_MAX_FILES", "20"), ("CHAT_MAX_MB", "30"), ("CHAT_MAX_MB", "100")])
+def test_chat_file_limits_accept_whole_numbers_in_range(key, value, env_file, monkeypatch):
+    monkeypatch.delenv(key, raising=False)
+
+    config.update({key: value}, [], env_file)
+
+    assert f"{key}='{value}'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv(key)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("CHAT_MAX_FILES", "0"), ("CHAT_MAX_FILES", "21"), ("CHAT_MAX_FILES", "x"), ("CHAT_MAX_FILES", "2.5"),
+    ("CHAT_MAX_MB", "0"), ("CHAT_MAX_MB", "101"), ("CHAT_MAX_MB", "x"), ("CHAT_MAX_MB", "1\n2"),
+])
+def test_chat_file_limits_reject_anything_else(key, value, env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({key: value}, [], env_file)
+
+
 @pytest.mark.parametrize(
     "value, saved",
     [
