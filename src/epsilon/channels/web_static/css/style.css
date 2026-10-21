@@ -961,6 +961,34 @@ body.booting .log {
   max-width: 68ch;
 }
 
+/* Botón de copiar: aparece al pasar el mouse o con el foco; en pantallas táctiles queda siempre visible. */
+.msg-copy {
+  display: flex;
+  margin-top: 4px;
+  padding: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.msg.user .msg-copy {
+  margin-left: auto;
+}
+.msg:hover .msg-copy,
+.msg-copy:focus-visible {
+  opacity: 1;
+}
+.msg-copy:hover {
+  color: var(--accent);
+}
+@media (hover: none) {
+  .msg-copy {
+    opacity: 1;
+  }
+}
+
 /* Los saltos de línea del texto se respetan; las palabras largas se cortan. */
 .text {
   margin: 0;

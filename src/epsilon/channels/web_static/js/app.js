@@ -209,9 +209,53 @@ function render(message) {
     body.append(box);
   }
 
+  body.append(copyButton(message.text));
+
   row.append(body);
   log.append(row);
   return row;
+}
+
+// Un ícono sin innerHTML: se arma con la API de SVG.
+function svgIcon(pathData) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  for (const [name, value] of Object.entries({
+    viewBox: "0 0 24 24", width: "14", height: "14", fill: "none", stroke: "currentColor",
+    "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
+  })) svg.setAttribute(name, value);
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", pathData);
+  svg.append(path);
+  return svg;
+}
+const COPY_ICON = "M9 9h11v11H9zM5 15V5a1 1 0 0 1 1-1h10"; // dos hojas
+const CHECK_ICON = "M5 12.5l4.5 4.5L19 7";
+
+// Botón que copia al portapapeles el texto ORIGINAL del mensaje (el markdown, no lo dibujado).
+function copyButton(text) {
+  const button = make("button", "msg-copy");
+  button.type = "button";
+  button.title = "Copiar";
+  button.setAttribute("aria-label", "Copiar mensaje");
+  button.append(svgIcon(COPY_ICON));
+  let timer = null;
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      button.title = "No pude copiar";
+      return;
+    }
+    button.replaceChildren(svgIcon(CHECK_ICON));
+    button.title = "Copiado";
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      button.replaceChildren(svgIcon(COPY_ICON));
+      button.title = "Copiar";
+    }, 1500);
+  });
+  return button;
 }
 
 function scrollToEnd() {
