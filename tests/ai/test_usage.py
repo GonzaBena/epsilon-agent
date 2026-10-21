@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from epsilon.ai import usage
@@ -252,3 +253,71 @@ def test_report_without_a_file_is_all_zeros(tmp_path, monkeypatch):
     report = usage.report(date(2026, 10, 21))
 
     assert [p["calls"] for p in report["periods"]] == [0, 0, 0, 0] and report["rows"] == []
+
+
+# --- Gasto por conversación ----------------------------------------------------
+
+CID = "20261020-100000-aaaa"
+OTHER = "20261020-100001-bbbb"
+
+
+def test_record_tags_conversation(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    with usage.conversation(CID):
+        usage.record("modelo-a", 10, 1)
+    usage.record("modelo-a", 10, 1)
+
+    lines = [json.loads(l) for l in (tmp_path / usage.USAGE_FILE).read_text().splitlines()]
+    assert lines[0]["conversation"] == CID
+    assert "conversation" not in lines[1]
+
+
+def test_for_conversation_sums_only_that_conversation(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    with usage.conversation(CID):
+        usage.record("modelo-a", 1_000_000, 0)  # 1.0 USD
+    with usage.conversation(OTHER):
+        usage.record("modelo-a", 5_000_000, 0)
+    usage.record("modelo-a", 9_000_000, 0)  # sin conversación
+
+    result = usage.for_conversation(CID)
+
+    assert result["cost"] == 1.0
+    assert result["calls"] == 1
+
+
+def test_for_conversation_context_is_last_chat_input(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    with usage.conversation(CID):
+        with usage.action("Chat"):
+            usage.record("modelo-a", 100, 5)
+            usage.record("modelo-a", 250, 5)
+        with usage.action("Resumen"):
+            usage.record("modelo-a", 9999, 5)
+
+    assert usage.for_conversation(CID)["context"] == 250
+
+
+def test_for_conversation_new_is_zero_even_with_global_spend(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    usage.record("modelo-a", 2_000_000, 0)
+
+    assert usage.for_conversation(CID) == {"cost": 0.0, "calls": 0, "context": 0}
+
+
+def test_for_conversation_skips_broken_lines(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    with usage.conversation(CID):
+        usage.record("modelo-a", 1_000_000, 0)
+    with (tmp_path / usage.USAGE_FILE).open("a", encoding="utf-8") as f:
+        f.write("esto no es json\n")
+
+    assert usage.for_conversation(CID)["cost"] == 1.0
+
+
+def test_price_known(monkeypatch):
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
+
+    assert usage.price_known("modelo-a")
+    assert not usage.price_known("modelo-b")

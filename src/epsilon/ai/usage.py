@@ -22,6 +22,8 @@ PRICES: dict[str, tuple[float, float]] = {
 # pedidos a la vez (web y Telegram) no se mezclan. Las llamadas anteriores a esto no los tienen.
 _channel: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_channel", default=None)
 _action: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_action", default=None)
+# La conversación (modo IA) a la que se le cobra la llamada: así cada una sabe cuánto lleva gastado.
+_conversation: contextvars.ContextVar[str | None] = contextvars.ContextVar("usage_conversation", default=None)
 
 
 @contextmanager
@@ -44,6 +46,16 @@ def action(name: str):
         _action.reset(token)
 
 
+@contextmanager
+def conversation(conversation_id: str | None):
+    """Mientras dure el bloque, las llamadas al modelo se anotan con esta conversación."""
+    token = _conversation.set(conversation_id)
+    try:
+        yield
+    finally:
+        _conversation.reset(token)
+
+
 def record(model: str, input_tokens: int, output_tokens: int) -> None:
     """Anota una llamada al modelo. Solo agrega al final, nunca pisa."""
     now = datetime.now()
@@ -58,6 +70,8 @@ def record(model: str, input_tokens: int, output_tokens: int) -> None:
         line["action"] = _action.get()
     if _channel.get():
         line["channel"] = _channel.get()
+    if _conversation.get():
+        line["conversation"] = _conversation.get()
     path = notes.safe_path(USAGE_FILE)  # toda ruta pasa por safe_path
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(line) + "\n")
@@ -189,3 +203,25 @@ def report(today: date | None = None) -> dict:
         "rows": rows,
         "models": sorted({r["model"] for r in rows}),
     }
+
+
+# --- Gasto de UNA conversación (modo IA) ----------------------------------------
+
+
+def price_known(model: str) -> bool:
+    """¿Hay precio cargado para este modelo? Sin precio, un límite en dólares no se puede cumplir."""
+    return model in PRICES
+
+
+def for_conversation(conversation_id: str) -> dict:
+    """{cost, calls, context} de una conversación. cost: solo llamadas con precio; context: la
+    entrada (tokens) de su última llamada de chat, que es lo que se manda en cada pregunta."""
+    result = {"cost": 0.0, "calls": 0, "context": 0}
+    for entry in _entries():
+        if entry.get("conversation") != conversation_id:
+            continue
+        result["calls"] += 1
+        result["cost"] += _cost(entry) or 0.0
+        if entry.get("action") == "Chat":
+            result["context"] = entry["input"]
+    return result
