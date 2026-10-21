@@ -191,3 +191,17 @@ def test_clima_failure_is_a_plain_message(monkeypatch):
     monkeypatch.setattr(core.clima, "text", fail)
 
     assert say("/clima Zzz").text == "No encontré el clima de «Zzz»."
+
+
+def test_sistema_answers_from_fixed_options_only(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.sistema, "report", lambda item, data_dir: seen.append(item) or "tabla")
+
+    assert say("/sistema").text == "tabla" and say("/sistema ram").text == "tabla"
+    assert seen == ["", "ram"]
+
+
+def test_sistema_refuses_anything_else_without_running_it():
+    text = say("/sistema ls -la; rm -rf /").text
+
+    assert "Opciones: disco, ram, uptime, servicio" in text

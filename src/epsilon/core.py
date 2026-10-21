@@ -16,7 +16,7 @@ from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
-from epsilon.utils import clima, clock, dolar
+from epsilon.utils import clima, clock, dolar, sistema
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -403,6 +403,14 @@ def _csv_cmd(args: str) -> Reply:
         return Reply(str(e))
     except (OSError, csv.Error):
         return Reply("No pude leer ese CSV.")
+
+
+def _system_cmd(args: str) -> Reply:
+    """/sistema [disco|ram|uptime|servicio]: estado de la máquina. Opciones fijas: nunca ejecuta lo que se escriba."""
+    try:
+        return Reply(sistema.report(args, notes.DATA_DIR))
+    except ValueError as e:
+        return Reply(str(e))
 
 
 SEND_MAX_BYTES = 50 * 1024 * 1024  # lo máximo que Telegram deja subir a un bot
@@ -897,6 +905,7 @@ COMMANDS = {
     "hecho": lambda args, s: _done_cmd(args),
     "enviar": lambda args, s: _send(args),
     "csv": lambda args, s: _csv_cmd(args),
+    "sistema": lambda args, s: _system_cmd(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -917,7 +926,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv|sistema)\b:?)\s*", "", args)
 
 
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
@@ -934,6 +943,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "hecho": lambda args: _done_cmd(_bare(args)),
     "enviar": lambda args: _send(_bare(args)),
     "csv": lambda args: _csv_cmd(_bare(args)),
+    "sistema": lambda args: _system_cmd(_bare(args)),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),

@@ -280,6 +280,17 @@ TOOLS = (
         ),
     ),
     Tool(
+        "/sistema",
+        name="sistema",
+        usage="/sistema [qué]",
+        help="estado de la máquina: disco, ram, uptime o servicio (sin opción, todo)",
+        menu="Estado de la máquina (disco, memoria…)",
+        insert="/sistema",
+        ai="read",
+        ai_default="ask",
+        ai_arg="disco, ram, uptime o servicio; vacío para ver todo",
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

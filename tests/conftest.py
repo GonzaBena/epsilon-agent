@@ -69,6 +69,17 @@ def block_real_weather_api(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_systemctl(monkeypatch):
+    """Ningún test lanza procesos del sistema de verdad."""
+    from epsilon.utils import sistema
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar systemctl de verdad")
+
+    monkeypatch.setattr(sistema, "_systemctl", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()

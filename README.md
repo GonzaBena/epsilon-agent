@@ -97,6 +97,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/hecho número`        | Marca como hecha la tarea pendiente con ese número.                       |
 | `/enviar nombre`       | Te manda por Telegram una nota o archivo guardado (en la web ya está en la biblioteca). |
 | `/csv nombre [filtros]` | Consulta un CSV guardado: filtros y, tras una barra vertical, suma, promedio, agrupar… (sin IA). |
+| `/sistema [qué]`       | Estado de la máquina: disco, ram, uptime, servicio (sin IA).              |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

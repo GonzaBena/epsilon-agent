@@ -74,7 +74,7 @@ def test_the_readme_lists_every_setting_a_person_can_edit():
             assert f"`{setting.key}`" in readme or setting.key in readme, setting.key
 
 
-def test_ai_tools_are_the_eighteen_of_the_spec():
+def test_ai_tools_are_the_nineteen_of_the_spec():
     assert [(tools.ai_id(t), t.ai) for t in tools.ai_tools()] == [
         ("nota", "write"),
         ("nota_nombrada", "write"),
@@ -94,6 +94,7 @@ def test_ai_tools_are_the_eighteen_of_the_spec():
         ("hecho", "write"),
         ("enviar", "read"),
         ("csv", "read"),
+        ("sistema", "read"),
     ]
 
 
@@ -103,9 +104,9 @@ def test_ai_ids_are_unique_and_kinds_valid():
     assert all(t.ai in {"read", "write", "delete"} for t in tools.ai_tools())
 
 
-def test_only_resumir_overrides_its_default():
+def test_only_resumir_and_sistema_override_their_default():
     overrides = {tools.ai_id(t): t.ai_default for t in tools.ai_tools() if t.ai_default}
-    assert overrides == {"resumir": "deny"}
+    assert overrides == {"resumir": "deny", "sistema": "ask"}
 
 
 def test_ai_read_tools_never_write_or_use_ai():
