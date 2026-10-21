@@ -116,7 +116,7 @@ for (const [name, button] of Object.entries(modeButtons)) {
 }
 
 const fmtTokens = (n) => Number(n).toLocaleString("es-AR");
-const fmtUsd = (n) => `US$ ${Number(n).toFixed(4)}`;
+const fmtUsd = (n) => window.formatUsd(Number(n)); // js/money.js
 
 // Dibuja la barra con lo que mandó el servidor ({cost, context, limit, blocked, reason}).
 function showChatBar(chat) {

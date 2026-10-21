@@ -40,8 +40,7 @@ function money(usd) {
     const pesos = usd * state.data.ars_rate;
     return `$ ${pesos.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
-  const digits = usd < 1 ? 4 : 2;
-  return `US$ ${usd.toLocaleString("es-AR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  return window.formatUsd(usd); // js/money.js: los costos diminutos no se redondean a cero
 }
 
 // El costo de un período: «sin precio» si ninguna llamada tenía precio cargado.
