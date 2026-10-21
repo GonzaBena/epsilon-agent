@@ -67,12 +67,10 @@ Una página nueva «Permisos», basada en el mockup que hizo la persona
 - Una fila por herramienta, con un selector de tres botones: **Permitir · Preguntar · Bloquear**.
   Cada fila dice qué tipo es (lectura, escritura, borrado). Las filas van agrupadas (notas, memoria…).
 - Un resumen arriba con tres contadores: permitidas, piden confirmación, bloqueadas.
-- Perfiles para aplicar de un golpe: **Estricto** (lectura permitida, escritura pregunta, borrado
-  bloqueado), **Equilibrado** (lectura y escritura permitidas, borrado pregunta) y **Libre** (todo
-  permitido). Los perfiles solo cambian los selectores; no se guardan hasta confirmar. Los valores
-  exactos de cada perfil son los del mockup. Mi llamada: los valores iniciales de la tabla de arriba no
-  son ningún perfil, son los que salen de «lectura permitida, escritura pregunta, borrado bloqueado», con
-  `/resumir` bloqueada a pedido de la persona.
+- **Sin perfiles.** El mockup tiene los botones Estricto, Equilibrado y Libre; se descartaron. Hay un
+  solo conjunto de valores iniciales: lectura permitida, escritura pregunta, borrado bloqueado, y
+  `/resumir` bloqueada a pedido de la persona (es una escritura, pero la pidió bloqueada). Desde ahí se
+  cambia herramienta por herramienta.
 - Una barra «Tenés cambios sin guardar» con **Descartar** y **Guardar cambios**.
 - Se agrega «Permisos» a la barra de arriba y al menú de la izquierda, como en el mockup. Mi llamada:
   el mockup tiene otras entradas (Memoria, Docs, Resúmenes…) que no son parte de este trabajo y no se tocan.
@@ -122,6 +120,7 @@ Una página nueva «Permisos», basada en el mockup que hizo la persona
 - Respuestas al pedido: «sí», «sí por el resto de la conversación», «no».
 - «No» corta el turno y espera el próximo mensaje.
 - Estado inicial: lectura permitida, escritura pregunta, borrado bloqueado, y `/resumir` bloqueada.
+- Sin perfiles: un solo conjunto de valores iniciales.
 - Se ve como el mockup de la pantalla de permisos.
 
 ## Lo que queda a criterio de quien construye
