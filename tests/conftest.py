@@ -74,6 +74,9 @@ def voice_on_by_default(monkeypatch):
     monkeypatch.setenv("VOICE_ENABLED", "si")
     monkeypatch.setenv("TELEGRAM_ENABLED", "si")
     monkeypatch.setenv("USD_ARS", "")  # la cotización de la PC real tampoco cuenta  # (y se restauran solos si un test los cambia)
+    # Tampoco el modelo elegido en la PC real (p. ej. uno de Ollama): los tests parten con el de siempre, Gemini.
+    for name in ("AI_MODEL", "AI_MODEL_CHAT", "AI_MODEL_ASK", "AI_MODEL_SUMMARY", "AI_MODEL_CSV", "GEMINI_MODEL"):
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
