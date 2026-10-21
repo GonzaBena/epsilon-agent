@@ -682,3 +682,22 @@ def test_ollama_url_rejects_anything_else(value, env_file):
 
 def test_ollama_url_defaults_to_the_local_server(env_file):
     assert entry("OLLAMA_URL", env_file)["value"] in ("", "http://127.0.0.1:11434")
+
+
+# --- Ciudad del clima ---------------------------------------------------------
+
+
+def test_weather_city_is_saved_and_applied_live(env_file, monkeypatch):
+    monkeypatch.delenv("WEATHER_CITY", raising=False)
+
+    config.update({"WEATHER_CITY": "  Río   Cuarto "}, [], env_file)
+
+    assert "WEATHER_CITY='Río Cuarto'" in env_file.read_text(encoding="utf-8")
+    assert os.environ["WEATHER_CITY"] == "Río Cuarto"
+    monkeypatch.delenv("WEATHER_CITY")
+
+
+@pytest.mark.parametrize("value", ["123", "a\nb=c", "x" * 61, "a/b"])
+def test_weather_city_rejects_anything_else(value, env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({"WEATHER_CITY": value}, [], env_file)

@@ -142,6 +142,15 @@
             </div>
 
             <div class="field">
+              <label for="f-WEATHER_CITY">Ciudad del clima (opcional)</label>
+              <input id="f-WEATHER_CITY" data-key="WEATHER_CITY" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="Buenos Aires"
+                     aria-describedby="hint-WEATHER_CITY err-WEATHER_CITY">
+              <p class="hint" id="hint-WEATHER_CITY"></p>
+              <p class="error" id="err-WEATHER_CITY" role="alert"></p>
+            </div>
+
+            <div class="field">
               <label for="f-CHAT_MAX_FILES">Archivos por mensaje en el chat con IA</label>
               <input id="f-CHAT_MAX_FILES" data-key="CHAT_MAX_FILES" type="text" inputmode="numeric"
                      autocomplete="off" spellcheck="false" placeholder="5"

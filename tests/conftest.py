@@ -57,6 +57,18 @@ def block_real_dolar_api(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_weather_api(monkeypatch):
+    """Ningún test consulta wttr.in de verdad, y la caché arranca vacía."""
+    from epsilon.utils import clima
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó consultar la API del clima de verdad")
+
+    monkeypatch.setattr(clima, "_get", forbidden)
+    monkeypatch.setattr(clima, "_cache", {})
+
+
+@pytest.fixture(autouse=True)
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()

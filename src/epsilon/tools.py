@@ -204,6 +204,17 @@ TOOLS = (
         ai_arg="no lleva argumento: mandalo vacío",
     ),
     Tool(
+        "/clima",
+        name="clima",
+        usage="/clima [ciudad]",
+        help="el clima ahora y los próximos días (por defecto, tu ciudad)",
+        menu="El clima de tu ciudad (o de otra)",
+        insert="/clima ",
+        links=("/clima",),
+        ai="read",
+        ai_arg="el nombre de la ciudad, sin prefijos; vacío para la ciudad configurada",
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

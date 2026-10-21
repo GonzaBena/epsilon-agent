@@ -34,6 +34,7 @@ data/      notes.py conversations.py library.py         lo que se guarda en DATA
 voice/     transcribe.py                                Whisper (voz → texto)
 memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
 settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
+utils/     clock.py dolar.py clima.py                   utilidades locales sin modelo (fecha, dólar, clima); un solo punto de red por módulo, bloqueado en los tests
 plugins/   channels.py                                  canales de terceros (manifiesto, descubrimiento, carga)
 channels/  telegram.py web.py web_static/               por dónde se habla con Epsilon
 ```

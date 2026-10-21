@@ -10,6 +10,7 @@ from dotenv import dotenv_values, set_key
 
 from epsilon import ENV_FILE
 from epsilon.data import notes
+from epsilon.utils import clima
 
 # Configuración editable desde la web. Todo vive en el .env (única fuente) y
 # este módulo es el único que lo escribe. No conoce HTTP ni ningún canal.
@@ -213,6 +214,13 @@ SETTINGS = (
         "Pesos por dólar (opcional)",
         live=True,
         validate=_rate,
+    ),
+    # Ciudad que usa /clima cuando no le decís otra (core.py la lee en cada pedido).
+    Setting(
+        "WEATHER_CITY",
+        "Ciudad del clima (opcional)",
+        live=True,
+        validate=clima.valid_city,
     ),
     # Tope de costo (US$) con el que nace cada conversación de modo IA; después se cambia en cada una.
     Setting(

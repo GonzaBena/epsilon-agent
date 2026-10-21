@@ -45,6 +45,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `TELEGRAM_ENABLED`                                           | Prende (`si`) o apaga (`no`) el bot. Se cambia desde la página Canales, sin reiniciar.                                  |
 | `USD_ARS`                                                    | Opcional: pesos por dólar, cargado a mano. Habilita el botón ARS en la página Uso.                                      |
 | `CHAT_LIMIT_USD`                                             | Opcional: límite de costo (US$) con el que nace cada chat con IA; se cambia en cada conversación. Por defecto 0.50.     |
+| `WEATHER_CITY`                                               | Opcional: la ciudad que usa `/clima` cuando no escribís otra.                                                           |
 | `CHAT_MAX_FILES`                                             | Opcional: archivos que se pueden mencionar con `@` en un mensaje del chat con IA. Por defecto 5.                        |
 | `CHAT_MAX_MB`                                                | Opcional: tamaño total (MB) de esos archivos por mensaje. Por defecto 15.                                               |
 | `AI_MODEL`                                                  | Opcional: modelo de IA predeterminado, como `proveedor:modelo` (`gemini:…` u `ollama:…`). Si falta, rige `GEMINI_MODEL`. |
@@ -90,6 +91,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/editar número texto` | Cambia una línea de la memoria.                                           |
 | `/fecha`               | Fecha y hora de ahora (sin IA).                                           |
 | `/dolar`               | Cotización del dólar hoy: oficial, blue, MEP… (sin IA).                   |
+| `/clima [ciudad]`      | Clima ahora y próximos días; sin ciudad, usa `WEATHER_CITY` (sin IA).     |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

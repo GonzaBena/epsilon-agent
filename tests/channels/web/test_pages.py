@@ -112,7 +112,7 @@ def test_menu_commands_are_ones_the_chat_page_may_run_from_a_link():
     # ni de llamar al modelo). La lista ya no está escrita en app.js.
     allowed = tools.link_commands()
 
-    assert sorted(allowed) == ["/archivos", "/archivos tickets", "/dolar", "/fecha", "/uso", "/ver"]
+    assert sorted(allowed) == ["/archivos", "/archivos tickets", "/clima", "/dolar", "/fecha", "/uso", "/ver"]
     for tool in tools.TOOLS:
         if tool.links:
             assert not tool.writes and not tool.uses_ai, tool.label

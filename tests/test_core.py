@@ -166,3 +166,28 @@ def test_dolar_failure_is_a_plain_message(monkeypatch):
     monkeypatch.setattr(core.dolar, "text", fail)
 
     assert "No pude consultar" in say("/dolar").text
+
+
+def test_clima_uses_the_given_city_or_the_configured_one(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.clima, "text", lambda city: seen.append(city) or f"clima de {city}")
+    monkeypatch.setenv("WEATHER_CITY", "Rosario")
+
+    assert say("/clima").text == "clima de Rosario"
+    assert say("/clima Salta").text == "clima de Salta"
+    assert seen == ["Rosario", "Salta"]
+
+
+def test_clima_without_any_city_explains_what_to_do(monkeypatch):
+    monkeypatch.delenv("WEATHER_CITY", raising=False)
+
+    assert "Configuración" in say("/clima").text
+
+
+def test_clima_failure_is_a_plain_message(monkeypatch):
+    def fail(city):
+        raise ValueError("No encontré el clima de «Zzz».")
+
+    monkeypatch.setattr(core.clima, "text", fail)
+
+    assert say("/clima Zzz").text == "No encontré el clima de «Zzz»."

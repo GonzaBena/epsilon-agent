@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date
+import os
 from pathlib import Path
 import re
 import threading
@@ -14,7 +15,7 @@ from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 from epsilon.settings import config
-from epsilon.utils import clock, dolar
+from epsilon.utils import clima, clock, dolar
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -310,6 +311,17 @@ def _dollar(args: str) -> Reply:
     """/dolar: cotizaciones de hoy desde una API pública. No usa el modelo."""
     try:
         return Reply(dolar.text())
+    except ValueError as error:
+        return Reply(str(error))
+
+
+def _weather(args: str) -> Reply:
+    """/clima [ciudad]: el clima de la ciudad (por defecto, WEATHER_CITY). No usa el modelo."""
+    city = args.strip() or os.environ.get("WEATHER_CITY", "").strip()
+    if not city:
+        return Reply("Decime la ciudad (/clima Rosario) o cargá la tuya en Configuración (Ciudad del clima).")
+    try:
+        return Reply(clima.text(city))
     except ValueError as error:
         return Reply(str(error))
 
@@ -770,6 +782,7 @@ COMMANDS = {
     "fecha": lambda args, s: _date(args),
     "hora": lambda args, s: _date(args),
     "dolar": lambda args, s: _dollar(args),
+    "clima": lambda args, s: _weather(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -790,7 +803,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima)\b:?)\s*", "", args)
 
 
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
@@ -801,6 +814,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "archivos": _files,
     "fecha": _date,
     "dolar": _dollar,
+    "clima": lambda args: _weather(_bare(args)),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
