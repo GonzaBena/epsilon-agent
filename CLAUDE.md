@@ -29,7 +29,7 @@ programa»; cada carpeta, una capa):
 
 ```
 core.py main.py tools.py menu.py state.py   el centro: lógica, arranque, registro, /menu, estado de canales
-ai/        llm.py extract.py summarize.py usage.py      todo lo que habla con el modelo y su gasto
+ai/        llm.py chat.py extract.py summarize.py usage.py   todo lo que habla con el modelo y su gasto
 data/      notes.py conversations.py library.py         lo que se guarda en DATA_DIR (library: vista de solo lectura)
 voice/     transcribe.py                                Whisper (voz → texto)
 memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
@@ -93,7 +93,15 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - `data/notes.py`: notas, CSV y archivos en DATA_DIR. Sin Telegram ni modelo.
 - `data/library.py`: la biblioteca de la web (listar con búsqueda, filtro y páginas; abrir; abrir la carpeta). Solo
   lee: todo pasa por `safe_path` y por la lista de extensiones; los resúmenes no se muestran.
-- `ai/llm.py`: ÚNICO lugar que llama a Gemini.
+- `ai/llm.py`: ÚNICO lugar que llama a Gemini (`generate` de un disparo, `chat` de varios turnos).
+- `ai/chat.py`: el **modo IA** (conversación libre con la IA, solo web). El modo se elige al crear la conversación
+  (línea `meta` con `mode: ai`) y no cambia; las normales nunca usan IA libre. Al modelo le llegan solo lo que
+  escribís y lo que la IA contestó (no la salida de comandos ni adjuntos) más la memoria. Cada conversación lleva su
+  límite de costo en US$ (línea `limit`; ajuste `CHAT_LIMIT_USD` para las nuevas): `chat.status()` da contexto, costo
+  y si está bloqueada. **Toda** llamada al modelo dentro de una conversación de modo IA se anota con su `conversation`
+  (`usage.conversation`) y suma a su costo; al llegar al límite (o sin precio del modelo en `usage.PRICES`) `core`
+  bloquea todo lo que usa IA y deja andar lo demás. El costo mostrado es el de ESA conversación, no el global. Ver
+  `docs/plan-chat-ia.md`.
 - `voice/transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
   el modelo se baja solo y se descarga de memoria tras un rato). Ver `docs/plan-voz.md`.
 - `ai/extract.py`, `ai/summarize.py`: lógica de imagen→CSV y resúmenes. `ai/usage.py`: el registro del gasto.
@@ -140,7 +148,9 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 
 - Más adelante: Whisper (voz; es una forma de entrada: audio → texto antes del núcleo, no un comando), Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
   cumpla ese papel serían skills.
-- Memoria, siguientes pasos: pasársela a la IA (resúmenes, y una charla con el modelo), que el modelo guarde sola vía MCP.
+- Modo IA, siguientes pasos: tools con un sistema de permisos, MCP, y que el modelo guarde memoria solo; buscar en
+  notas y tickets (p. ej. «¿qué día hice esta compra?») llega con las tools. Telegram en modo IA quedó afuera.
+- Memoria, siguientes pasos: pasársela a los resúmenes; que el modelo guarde sola vía MCP.
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
 - Textos de la interfaz: decir «IA» y no nombrar el modelo (salvo en la configuración).
