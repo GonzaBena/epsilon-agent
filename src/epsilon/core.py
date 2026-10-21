@@ -1,7 +1,10 @@
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 import re
+import threading
+import weakref
 
 from epsilon import menu, tools
 from epsilon.ai import chat, extract, summarize, usage
@@ -472,6 +475,21 @@ def _uses_ai(msg: Message) -> bool:
     return bool(text) and not text.startswith("+") and not re.fullmatch(r"cancelar", text, re.IGNORECASE)
 
 
+# Un candado por conversación de modo IA: el chequeo del límite y la llamada al modelo van juntos, así dos
+# pedidos a la vez (dos pestañas, un chat y un /resumir) no pasan los dos el límite. Las conversaciones
+# no se esperan entre sí. Débil: el candado se descarta solo cuando nadie lo está usando.
+_ai_locks: "weakref.WeakValueDictionary[str, threading.Lock]" = weakref.WeakValueDictionary()
+_ai_locks_guard = threading.Lock()
+
+
+def _ai_lock(conversation_id: str) -> threading.Lock:
+    with _ai_locks_guard:
+        lock = _ai_locks.get(conversation_id)
+        if lock is None:
+            lock = _ai_locks[conversation_id] = threading.Lock()
+        return lock
+
+
 def _chat(msg: Message) -> Reply:
     """Texto libre en una conversación de modo IA: responde la IA, con la charla y la memoria."""
     try:
@@ -517,7 +535,11 @@ def handle(msg: Message) -> Reply:
     ai_conversation = _is_ai_conversation(msg)
     with usage.channel("Telegram" if msg.session_id.startswith("telegram:") else "Web"):
         with usage.conversation(msg.conversation_id if ai_conversation else None):
-            reply = _dispatch(msg)
+            # Lo que usa IA en una conversación de modo IA se hace de a uno (ver _ai_lock).
+            serial = ai_conversation and _uses_ai(msg)
+            lock = _ai_lock(msg.conversation_id) if serial else nullcontext()
+            with lock:
+                reply = _dispatch(msg)
     _remember(_session(msg.session_id), reply.artifacts)
     return reply
 

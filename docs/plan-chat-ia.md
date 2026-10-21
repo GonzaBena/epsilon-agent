@@ -10,7 +10,8 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-modo-ia-design.md`. Plan de
 - **Costo.** `usage.conversation(id)` anota cada llamada con su conversación (también `/resumir` e imagen→CSV dentro
   de ella); `usage.for_conversation(id)` suma. Contexto = tokens de entrada de la última llamada «Chat».
 - **Límite.** Línea `limit` en el archivo (gana la última); `PUT /api/conversations/{id}/limit` la cambia. El chequeo es
-  antes de cada llamada: una respuesta puede pasarse un poco. Bloqueada = `core` no llama al modelo para texto libre,
+  antes de cada llamada: una respuesta puede pasarse un poco. Chequeo y llamada van bajo un candado por
+  conversación (`core._ai_lock`), así dos pedidos a la vez no pasan los dos el límite; las conversaciones no se esperan. Bloqueada = `core` no llama al modelo para texto libre,
   comandos con IA, imagen con pedido ni el botón Resumir; `/ver`, `/memoria`, notas siguen.
 - **Sin precio.** Si `usage.PRICES` no tiene el modelo configurado, el límite no se puede medir: todo lo que usa IA en
   modo IA queda bloqueado con un aviso.

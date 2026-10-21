@@ -586,3 +586,63 @@ def test_empty_model_answer_is_a_short_message_not_a_crash(ai_mode, monkeypatch,
     reply = ai_say("hola")
 
     assert reply.text == "La IA no devolvió texto." and not reply.ai
+
+
+def test_two_simultaneous_requests_cannot_both_pass_the_limit(ai_mode, monkeypatch):
+    import threading
+    import time
+
+    conversations.start(AI_CID, "ai", 1.0)  # alcanza para UNA respuesta (cada una cuesta US$ 1)
+    calls = []
+
+    def slow_chat(turns, system, max_tokens=1500):
+        calls.append(turns)
+        time.sleep(0.2)  # tiempo de sobra para que el otro pedido llegue al chequeo
+        usage.record("modelo-a", 1_000_000, 0)
+        return "respuesta"
+
+    monkeypatch.setattr(core.chat.llm, "chat", slow_chat)
+    replies = []
+
+    def ask(text):
+        replies.append(core.handle(core.Message(text=text, session_id="web:ai", conversation_id=AI_CID)))
+
+    threads = [threading.Thread(target=ask, args=(t,)) for t in ("uno", "dos")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(calls) == 1
+    assert sorted(r.ai for r in replies) == [False, True]
+    assert any("límite" in r.text for r in replies)
+
+
+def test_requests_in_different_conversations_do_not_wait_for_each_other(ai_mode, monkeypatch):
+    import threading
+
+    other = "20261020-130001-bbbb"
+    for cid in (AI_CID, other):
+        conversations.start(cid, "ai", 5.0)
+    inside = threading.Event()
+    release = threading.Event()
+
+    def blocking_chat(turns, system, max_tokens=1500):
+        inside.set()
+        release.wait(timeout=5)
+        return "respuesta"
+
+    monkeypatch.setattr(core.chat.llm, "chat", blocking_chat)
+    first = threading.Thread(
+        target=lambda: core.handle(core.Message(text="uno", session_id="web:a", conversation_id=AI_CID))
+    )
+    first.start()
+    assert inside.wait(timeout=5)
+
+    # La otra conversación responde aunque la primera siga esperando al modelo.
+    monkeypatch.setattr(core.chat.llm, "chat", lambda *a, **k: "otra")
+    reply = core.handle(core.Message(text="hola", session_id="web:b", conversation_id=other))
+    release.set()
+    first.join()
+
+    assert reply.text == "otra"
