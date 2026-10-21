@@ -1,10 +1,14 @@
 from types import SimpleNamespace
 
+import pytest
+
 from epsilon.ai import llm
 
 # conftest reemplaza llm.generate por una función que falla. Guardamos acá la
 # real (importada antes de que corra el fixture) para probarla con un cliente falso.
+from epsilon.ai.llm import ToolSpec
 from epsilon.ai.llm import chat as real_chat
+from epsilon.ai.llm import chat_tools as real_chat_tools
 from epsilon.ai.llm import generate as real_generate
 
 
@@ -91,6 +95,112 @@ def test_chat_sends_turns_in_order_with_system(monkeypatch):
     assert seen["max"] == 300
 
 
+# --- llm.chat_tools: conversación con herramientas ----------------------------
+
+
+def tools_client(calls=(), text="listo", seen=None):
+    """Cliente falso que contesta con `calls` (lista de (nombre, args)) y anota lo que recibe."""
+
+    class ToolsClient(FakeClient):
+        def generate_content(self, model, contents, config):
+            if seen is not None:
+                seen["contents"] = contents
+                seen["config"] = config
+            meta = SimpleNamespace(
+                prompt_token_count=12, candidates_token_count=5, thoughts_token_count=3
+            )
+            turn = SimpleNamespace(role="model", parts=[])
+            function_calls = [SimpleNamespace(name=n, args=a) for n, a in calls]
+            return SimpleNamespace(
+                candidates=[SimpleNamespace(content=turn)],
+                text=text,
+                function_calls=function_calls or None,
+                usage_metadata=meta,
+            )
+
+    return ToolsClient
+
+
+SPECS = [ToolSpec("ver", "Mira algo", "qué mirar"), ToolSpec("notas", "Lista notas", "filtro")]
+
+
+def test_chat_tools_returns_text_and_records_usage(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
+    monkeypatch.setattr(llm.genai, "Client", tools_client())
+    recorded = []
+    monkeypatch.setattr(llm.usage, "record", lambda *args: recorded.append(args))
+
+    step = real_chat_tools([llm.text_turn("user", "hola")], "sistema", SPECS)
+
+    assert step.text == "listo"
+    assert step.calls == []
+    assert step.turn.role == "model"
+    assert recorded == [("modelo-a", 12, 8)]
+
+
+def test_chat_tools_returns_calls_with_their_argument(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
+    monkeypatch.setattr(
+        llm.genai, "Client", tools_client(calls=[("ver", {"args": "inbox"}), ("notas", {}), ("ver", {"args": 5})])
+    )
+    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
+
+    step = real_chat_tools([llm.text_turn("user", "hola")], "sistema", SPECS)
+
+    assert step.calls == [("ver", "inbox"), ("notas", ""), ("ver", "")]
+
+
+def test_chat_tools_declares_tools_and_disables_automatic_calling(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
+    monkeypatch.setattr(llm.genai, "Client", tools_client(seen=seen))
+    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
+
+    real_chat_tools([llm.text_turn("user", "hola")], "sé breve", SPECS, max_tokens=300)
+
+    config = seen["config"]
+    declarations = config.tools[0].function_declarations
+    assert [d.name for d in declarations] == ["ver", "notas"]
+    assert declarations[0].description == "Mira algo"
+    schema = declarations[0].parameters_json_schema
+    assert schema["type"] == "object"
+    assert schema["required"] == ["args"]
+    assert schema["properties"]["args"]["type"] == "string"
+    assert config.automatic_function_calling.disable is True
+    assert config.system_instruction == "sé breve"
+    assert config.max_output_tokens == 300
+
+
+def test_chat_tools_without_tools_sends_none(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
+    monkeypatch.setattr(llm.genai, "Client", tools_client(seen=seen))
+    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
+
+    real_chat_tools([llm.text_turn("user", "hola")], "sistema", [])
+
+    assert not seen["config"].tools
+
+
+def test_results_turn_is_a_user_turn_with_one_response_per_result():
+    turn = llm.results_turn([("ver", "uno"), ("notas", "dos")])
+
+    assert turn.role == "user"
+    assert [p.function_response.name for p in turn.parts] == ["ver", "notas"]
+    assert turn.parts[0].function_response.response == {"result": "uno"}
+
+
+def test_text_turn_has_role_and_text():
+    turn = llm.text_turn("model", "hola")
+    assert (turn.role, turn.parts[0].text) == ("model", "hola")
+
+
+def test_conftest_blocks_chat_tools():
+    with pytest.raises(RuntimeError):
+        llm.chat_tools([], "x", [])
+
+
 def test_current_model_uses_env(monkeypatch):
     monkeypatch.setenv("GEMINI_MODEL", "modelo-z")
     assert llm.current_model() == "modelo-z"
@@ -107,7 +217,6 @@ def test_conftest_blocks_chat():
 
 # --- llm.check: validar la clave y el modelo sin gastar tokens ---------------
 
-import pytest
 from google.genai import errors
 
 
