@@ -18,4 +18,5 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-modo-ia-design.md`. Plan de
   comandos con IA, imagen con pedido ni el botón Resumir; `/ver`, `/memoria`, notas siguen.
 - **Sin precio.** Si `usage.PRICES` no tiene el modelo configurado, el límite no se puede medir: todo lo que usa IA en
   modo IA queda bloqueado con un aviso.
-- **Fuera por ahora.** Tools (esperan un sistema de permisos), MCP, Telegram.
+- **Tools.** El modelo puede pedir herramientas según permisos por herramienta: ver `docs/plan-permisos.md`.
+- **Fuera por ahora.** MCP, Telegram.

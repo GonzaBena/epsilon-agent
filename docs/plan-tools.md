@@ -88,3 +88,9 @@ menú de la izquierda (`/ver`, `/archivos`, `/uso`) o en los atajos sobre el cua
 las que gastan tokens siguen con «usa IA». Para mostrar otra, se le pone `panel` en `tools.py`.
 
 **Agregar una herramienta nueva** = una entrada en `TOOLS` + su función en `core.COMMANDS`.
+
+**Herramientas de la IA (permisos).** Tres campos de `Tool` dicen si el modo IA la puede usar (ver
+`docs/plan-permisos.md`): `ai` (`read`, `write` o `delete`; vacío = la IA no la ve), `ai_name` (nombre para el
+modelo cuando no tiene `name`, p. ej. `nota`) y `ai_default` (estado inicial si no es el que sale del tipo, p. ej.
+`deny` en `/resumir`). `tools.ai_id` y `tools.ai_tools` los exponen; la función que corre cada una está en
+`core.AI_RUNNERS`. Una herramienta nueva para la IA = `ai` en su entrada + una línea en `AI_RUNNERS`.
