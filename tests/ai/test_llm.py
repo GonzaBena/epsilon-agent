@@ -149,3 +149,48 @@ def test_check_uses_the_default_model_when_none_is_set(fake, monkeypatch):
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
 
     assert llm.check() == llm.DEFAULT_MODEL
+
+
+# --- qué modelo atiende cada tarea ---------------------------------------------------
+
+
+@pytest.fixture
+def models(monkeypatch):
+    for key in ("AI_MODEL", "AI_MODEL_CHAT", "AI_MODEL_ASK", "AI_MODEL_SUMMARY", "AI_MODEL_CSV", "GEMINI_MODEL"):
+        monkeypatch.delenv(key, raising=False)
+    return monkeypatch
+
+
+def test_a_task_setting_wins_over_the_default(models):
+    models.setenv("AI_MODEL_CHAT", "ollama:qwen3")
+    models.setenv("AI_MODEL", "gemini:x")
+    models.setenv("GEMINI_MODEL", "y")
+
+    assert llm.model_for("chat") == "ollama:qwen3"
+    assert llm.model_for("ask") == "gemini:x"  # sin modelo propio, el predeterminado
+    assert llm.model_for(None) == llm.default_model() == "gemini:x"
+
+
+def test_the_default_falls_back_to_the_gemini_setting_and_then_to_the_built_in_one(models):
+    models.setenv("GEMINI_MODEL", "y")
+    assert llm.default_model() == "gemini:y"
+    models.setenv("AI_MODEL", "")
+    assert llm.default_model() == "gemini:y"
+    models.delenv("GEMINI_MODEL")
+    assert llm.default_model() == f"gemini:{llm.DEFAULT_MODEL}"
+
+
+def test_the_task_in_course_picks_its_model(models):
+    models.setenv("AI_MODEL_SUMMARY", "ollama:qwen3")
+    models.setenv("AI_MODEL", "gemini:x")
+
+    assert llm.model_for() == "gemini:x"
+    with llm.task("summary"):
+        assert llm.model_for() == llm.current_model() == "ollama:qwen3"
+    assert llm.model_for() == "gemini:x"
+
+
+def test_a_name_without_a_provider_in_a_task_setting_is_gemini(models):
+    models.setenv("AI_MODEL_CSV", "modelo-q")
+
+    assert llm.model_for("csv") == "gemini:modelo-q"

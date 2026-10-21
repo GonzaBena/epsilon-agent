@@ -47,6 +47,12 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `CHAT_LIMIT_USD`                                             | Opcional: límite de costo (US$) con el que nace cada chat con IA; se cambia en cada conversación. Por defecto 0.50.     |
 | `CHAT_MAX_FILES`                                             | Opcional: archivos que se pueden mencionar con `@` en un mensaje del chat con IA. Por defecto 5.                        |
 | `CHAT_MAX_MB`                                                | Opcional: tamaño total (MB) de esos archivos por mensaje. Por defecto 15.                                               |
+| `AI_MODEL`                                                  | Opcional: modelo de IA predeterminado, como `proveedor:modelo` (`gemini:…` u `ollama:…`). Si falta, rige `GEMINI_MODEL`. |
+| `AI_MODEL_CHAT`                                             | Opcional: modelo del chat con IA. Si falta, el predeterminado. |
+| `AI_MODEL_ASK`                                              | Opcional: modelo de `/ia`. Si falta, el predeterminado. |
+| `AI_MODEL_SUMMARY`                                          | Opcional: modelo de los resúmenes. Si falta, el predeterminado. |
+| `AI_MODEL_CSV`                                              | Opcional: modelo de imagen a CSV. Si falta, el predeterminado. |
+| `OLLAMA_URL`                                                | Opcional: dirección de Ollama. Por defecto `http://127.0.0.1:11434`. |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `ASSISTANT_NAME`                                              | Nombre para hablarle por voz: «Hola Meli, ¿qué tengo hoy?» equivale a `/ia ¿qué tengo hoy?`. Varios, separados por coma (se guardan en minúsculas y sin tilde; por defecto, `ia, ai`). |

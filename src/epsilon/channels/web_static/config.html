@@ -165,6 +165,68 @@
             </div>
           </section>
 
+          <section aria-labelledby="h-models">
+            <h3 id="h-models">Modelos de IA</h3>
+            <p class="help">Cada modelo se escribe como <code>proveedor:modelo</code> (por ejemplo
+              <code>gemini:gemini-3.1-flash-lite</code> u <code>ollama:llama3.1:8b</code>). El predeterminado también se
+              cambia con el botón del modelo, arriba a la derecha. Las tareas que dejes vacías usan el predeterminado.</p>
+
+            <div class="field">
+              <label for="f-AI_MODEL">Modelo predeterminado</label>
+              <input id="f-AI_MODEL" data-key="AI_MODEL" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="gemini:gemini-3.1-flash-lite"
+                     aria-describedby="hint-AI_MODEL err-AI_MODEL">
+              <p class="hint" id="hint-AI_MODEL"></p>
+              <p class="error" id="err-AI_MODEL" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-AI_MODEL_CHAT">Chat con IA</label>
+              <input id="f-AI_MODEL_CHAT" data-key="AI_MODEL_CHAT" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                     aria-describedby="hint-AI_MODEL_CHAT err-AI_MODEL_CHAT">
+              <p class="hint" id="hint-AI_MODEL_CHAT"></p>
+              <p class="error" id="err-AI_MODEL_CHAT" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-AI_MODEL_ASK">/ia, una pregunta suelta</label>
+              <input id="f-AI_MODEL_ASK" data-key="AI_MODEL_ASK" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                     aria-describedby="hint-AI_MODEL_ASK err-AI_MODEL_ASK">
+              <p class="hint" id="hint-AI_MODEL_ASK"></p>
+              <p class="error" id="err-AI_MODEL_ASK" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-AI_MODEL_SUMMARY">Resumir archivos</label>
+              <input id="f-AI_MODEL_SUMMARY" data-key="AI_MODEL_SUMMARY" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                     aria-describedby="hint-AI_MODEL_SUMMARY err-AI_MODEL_SUMMARY">
+              <p class="hint" id="hint-AI_MODEL_SUMMARY"></p>
+              <p class="error" id="err-AI_MODEL_SUMMARY" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-AI_MODEL_CSV">Imagen a CSV</label>
+              <input id="f-AI_MODEL_CSV" data-key="AI_MODEL_CSV" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                     aria-describedby="hint-AI_MODEL_CSV err-AI_MODEL_CSV">
+              <p class="hint" id="hint-AI_MODEL_CSV"></p>
+              <p class="error" id="err-AI_MODEL_CSV" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-OLLAMA_URL">Dirección de Ollama</label>
+              <input id="f-OLLAMA_URL" data-key="OLLAMA_URL" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434"
+                     aria-describedby="hint-OLLAMA_URL err-OLLAMA_URL">
+              <p class="hint" id="hint-OLLAMA_URL"></p>
+              <p class="error" id="err-OLLAMA_URL" role="alert"></p>
+            </div>
+
+          </section>
+
           <section aria-labelledby="h-telegram">
             <h3 id="h-telegram">Telegram</h3>
             <p class="help">Opcional. Sirve para usar Epsilon desde el celular. El token lo da @BotFather al crear el bot.</p>

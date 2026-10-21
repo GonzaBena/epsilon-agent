@@ -44,11 +44,21 @@ def _full(model_id: str) -> str:
     return f"{provider}:{name}"
 
 
+def default_model() -> str:
+    """El modelo predeterminado (id completo): AI_MODEL, o GEMINI_MODEL como antes, o el de fábrica.
+
+    «or» y no el valor por defecto de get(): si la configuración borra el modelo queda "" (vacío)."""
+    return _full(os.environ.get("AI_MODEL") or os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL)
+
+
 def model_for(task_name: str | None = None) -> str:
     """El id completo («proveedor:modelo») del modelo de una tarea (por defecto, la que está en curso).
 
-    «or» y no el valor por defecto de get(): si la configuración borra el modelo queda "" (vacío)."""
-    return _full(os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL)
+    Cada tarea puede tener el suyo (AI_MODEL_CHAT…); si no, rige el predeterminado."""
+    name = task_name if task_name is not None else _task.get()
+    if name in TASKS and (own := os.environ.get(f"AI_MODEL_{name.upper()}")):
+        return _full(own)
+    return default_model()
 
 
 def current_model(task_name: str | None = None) -> str:

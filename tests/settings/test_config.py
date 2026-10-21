@@ -618,3 +618,67 @@ def test_invalid_assistant_names_are_rejected(value, env_file):
         config.update({"ASSISTANT_NAME": value}, [], env_file)
 
     assert "ASSISTANT_NAME" in error.value.errors and not env_file.exists()
+
+
+# --- modelos de IA por tarea ---------------------------------------------------------
+
+MODEL_KEYS = ["AI_MODEL", "AI_MODEL_CHAT", "AI_MODEL_ASK", "AI_MODEL_SUMMARY", "AI_MODEL_CSV"]
+
+
+@pytest.fixture
+def both_providers(monkeypatch):
+    from epsilon.ai import providers
+
+    monkeypatch.setattr(providers, "names", lambda: ["gemini", "ollama"])
+
+
+@pytest.mark.parametrize("key", MODEL_KEYS)
+def test_model_settings_save_provider_and_model(key, env_file, monkeypatch, both_providers):
+    monkeypatch.delenv(key, raising=False)
+
+    config.update({key: "ollama:llama3.1:8b"}, [], env_file)
+
+    assert f"{key}='ollama:llama3.1:8b'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv(key)
+
+
+def test_a_model_without_provider_is_saved_as_gemini(env_file, monkeypatch, both_providers):
+    monkeypatch.delenv("AI_MODEL", raising=False)
+
+    config.update({"AI_MODEL": "gemini-3.1-flash-lite"}, [], env_file)
+
+    assert "AI_MODEL='gemini:gemini-3.1-flash-lite'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv("AI_MODEL")
+
+
+@pytest.mark.parametrize(
+    "value", ["llama3.1:8b", "foo:bar", "ollama:", "a\nb", "gemini:" + "x" * 100, "ollama:con espacio", "ollama:a;b"]
+)
+def test_model_settings_reject_anything_else(value, env_file, both_providers):
+    with pytest.raises(config.ConfigError):
+        config.update({"AI_MODEL": value}, [], env_file)
+
+
+def test_the_missing_provider_error_says_how_to_write_it(env_file, both_providers):
+    with pytest.raises(config.ConfigError, match="proveedor:modelo"):
+        config.update({"AI_MODEL": "llama3.1:8b"}, [], env_file)
+
+
+@pytest.mark.parametrize("value,saved", [("http://localhost:11434", "http://localhost:11434"), ("http://10.0.0.5:11434/", "http://10.0.0.5:11434"), ("https://ollama.local", "https://ollama.local")])
+def test_ollama_url_accepts_http_and_https(value, saved, env_file, monkeypatch):
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+
+    config.update({"OLLAMA_URL": value}, [], env_file)
+
+    assert f"OLLAMA_URL='{saved}'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv("OLLAMA_URL")
+
+
+@pytest.mark.parametrize("value", ["ftp://x", "javascript:alert(1)", "localhost:11434", "http://", "http://a b", "http://x\ny", "file:///etc/passwd"])
+def test_ollama_url_rejects_anything_else(value, env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({"OLLAMA_URL": value}, [], env_file)
+
+
+def test_ollama_url_defaults_to_the_local_server(env_file):
+    assert entry("OLLAMA_URL", env_file)["value"] in ("", "http://127.0.0.1:11434")

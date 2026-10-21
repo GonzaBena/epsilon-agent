@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 import re
+from urllib.parse import urlsplit
 import unicodedata
 
 from dotenv import dotenv_values, set_key
@@ -101,6 +102,31 @@ def _whole(low: int, high: int, what: str):
         return str(int(value))
 
     return check
+
+
+def _model_id(value: str) -> str:
+    """«proveedor:modelo». Un nombre sin «:» es de Gemini. El nombre del modelo puede tener «:» (etiquetas de Ollama)."""
+    from epsilon.ai import providers  # acá y no arriba: la IA importa este módulo
+
+    known = providers.names()
+    provider, separator, name = value.partition(":")
+    if not separator:
+        provider, name = "gemini", value
+    elif provider not in known:
+        raise ValueError(
+            "Escribilo como proveedor:modelo (por ejemplo gemini:gemini-3.1-flash-lite u ollama:llama3.1:8b). "
+            f"Proveedores: {', '.join(known)}."
+        )
+    if not re.fullmatch(r"[\w.\-:/]+", name, re.ASCII) or len(provider) + len(name) + 1 > 100:
+        raise ValueError("El nombre del modelo solo puede tener letras, números, punto, guion, «:» y «/» (hasta 100).")
+    return f"{provider}:{name}"
+
+
+def _url(value: str) -> str:
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https") or not parts.hostname or re.search(r"\s", value) or len(value) > 200:
+        raise ValueError("La dirección tiene que ser una URL http o https (por ejemplo http://127.0.0.1:11434).")
+    return value.rstrip("/")
 
 
 def _device(value: str) -> str:
@@ -210,6 +236,19 @@ SETTINGS = (
         live=True,
         default="15",
         validate=_whole(1, 100, "El tamaño"),
+    ),
+    # Modelos de IA: «proveedor:modelo». El predeterminado y, opcionalmente, uno por tarea (llm.py los lee en cada llamada).
+    Setting("AI_MODEL", "Modelo de IA predeterminado", live=True, validate=_model_id),
+    Setting("AI_MODEL_CHAT", "Modelo del chat con IA", live=True, validate=_model_id),
+    Setting("AI_MODEL_ASK", "Modelo de /ia", live=True, validate=_model_id),
+    Setting("AI_MODEL_SUMMARY", "Modelo para resumir archivos", live=True, validate=_model_id),
+    Setting("AI_MODEL_CSV", "Modelo de imagen a CSV", live=True, validate=_model_id),
+    Setting(
+        "OLLAMA_URL",
+        "Dirección de Ollama",
+        live=True,
+        default="http://127.0.0.1:11434",
+        validate=_url,
     ),
     # Voz (transcribe.py los lee al usar el modelo, no al arrancar).
     Setting(
