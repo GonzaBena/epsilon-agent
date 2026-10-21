@@ -2328,3 +2328,154 @@ a.ghost {
   display: flex;
   align-items: center;
 }
+
+/* --- Página Permisos ------------------------------------------------------------ */
+.permissions-page {
+  max-width: 56rem;
+}
+.perm-counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+.perm-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+}
+.perm-count {
+  color: var(--text);
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+.perm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--side);
+}
+.perm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.1rem;
+}
+.perm-row + .perm-row {
+  border-top: 1px solid var(--line);
+}
+.perm-info {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.perm-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.perm-kind {
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.perm-kind.kind-delete {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.perm-desc {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+.perm-states {
+  display: flex;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.perm-btn {
+  min-height: 2.75rem;
+  padding: 0 0.9rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #c9cdc9;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.perm-btn:hover:not([aria-pressed="true"]) {
+  border-color: var(--line);
+}
+/* Cada estado se distingue por su texto y también por su forma: lleno, con borde o rojizo. */
+.perm-btn.perm-allow[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.perm-btn.perm-ask[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.perm-btn.perm-deny[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--danger) 14%, var(--bg));
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.perm-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.perm-bar {
+  position: sticky;
+  bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  padding: 0.8rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+}
+.perm-bar[hidden] {
+  display: none;
+}
+.perm-bar-text {
+  flex: 1 1 auto;
+  margin: 0;
+}
+.perm-dialog {
+  max-width: 26rem;
+  padding: 1.25rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+}
+.perm-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+.perm-dialog h3 {
+  margin: 0 0 0.5rem;
+}
+.perm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}

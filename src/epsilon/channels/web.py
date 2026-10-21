@@ -620,6 +620,10 @@ def create_app() -> FastAPI:
     def usage_page():
         return FileResponse(STATIC_DIR / "uso.html")
 
+    @app.get("/permisos", include_in_schema=False)
+    def permissions_page():
+        return FileResponse(STATIC_DIR / "permisos.html")
+
     @app.get("/biblioteca", include_in_schema=False)
     def library_page():
         return FileResponse(STATIC_DIR / "biblioteca.html")

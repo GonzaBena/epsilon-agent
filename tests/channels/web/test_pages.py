@@ -54,7 +54,7 @@ def test_even_rejected_requests_carry_the_policy(client):
     assert "content-security-policy" in reply.headers
 
 
-@pytest.mark.parametrize("name", ["app.js", "config.js", "shell.js", "markdown.js"])
+@pytest.mark.parametrize("name", ["app.js", "config.js", "shell.js", "markdown.js", "permisos.js"])
 def test_js_never_builds_html_from_text(name):
     import re
 
@@ -65,7 +65,7 @@ def test_js_never_builds_html_from_text(name):
         assert forbidden not in source
 
 
-@pytest.mark.parametrize("name", ["index.html", "config.html"])
+@pytest.mark.parametrize("name", ["index.html", "config.html", "permisos.html"])
 def test_html_has_no_inline_script_or_style(name):
     import re
 
@@ -94,7 +94,7 @@ def test_menu_has_the_expected_sections_and_no_dead_links():
     labels = [label for _, _, label in menu_items(page("index.html"))]
 
     # Canales y Uso están en la barra de arriba; Configuración, abajo de todo en este menú.
-    assert labels == ["Chat", "Biblioteca", "Configuración"]
+    assert labels == ["Chat", "Biblioteca", "Permisos", "Configuración"]
     # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
     for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
         assert gone not in page("index.html") and gone not in page("config.html")
@@ -202,7 +202,7 @@ def test_every_letter_mark_in_the_html_is_the_capital_epsilon():
     marks = re.findall(r'class="mark"[^>]*>(.)<', page("index.html"))
     assert marks
     assert all(m == BRAND for m in marks), [hex(ord(m)) for m in marks]
-    for name in ("config.html", "canales.html", "uso.html"):
+    for name in ("config.html", "canales.html", "uso.html", "permisos.html"):
         assert 'class="mark"' not in page(name), name
 
 
@@ -218,8 +218,8 @@ def test_the_marks_drawn_by_the_scripts_are_the_capital_epsilon():
 
 
 def test_every_page_has_the_same_top_bar_and_marks_where_you_are():
-    expected = [("/", "Chat"), ("/canales", "Canales"), ("/uso", "Uso")]
-    current = {"index.html": "Chat", "canales.html": "Canales", "uso.html": "Uso", "config.html": None, "biblioteca.html": None}
+    expected = [("/", "Chat"), ("/canales", "Canales"), ("/uso", "Uso"), ("/permisos", "Permisos")]
+    current = {"index.html": "Chat", "canales.html": "Canales", "uso.html": "Uso", "config.html": None, "biblioteca.html": None, "permisos.html": "Permisos"}
 
     for name in PAGES:
         links = top_links(page(name))
@@ -237,9 +237,9 @@ def test_settings_is_the_last_item_of_the_left_menu_and_is_current_only_on_its_p
         assert "icon-link" not in html  # ya no hay botón de configuración arriba
 
 
-def test_the_top_bar_only_has_chat_channels_and_usage():
+def test_the_top_bar_only_has_chat_channels_usage_and_permissions():
     for name in PAGES:
-        assert [t for _, t, _ in top_links(page(name))] == ["Chat", "Canales", "Uso"]
+        assert [t for _, t, _ in top_links(page(name))] == ["Chat", "Canales", "Uso", "Permisos"]
 
 
 def test_the_channels_page_is_served(client):
@@ -351,7 +351,7 @@ def test_the_telegram_view_tints_the_stage_and_the_composer_blue():
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="sin node no se puede revisar la sintaxis")
-@pytest.mark.parametrize("name", ["app.js", "biblioteca.js", "canales.js", "config.js", "markdown.js", "shell.js", "uso.js"])
+@pytest.mark.parametrize("name", ["app.js", "biblioteca.js", "canales.js", "config.js", "markdown.js", "permisos.js", "shell.js", "uso.js"])
 def test_every_script_parses(name):
     # Un error de sintaxis deja la página muerta y ninguna otra prueba lo ve (no ejecutan el JS).
     done = subprocess.run(["node", "--check", str(static_path(name))], capture_output=True, text=True)
