@@ -5,7 +5,11 @@
   --bg: #0e0f10; /* fondo de la página */
   --side: #141516; /* paneles laterales */
   --surface: #151718; /* compositor, chips */
-  --bubble: color-mix(in srgb, var(--accent) 6%, var(--surface)); /* tu burbuja: el acento, apenas visible */
+  --bubble: color-mix(
+    in srgb,
+    var(--accent) 6%,
+    var(--surface)
+  ); /* tu burbuja: el acento, apenas visible */
   --surface-2: #1b1e1f; /* tus mensajes, botones secundarios */
   --line: #26292b; /* bordes finos */
   --text: #e8e9e6;
@@ -13,13 +17,31 @@
   --accent: #b8fd2c; /* lima: lo único con color */
   --on-accent: #0e0f10; /* texto sobre el lima */
   /* Los fondos suaves salen del acento: si cambiás --accent, todo lo demás lo acompaña. */
-  --accent-soft: color-mix(in srgb, var(--accent) 7%, var(--bg)); /* dónde estás, opción elegida */
-  --accent-card: color-mix(in srgb, var(--accent) 6%, var(--side)); /* tarjeta destacada */
-  --accent-line: color-mix(in srgb, var(--accent) 15%, var(--line)); /* borde de la tarjeta destacada */
+  --accent-soft: color-mix(
+    in srgb,
+    var(--accent) 7%,
+    var(--bg)
+  ); /* dónde estás, opción elegida */
+  --accent-card: color-mix(
+    in srgb,
+    var(--accent) 6%,
+    var(--side)
+  ); /* tarjeta destacada */
+  --accent-line: color-mix(
+    in srgb,
+    var(--accent) 15%,
+    var(--line)
+  ); /* borde de la tarjeta destacada */
   --danger: #ff9b8a;
   --telegram: #5bb8f5; /* azul de Telegram: marca las conversaciones de ese canal (7:1 sobre --side) */
-  --stage-bg: var(--bg); /* el fondo de la conversación y del cuadro de texto; en Telegram se tiñe de azul */
-  --telegram-bg: color-mix(in srgb, var(--telegram) 9%, var(--side)); /* el mismo azul, apenas visible, de fondo */
+  --stage-bg: var(
+    --bg
+  ); /* el fondo de la conversación y del cuadro de texto; en Telegram se tiñe de azul */
+  --telegram-bg: color-mix(
+    in srgb,
+    var(--telegram) 9%,
+    var(--side)
+  ); /* el mismo azul, apenas visible, de fondo */
 
   --t: 0.18s; /* duración al abrir y contraer los paneles */
   --column: 47.5rem; /* ancho de la conversación (760px) */
@@ -2253,7 +2275,6 @@ a.ghost {
   }
 }
 
-
 /* Modo IA: selector de tipo de chat, barra de contexto / costo / límite y la marca en «Recientes». */
 .mode-picker {
   display: flex;
@@ -2494,6 +2515,7 @@ a.ghost {
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--line);
+  border-radius: 12px;
   color: var(--text);
   font-family: var(--mono);
   font-size: 14px;
