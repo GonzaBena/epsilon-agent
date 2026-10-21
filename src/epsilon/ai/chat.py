@@ -21,9 +21,11 @@ SYSTEM = (
 def default_limit() -> float:
     """El límite con el que nace una conversación de modo IA (US$)."""
     try:
-        return float(os.environ.get("CHAT_LIMIT_USD") or DEFAULT_LIMIT)
+        value = float(os.environ.get("CHAT_LIMIT_USD") or DEFAULT_LIMIT)
     except ValueError:
         return DEFAULT_LIMIT
+    # Un .env editado a mano puede traer cualquier cosa (0, nan, 5000): fuera de rango, el de siempre.
+    return value if conversations.LIMIT_MIN <= value <= conversations.LIMIT_MAX else DEFAULT_LIMIT
 
 
 def status(conversation_id: str) -> dict:

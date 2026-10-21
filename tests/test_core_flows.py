@@ -577,3 +577,12 @@ def test_chat_failure_returns_short_message(ai_mode, monkeypatch):
     reply = ai_say("hola")
 
     assert reply.text == "No pude responder." and not reply.ai
+
+
+@pytest.mark.parametrize("empty", [None, "", "   "])
+def test_empty_model_answer_is_a_short_message_not_a_crash(ai_mode, monkeypatch, empty):
+    monkeypatch.setattr(core.chat.llm, "chat", lambda *a, **k: empty)
+
+    reply = ai_say("hola")
+
+    assert reply.text == "La IA no devolvió texto." and not reply.ai

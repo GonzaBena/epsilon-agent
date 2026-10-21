@@ -475,10 +475,14 @@ def _uses_ai(msg: Message) -> bool:
 def _chat(msg: Message) -> Reply:
     """Texto libre en una conversación de modo IA: responde la IA, con la charla y la memoria."""
     try:
-        return Reply(chat.answer(msg.conversation_id, msg.text.strip()), ai=True)
+        answer = chat.answer(msg.conversation_id, msg.text.strip())
     except Exception as e:
         print(f"Error en el chat: {config.redact(repr(e))}")  # el detalle, a la terminal
         return Reply("No pude responder.")
+    # Sin texto (por ejemplo, la IA bloqueó la respuesta): no se guarda como si fuera una respuesta.
+    if not answer or not answer.strip():
+        return Reply("La IA no devolvió texto.")
+    return Reply(answer, ai=True)
 
 
 # --- Punto de entrada --------------------------------------------------------

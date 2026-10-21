@@ -149,3 +149,10 @@ def test_answer_calls_the_model_with_turns_and_tags_the_spend(monkeypatch):
     assert seen["turns"] == [("user", "hola")]
     assert 0 < seen["max_tokens"] <= 2000
     assert usage.for_conversation(CID)["context"] == 1000  # quedó anotado como «Chat»
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "5000", "nan", "inf", "abc", "0.001"])
+def test_default_limit_ignores_a_hand_edited_value_out_of_range(monkeypatch, value):
+    monkeypatch.setenv("CHAT_LIMIT_USD", value)
+
+    assert chat.default_limit() == chat.DEFAULT_LIMIT
