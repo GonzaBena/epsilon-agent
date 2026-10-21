@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
-from epsilon.ai import chat, llm, permissions, providers, usage
+from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.data import conversations, library, notes
 from epsilon.settings import checks, config
 from epsilon.voice import transcribe
@@ -169,6 +169,10 @@ def permissions_view() -> dict:
 
 class TitleIn(BaseModel):
     title: str = Field(max_length=200)
+
+
+class FavoritesIn(BaseModel):
+    favorites: list[str] = Field(max_length=favorites.MAX_FAVORITES)
 
 
 class PinIn(BaseModel):
@@ -683,8 +687,17 @@ def create_app() -> FastAPI:
             "providers": up,
             "errors": errors,
             "default": llm.default_model(),
+            "favorites": favorites.load(),
             "overrides": [task for task in llm.TASKS if os.environ.get(f"AI_MODEL_{task.upper()}")],
         }
+
+    @app.put("/api/models/favorites")
+    def put_favorites(body: FavoritesIn):
+        """Guarda los modelos favoritos (la lista entera, en orden)."""
+        try:
+            return {"favorites": favorites.save(body.favorites)}
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
 
     @app.post("/api/voice/delete-model")
     def delete_voice_model():

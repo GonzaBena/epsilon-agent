@@ -177,3 +177,23 @@ def test_saving_the_configuration_forgets_the_remembered_lists(client, cached):
     client.get("/api/models")
 
     assert cached["gemini"].asked == 2  # una clave o una dirección nueva pueden cambiar la lista
+
+
+# --- Favoritos ---------------------------------------------------------------
+
+
+def test_favorites_are_saved_and_come_back_with_the_models(client, fake_providers):
+    fake_providers["gemini"] = Listing("gemini", ["gemini-a"])
+
+    assert client.get("/api/models").json()["favorites"] == []
+    reply = client.put("/api/models/favorites", json={"favorites": ["gemini:gemini-a", "ollama:qwen3:8b"]})
+
+    assert reply.json() == {"favorites": ["gemini:gemini-a", "ollama:qwen3:8b"]}
+    assert client.get("/api/models").json()["favorites"] == ["gemini:gemini-a", "ollama:qwen3:8b"]
+
+
+def test_favorites_reject_a_wrong_shape_and_write_nothing(client, fake_providers):
+    assert client.put("/api/models/favorites", json={"favorites": ["sin dos puntos"]}).status_code == 422
+    assert client.put("/api/models/favorites", json={"favorites": "gemini:a"}).status_code == 422
+    assert client.put("/api/models/favorites", json={"favorites": ["gemini:a"] * 101}).status_code == 422
+    assert client.get("/api/models").json()["favorites"] == []
