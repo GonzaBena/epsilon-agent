@@ -636,3 +636,36 @@ def test_named_note_cannot_escape_data_dir(script):
 
     assert (notes.DATA_DIR / "fuera.md").exists()
     assert not (notes.DATA_DIR.parent / "fuera.md").exists()
+
+
+# --- Sintaxis del comando copiada por el modelo ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tool_id, arg, expected",
+    [
+        ("nota", "+ comprar leche", "comprar leche"),
+        ("nota", "comprar leche", "comprar leche"),
+        ("recordar", "/recordar mi gato es Tom", "mi gato es Tom"),
+        ("recordar", "/memoria: mi gato es Tom", "mi gato es Tom"),
+    ],
+)
+def test_ai_tools_drop_command_syntax_the_model_copied(script, tool_id, arg, expected):
+    allow(tool_id)
+    script.steps = [step(calls=[(tool_id, arg)]), step("ok")]
+    say("anotá algo")
+
+    saved = inbox() if tool_id == "nota" else (notes.DATA_DIR / "memory.md").read_text(encoding="utf-8")
+    assert saved.strip().endswith(expected) and "+ +" not in saved and "/memoria" not in saved and "/recordar" not in saved
+
+
+def test_bare_keeps_a_plus_inside_the_text():
+    assert core._bare("2 + 2 es 4") == "2 + 2 es 4"
+    assert core._bare("+ 2 + 2") == "2 + 2"
+
+
+def test_every_ai_tool_describes_its_argument_without_command_syntax():
+    from epsilon.ai import chat
+
+    for spec in chat._specs():
+        assert not spec.arg_description.startswith(("+", "/")), spec.name

@@ -25,6 +25,7 @@ class Tool:
     ai: str = ""  # si la IA la puede usar: «read», «write» o «delete» (el tipo); vacío = la IA no la ve
     ai_name: str = ""  # nombre para el modelo cuando no tiene `name` (p. ej. «nota»)
     ai_help: str = ""  # lo que el modelo lee de la herramienta, si no hay `help` ni `panel` (solo para la IA)
+    ai_arg: str = ""  # qué va en su argumento, dicho sin la sintaxis del comando («+», «/recordar»); si falta, `usage`
     ai_default: str = ""  # estado inicial del permiso, si no es el que sale del tipo (p. ej. «deny»)
 
 
@@ -39,6 +40,7 @@ TOOLS = (
         writes=True,
         ai="write",
         ai_name="nota",
+        ai_arg="solo el texto de la nota, sin prefijos",
     ),
     Tool(
         "Nota con nombre",
@@ -64,6 +66,7 @@ TOOLS = (
         insert="/ver ",
         links=("/ver",),
         ai="read",
+        ai_arg="nombre de la nota; vacío para inbox",
     ),
     Tool(
         "/buscar",
@@ -74,6 +77,7 @@ TOOLS = (
         menu="Buscar texto en todas las notas",
         insert="/buscar ",
         ai="read",
+        ai_arg="la palabra a buscar",
     ),
     Tool(
         "/archivos",
@@ -84,6 +88,7 @@ TOOLS = (
         insert="/archivos ",
         links=("/archivos", "/archivos tickets"),
         ai="read",
+        ai_arg="texto para filtrar por nombre; puede ir vacío",
     ),
     Tool(
         "/resumir",
@@ -96,6 +101,7 @@ TOOLS = (
         uses_ai=True,
         writes=True,
         ai="write",
+        ai_arg="nombre de la nota o archivo",
         ai_default="deny",
     ),
     Tool(
@@ -139,6 +145,7 @@ TOOLS = (
         insert="/recordar ",
         writes=True,
         ai="write",
+        ai_arg="solo el dato a recordar, sin prefijos",
     ),
     Tool(
         "/memoria",
@@ -147,6 +154,7 @@ TOOLS = (
         menu="Ver lo que anotaste en la memoria",
         insert="/memoria",
         ai="read",
+        ai_arg="no lleva argumento: mandalo vacío",
     ),
     Tool(
         "/olvidar",
@@ -158,6 +166,7 @@ TOOLS = (
         insert="/olvidar ",
         writes=True,
         ai="delete",
+        ai_arg="el número de la línea",
     ),
     Tool(
         "/editar",
@@ -169,6 +178,7 @@ TOOLS = (
         insert="/editar ",
         writes=True,
         ai="write",
+        ai_arg="el número de la línea y después el texto nuevo, p. ej. «3 mi gato se llama Tom»",
     ),
     Tool(
         "/uso",

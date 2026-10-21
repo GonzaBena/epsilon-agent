@@ -206,7 +206,7 @@ def _forget_cmd(args: str, session: Session) -> Reply:
 
 def _forget_now(args: str) -> Reply:
     """/olvidar N para la IA: borra sin la pregunta de _forget_cmd (el permiso ya fue la confirmación)."""
-    n = _line_number(args.strip())
+    n = _line_number(_bare(args).strip())
     if n is None:
         return Reply("Uso: /olvidar número (los números están en /memoria)")
     try:
@@ -753,17 +753,23 @@ COMMANDS = {
 
 # Herramienta de la IA (su id en tools.ai_id) -> función que la ejecuta con el argumento en texto.
 # Sin estado de sesión: las que lo piden reciben una Session() descartable, así la IA no toca la tuya.
+def _bare(args: str) -> str:
+    """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
+    adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos)\b:?)\s*", "", args)
+
+
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
-    "nota": lambda args: _save("+ " + config.redact(args)),
+    "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "ver": _watch,
     "buscar": _search,
     "archivos": _files,
     "memoria": lambda args: _memory_cmd(args, Session()),
-    "recordar": lambda args: _remember_cmd(args.strip(), Session()),
-    "editar": lambda args: _edit_cmd(args.strip(), Session()),
+    "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
+    "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
     "olvidar": _forget_now,
-    "resumir": lambda args: _summarize_cmd(args.strip(), Session()),
+    "resumir": lambda args: _summarize_cmd(_bare(args).strip(), Session()),
 }
 
 
