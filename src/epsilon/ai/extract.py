@@ -3,9 +3,8 @@ import mimetypes
 import sys
 
 from dotenv import load_dotenv
-from google.genai import types
-
 from epsilon.ai import llm, usage
+from epsilon.ai.messages import File
 from epsilon.data import notes
 
 
@@ -20,10 +19,9 @@ def img_to_rows(img: bytes, mime: str, fields: list[str]) -> list[dict]:
         "en la imagen, dejá el valor como texto vacío; no inventes nada."
     )
 
-    with usage.action("Imagen a CSV"):  # para la página Uso
+    with usage.action("Imagen a CSV"), llm.task("csv"):  # para la página Uso
         answer = llm.generate(
-            # Part.from_bytes empaqueta la imagen para enviarla junto al texto.
-            [types.Part.from_bytes(data=img, mime_type=mime)],
+            [File(img, mime)],  # la imagen viaja junto al texto
             prompt,
             max_tokens=4000,  # tope de salida, para que nada se dispare
             json_mode=True,  # obliga a responder JSON

@@ -31,4 +31,4 @@ def test_summarize_pdf_sends_bytes(tmp_path, monkeypatch):
     )
 
     summarize.summarize(pdf)
-    assert sent[0][0].inline_data.mime_type == "application/pdf"
+    assert sent[0][0].mime == "application/pdf"

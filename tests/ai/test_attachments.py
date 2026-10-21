@@ -101,7 +101,7 @@ def test_load_pdf_goes_as_bytes_with_its_type():
 
     label, part = attachments.load(["files/a.pdf"])
 
-    assert part.inline_data.mime_type == "application/pdf"
+    assert part.mime == "application/pdf"
 
 
 def test_load_rejects_text_over_the_summary_limit(monkeypatch):
@@ -110,12 +110,3 @@ def test_load_rejects_text_over_the_summary_limit(monkeypatch):
 
     with pytest.raises(ValueError, match="demasiado grande"):
         attachments.load(["a.md"])
-
-
-# --- llm.parts_turn ----------------------------------------------------------------
-
-
-def test_parts_turn_turns_strings_into_text_parts():
-    turn = llm.parts_turn("user", ["hola", llm.types.Part(text="chau")])
-
-    assert turn.role == "user" and [p.text for p in turn.parts] == ["hola", "chau"]

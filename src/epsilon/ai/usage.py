@@ -18,6 +18,21 @@ PRICES: dict[str, tuple[float, float]] = {
 }
 
 
+def price(model: str) -> tuple[float, float] | None:
+    """Precio (entrada, salida) por millón de tokens de un modelo, o None si no se conoce.
+
+    Acepta el id completo («gemini:x», «ollama:x») o el nombre solo, como lo guardan los registros viejos
+    de Gemini. Un modelo local (Ollama) es gratis y de precio conocido."""
+    if model.startswith("ollama:"):
+        return (0.0, 0.0)
+    return PRICES.get(model.removeprefix("gemini:"))
+
+
+def stored_name(model_id: str) -> str:
+    """Cómo se anota el modelo en el registro: Gemini sin proveedor (como siempre), el resto con él."""
+    return model_id.removeprefix("gemini:")
+
+
 # Quién pidió la llamada: el canal (lo pone core.handle) y la acción («Resumen», «Imagen a CSV»; lo
 # pone quien llama al modelo). Variables de contexto: valen solo para la tarea en curso, así dos
 # pedidos a la vez (web y Telegram) no se mezclan. Las llamadas anteriores a esto no los tienen.
@@ -88,13 +103,13 @@ def _add(period: dict, entry: dict) -> None:
     period["input"] += entry["input"]
     period["output"] += entry["output"]
 
-    price = PRICES.get(entry["model"])
-    if price is None:
+    rate = price(entry["model"])
+    if rate is None:
         period["unpriced"] += 1  # tokens contados, pero sin precio conocido
         return
     # El precio es por millón de tokens, por eso dividimos por 1.000.000.
     period["cost"] += (
-        entry["input"] * price[0] + entry["output"] * price[1]
+        entry["input"] * rate[0] + entry["output"] * rate[1]
     ) / 1_000_000
 
 
@@ -145,10 +160,10 @@ def format_summary(data: dict) -> str:
 
 def _cost(entry: dict) -> float | None:
     """Precio de una llamada, o None si el modelo no tiene precio cargado."""
-    price = PRICES.get(entry["model"])
-    if price is None:
+    rate = price(entry["model"])
+    if rate is None:
         return None
-    return (entry["input"] * price[0] + entry["output"] * price[1]) / 1_000_000
+    return (entry["input"] * rate[0] + entry["output"] * rate[1]) / 1_000_000
 
 
 def _parse_line(line: str) -> dict | None:
@@ -214,7 +229,7 @@ def report(today: date | None = None) -> dict:
 
 def price_known(model: str) -> bool:
     """¿Hay precio cargado para este modelo? Sin precio, un límite en dólares no se puede cumplir."""
-    return model in PRICES
+    return price(model) is not None
 
 
 # El registro solo se agrega, y for_conversation se consulta en cada mensaje del chat. En vez de releerlo
@@ -271,7 +286,7 @@ def for_conversation(conversation_id: str) -> dict:
             return {"cost": 0.0, "calls": 0, "context": 0}
         cost = 0.0
         for model, (tokens_in, tokens_out) in found["tokens"].items():
-            price = PRICES.get(model)
-            if price is not None:
-                cost += (tokens_in * price[0] + tokens_out * price[1]) / 1_000_000
+            rate = price(model)
+            if rate is not None:
+                cost += (tokens_in * rate[0] + tokens_out * rate[1]) / 1_000_000
         return {"cost": cost, "calls": found["calls"], "context": found["context"]}

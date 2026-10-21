@@ -1,3 +1,4 @@
+import pytest
 import json
 from datetime import date
 
@@ -408,3 +409,35 @@ def test_for_conversation_follows_a_change_of_data_folder(tmp_path, monkeypatch)
     monkeypatch.setattr(notes, "DATA_DIR", second)
 
     assert usage.for_conversation(CID)["calls"] == 0
+
+
+# --- precio por proveedor ---------------------------------------------------------
+
+
+def test_price_by_provider(monkeypatch):
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
+
+    assert usage.price("modelo-a") == usage.price("gemini:modelo-a") == (1.0, 4.0)
+    assert usage.price("ollama:qwen3") == (0.0, 0.0)  # local: gratis, y de precio conocido
+    assert usage.price("otro") is None
+    assert usage.price_known("ollama:qwen3") and usage.price_known("gemini:modelo-a")
+    assert not usage.price_known("gemini:otro")
+
+
+def test_stored_name_drops_only_the_gemini_prefix():
+    assert usage.stored_name("gemini:modelo-a") == "modelo-a"
+    assert usage.stored_name("ollama:qwen3") == "ollama:qwen3"
+    assert usage.stored_name("modelo-a") == "modelo-a"
+
+
+def test_a_conversation_with_a_local_model_costs_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
+    with usage.conversation("20261021-120000-aaaa"):
+        usage.record("ollama:qwen3", 1_000_000, 1_000_000)
+        usage.record("modelo-a", 1_000_000, 0)
+
+    spent = usage.for_conversation("20261021-120000-aaaa")
+
+    assert spent["cost"] == pytest.approx(1.0)  # solo cuenta la de Gemini
+    assert usage.summary()["total"]["unpriced"] == 0  # la de Ollama tiene precio conocido

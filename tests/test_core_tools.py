@@ -55,12 +55,7 @@ def press(action, cid=CID):
 
 def results(history) -> list[str]:
     """Lo que las herramientas le devolvieron al modelo, en orden."""
-    return [
-        part.function_response.response["result"]
-        for turn in history
-        for part in turn.parts or []
-        if part.function_response
-    ]
+    return [result.result for turn in history for result in turn.results]
 
 
 def inbox() -> str:

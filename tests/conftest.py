@@ -2,6 +2,7 @@ import pytest
 
 from epsilon import state
 from epsilon.ai import llm
+from epsilon.ai.providers import gemini
 
 
 @pytest.fixture(autouse=True)
@@ -30,7 +31,7 @@ def block_real_gemini_client(monkeypatch):
     def forbidden(*args, **kwargs):
         raise RuntimeError("Un test intentó crear un cliente real de Gemini")
 
-    monkeypatch.setattr(llm.genai, "Client", forbidden)
+    monkeypatch.setattr(gemini.genai, "Client", forbidden)
 
 
 @pytest.fixture(autouse=True)

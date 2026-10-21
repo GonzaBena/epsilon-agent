@@ -2,9 +2,8 @@ from datetime import date
 import mimetypes
 from pathlib import Path
 
-from google.genai import types
-
 from epsilon.ai import llm, usage
+from epsilon.ai.messages import File
 from epsilon.data import notes
 
 
@@ -31,13 +30,13 @@ def build_part(path: Path):
 
     # PDFs e imágenes: se mandan como bytes con su tipo.
     if mime == "application/pdf" or mime.startswith("image/"):
-        return types.Part.from_bytes(data=path.read_bytes(), mime_type=mime)
+        return File(path.read_bytes(), mime)
 
     raise ValueError(f"Tipo de archivo no soportado: {mime}")
 
 
 def summarize(path: Path) -> str:
-    with usage.action("Resumen"):  # para la página Uso
+    with usage.action("Resumen"), llm.task("summary"):  # para la página Uso
         return llm.generate([build_part(path)], PROMPT)
 
 

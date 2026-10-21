@@ -50,8 +50,8 @@ def test_a_mentioned_pdf_reaches_the_model_in_that_message(seen):
 
     assert reply.text == "listo" and reply.ai
     last = seen[0][-1]
-    assert last.parts[1].inline_data.mime_type == "application/pdf"
-    assert last.parts[-1].text == "armá un resumen de @files/a.pdf"
+    assert last.parts[1].mime == "application/pdf"
+    assert last.parts[-1] == "armá un resumen de @files/a.pdf"
 
 
 def test_a_missing_file_answers_with_an_error_and_never_calls_the_model(seen):

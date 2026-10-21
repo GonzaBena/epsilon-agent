@@ -20,7 +20,7 @@ def test_img_to_rows_keeps_only_requested_fields(monkeypatch):
     rows = extract.img_to_rows(b"img-falsa", "image/png", ["fecha", "proveedor", "total"])
 
     assert rows == [{"fecha": "2026-01-02", "proveedor": "", "total": "10"}]
-    assert calls[0]["parts"][0].inline_data.mime_type == "image/png"  # viaja la imagen
+    assert calls[0]["parts"][0].mime == "image/png"  # viaja la imagen
     assert calls[0]["json_mode"] is True  # pedimos JSON válido al modelo
 
 

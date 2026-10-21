@@ -1,179 +1,108 @@
+import contextvars
 import os
-from dataclasses import dataclass
+from contextlib import contextmanager
 
-from google import genai
-from google.genai import errors, types
+from epsilon.ai import providers, usage
+from epsilon.ai.messages import Call, File, Message, Result, Step, ToolSpec  # noqa: F401 (los usan los llamadores)
 
-from epsilon.ai import usage
+# El ÚNICO lugar que el resto del código usa para hablar con un modelo. Elige el proveedor y el modelo
+# según la tarea en curso, le pasa el pedido, anota el gasto y devuelve el resultado. Los proveedores
+# (`ai/providers/`) son los únicos que conocen la API de cada uno.
 
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
+TASKS = ("chat", "ask", "summary", "csv")
+
+# La tarea en curso (chat, ask, summary, csv): como `usage.action`, vale solo para el hilo que la pone, así
+# los llamadores no tienen que pasarla por cada función.
+_task: contextvars.ContextVar[str | None] = contextvars.ContextVar("llm_task", default=None)
 
 
-def _model() -> str:
-    # "or" y no el valor por defecto de get(): si la configuración borra el
-    # modelo queda "" (vacío), y un modelo vacío no sirve.
-    return os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL
+@contextmanager
+def task(name: str):
+    """Mientras dure el bloque, las llamadas al modelo son de esta tarea (ver TASKS)."""
+    token = _task.set(name)
+    try:
+        yield
+    finally:
+        _task.reset(token)
 
 
-def current_model() -> str:
+def current_task() -> str | None:
+    return _task.get()
+
+
+def parse_model(model_id: str) -> tuple[str, str]:
+    """«ollama:llama3.1:8b» -> («ollama», «llama3.1:8b»). Sin proveedor conocido, el nombre entero es de Gemini."""
+    prefix, separator, rest = model_id.partition(":")
+    if separator and prefix in providers.names():
+        return prefix, rest
+    return "gemini", model_id
+
+
+def _full(model_id: str) -> str:
+    provider, name = parse_model(model_id)
+    return f"{provider}:{name}"
+
+
+def model_for(task_name: str | None = None) -> str:
+    """El id completo («proveedor:modelo») del modelo de una tarea (por defecto, la que está en curso).
+
+    «or» y no el valor por defecto de get(): si la configuración borra el modelo queda "" (vacío)."""
+    return _full(os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL)
+
+
+def current_model(task_name: str | None = None) -> str:
     """El modelo configurado (para saber, por ejemplo, si tiene precio cargado)."""
-    return _model()
+    return model_for(task_name)
 
 
-def _record_usage(model: str, response) -> None:
-    """Anota los tokens gastados (para /uso). Si la respuesta no trae el dato, 0."""
-    meta = response.usage_metadata
-    input_tokens = (meta.prompt_token_count if meta else 0) or 0
-    # El "pensamiento" del modelo se cobra como salida, así que lo sumamos.
-    output_tokens = (meta.candidates_token_count if meta else 0) or 0
-    output_tokens += (getattr(meta, "thoughts_token_count", 0) if meta else 0) or 0
-    usage.record(model, input_tokens, output_tokens)
+def _record(model_id: str, input_tokens: int, output_tokens: int) -> None:
+    usage.record(usage.stored_name(model_id), input_tokens, output_tokens)
 
 
-def generate(
-    parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool = False
-) -> str:
-    """Manda las partes (texto, imagen, PDF) + el prompt y devuelve el texto.
+def generate(parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool = False) -> str:
+    """Manda las partes (texto o File) + el prompt y devuelve el texto.
 
     Con json_mode=True obliga al modelo a responder JSON válido."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    model = _model()
-    response = client.models.generate_content(
-        model=model,
-        contents=[*parts, prompt],  # el * "desarma" la lista de partes
-        config=types.GenerateContentConfig(
-            temperature=0,
-            max_output_tokens=max_tokens,  # tope de salida, para controlar el costo
-            response_mime_type="application/json" if json_mode else None,
-        ),
-    )
-
-    _record_usage(model, response)
-
-    return response.text
-
-
-@dataclass
-class ToolSpec:
-    """Una herramienta que el modelo puede pedir: nombre, para qué sirve y qué va en su argumento."""
-
-    name: str
-    description: str
-    arg_description: str
-
-
-@dataclass
-class Step:
-    """Lo que contestó el modelo: texto y/o llamadas pedidas [(nombre, argumento)].
-
-    `turn` es el turno del modelo tal cual vino (opaco): hay que volver a mandarlo en el historial."""
-
-    text: str
-    calls: list[tuple[str, str]]
-    turn: object
-
-
-def text_turn(role: str, text: str):
-    """Un turno de texto ("user" o "model") para el historial de chat_tools."""
-    return types.Content(role=role, parts=[types.Part(text=text)])
-
-
-def parts_turn(role: str, parts: list):
-    """Un turno con varias partes: texto (str) y archivos (types.Part), en ese orden."""
-    return types.Content(role=role, parts=[types.Part(text=p) if isinstance(p, str) else p for p in parts])
-
-
-def results_turn(results: list[tuple[str, str]]):
-    """El turno del usuario con lo que devolvió cada herramienta: [(nombre, resultado)]."""
-    parts = [
-        types.Part.from_function_response(name=name, response={"result": result})
-        for name, result in results
-    ]
-    return types.Content(role="user", parts=parts)
-
-
-def _declaration(tool: ToolSpec) -> types.FunctionDeclaration:
-    # Cada herramienta recibe un único parámetro de texto, "args".
-    return types.FunctionDeclaration(
-        name=tool.name,
-        description=tool.description,
-        parameters_json_schema={
-            "type": "object",
-            "properties": {"args": {"type": "string", "description": tool.arg_description}},
-            "required": ["args"],
-        },
-    )
+    model_id = model_for()
+    provider, model = parse_model(model_id)
+    result = providers.get(provider).generate(model, parts, prompt, max_tokens, json_mode)
+    _record(model_id, result.input_tokens, result.output_tokens)
+    return result.text
 
 
 def chat_tools(
     history: list, system: str, tools: list[ToolSpec], max_tokens: int = 1500, allow_calls: bool = True
 ) -> Step:
-    """Un paso de conversación con herramientas. `history` son turnos (text_turn / results_turn / Step.turn).
+    """Un paso de conversación con herramientas. `history` son Message (text_turn / results_turn / Step.turn).
 
-    El modelo solo PIDE las llamadas: Epsilon decide si las ejecuta (por eso no hay llamada automática).
-    Con allow_calls=False las herramientas se siguen declarando (el historial las nombra) pero el modelo
-    no puede pedir ninguna: tiene que cerrar con texto."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    model = _model()
-    response = client.models.generate_content(
-        model=model,
-        contents=history,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,  # tope de salida, para controlar el costo
-            tools=[types.Tool(function_declarations=[_declaration(t) for t in tools])] if tools else None,
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-            tool_config=None
-            if allow_calls
-            else types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE")),
-        ),
-    )
-    _record_usage(model, response)
+    El modelo solo PIDE las llamadas: Epsilon decide si las ejecuta. Con allow_calls=False las herramientas se
+    siguen declarando (el historial las nombra) pero el modelo no puede pedir ninguna: tiene que cerrar con texto."""
+    model_id = model_for()
+    provider, model = parse_model(model_id)
+    result = providers.get(provider).chat(model, history, system, tools, max_tokens, allow_calls)
+    _record(model_id, result.input_tokens, result.output_tokens)
+    return result.step
 
-    calls = []
-    for call in response.function_calls or []:
-        arg = (call.args or {}).get("args")
-        calls.append((call.name, arg if isinstance(arg, str) else ""))
-    # Con llamadas, .text puede fallar o venir vacío: lo tratamos como "".
-    try:
-        text = response.text or ""
-    except Exception:
-        text = ""
-    return Step(text=text, calls=calls, turn=response.candidates[0].content)
+
+def text_turn(role: str, text: str) -> Message:
+    """Un turno de texto ("user" o "model") para el historial de chat_tools."""
+    return Message(role, [text])
+
+
+def parts_turn(role: str, parts: list) -> Message:
+    """Un turno con varias partes: texto (str) y archivos (File), en ese orden."""
+    return Message(role, list(parts))
+
+
+def results_turn(results: list[tuple[str, str]]) -> Message:
+    """El turno del usuario con lo que devolvió cada herramienta: [(nombre, resultado)]."""
+    return Message("user", results=[Result(name, result) for name, result in results])
 
 
 def check() -> str:
-    """Comprueba la clave y el modelo SIN generar texto (no gasta tokens).
+    """Prueba la conexión con el proveedor del modelo configurado SIN generar texto (no gasta tokens).
 
-    Pide los metadatos del modelo: si la clave o el nombre están mal, falla.
-    Devuelve el modelo, o lanza ValueError con un mensaje claro (sin la clave)."""
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        raise ValueError("Falta la clave de Gemini. Cargala en la configuración.")
-
-    model = _model()
-    # El cliente va en una variable: si se encadena (Client(...).models.get(...))
-    # se libera antes de terminar y cierra su conexión.
-    client = genai.Client(api_key=key)
-    try:
-        client.models.get(model=model)
-    except errors.APIError as e:
-        # "from None": que el error original (que puede traer la clave) no viaje.
-        raise ValueError(_explain(e.code, model)) from None
-    except Exception as e:
-        # Solo el tipo del error: el texto podría traer la clave.
-        raise ValueError(
-            f"No pude conectar con Gemini ({type(e).__name__}). Revisá tu conexión a internet."
-        ) from None
-    return model
-
-
-def _explain(code: int, model: str) -> str:
-    """Qué significa cada código de error de Gemini, en palabras de uso."""
-    if code in (400, 401, 403):
-        return "Gemini rechazó la clave. Revisá que esté bien copiada."
-    if code == 404:
-        return f"El modelo {model} no existe o tu clave no tiene acceso a él."
-    if code == 429:
-        return "Gemini dice que superaste el límite de uso. La clave es válida; probá más tarde."
-    return f"Gemini respondió con un error (código {code})."
+    Devuelve el modelo, o lanza ValueError con un mensaje claro (sin claves)."""
+    provider, model = parse_model(model_for())
+    return providers.get(provider).check(model)

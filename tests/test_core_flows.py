@@ -462,7 +462,7 @@ def ai_step(text):
 
 
 def as_pairs(history):
-    return [(turn.role, turn.parts[0].text) for turn in history]
+    return [(turn.role, turn.parts[0]) for turn in history]
 
 
 @pytest.fixture

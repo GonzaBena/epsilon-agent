@@ -24,4 +24,4 @@ def begin(question: str) -> chat.Turn:
     if len(question) > MAX_QUESTION:
         raise ValueError(f"La pregunta es muy larga ({len(question)} de {MAX_QUESTION} caracteres).")
     history = [llm.text_turn("user", config.redact(question))]
-    return chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Pregunta")
+    return chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Pregunta", task="ask")
