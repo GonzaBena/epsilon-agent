@@ -34,6 +34,7 @@ data/      notes.py conversations.py library.py         lo que se guarda en DATA
 voice/     transcribe.py                                Whisper (voz → texto)
 memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
 settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
+plugins/   channels.py                                  canales de terceros (manifiesto, descubrimiento, carga)
 channels/  telegram.py web.py web_static/               por dónde se habla con Epsilon
 ```
 
@@ -49,6 +50,12 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   prende y apaga en caliente (`start_channel` / `stop_channel`, para la página Canales): el canal
   tiene que exponer `stop()`, y la elección queda en `<NOMBRE>_ENABLED` del `.env` (el servicio
   la respeta al reiniciar). La web no se puede apagar desde la web.
+- `plugins/channels.py`: canales de terceros. Cada uno es una carpeta en `DATA_DIR/plugins/<nombre>/` con
+  `plugin.toml` (solo datos) y su código. **Listar no ejecuta código**: `discover()` solo lee manifiestos y el
+  código se importa recién al prender el canal (`load_module`); si falla, el canal queda «detenido» con el
+  motivo. `main.refresh_plugins()` mantiene `CHANNELS` y los ajustes de los plugins (`config.set_plugin_settings`)
+  al día; un plugin nuevo aparece apagado. Prenderlo desde la web exige confirmar (corre dentro de Epsilon y ve
+  tus claves). Memoria y voz NO son plugins; las integraciones serán MCP (otro proyecto). Ver `docs/plan-plugins.md`.
 - `channels/web.py` y `channels/web_static/` (las páginas `*.html` en la raíz, `css/style.css`,
   `js/` con app, config, canales, uso, biblioteca y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
   HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso; en el menú de la izquierda, Chat · Biblioteca y
