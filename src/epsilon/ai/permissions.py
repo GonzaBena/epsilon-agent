@@ -1,0 +1,84 @@
+import json
+import os
+import threading
+
+from epsilon import tools
+from epsilon.data import notes
+
+# Permisos de las herramientas que la IA puede usar: por herramienta, «allow» (corre sola), «ask»
+# (pide confirmar) o «deny» (la IA ni la ve). Se guardan en DATA_DIR/permissions.json (nombre fijo).
+# Sin modelo ni canales: el chat y la web solo consultan estas funciones.
+
+STATES = ("allow", "ask", "deny")
+FILE = "permissions.json"
+KIND_DEFAULTS = {"read": "allow", "write": "ask", "delete": "deny"}
+
+_granted: dict[str, set[str]] = {}  # conversación -> herramientas ya permitidas en esa sesión
+_lock = threading.Lock()
+
+
+def default_state(tool: tools.Tool) -> str:
+    """Estado inicial: el de `ai_default` si es válido; si no, el que sale del tipo (ask si no se sabe)."""
+    if tool.ai_default in STATES:
+        return tool.ai_default
+    return KIND_DEFAULTS.get(tool.ai, "ask")
+
+
+def _defaults() -> dict[str, str]:
+    return {tools.ai_id(tool): default_state(tool) for tool in tools.ai_tools()}
+
+
+def load() -> dict[str, str]:
+    """id -> estado de todas las herramientas. Archivo roto o valor inválido: el inicial de esa herramienta."""
+    states = _defaults()
+    try:
+        raw = json.loads(notes.safe_path(FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return states
+    if not isinstance(raw, dict):
+        return states
+    for tool_id in states:
+        if raw.get(tool_id) in STATES:
+            states[tool_id] = raw[tool_id]
+    return states
+
+
+def save(states: dict[str, str]) -> dict[str, str]:
+    """Guarda los estados (todos y solo los de las herramientas). Lanza ValueError si algo no cierra."""
+    known = set(_defaults())
+    if set(states) - known:
+        raise ValueError("Hay herramientas que no existen: " + ", ".join(sorted(set(states) - known)))
+    if known - set(states):
+        raise ValueError("Faltan herramientas: " + ", ".join(sorted(known - set(states))))
+    for tool_id, state in states.items():
+        if state not in STATES:
+            raise ValueError(f"Estado inválido para «{tool_id}»: elegí permitir, preguntar o bloquear.")
+    clean = {tool_id: states[tool_id] for tool_id in sorted(states)}
+    path = notes.safe_path(FILE)
+    tmp = path.with_name(FILE + ".tmp")
+    tmp.write_text(json.dumps(clean, indent=2), encoding="utf-8")
+    os.replace(tmp, path)  # el archivo nunca queda a medias
+    return clean
+
+
+def decide(conversation_id: str, tool_id: str) -> str:
+    """«run», «ask» o «block» para esta herramienta en esta conversación."""
+    state = load().get(tool_id)
+    if state == "allow":
+        return "run"
+    if state == "ask":
+        with _lock:
+            return "run" if tool_id in _granted.get(conversation_id, ()) else "ask"
+    return "block"  # deny o desconocida
+
+
+def grant(conversation_id: str, tool_id: str) -> None:
+    """Permite la herramienta en esta conversación hasta que se reinicie Epsilon. No pisa «deny»."""
+    with _lock:
+        _granted.setdefault(conversation_id, set()).add(tool_id)
+
+
+def offered() -> list[tools.Tool]:
+    """Las herramientas que la IA puede ver: todas menos las bloqueadas."""
+    states = load()
+    return [tool for tool in tools.ai_tools() if states[tools.ai_id(tool)] != "deny"]
