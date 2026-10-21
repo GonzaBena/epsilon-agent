@@ -475,3 +475,22 @@ def test_a_failed_first_request_resyncs_the_mode_with_the_server():
     ask = _function_body(code, "async function ask(request)")
     catch = ask[ask.index("} catch (error) {"):]
     assert "syncMode()" in catch
+
+
+# --- Menciones con «@» en el chat con IA -----------------------------------------
+
+
+def test_the_mention_start_rule_in_the_browser_matches_the_servers():
+    # «@» solo al inicio o tras un espacio (así los mails no cuentan): lo escriben app.js y attachments.py.
+    from epsilon.ai import attachments
+
+    found = re.search(r"MENTION_AT_CURSOR\s*=\s*/(.+)/;", js("app.js")).group(1)
+
+    assert found.startswith(attachments.MENTION.split("(?:")[0])
+
+
+def test_at_suggestions_come_from_the_library_and_only_in_ai_mode():
+    source = js("app.js")
+
+    assert "/api/library?" in source
+    assert "viewMode" in source

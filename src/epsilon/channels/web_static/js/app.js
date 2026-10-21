@@ -130,7 +130,9 @@ function showChatBar(chat) {
 }
 
 // Qué se ve según la conversación: el selector solo antes del primer mensaje, la barra solo en modo IA.
+let viewMode = "normal"; // el modo de la conversación abierta
 function showMode(mode, chat) {
+  viewMode = mode;
   modePicker.hidden = started || readOnly;
   showChatBar(mode === "ai" ? chat : null);
 }
@@ -782,15 +784,23 @@ async function loadTools() {
   }
 }
 
-// --- Sugerencias de comandos: al escribir «/» aparecen arriba del cuadro ----------------------------
-// Solo mientras el texto sea «/» + letras (sin espacio): ahí se está eligiendo el comando. Si
+// --- Sugerencias: al escribir «/» (comandos) o «@» (archivos) aparecen arriba del cuadro --------------
+// «/» solo mientras el texto sea «/» + letras (sin espacio): ahí se está eligiendo el comando. Si
 // ninguno encaja no se muestra nada. Insertar escribe «/nombre » en el cuadro, no envía.
+// «@» solo en un chat de modo IA: lo que sigue a un «@» (al inicio o tras un espacio, así los mails no
+// cuentan) se busca en la biblioteca. Elegir uno escribe «@ruta » en ese lugar.
 const suggestList = document.getElementById("suggest");
 let commandList = []; // salen de GET /api/tools (tools.py): {name, usage, desc}
 let suggestions = []; // los que encajan con lo escrito
 let suggestIndex = 0; // el elegido con las flechas
+// El «@» que se está escribiendo, hasta el cursor: sin comillas o con una comilla abierta (rutas con espacios).
+const MENTION_AT_CURSOR = /(?<!\S)@(?:"([^"\n]*)|([^\s"]*))$/;
+let mentionTimer = null; // espera corta antes de buscar, para no pedir una vez por tecla
+let mentionRequest = 0; // número del último pedido: una respuesta vieja no pisa a una nueva
 
 function closeSuggestions() {
+  clearTimeout(mentionTimer);
+  mentionRequest += 1; // lo que esté por llegar ya no vale
   suggestions = [];
   suggestList.hidden = true;
   suggestList.replaceChildren();
@@ -817,8 +827,9 @@ function paintSuggestions() {
 }
 
 function updateSuggestions() {
+  if (readOnly) return closeSuggestions();
   const match = /^\/([a-záéíóúñ]*)$/i.exec(input.value);
-  if (!match || readOnly) return closeSuggestions();
+  if (!match) return updateMentions();
   const typed = match[1].toLowerCase();
   suggestions = commandList.filter((command) => command.name.startsWith(typed));
   // Si ya escribiste el comando entero y es el único, no hay nada que completar: Enter lo envía.
@@ -830,10 +841,52 @@ function updateSuggestions() {
   paintSuggestions();
 }
 
+// ¿Esta conversación es de modo IA? Antes del primer mensaje vale lo elegido en el selector.
+const aiMode = () => (started ? viewMode : chatMode) === "ai";
+
+// Cómo se escribe una mención: con comillas si la ruta tiene espacios.
+const mentionText = (path) => (/\s/.test(path) ? `@"${path}" ` : `@${path} `);
+
+function updateMentions() {
+  const before = input.value.slice(0, input.selectionStart);
+  const match = aiMode() ? MENTION_AT_CURSOR.exec(before) : null;
+  if (!match) return closeSuggestions();
+  const request = ++mentionRequest; // closeSuggestions suma uno: lo tomamos después de cerrar
+  clearTimeout(mentionTimer);
+  const query = match[1] ?? match[2] ?? "";
+  const from = before.length - match[0].length;
+  mentionTimer = setTimeout(async () => {
+    try {
+      const response = await fetch(`/api/library?q=${encodeURIComponent(query)}&limit=8`);
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      if (request !== mentionRequest) return; // llegó tarde: ya se escribió otra cosa
+      if (!data.items.length) return closeSuggestions();
+      suggestions = data.items.map((item) => ({
+        usage: item.name,
+        desc: item.folder,
+        insert: mentionText(item.path),
+        from,
+        to: before.length,
+      }));
+      suggestIndex = 0;
+      suggestList.hidden = false;
+      paintSuggestions();
+    } catch {
+      // Sin servidor no hay sugerencias; escribir sigue andando.
+    }
+  }, 150);
+}
+
 function pickSuggestion(index) {
-  const command = suggestions[index];
+  const item = suggestions[index];
   closeSuggestions();
-  insertText(`/${command.name} `);
+  if (item.insert === undefined) return insertText(`/${item.name} `); // un comando
+  input.value = input.value.slice(0, item.from) + item.insert + input.value.slice(item.to);
+  resizeInput();
+  input.focus();
+  const caret = item.from + item.insert.length;
+  input.setSelectionRange(caret, caret);
 }
 
 // Devuelve true si la tecla era de las sugerencias (y ya la atendió).
