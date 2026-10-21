@@ -36,7 +36,11 @@ def status(conversation_id: str) -> dict:
     limit = conversations.limit(conversation_id) or default_limit()
     reason = None
     if not usage.price_known(llm.current_model()):
-        reason = "El modelo no tiene precio cargado, así que no puedo medir el costo del chat. Cargalo en usage.PRICES."
+        reason = (
+            "No conozco el precio del modelo de IA que tenés configurado, así que no puedo medir ni limitar "
+            "el costo de este chat. En Configuración elegí un modelo con precio conocido, o dejá el campo "
+            "vacío para usar el predeterminado."
+        )
     elif spent["cost"] >= limit:
         reason = (
             f"Esta conversación llegó a su límite (US$ {spent['cost']:.4f} de US$ {limit:.2f}). "

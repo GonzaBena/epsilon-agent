@@ -106,7 +106,11 @@ def test_status_blocks_when_model_has_no_price(monkeypatch):
 
     status = chat.status(CID)
 
-    assert status["blocked"] and "precio" in status["reason"]
+    reason = status["reason"]
+    assert status["blocked"] and "precio" in reason
+    # Está escrito para quien usa la web: manda a Configuración, no habla de código ni nombra el modelo.
+    assert "Configuración" in reason
+    assert "PRICES" not in reason and "usage" not in reason and "modelo-sin-precio" not in reason
 
 
 def test_status_limit_falls_back_to_setting(monkeypatch):
