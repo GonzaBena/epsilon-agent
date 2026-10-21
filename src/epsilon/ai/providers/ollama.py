@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from epsilon.ai.messages import Call, File, Message, Step, ToolSpec
+from epsilon.ai.messages import ModelError, Call, File, Message, Step, ToolSpec
 from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
 
 # ÚNICO lugar que habla con Ollama (el servidor local de modelos), por HTTP directo. No hay clave: la
@@ -23,22 +23,22 @@ def _request(method: str, path: str, body: dict | None = None, timeout: float = 
         response = httpx.request(method, _base_url() + path, json=body, timeout=timeout)
     except httpx.HTTPError:
         # Solo el host y el puerto: el texto del error podría traer la dirección completa.
-        raise ValueError(f"No pude conectar con Ollama en {urlsplit(_base_url()).netloc}. ¿Está andando?") from None
+        raise ModelError(f"No pude conectar con Ollama en {urlsplit(_base_url()).netloc}. ¿Está andando?") from None
     if response.status_code == 404 and body and body.get("model"):
         model = body["model"]
-        raise ValueError(f"El modelo «{model}» no está en Ollama. Bajalo con `ollama pull {model}`.")
+        raise ModelError(f"El modelo «{model}» no está en Ollama. Bajalo con `ollama pull {model}`.")
     if response.status_code >= 400:
-        raise ValueError(f"Ollama respondió con un error (código {response.status_code}).")
+        raise ModelError(f"Ollama respondió con un error (código {response.status_code}).")
     try:
         return response.json()
     except ValueError:
-        raise ValueError("Ollama respondió algo que no entiendo.") from None
+        raise ModelError("Ollama respondió algo que no entiendo.") from None
 
 
 def _image(file: File) -> str:
     if not file.mime.startswith("image/"):
         what = "PDFs" if file.mime == "application/pdf" else f"archivos {file.mime}"
-        raise ValueError(f"Ollama no lee {what}: solo imágenes. Usá otro modelo para este archivo.")
+        raise ModelError(f"Ollama no lee {what}: solo imágenes. Usá otro modelo para este archivo.")
     return base64.b64encode(file.data).decode()
 
 
@@ -132,7 +132,7 @@ class OllamaProvider(Provider):
         if not model:
             return f"{len(names)} modelos"
         if model not in names and f"{model}:latest" not in names:
-            raise ValueError(f"Ollama está andando pero no tiene el modelo «{model}». Bajalo con `ollama pull {model}`.")
+            raise ModelError(f"Ollama está andando pero no tiene el modelo «{model}». Bajalo con `ollama pull {model}`.")
         return model
 
     def capabilities(self, model):

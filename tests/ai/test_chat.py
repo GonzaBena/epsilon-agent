@@ -288,3 +288,13 @@ def test_step_runs_under_the_task_of_the_turn(captured):
 
     assert [c["task"] for c in captured] == ["chat", "ask"]
     assert llm.current_task() is None
+
+
+def test_step_offers_no_tools_to_a_model_that_cannot_use_them(captured, monkeypatch):
+    from epsilon.ai.providers.base import Capabilities
+
+    monkeypatch.setattr(llm, "capabilities", lambda task=None: Capabilities(tools=False, images=True, pdf=True))
+
+    chat.step(chat.begin(CID, "hola"))
+
+    assert captured[0]["tools"] == []

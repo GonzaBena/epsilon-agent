@@ -3,7 +3,7 @@ import os
 from google import genai
 from google.genai import errors, types
 
-from epsilon.ai.messages import Call, File, Message, Step, ToolSpec
+from epsilon.ai.messages import ModelError, Call, File, Message, Step, ToolSpec
 from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
 
 # ÚNICO lugar que habla con Gemini. El cliente se guarda en una variable antes de usarlo:
@@ -13,7 +13,7 @@ from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, 
 def _client():
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        raise ValueError("Falta la clave de Gemini. Cargala en la configuración.")
+        raise ModelError("Falta la clave de Gemini. Cargala en la configuración.")
     return genai.Client(api_key=key)
 
 
@@ -111,10 +111,10 @@ class GeminiProvider(Provider):
             client.models.get(model=model)
         except errors.APIError as e:
             # "from None": que el error original (que puede traer la clave) no viaje.
-            raise ValueError(_explain(e.code, model)) from None
+            raise ModelError(_explain(e.code, model)) from None
         except Exception as e:
             # Solo el tipo del error: el texto podría traer la clave.
-            raise ValueError(
+            raise ModelError(
                 f"No pude conectar con Gemini ({type(e).__name__}). Revisá tu conexión a internet."
             ) from None
         return model
@@ -124,9 +124,9 @@ class GeminiProvider(Provider):
         try:
             found = list(client.models.list())
         except errors.APIError as e:
-            raise ValueError(_explain(e.code, "")) from None
+            raise ModelError(_explain(e.code, "")) from None
         except Exception as e:
-            raise ValueError(
+            raise ModelError(
                 f"No pude conectar con Gemini ({type(e).__name__}). Revisá tu conexión a internet."
             ) from None
         return [

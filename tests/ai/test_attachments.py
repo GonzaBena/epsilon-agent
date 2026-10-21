@@ -110,3 +110,20 @@ def test_load_rejects_text_over_the_summary_limit(monkeypatch):
 
     with pytest.raises(ValueError, match="demasiado grande"):
         attachments.load(["a.md"])
+
+
+def test_load_refuses_files_the_chat_model_cannot_read(monkeypatch):
+    from epsilon.ai.providers.base import Capabilities
+
+    seen = []
+    monkeypatch.setattr(llm, "capabilities", lambda task=None: seen.append(task) or Capabilities(True, False, False))
+    put("files/a.pdf", b"%PDF-1.4 datos")
+    put("files/b.png", b"png")
+    put("a.md", "texto")
+
+    with pytest.raises(ValueError, match="no lee PDFs"):
+        attachments.load(["files/a.pdf"])
+    with pytest.raises(ValueError, match="no lee imágenes"):
+        attachments.load(["files/b.png"])
+    assert len(attachments.load(["a.md"])) == 2  # el texto lo lee cualquier modelo
+    assert set(seen) == {"chat"}

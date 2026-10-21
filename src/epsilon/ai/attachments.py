@@ -1,7 +1,7 @@
 import os
 import re
 
-from epsilon.ai import summarize
+from epsilon.ai import llm, summarize
 from epsilon.data import library
 from epsilon.settings import config
 
@@ -44,6 +44,19 @@ def mentions(text: str) -> list[str]:
     return found
 
 
+def _ensure_readable(paths: list) -> None:
+    """ValueError si el modelo del chat no lee alguno de los archivos (los de texto los lee cualquiera)."""
+    kinds = {p.suffix.lower() for p in paths} - library.TEXT_EXT
+    if not kinds:
+        return
+    caps = llm.capabilities("chat")
+    model = llm.model_for("chat")
+    if ".pdf" in kinds and not caps.pdf:
+        raise ValueError(f"El modelo «{model}» no lee PDFs. Elegí otro en el botón del modelo.")
+    if kinds - {".pdf"} and not caps.images:
+        raise ValueError(f"El modelo «{model}» no lee imágenes. Elegí otro en el botón del modelo.")
+
+
 def load(paths: list[str]) -> list:
     """Las partes para el modelo: por cada archivo, un rótulo y su contenido. ValueError (en español) si
     algo no se puede leer o se pasa de los topes; los topes se revisan antes de leer nada."""
@@ -56,6 +69,7 @@ def load(paths: list[str]) -> list:
         if not any(path == other for _, other in files):  # el mismo archivo con otro nombre cuenta una vez
             files.append((rel, path))
 
+    _ensure_readable([path for _, path in files])
     if len(files) > max_files():
         raise ValueError(f"Mencionaste {len(files)} archivos; el máximo por mensaje es {max_files()}.")
     sizes = [path.stat().st_size for _, path in files]

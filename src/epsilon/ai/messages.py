@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 # `ai/providers/`. Cada proveedor traduce estos mensajes a su API y devuelve el mismo formato.
 
 
+class ModelError(ValueError):
+    """Un problema esperable con el modelo (sin conexión, sin clave, no soporta algo): su mensaje es para el usuario."""
+
+
 @dataclass
 class File:
     """Un archivo (imagen o PDF) que viaja con el mensaje."""

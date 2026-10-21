@@ -1,8 +1,8 @@
 import pytest
 
 from epsilon.ai import llm
-from epsilon.ai.messages import File, Message, Step, ToolSpec
-from epsilon.ai.providers.base import ChatResult, GenerateResult, Provider
+from epsilon.ai.messages import File, Message, ModelError, Step, ToolSpec
+from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
 
 # conftest reemplaza llm.generate y llm.chat_tools por funciones que fallan. Guardamos acá las reales
 # (importadas antes de que corra el fixture) para probarlas con un proveedor falso.
@@ -18,6 +18,7 @@ class FakeProvider(Provider):
     def __init__(self, name="gemini"):
         self.name = name
         self.calls = []
+        self.caps = Capabilities(tools=True, images=True, pdf=True)
 
     def generate(self, model, parts, prompt, max_tokens, json_mode):
         self.calls.append(("generate", model, parts, prompt, max_tokens, json_mode))
@@ -30,6 +31,9 @@ class FakeProvider(Provider):
     def check(self, model):
         self.calls.append(("check", model))
         return model
+
+    def capabilities(self, model):
+        return self.caps
 
 
 @pytest.fixture(autouse=True)
@@ -194,3 +198,44 @@ def test_a_name_without_a_provider_in_a_task_setting_is_gemini(models):
     models.setenv("AI_MODEL_CSV", "modelo-q")
 
     assert llm.model_for("csv") == "gemini:modelo-q"
+
+
+# --- lo que el modelo puede hacer ----------------------------------------------------------
+
+
+def test_capabilities_come_from_the_provider_of_the_task_model(fake):
+    fake.caps = Capabilities(tools=False, images=True, pdf=False)
+
+    assert llm.capabilities() == fake.caps and llm.capabilities("chat") == fake.caps
+
+
+@pytest.mark.parametrize(
+    "mime,caps,text",
+    [
+        ("image/png", Capabilities(True, False, True), "no lee imágenes"),
+        ("application/pdf", Capabilities(True, True, False), "no lee PDFs"),
+    ],
+)
+def test_generate_refuses_files_the_model_cannot_read_before_calling(fake, mime, caps, text):
+    fake.caps = caps
+
+    with pytest.raises(ModelError, match=text) as error:
+        real_generate([File(b"x", mime)], "hola")
+
+    assert "gemini:modelo-a" in str(error.value) and "botón del modelo" in str(error.value)
+    assert fake.calls == [] and fake.recorded == []
+
+
+def test_chat_tools_refuses_files_in_the_history_the_model_cannot_read(fake):
+    fake.caps = Capabilities(tools=True, images=True, pdf=False)
+    history = [llm.parts_turn("user", ["hola", File(b"x", "application/pdf")])]
+
+    with pytest.raises(ModelError, match="no lee PDFs"):
+        real_chat_tools(history, "s", SPECS)
+    assert fake.calls == []
+
+
+def test_files_the_model_can_read_go_through(fake):
+    real_generate([File(b"x", "application/pdf")], "hola")
+
+    assert [c[0] for c in fake.calls] == ["generate"]

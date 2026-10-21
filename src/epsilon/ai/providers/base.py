@@ -27,7 +27,7 @@ class ChatResult:
 
 
 class Provider:
-    """Lo que tiene que saber hacer cada proveedor de IA. Los errores esperables son ValueError con un
+    """Lo que tiene que saber hacer cada proveedor de IA. Los errores esperables son ModelError (un ValueError) con un
     mensaje en español y sin claves (ni cuerpos crudos de respuesta)."""
 
     name = ""

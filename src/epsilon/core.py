@@ -9,6 +9,7 @@ import weakref
 
 from epsilon import menu, tools
 from epsilon.ai import ask, attachments, chat, extract, llm, permissions, summarize, usage
+from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 from epsilon.settings import config
@@ -416,6 +417,8 @@ def _extract_csv(session: Session, att: Attachment, request: tuple) -> Reply:
     name, fields = request
     try:
         rows = extract.img_to_rows(att.data, att.mime, fields)
+    except ModelError as e:
+        return Reply(config.redact(str(e)))
     except Exception as e:
         # El detalle va a la terminal; al usuario, un mensaje corto.
         print(f"Error al extraer: {e!r}")
@@ -582,6 +585,8 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         check_limit = True
         try:
             step = chat.step(turn)
+        except ModelError as e:  # sin conexión, sin clave, el modelo no soporta algo: el mensaje es para el usuario
+            return Reply(config.redact(str(e)), artifacts=artifacts)
         except Exception as e:
             print(f"Error en el chat: {config.redact(repr(e))}")  # el detalle, a la terminal
             return Reply("No pude responder.", artifacts=artifacts)

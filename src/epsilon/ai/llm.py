@@ -3,7 +3,8 @@ import os
 from contextlib import contextmanager
 
 from epsilon.ai import providers, usage
-from epsilon.ai.messages import Call, File, Message, Result, Step, ToolSpec  # noqa: F401 (los usan los llamadores)
+from epsilon.ai.messages import Call, File, Message, ModelError, Result, Step, ToolSpec  # noqa: F401 (los usan los llamadores)
+from epsilon.ai.providers.base import Capabilities
 
 # El ÚNICO lugar que el resto del código usa para hablar con un modelo. Elige el proveedor y el modelo
 # según la tarea en curso, le pasa el pedido, anota el gasto y devuelve el resultado. Los proveedores
@@ -66,6 +67,23 @@ def current_model(task_name: str | None = None) -> str:
     return model_for(task_name)
 
 
+def capabilities(task_name: str | None = None) -> Capabilities:
+    """Lo que puede hacer el modelo de una tarea (herramientas, imágenes, PDFs)."""
+    provider, model = parse_model(model_for(task_name))
+    return providers.get(provider).capabilities(model)
+
+
+def _ensure_can_read(files: list[File], model_id: str) -> None:
+    """ModelError si hay archivos que el modelo no lee: se avisa antes de llamar, no se gasta."""
+    if not files:
+        return
+    caps = capabilities()
+    if any(f.mime == "application/pdf" for f in files) and not caps.pdf:
+        raise ModelError(f"El modelo «{model_id}» no lee PDFs. Elegí otro en el botón del modelo.")
+    if any(f.mime.startswith("image/") for f in files) and not caps.images:
+        raise ModelError(f"El modelo «{model_id}» no lee imágenes. Elegí otro en el botón del modelo.")
+
+
 def _record(model_id: str, input_tokens: int, output_tokens: int) -> None:
     usage.record(usage.stored_name(model_id), input_tokens, output_tokens)
 
@@ -76,6 +94,7 @@ def generate(parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool =
     Con json_mode=True obliga al modelo a responder JSON válido."""
     model_id = model_for()
     provider, model = parse_model(model_id)
+    _ensure_can_read([p for p in parts if isinstance(p, File)], model_id)
     result = providers.get(provider).generate(model, parts, prompt, max_tokens, json_mode)
     _record(model_id, result.input_tokens, result.output_tokens)
     return result.text
@@ -90,6 +109,7 @@ def chat_tools(
     siguen declarando (el historial las nombra) pero el modelo no puede pedir ninguna: tiene que cerrar con texto."""
     model_id = model_for()
     provider, model = parse_model(model_id)
+    _ensure_can_read([p for m in history for p in m.parts if isinstance(p, File)], model_id)
     result = providers.get(provider).chat(model, history, system, tools, max_tokens, allow_calls)
     _record(model_id, result.input_tokens, result.output_tokens)
     return result.step

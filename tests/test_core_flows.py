@@ -132,6 +132,15 @@ def test_extract_error_gives_short_message(monkeypatch):
     assert send_file("x: a").text == "No pude procesar la imagen."
 
 
+def test_extract_model_error_reaches_the_user(monkeypatch):
+    def off(*args):
+        raise core.ModelError("El modelo «ollama:qwen3» no lee imágenes. Elegí otro en el botón del modelo.")
+
+    monkeypatch.setattr(core.extract, "img_to_rows", off)
+
+    assert "no lee imágenes" in send_file("x: a").text
+
+
 def test_csv_with_other_columns_reports_error(monkeypatch):
     notes.save_csv("gastos", ["otra"], [{"otra": "1"}])
     fake_rows(monkeypatch, [{"fecha": "1/1"}])

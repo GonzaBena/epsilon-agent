@@ -90,3 +90,36 @@ def test_a_normal_conversation_ignores_mentions(seen):
     reply = say("mirá @a.md", NORMAL)
 
     assert seen == [] and "listo" not in reply.text
+
+
+def test_a_model_that_cannot_read_pdfs_answers_clearly_and_is_not_called(seen, monkeypatch):
+    from epsilon.ai.providers.base import Capabilities
+
+    monkeypatch.setattr(llm, "capabilities", lambda task=None: Capabilities(True, True, False))
+    put("files/a.pdf", b"%PDF-1.4 datos")
+
+    reply = say("resumí @files/a.pdf")
+
+    assert "no lee PDFs" in reply.text and seen == []
+
+
+def test_a_model_error_reaches_the_user_with_its_message_and_without_secrets(seen, monkeypatch):
+    from epsilon.ai.messages import ModelError
+
+    def off(*args, **kwargs):
+        raise ModelError("No pude conectar con Ollama en 127.0.0.1:11434. ¿Está andando?")
+
+    monkeypatch.setattr(llm, "chat_tools", off)
+
+    reply = say("hola")
+
+    assert reply.text == "No pude conectar con Ollama en 127.0.0.1:11434. ¿Está andando?" and not reply.ai
+
+
+def test_an_unexpected_error_still_says_it_could_not_answer(seen, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("detalle interno con clave")
+
+    monkeypatch.setattr(llm, "chat_tools", boom)
+
+    assert say("hola").text == "No pude responder."

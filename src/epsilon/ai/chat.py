@@ -121,7 +121,9 @@ def step(turn: Turn) -> llm.Step:
     Las declaraciones van igual: el historial ya trae llamadas y respuestas que las nombran."""
     allow_calls = turn.steps < MAX_TOOL_STEPS
     with usage.action(turn.label), llm.task(turn.task):
-        result = llm.chat_tools(turn.history, system_prompt(), _specs(), MAX_TOKENS, allow_calls=allow_calls)
+        # Un modelo que no usa herramientas (algunos locales) no las recibe: contesta solo con texto.
+        specs = _specs() if llm.capabilities().tools else []
+        result = llm.chat_tools(turn.history, system_prompt(), specs, MAX_TOKENS, allow_calls=allow_calls)
     turn.history.append(result.turn)
     turn.steps += 1
     return result
