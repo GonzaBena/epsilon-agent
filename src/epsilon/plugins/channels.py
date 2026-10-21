@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+import importlib.util
 from pathlib import Path
 import re
 import tomllib
+from types import ModuleType
 
 from epsilon.data import notes
 from epsilon.settings import config
@@ -161,3 +163,23 @@ def discover() -> Discovery:
         taken.update(s.key for s in plugin.settings)
         plugins[plugin.name] = plugin
     return Discovery(plugins, invalid)
+
+
+REQUIRED = ("is_configured", "run", "stop")
+
+
+def load_module(plugin: Plugin) -> ModuleType:
+    """Importa el código del plugin (recién ahora se ejecuta). Lanza PluginError si falla o si
+    no cumple el contrato. El módulo no queda registrado en sys.modules."""
+    spec = importlib.util.spec_from_file_location(f"epsilon_plugin_{plugin.name}", plugin.entry)
+    if spec is None or spec.loader is None:
+        raise PluginError("No se pudo cargar el código del plugin.")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except (Exception, SystemExit) as e:  # SystemExit: un plugin que corta al importarse
+        raise PluginError(config.redact(f"El código del plugin falló al cargarse: {type(e).__name__}: {e}")) from None
+    for part in REQUIRED:
+        if not callable(getattr(module, part, None)):
+            raise PluginError(f"Al plugin le falta «{part}» (un canal necesita {', '.join(REQUIRED)}).")
+    return module

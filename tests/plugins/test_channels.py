@@ -148,3 +148,64 @@ def test_missing_entry_is_invalid(root):
     folder = make_plugin(root)
     (folder / "channel.py").unlink()
     assert "discord" in channels.discover().invalid
+
+
+# --- Importar el código (solo al prender) ------------------------------------
+
+CONTRACT = "def is_configured(env): return True\ndef run(): pass\ndef stop(): pass\n"
+
+
+def load(root, code):
+    folder = make_plugin(root, code=code)
+    return channels.load_module(channels.read_manifest(folder))
+
+
+def test_load_module_returns_a_module_with_the_contract(root):
+    module = load(root, CONTRACT)
+    assert module.is_configured({}) is True
+    assert callable(module.run) and callable(module.stop)
+
+
+def test_import_error_becomes_plugin_error_without_the_secret(root, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "TOKENSECRETO12345")
+    with pytest.raises(channels.PluginError) as caught:
+        load(root, 'raise RuntimeError("boom TOKENSECRETO12345")\n')
+    assert "RuntimeError" in str(caught.value)
+    assert "TOKENSECRETO12345" not in str(caught.value)
+
+
+def test_system_exit_at_import_becomes_plugin_error(root):
+    with pytest.raises(channels.PluginError):
+        load(root, 'raise SystemExit("me voy")\n')
+
+
+def test_syntax_error_becomes_plugin_error(root):
+    with pytest.raises(channels.PluginError):
+        load(root, "def (:\n")
+
+
+@pytest.mark.parametrize("missing", ["is_configured", "run", "stop"])
+def test_missing_part_of_the_contract_is_a_plugin_error(root, missing):
+    code = "\n".join(line for line in CONTRACT.splitlines() if missing not in line)
+    with pytest.raises(channels.PluginError, match=missing):
+        load(root, code)
+
+
+def test_a_failed_import_leaves_nothing_in_sys_modules(root):
+    import sys
+
+    with pytest.raises(channels.PluginError):
+        load(root, 'raise RuntimeError("x")\n')
+    assert "epsilon_plugin_discord" not in sys.modules
+
+
+def test_listing_never_imports_the_code(root):
+    import sys
+
+    marker = root / "marker.txt"
+    code = f'open({str(marker)!r}, "w").write("corrió")\nraise RuntimeError("no debería correr")\n'
+    make_plugin(root, code=code)
+    found = channels.discover()
+    assert "discord" in found.plugins
+    assert not marker.exists()
+    assert "epsilon_plugin_discord" not in sys.modules
