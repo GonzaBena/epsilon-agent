@@ -142,14 +142,14 @@ def _session(session_id: str) -> Session:
 
 
 def _dated(text: str) -> str:
-    """Una línea simple va como ítem con fecha; un texto largo o con markdown, entero y con la fecha arriba.
+    """Una línea simple va como ítem con fecha; un texto largo o con markdown, entero y con la fecha como encabezado «## fecha» (igual que los resúmenes).
 
     Un «- » delante de varias líneas (o de un «# título») rompería el markdown al verlo: todo
     quedaría dentro de un solo ítem de lista.
     """
     today = date.today().isoformat()
     if "\n" in text or text.startswith(("#", ">", "|", "```", "$$")):
-        return f"*{today}*\n\n{text}\n"
+        return f"## {today}\n\n{text}\n"
     return f"- {today} {text}"
 
 

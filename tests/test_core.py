@@ -30,7 +30,7 @@ def test_plus_keeps_a_multiline_or_markdown_note_out_of_a_list_item(tmp_path, mo
     say("+ # Título\nlínea dos")
 
     saved = (tmp_path / "inbox.md").read_text(encoding="utf-8")
-    assert saved == f"*{date.today().isoformat()}*\n\n# Título\nlínea dos\n\n"
+    assert saved == f"## {date.today().isoformat()}\n\n# Título\nlínea dos\n\n"
     assert not saved.startswith("- ")
 
 
