@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
-from epsilon.ai import usage
+from epsilon.ai import chat, usage
 from epsilon.data import conversations, library
 from epsilon.settings import checks, config
 from epsilon.voice import transcribe
@@ -81,6 +81,8 @@ class MessageIn(BaseModel):
     # Opcionales: sin conversation_id no se guarda nada (así se puede usar la API con curl).
     conversation_id: str | None = Field(None, max_length=40)
     message_id: str | None = Field(None, max_length=100)  # el mensaje cuyo botón se tocó
+    # Solo cuenta en el primer mensaje: el modo de una conversación se elige al crearla.
+    mode: str | None = Field(None, pattern="^(normal|ai)$")
 
     @model_validator(mode="after")
     def needs_something(self):
@@ -123,6 +125,10 @@ class RevealIn(BaseModel):
     path: str = Field(max_length=300)
 
 
+class LimitIn(BaseModel):
+    usd: object  # el número lo valida conversations.set_limit (mensaje claro, sin repetir el valor)
+
+
 class TitleIn(BaseModel):
     title: str = Field(max_length=200)
 
@@ -148,14 +154,21 @@ def session_for(conversation_id: str | None) -> str:
     return f"web:{conversation_id}" if conversation_id else SESSION_ID
 
 
+def mode_json(conversation_id: str) -> dict:
+    """El modo de la conversación y, si es de modo IA, contexto / costo / límite para la barra."""
+    mode = conversations.mode(conversation_id)
+    return {"mode": mode, "chat": chat.status(conversation_id)} if mode == "ai" else {"mode": mode}
+
+
 def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
     """La respuesta para el navegador; si hay conversación, también la guarda."""
     data = to_json(reply)
     if conversation_id:
         # El cliente necesita el id del mensaje para decir después qué botón tocó.
         data["message_id"] = conversations.add_message(
-            conversation_id, "bot", reply.text, actions=data["actions"], artifacts=data["artifacts"]
+            conversation_id, "bot", reply.text, actions=data["actions"], artifacts=data["artifacts"], ai=reply.ai
         )
+        data.update(mode_json(conversation_id))
     return data
 
 
@@ -244,13 +257,15 @@ def create_app() -> FastAPI:
     def message(body: MessageIn):
         cid = conversation_of(body.conversation_id)
         ensure_writable(cid)
+        if cid:
+            conversations.start(cid, body.mode or "normal", chat.default_limit())
         if cid and body.action:
             # Un botón: se anota en QUÉ mensaje se tocó. No es un mensaje tuyo.
             if body.message_id:
                 conversations.add_action(cid, body.message_id, body.action)
         elif cid:
             conversations.add_message(cid, "user", body.text)
-        msg = core.Message(text=body.text, action=body.action, session_id=session_for(cid))
+        msg = core.Message(text=body.text, action=body.action, session_id=session_for(cid), conversation_id=cid)
         return reply_json(core.handle(msg), cid)
 
     @app.post("/api/upload")
@@ -258,6 +273,7 @@ def create_app() -> FastAPI:
         file: UploadFile = File(...),
         text: str = Form("", max_length=10_000),
         conversation_id: str = Form("", max_length=40),
+        mode: str = Form("", pattern="^(normal|ai)?$"),
     ):
         cid = conversation_of(conversation_id)
         ensure_writable(cid)
@@ -273,11 +289,12 @@ def create_app() -> FastAPI:
 
         name = file.filename or "archivo"
         if cid:
+            conversations.start(cid, mode or "normal", chat.default_limit())
             # Lo que se ve en el chat: el nombre del archivo y, si hay, tu pedido.
             conversations.add_message(cid, "user", f"{name}\n{text}" if text.strip() else name)
 
         attachment = core.Attachment(data=data, name=name, mime=mime)
-        msg = core.Message(text=text, attachment=attachment, session_id=session_for(cid))
+        msg = core.Message(text=text, attachment=attachment, session_id=session_for(cid), conversation_id=cid)
         return reply_json(core.handle(msg), cid)
 
     @app.post("/api/transcribe")
@@ -333,6 +350,7 @@ def create_app() -> FastAPI:
             "channel": conversations.channel(conversation_id),  # «web» o «telegram» (solo lectura)
             "messages": found,
             "artifacts": conversations.artifacts(conversation_id),  # lo guardado, para «Contexto»
+            **mode_json(conversation_id),  # «normal» o «ai» (con contexto, costo y límite)
         }
 
     @app.put("/api/conversations/{conversation_id}/title")
@@ -343,6 +361,19 @@ def create_app() -> FastAPI:
             return {"title": conversations.set_title(conversation_id, body.title)}
         except FileNotFoundError:
             raise HTTPException(404, "No existe esa conversación") from None
+
+    @app.put("/api/conversations/{conversation_id}/limit")
+    def set_conversation_limit(conversation_id: str, body: LimitIn):
+        """Sube (o baja) el límite de costo de una conversación de modo IA."""
+        if not conversations.is_valid_id(conversation_id) or conversations.mode(conversation_id) != "ai":
+            raise HTTPException(404, "No existe esa conversación de modo IA")
+        try:
+            conversations.set_limit(conversation_id, body.usd)
+        except FileNotFoundError:
+            raise HTTPException(404, "No existe esa conversación de modo IA") from None
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"chat": chat.status(conversation_id)}
 
     @app.delete("/api/conversations/{conversation_id}")
     def delete_conversation(conversation_id: str):

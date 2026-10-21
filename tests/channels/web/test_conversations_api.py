@@ -363,3 +363,116 @@ def test_delete_needs_a_local_origin_like_every_route(client):
     assert client.delete(f"/api/conversations/{cid}", headers={"origin": "http://evil.example"}).status_code == 403
     assert client.delete(f"/api/conversations/{cid}", headers={"host": "ejemplo.com"}).status_code == 403
     assert client.get(f"/api/conversations/{cid}").status_code == 200  # sigue ahí
+
+
+# --- Modo IA ---------------------------------------------------------------------------
+
+from epsilon.ai import usage  # noqa: E402
+
+
+@pytest.fixture
+def ai_web(monkeypatch):
+    """Precio cargado y un llm.chat falso que gasta US$ 1 por respuesta."""
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
+    monkeypatch.setenv("CHAT_LIMIT_USD", "")
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
+
+    def fake_chat(turns, system, max_tokens=1500):
+        usage.record("modelo-a", 1_000_000, 0)
+        return "respuesta de la IA"
+
+    monkeypatch.setattr(core.chat.llm, "chat", fake_chat)
+
+
+def test_first_message_with_mode_ai_creates_ai_conversation(client, ai_web):
+    cid = new_conversation(client)
+
+    reply = chat(client, cid, "explicame esto", mode="ai").json()
+
+    assert conversations.mode(cid) == "ai"
+    assert reply["text"] == "respuesta de la IA"
+    assert reply["mode"] == "ai"
+    assert reply["chat"]["cost"] == 1.0 and reply["chat"]["limit"] == 0.5
+    saved = saved_lines(cid)
+    assert [l.get("ai") for l in saved if l["type"] == "message"] == [None, True]
+
+
+def test_mode_is_ignored_on_existing_conversation(client, ai_web):
+    cid = new_conversation(client)
+    chat(client, cid, "+ una nota")
+
+    reply = chat(client, cid, "hola", mode="ai").json()
+
+    assert conversations.mode(cid) == "normal"
+    assert reply["text"] == core.HELP
+
+
+def test_upload_with_mode_ai_creates_ai_conversation(client, ai_web):
+    cid = new_conversation(client)
+
+    upload(client, conversation_id=cid, mode="ai")
+
+    assert conversations.mode(cid) == "ai"
+
+
+def test_invalid_mode_is_rejected(client):
+    cid = new_conversation(client)
+
+    assert chat(client, cid, "hola", mode="magico").status_code == 422
+    assert not (notes.DATA_DIR / "conversations").exists()
+
+
+def test_get_conversation_has_mode_and_chat_status_only_for_ai(client, ai_web):
+    ai, normal = new_conversation(client), new_conversation(client)
+    chat(client, ai, "hola", mode="ai")
+    chat(client, normal, "+ nota")
+
+    got_ai = client.get(f"/api/conversations/{ai}").json()
+    got_normal = client.get(f"/api/conversations/{normal}").json()
+
+    assert got_ai["mode"] == "ai" and got_ai["chat"]["cost"] == 1.0
+    assert got_normal["mode"] == "normal" and "chat" not in got_normal
+    assert {c["id"]: c["mode"] for c in client.get("/api/conversations").json()["conversations"]} == {
+        ai: "ai",
+        normal: "normal",
+    }
+
+
+def test_blocked_ai_conversation_replies_with_reason_and_put_limit_unblocks(client, ai_web):
+    cid = new_conversation(client)
+    client.put("/api/config", json={"changes": {"CHAT_LIMIT_USD": "1"}})
+    chat(client, cid, "uno", mode="ai")  # gasta US$ 1 = el límite
+
+    blocked = chat(client, cid, "dos").json()
+    assert "límite" in blocked["text"] and blocked["chat"]["blocked"]
+
+    raised = client.put(f"/api/conversations/{cid}/limit", json={"usd": 5})
+    assert raised.status_code == 200 and raised.json()["chat"]["limit"] == 5
+    assert chat(client, cid, "dos").json()["text"] == "respuesta de la IA"
+
+
+def test_put_limit_404_for_normal_or_missing_conversation_and_422_for_bad_value(client, ai_web):
+    normal, ai = new_conversation(client), new_conversation(client)
+    chat(client, normal, "+ nota")
+    chat(client, ai, "hola", mode="ai")
+
+    assert client.put(f"/api/conversations/{normal}/limit", json={"usd": 1}).status_code == 404
+    assert client.put("/api/conversations/20261019-153000-ab12/limit", json={"usd": 1}).status_code == 404
+    assert client.put("/api/conversations/no-es-un-id/limit", json={"usd": 1}).status_code == 404
+    for bad in (0, -1, 1001, "mucho", None):
+        assert client.put(f"/api/conversations/{ai}/limit", json={"usd": bad}).status_code == 422, bad
+
+
+def test_deleting_an_ai_conversation_forgets_its_session(client, ai_web):
+    cid = new_conversation(client)
+    chat(client, cid, "hola", mode="ai")
+
+    assert client.delete(f"/api/conversations/{cid}").status_code == 200
+    assert f"web:{cid}" not in core.SESSIONS
+
+
+def test_telegram_conversation_is_still_read_only(client, ai_web):
+    cid = telegram_talk()
+
+    assert chat(client, cid, "hola", mode="ai").status_code == 409
+    assert conversations.mode(cid) == "normal"

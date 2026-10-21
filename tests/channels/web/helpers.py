@@ -22,11 +22,11 @@ def post_message(client, **body):
     return client.post("/api/message", json=body)
 
 
-def upload(client, name="foto.jpg", mime="image/jpeg", data=b"bytes", text="", conversation_id=""):
+def upload(client, name="foto.jpg", mime="image/jpeg", data=b"bytes", text="", conversation_id="", mode=""):
     return client.post(
         "/api/upload",
         files={"file": (name, data, mime)},
-        data={"text": text, "conversation_id": conversation_id},
+        data={"text": text, "conversation_id": conversation_id, "mode": mode},
     )
 
 
