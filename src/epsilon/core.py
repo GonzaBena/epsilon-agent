@@ -22,6 +22,7 @@ HELP = (
     "Qué puedo hacer:\n\n"
     + "\n".join(tools.help_lines())
     + "\n\n"
+    "Para charlar con la IA: /ia pregunta (una sola pregunta), o un chat en modo IA desde la web.\n"
     "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
     "Si me mandás una nota de voz, la paso a texto y hago lo que pediste.\n"
     "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "

@@ -5,11 +5,12 @@
 <h1 align="center">Epsilon</h1>
 
 Agente personal para uso propio. Se usa desde una web local (y, si querés, desde un bot de
-Telegram) y hace cuatro cosas:
+Telegram) y hace cinco cosas:
 
 - guarda **notas** y **archivos** en una carpeta tuya;
 - pasa **imágenes a CSV** (tickets, planillas, facturas);
 - **resume** notas, PDFs e imágenes con IA (Gemini o modelo seleccionado);
+- responde **preguntas** a la IA (`/ia pregunta`, o un chat en modo IA desde la web, que además puede usar tus notas y tu memoria);
 - entiende **notas de voz** (opcional, se transcriben en tu PC con Whisper).
 
 Está pensado para ser simple y barato: lo que no necesita IA no la usa, los prompts son cortos
@@ -27,7 +28,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 ## Configuración
 
 1. Copiá `src/epsilon/.env.example` a `src/epsilon/.env`.
-2. Cargá al menos `GEMINI_API_KEY` (se saca en [Google AI Studio](https://aistudio.google.com/)).
+2. Cargá `GEMINI_API_KEY` (se saca en [Google AI Studio](https://aistudio.google.com/)). Es opcional: sin ella las notas, los archivos, la búsqueda y la memoria funcionan igual; solo no andan los resúmenes, la imagen a CSV ni la IA.
 3. Arrancá Epsilon y, si preferís, seguí la configuración desde la web, en
    <http://127.0.0.1:8765/config>: ahí se editan las claves, el modelo y el puerto, y hay un
    botón «Probar conexión» que no gasta tokens.
