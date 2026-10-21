@@ -8,7 +8,7 @@ import threading
 import weakref
 
 from epsilon import menu, tools
-from epsilon.ai import ask, chat, extract, llm, permissions, summarize, usage
+from epsilon.ai import ask, attachments, chat, extract, llm, permissions, summarize, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 from epsilon.settings import config
@@ -558,8 +558,14 @@ def _chat(msg: Message, session: Session) -> Reply:
     según sus permisos (ver _run_calls)."""
     # Un mensaje nuevo deja sin efecto la pregunta de permiso que estaba esperando.
     session.pending_tool = None
+    parts = None
+    if paths := attachments.mentions(msg.text):
+        try:
+            parts = attachments.load(paths)
+        except ValueError as e:  # no existe, o se pasa de los topes: se avisa sin gastar
+            return Reply(str(e))
     try:
-        turn = chat.begin(msg.conversation_id, msg.text.strip())
+        turn = chat.begin(msg.conversation_id, msg.text.strip(), parts)
     except Exception as e:
         print(f"Error en el chat: {config.redact(repr(e))}")  # el detalle, a la terminal
         return Reply("No pude responder.")
