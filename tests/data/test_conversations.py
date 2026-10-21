@@ -932,3 +932,24 @@ def test_set_limit_rejects_a_number_too_big_for_a_float():
 
     with pytest.raises(ValueError):
         conversations.set_limit(VALID, 10**400)
+
+
+def test_simultaneous_starts_write_one_meta_and_one_limit(data_dir, monkeypatch):
+    import threading
+    import time
+
+    real_append = conversations._append
+
+    def slow_append(*args, **kwargs):
+        time.sleep(0.05)  # deja que los otros hilos lleguen al chequeo «¿ya existe?»
+        return real_append(*args, **kwargs)
+
+    monkeypatch.setattr(conversations, "_append", slow_append)
+    threads = [threading.Thread(target=conversations.start, args=(VALID, "ai", 0.5)) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    written = [l["type"] for l in lines(data_dir, VALID)]
+    assert written == ["meta", "limit"]

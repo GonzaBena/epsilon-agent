@@ -231,6 +231,9 @@ def _check_limit(usd) -> float:
     return float(usd)
 
 
+_start_lock = threading.Lock()
+
+
 def start(conversation_id: str, mode: str, limit: float | None = None) -> None:
     """Fija el modo de una conversación que todavía no existe. «normal» no escribe nada (así sigue
     sin haber archivos vacíos); «ai» escribe la línea meta y el límite. Si ya existe, no hace nada:
@@ -238,11 +241,16 @@ def start(conversation_id: str, mode: str, limit: float | None = None) -> None:
     if mode not in MODES:
         raise ValueError("Modo no válido")
     path = _path(conversation_id)
-    if mode == "normal" or path.exists():
+    if mode == "normal":
         return
-    _append(conversation_id, {"type": "meta", "channel": "web", "mode": "ai"})
-    if limit is not None:
-        _append(conversation_id, {"type": "limit", "usd": _check_limit(limit)})
+    value = None if limit is None else _check_limit(limit)  # antes de escribir nada
+    # «¿existe?» y escribir van juntos: dos primeros mensajes a la vez no dejan dos líneas meta.
+    with _start_lock:
+        if path.exists():
+            return
+        _append(conversation_id, {"type": "meta", "channel": "web", "mode": "ai"})
+        if value is not None:
+            _append(conversation_id, {"type": "limit", "usd": value})
 
 
 def mode(conversation_id: str) -> str:
