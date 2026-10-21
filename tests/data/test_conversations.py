@@ -816,3 +816,112 @@ def test_a_file_with_an_invalid_channel_in_its_meta_reads_as_web(tmp_path):
     (path / f"{VALID}.jsonl").write_text('{"type": "meta", "channel": "../x"}\n')
 
     assert conversations.channel(VALID) == "web"
+
+
+# --- Modo IA: modo y límite de costo -----------------------------------------------
+
+
+def test_start_ai_writes_meta_and_limit_once(data_dir):
+    conversations.start(VALID, "ai", 0.5)
+    conversations.start(VALID, "ai", 9)  # ya existe: no hace nada
+
+    assert lines(data_dir, VALID) == [
+        {"type": "meta", "channel": "web", "mode": "ai", "ts": lines(data_dir, VALID)[0]["ts"]},
+        {"type": "limit", "usd": 0.5, "ts": lines(data_dir, VALID)[1]["ts"]},
+    ]
+
+
+def test_start_normal_creates_nothing(data_dir):
+    conversations.start(VALID, "normal", 0.5)
+
+    assert not (folder(data_dir) / f"{VALID}.jsonl").exists()
+
+
+def test_start_does_not_touch_existing(data_dir):
+    conversations.add_message(VALID, "user", "hola")
+    conversations.start(VALID, "ai", 0.5)
+
+    assert conversations.mode(VALID) == "normal"
+    assert len(lines(data_dir, VALID)) == 1
+
+
+def test_start_rejects_unknown_mode():
+    with pytest.raises(ValueError):
+        conversations.start(VALID, "magico", 0.5)
+
+
+def test_mode_defaults_to_normal_for_old_telegram_and_missing():
+    other = "20261019-153001-cd34"
+    conversations.add_message(other, "user", "viejo")  # sin línea meta
+    telegram = conversations.for_channel("telegram")
+    conversations.add_message(telegram, "user", "hola")
+
+    assert conversations.mode(other) == "normal"
+    assert conversations.mode(telegram) == "normal"
+    assert conversations.mode(VALID) == "normal"  # no existe
+
+
+def test_mode_ai_needs_web_channel(data_dir):
+    path = folder(data_dir) / f"{VALID}.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"type": "meta", "channel": "telegram", "mode": "ai"}\n', encoding="utf-8")
+
+    assert conversations.mode(VALID) == "normal"
+
+
+def test_limit_last_wins_and_none_without_line():
+    conversations.add_message(VALID, "user", "hola")
+    assert conversations.limit(VALID) is None
+
+    conversations.start("20261019-153002-ef56", "ai", 0.5)
+    conversations.set_limit("20261019-153002-ef56", 2)
+
+    assert conversations.limit("20261019-153002-ef56") == 2
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf"), 1001, "abc", True])
+def test_set_limit_rejects_bad_values(bad):
+    conversations.start(VALID, "ai", 0.5)
+
+    with pytest.raises(ValueError):
+        conversations.set_limit(VALID, bad)
+
+
+def test_set_limit_missing_conversation():
+    with pytest.raises(FileNotFoundError):
+        conversations.set_limit(VALID, 1)
+
+
+def test_set_limit_keeps_modification_time(data_dir):
+    conversations.start(VALID, "ai", 0.5)
+    path = folder(data_dir) / f"{VALID}.jsonl"
+    os.utime(path, (1_000_000, 1_000_000))
+
+    conversations.set_limit(VALID, 1)
+
+    assert path.stat().st_mtime == 1_000_000
+
+
+def test_add_message_ai_flag_roundtrip():
+    conversations.add_message(VALID, "user", "hola")
+    conversations.add_message(VALID, "bot", "buenas", ai=True)
+    conversations.add_message(VALID, "bot", "otra")
+
+    assert [m["ai"] for m in conversations.messages(VALID)] == [False, True, False]
+
+
+def test_list_all_has_mode():
+    conversations.start(VALID, "ai", 0.5)
+    conversations.add_message(VALID, "user", "hola")
+    conversations.add_message("20261019-153003-0a0a", "user", "normal")
+
+    modes = {c["id"]: c["mode"] for c in conversations.list_all()}
+
+    assert modes == {VALID: "ai", "20261019-153003-0a0a": "normal"}
+
+
+def test_ai_conversation_title_is_first_user_message():
+    conversations.start(VALID, "ai", 0.5)
+    conversations.add_message(VALID, "user", "explicame esto")
+
+    assert conversations.title(VALID) == "explicame esto"

@@ -91,6 +91,10 @@ cruza entre canales), y la web solo **lee** la conversación de Telegram.
 - **Un archivo por conversación de canal.** Primera línea `{"type":"meta","channel":"telegram"}`;
   al cerrarla, una última `{"type":"closed"}`. Siguen siendo solo de agregar. Sin línea meta
   (todo lo anterior) la conversación es «web».
+- **Modo IA (solo web).** Una conversación creada para hablar con la IA empieza con
+  `{"type":"meta","channel":"web","mode":"ai"}` y `{"type":"limit","usd":0.5}` (gana la última
+  línea `limit`). El modo se fija al crear y no cambia; sin meta es «normal». Las respuestas de la
+  IA del chat llevan `"ai": true` en el mensaje. Ver `docs/superpowers/specs/2026-10-20-modo-ia-design.md`.
 - **Una abierta por canal.** `conversations.for_channel("telegram")` devuelve la abierta o crea
   otra; `/nuevo` la cierra (`close_channel`), y si pasa de 1 MB se cierra sola
   (`MAX_BYTES`). Cerrar no cuenta como actividad (no reordena «Recientes»).

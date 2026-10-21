@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -15,9 +16,14 @@ from epsilon.settings import config
 # ni ningún canal: lo usa quien quiera guardar una conversación (hoy, la web).
 #
 # Dos tipos de línea:
-#   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "artifacts": [...], "error": true, "ts": ...}
+#   {"type": "message", "id": "a1b2c3d4", "role": "user" | "bot", "text": ..., "actions": [...], "artifacts": [...], "error": true, "ai": true, "ts": ...}
 #   {"type": "action", "message": "a1b2c3d4", "id": "guardar", "ts": ...}   <- se tocó un botón de ESE mensaje
 #   {"type": "title", "text": "Compras", "ts": ...}                          <- se renombró (gana la última)
+#
+# Modo IA (solo web): una conversación que se creó para hablar con la IA lleva, al principio,
+#   {"type": "meta", "channel": "web", "mode": "ai"}
+#   {"type": "limit", "usd": 0.5}                    <- tope de costo en dólares (gana la última)
+# El modo se decide al crear y no cambia. Sin línea meta (todas las anteriores) es «normal».
 #
 # Conversaciones de otro canal (Telegram), además de las de la web:
 #   {"type": "meta", "channel": "telegram", "ts": ...}   <- primera línea: de qué canal es
@@ -58,6 +64,8 @@ def fixed_title(name) -> str | None:
     if name == "web" or not is_channel(name):
         return None
     return CHANNEL_TITLES.get(name) or name.capitalize()
+MODES = ("normal", "ai")
+LIMIT_MIN, LIMIT_MAX = 0.01, 1000  # tope de costo (US$) que se acepta
 MAX_BYTES = 1024 * 1024  # una conversación de canal más grande se cierra sola y arranca otra
 
 UNTITLED = "Conversación sin título"
@@ -141,10 +149,12 @@ def add_message(
     actions: list[dict] | None = None,
     error: bool = False,
     artifacts: list[dict] | None = None,
+    ai: bool = False,
 ) -> str:
     """Guarda un mensaje y devuelve su id. role: 'user' (lo que escribís) o 'bot' (lo que
     responde Epsilon). El id sirve para decir después, sin ambigüedad, en qué mensaje se
-    tocó un botón. `artifacts` = lo que esta respuesta guardó (archivos, CSV, notas)."""
+    tocó un botón. `artifacts` = lo que esta respuesta guardó (archivos, CSV, notas).
+    `ai` = la respuesta la escribió la IA del chat (así se sabe qué parte de la charla es suya)."""
     if role not in ("user", "bot"):
         raise ValueError("role tiene que ser 'user' o 'bot'")
 
@@ -161,6 +171,8 @@ def add_message(
         entry["artifacts"] = clean
     if error:
         entry["error"] = True
+    if ai:
+        entry["ai"] = True
     _append(conversation_id, entry)
     return message_id
 
@@ -201,6 +213,76 @@ def delete(conversation_id: str) -> bool:
             return False
         target.unlink()
         return True
+
+
+# --- Modo IA: modo y límite de costo -----------------------------------------------
+
+
+def _check_limit(usd) -> float:
+    """El límite como número, o ValueError. Un bool no cuenta como número."""
+    if isinstance(usd, bool) or not isinstance(usd, (int, float)) or not math.isfinite(usd):
+        raise ValueError("El límite tiene que ser un número.")
+    if not LIMIT_MIN <= usd <= LIMIT_MAX:
+        raise ValueError(f"El límite tiene que estar entre US$ {LIMIT_MIN} y US$ {LIMIT_MAX}.")
+    return float(usd)
+
+
+def start(conversation_id: str, mode: str, limit: float | None = None) -> None:
+    """Fija el modo de una conversación que todavía no existe. «normal» no escribe nada (así sigue
+    sin haber archivos vacíos); «ai» escribe la línea meta y el límite. Si ya existe, no hace nada:
+    el modo se elige al crear y no cambia."""
+    if mode not in MODES:
+        raise ValueError("Modo no válido")
+    path = _path(conversation_id)
+    if mode == "normal" or path.exists():
+        return
+    _append(conversation_id, {"type": "meta", "channel": "web", "mode": "ai"})
+    if limit is not None:
+        _append(conversation_id, {"type": "limit", "usd": _check_limit(limit)})
+
+
+def mode(conversation_id: str) -> str:
+    """«ai» o «normal». Solo es «ai» si la primera línea es la meta de una conversación web en modo IA;
+    una que no existe, de Telegram o anterior a esto es «normal»."""
+    path = _path(conversation_id)
+    if not path.exists():
+        return "normal"
+    try:
+        with path.open(encoding="utf-8", errors="replace") as f:
+            first = json.loads(f.readline())
+    except (OSError, ValueError):
+        return "normal"
+    is_ai = (
+        isinstance(first, dict)
+        and first.get("type") == "meta"
+        and first.get("channel") == "web"
+        and first.get("mode") == "ai"
+    )
+    return "ai" if is_ai else "normal"
+
+
+def limit(conversation_id: str) -> float | None:
+    """El límite de costo (US$): la última línea válida, o None si no hay."""
+    path = _path(conversation_id)
+    found = None
+    if path.exists():
+        for entry in _entries(path):
+            if entry.get("type") == "limit":
+                try:
+                    found = _check_limit(entry.get("usd"))
+                except ValueError:
+                    continue  # una línea editada a mano no vale
+    return found
+
+
+def set_limit(conversation_id: str, usd) -> float:
+    """Cambia el límite (agrega una línea; gana la última). Lanza FileNotFoundError si no existe y
+    ValueError si el valor no sirve. Devuelve el límite que queda."""
+    value = _check_limit(usd)
+    if not _path(conversation_id).exists():
+        raise FileNotFoundError("No existe esa conversación")
+    _append(conversation_id, {"type": "limit", "usd": value}, keep_mtime=True)
+    return value
 
 
 # --- Conversaciones de un canal (Telegram) ---------------------------------------
@@ -323,6 +405,7 @@ def messages(conversation_id: str) -> list[dict] | None:
                 "actions": entry.get("actions") or [],
                 "artifacts": _clean_artifacts(entry.get("artifacts")),
                 "error": bool(entry.get("error")),
+                "ai": bool(entry.get("ai")),
                 "ts": entry.get("ts", ""),
                 "used": False,
                 "chosen": None,
@@ -432,6 +515,7 @@ def list_all(limit: int = 50) -> list[dict]:
             "id": p.stem,
             "title": _title(p),
             "channel": _channel(p),
+            "mode": mode(p.stem),
             "updated": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
         }
         for p in newest_first
