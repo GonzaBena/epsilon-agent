@@ -51,7 +51,7 @@ def test_the_tools_panel_skips_what_the_menu_and_the_shortcuts_already_offer(cli
     # /ver, /archivos y /uso están en el menú de la izquierda; «Guardar nota», en los atajos.
     labels = {row["label"] for row in client.get("/api/tools").json()["tools"]}
 
-    assert labels == {"Imagen a CSV", "/buscar", "/editar", "/ia", "/olvidar", "/recordar", "/resumir", "/ticket"}
+    assert labels == {"Imagen a CSV", "/buscar", "/editar", "/hecho", "/ia", "/olvidar", "/recordar", "/resumir", "/ticket", "/todo"}
 
 
 def test_tool_rows_are_buttons_that_fill_the_message_box_without_sending():

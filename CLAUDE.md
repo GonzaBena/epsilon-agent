@@ -30,7 +30,7 @@ programa»; cada carpeta, una capa):
 ```
 core.py main.py tools.py menu.py state.py   el centro: lógica, arranque, registro, /menu, estado de canales
 ai/        llm.py messages.py providers/ chat.py permissions.py extract.py summarize.py usage.py   todo lo que habla con el modelo, sus permisos y su gasto
-data/      notes.py conversations.py library.py         lo que se guarda en DATA_DIR (library: vista de solo lectura)
+data/      notes.py todo.py conversations.py library.py         lo que se guarda en DATA_DIR (library: vista de solo lectura)
 voice/     transcribe.py                                Whisper (voz → texto)
 memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
 settings/  config.py checks.py                          ajustes del .env y pruebas de conexión

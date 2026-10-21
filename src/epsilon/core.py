@@ -12,7 +12,7 @@ import weakref
 from epsilon import menu, tools
 from epsilon.ai import ask, attachments, chat, extract, llm, permissions, summarize, usage
 from epsilon.ai.messages import ModelError
-from epsilon.data import conversations, notes
+from epsilon.data import conversations, notes, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
 from epsilon.utils import clima, clock, dolar
@@ -324,6 +324,39 @@ def _weather(args: str) -> Reply:
         return Reply(clima.text(city))
     except ValueError as error:
         return Reply(str(error))
+
+
+def _todo_cmd(args: str) -> Reply:
+    """/todo texto: agrega una tarea pendiente (todo.md)."""
+    if not args.strip():
+        return Reply("Uso: /todo la tarea que quieras agregar")
+    try:
+        task = todo.add(args)
+    except ValueError as e:
+        return Reply(str(e))
+    count = len(todo.pending())
+    return Reply(f"Tarea agregada ({count} pendiente{'' if count == 1 else 's'}): {task.text}")
+
+
+def _tasks_cmd(args: str) -> Reply:
+    """/tareas [todas]: las pendientes, numeradas para /hecho; con «todas», también las hechas."""
+    waiting = todo.pending()
+    lines = [f"{n}. {task.text}" for n, task in enumerate(waiting, 1)] or ["No tenés tareas pendientes. Agregá una con /todo."]
+    if args.strip().lower() == "todas" and (done := todo.completed()):
+        lines += ["", "Hechas:", *(f"- ✓ {task.text}" for task in done)]
+    return Reply("\n".join(lines))
+
+
+def _done_cmd(args: str) -> Reply:
+    """/hecho N: marca como hecha la tarea pendiente N (los números están en /tareas)."""
+    n = _line_number(args.strip())
+    if n is None:
+        return Reply("Uso: /hecho número (los números están en /tareas)")
+    try:
+        task = todo.finish(n)
+    except ValueError as e:
+        return Reply(str(e))
+    return Reply(f"Hecha: {task.text}")
 
 
 def _help(args: str, session: Session) -> Reply:
@@ -783,6 +816,9 @@ COMMANDS = {
     "hora": lambda args, s: _date(args),
     "dolar": lambda args, s: _dollar(args),
     "clima": lambda args, s: _weather(args),
+    "todo": lambda args, s: _todo_cmd(args),
+    "tareas": lambda args, s: _tasks_cmd(args),
+    "hecho": lambda args, s: _done_cmd(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -803,7 +839,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho)\b:?)\s*", "", args)
 
 
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
@@ -815,6 +851,9 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "fecha": _date,
     "dolar": _dollar,
     "clima": lambda args: _weather(_bare(args)),
+    "todo": lambda args: _todo_cmd(_bare(args).strip()),
+    "tareas": lambda args: _tasks_cmd(_bare(args)),
+    "hecho": lambda args: _done_cmd(_bare(args)),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
