@@ -160,7 +160,7 @@ def test_renaming_goes_through_the_title_endpoint_and_is_reachable_by_keyboard()
     source = js("shell.js")
 
     assert re.search(r'method:\s*"PUT"', source) and "/title" in source
-    assert "Renombrar" in source  # el botón lleva nombre accesible
+    assert "Opciones de" in source and '"Editar"' in source  # el menú de tres puntitos lleva nombre accesible
     assert '"Enter"' in source and '"Escape"' in source
 
 
@@ -532,3 +532,24 @@ def test_every_bubble_gets_a_copy_button_that_copies_the_original_text():
     assert "body.append(copyButton(message.text))" in code  # tuyos y de la IA, con el texto sin dibujar
     assert "navigator.clipboard.writeText(text)" in code
     assert ".msg-copy" in static_path("style.css").read_text(encoding="utf-8")
+
+
+# --- Ancladas, Canales y Recientes ------------------------------------------------
+
+
+def test_the_list_has_three_collapsible_sections_and_a_three_dots_menu():
+    source = js("shell.js")
+
+    for title in ('"Ancladas"', '"Canales"', '"Recientes"'):
+        assert title in source
+    assert "aria-expanded" in source and "epsilon.recents.collapsed" in source  # plegar se recuerda
+    assert 'method: "PUT"' in source and "/pin" in source
+    for item in ('"Editar"', '"Borrar"', '"Anclar"', '"Desanclar"'):
+        assert item in source
+    assert 'setAttribute("role", "menu")' in source and '"Escape"' in source  # se usa con teclado
+    assert ".recent-menu" in static_path("style.css").read_text(encoding="utf-8")
+
+
+def test_the_static_recents_title_is_gone_from_every_page_because_shell_js_draws_the_sections():
+    for name in ("index.html", "config.html", "canales.html", "uso.html", "biblioteca.html", "permisos.html"):
+        assert "h-recents" not in page(name), name

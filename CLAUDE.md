@@ -80,7 +80,9 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   conversación generados por el servidor y validados con un patrón estricto; lo
   guardado (también el título) pasa por `config.redact`. Lo que se habla por Telegram queda en una
   conversación de canal (línea `meta`, una abierta a la vez, `/nuevo` la cierra) que la web solo
-  lee, con el ícono y el color de Telegram. Ver `docs/plan-conversations.md`.
+  lee, con el ícono y el color de Telegram. Anclar es otra línea (`pin`, gana la última; solo las de la web): la lista de
+  la web son tres secciones plegables (Ancladas · Canales · Recientes, `shell.js`; el pliegue se recuerda en `localStorage`) y
+  `list_all(limit)` corta solo Recientes. Cada fila tiene un menú de tres puntitos (Editar, Anclar, Borrar). Ver `docs/plan-conversations.md`.
 - `menu.py`: el `/menu` (ajustes con botones, como BotFather): pantallas como datos. Solo puede
   cambiar los ajustes de sí/no que lista; el mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
 - `state.py`: estado de cada canal (activo, detenido y por qué, o apagado a propósito). `settings/checks.py`:

@@ -97,12 +97,12 @@
   }
 
   // Un ícono sin innerHTML: se arma con la API de SVG.
-  function icon(pathData) {
+  function icon(pathData, strokeWidth = "1.8") {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     for (const [name, value] of Object.entries({
       viewBox: "0 0 24 24", width: "14", height: "14", fill: "none", stroke: "currentColor",
-      "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
+      "stroke-width": strokeWidth, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
     })) svg.setAttribute(name, value);
     const path = document.createElementNS(ns, "path");
     path.setAttribute("d", pathData);
@@ -111,6 +111,9 @@
   }
   const PENCIL = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z";
   const TRASH = "M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6";
+  const DOTS = "M12 5.5h.01M12 12h.01M12 18.5h.01"; // los tres puntitos (el grosor los hace círculos)
+  const PIN = "M12 17v5M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9A2 2 0 0 1 15 10.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z";
+  const CHEVRON = "M9 6l6 6-6 6";
   const PLANE = "M22 2 11 13M22 2l-7 20-4-9-9-4z"; // el avioncito de Telegram
 
   const recentsList = document.getElementById("recents");
@@ -125,6 +128,9 @@
   let shown = PAGE; // cuántas se piden ahora (no baja: al refrescar se conserva)
   let editingId = null; // la conversación que se está renombrando
   let deletingId = null; // la conversación que está pidiendo confirmación para eliminarse
+  let menuOpen = false; // el menú de tres puntitos está abierto (no se redibuja la lista debajo)
+  const COLLAPSED_KEY = "epsilon.recents.collapsed"; // qué secciones están plegadas (por navegador)
+  let collapsed = recallCollapsed();
   let recentsError = ""; // un aviso arriba de la lista (por ejemplo, si no se pudo eliminar)
 
   function recallCurrent() {
@@ -133,6 +139,26 @@
     } catch {
       return null;
     }
+  }
+
+  function recallCollapsed() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]");
+      return new Set(Array.isArray(saved) ? saved : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function toggleSection(key) {
+    if (collapsed.has(key)) collapsed.delete(key);
+    else collapsed.add(key);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+    } catch {
+      // Sin almacenamiento, el pliegue dura hasta recargar.
+    }
+    renderRecents(true);
   }
 
   // Pide la lista al servidor y la dibuja.
@@ -161,7 +187,8 @@
   // force: dibujar aunque se esté renombrando. Si no, una respuesta que llega (o volver a la
   // pestaña) recrearía el cuadro de texto y se perdería lo que estabas escribiendo.
   function renderRecents(force = false) {
-    if ((editingId || deletingId) && !force) return;
+    if ((editingId || deletingId || menuOpen) && !force) return;
+    closeMenu();
     const current = conversations.find((c) => c.id === currentId);
     // El título del header: el de la conversación abierta, o «nueva» si todavía no tiene mensajes.
     if (isChat) {
@@ -179,26 +206,54 @@
       warning.setAttribute("role", "alert");
       recentsList.append(warning);
     }
+
+    // Tres secciones plegables: Ancladas y Canales solo si tienen algo; Recientes, siempre.
+    const pinned = conversations.filter((c) => c.pinned);
+    const channels = conversations.filter((c) => c.channel !== "web");
+    const recents = conversations.filter((c) => c.channel === "web" && !c.pinned);
+    if (pinned.length) recentsList.append(section("pinned", "Ancladas", pinned));
+    if (channels.length) recentsList.append(section("channels", "Canales", channels));
     // Una conversación nueva todavía no tiene archivo (nace con el primer mensaje): no está en la
-    // lista del servidor, pero se muestra arriba para que se vea dónde estás.
-    if (isChat && currentId && !current) {
+    // lista del servidor, pero se muestra arriba de Recientes para que se vea dónde estás.
+    const placeholder = isChat && currentId && !current;
+    recentsList.append(section("recents", "Recientes", recents, placeholder));
+    const editing = recentsList.querySelector(".recent-input");
+    if (editing) {
+      editing.focus();
+      editing.select();
+    }
+  }
+
+  // Una sección de la lista: un título que pliega y despliega, y sus conversaciones debajo.
+  function section(key, title, items, withPlaceholder = false) {
+    const group = make("li", "recents-group");
+    const open = !collapsed.has(key);
+    const head = make("button", "recents-head");
+    head.type = "button";
+    head.setAttribute("aria-expanded", String(open));
+    head.append(make("span", "recents-head-title", title), icon(CHEVRON));
+    head.addEventListener("click", () => toggleSection(key));
+    group.append(head);
+    if (!open) return group;
+
+    const list = make("ul", "recents-list");
+    if (withPlaceholder) {
       const item = make("li");
       const label = make("span", "recent", NEW_TITLE);
       label.setAttribute("aria-current", "true");
       item.append(label);
-      recentsList.append(item);
+      list.append(item);
     }
-
-    for (const conversation of conversations) {
+    for (const conversation of items) {
       const item = make("li", conversation.channel === "telegram" ? "recent-row from-telegram" : "recent-row");
       if (conversation.id === editingId) item.append(renameInput(conversation));
       else if (conversation.id === deletingId) item.append(deleteConfirm(conversation));
       else item.append(...conversationRow(conversation));
-      recentsList.append(item);
+      list.append(item);
     }
-    // Hay más de las que se muestran: un botón pide otra página (y se queda en la lista,
+    // Hay más Recientes de las que se muestran: un botón pide otra página (y se queda en la lista,
     // así Tab llega hasta él después de la última conversación).
-    if (total > conversations.length) {
+    if (key === "recents" && total > conversations.length) {
       const more = make("button", "recents-more", "Ver más");
       more.type = "button";
       more.addEventListener("click", () => {
@@ -207,16 +262,13 @@
       });
       const item = make("li");
       item.append(more);
-      recentsList.append(item);
+      list.append(item);
     }
-    const editing = recentsList.querySelector(".recent-input");
-    if (editing) {
-      editing.focus();
-      editing.select();
-    }
+    group.append(list);
+    return group;
   }
 
-  // Cada conversación: un enlace (/?c=<id>) y el botón de renombrar.
+  // Cada conversación: un enlace (/?c=<id>) y el botón de tres puntitos.
   function conversationRow(conversation) {
     // Enlace y no botón: abre en otra pestaña con Ctrl+clic, y en la configuración
     // (donde no hay chat) simplemente lleva a esa conversación. app.js lo atrapa en el chat.
@@ -242,27 +294,104 @@
     link.title = conversation.title; // el título entero, por si se corta
     if (conversation.id === currentId && isChat) link.setAttribute("aria-current", "true");
 
-    const edit = make("button", "recent-edit");
-    edit.type = "button";
-    edit.setAttribute("aria-label", `Renombrar «${conversation.title}»`);
-    edit.title = "Renombrar";
-    edit.append(icon(PENCIL));
-    edit.addEventListener("click", () => {
-      editingId = conversation.id;
-      renderRecents(true);
-    });
+    const more = make("button", "recent-edit");
+    more.type = "button";
+    more.setAttribute("aria-label", `Opciones de «${conversation.title}»`);
+    more.setAttribute("aria-haspopup", "menu");
+    more.title = "Opciones";
+    more.append(icon(DOTS, "3"));
+    more.addEventListener("click", () => openMenu(more, conversation));
+    return [link, more];
+  }
 
-    const remove = make("button", "recent-edit recent-delete");
-    remove.type = "button";
-    remove.setAttribute("aria-label", `Eliminar «${conversation.title}»`);
-    remove.title = "Eliminar";
-    remove.append(icon(TRASH));
-    remove.addEventListener("click", () => {
-      recentsError = "";
-      deletingId = conversation.id;
-      renderRecents(true);
+  // El menú de tres puntitos: Editar, Anclar/Desanclar y Borrar, cada uno con su ícono. Va en el
+  // <body> con position: fixed (la lista corta lo que se sale de ella).
+  let menuNode = null;
+  let menuAnchor = null;
+
+  function closeMenu(returnFocus = false) {
+    if (!menuNode) return;
+    menuNode.remove();
+    menuNode = null;
+    menuOpen = false;
+    menuAnchor?.setAttribute("aria-expanded", "false");
+    if (returnFocus) menuAnchor?.focus();
+    menuAnchor = null;
+  }
+
+  function openMenu(anchor, conversation) {
+    const wasOpenHere = menuAnchor === anchor;
+    closeMenu();
+    if (wasOpenHere) return; // tocar los tres puntitos otra vez lo cierra
+    const entries = [
+      ["Editar", PENCIL, () => { editingId = conversation.id; renderRecents(true); }],
+      ...(conversation.channel === "web"
+        ? [[conversation.pinned ? "Desanclar" : "Anclar", PIN, () => setPinned(conversation)]]
+        : []),
+      ["Borrar", TRASH, () => { recentsError = ""; deletingId = conversation.id; renderRecents(true); }],
+    ];
+    const menu = make("div", "recent-menu");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", `Opciones de «${conversation.title}»`);
+    for (const [label, path, action] of entries) {
+      const item = make("button", label === "Borrar" ? "recent-menu-item danger" : "recent-menu-item");
+      item.type = "button";
+      item.setAttribute("role", "menuitem");
+      item.append(icon(path, "1.8"), make("span", "", label));
+      item.addEventListener("click", () => {
+        closeMenu();
+        action();
+      });
+      menu.append(item);
+    }
+    menu.addEventListener("keydown", (event) => {
+      const items = [...menu.querySelectorAll("button")];
+      const at = items.indexOf(document.activeElement);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu(true);
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        items[(at + 1) % items.length].focus();
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        items[(at - 1 + items.length) % items.length].focus();
+      } else if (event.key === "Tab") {
+        closeMenu(); // el foco sigue su camino
+      }
     });
-    return [link, edit, remove];
+    document.body.append(menu);
+    const box = anchor.getBoundingClientRect();
+    menu.style.top = `${Math.min(box.bottom + 4, window.innerHeight - menu.offsetHeight - 8)}px`;
+    menu.style.left = `${Math.max(8, Math.min(box.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menuNode = menu;
+    menuAnchor = anchor;
+    menuOpen = true;
+    anchor.setAttribute("aria-expanded", "true");
+    menu.querySelector("button").focus();
+  }
+
+  // Tocar afuera, mover la ventana o desplazar la lista cierran el menú.
+  document.addEventListener("pointerdown", (event) => {
+    if (menuNode && !menuNode.contains(event.target) && !menuAnchor.contains(event.target)) closeMenu();
+  });
+  window.addEventListener("resize", () => closeMenu());
+  recentsList?.addEventListener("scroll", () => closeMenu(), true);
+
+  async function setPinned(conversation) {
+    try {
+      const response = await fetch(`/api/conversations/${encodeURIComponent(conversation.id)}/pin`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: !conversation.pinned }),
+      });
+      if (!response.ok) throw new Error();
+      recentsError = "";
+    } catch {
+      recentsError = "No pude anclarla. Probá de nuevo.";
+    }
+    await refreshRecents();
+    renderRecents(true); // para mostrar el aviso aunque el servidor no haya cambiado nada
   }
 
   // Eliminar pide confirmación ahí mismo (sin ventanas del navegador): no se puede deshacer.

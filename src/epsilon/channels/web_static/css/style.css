@@ -2223,10 +2223,7 @@ a.ghost {
   }
 }
 
-/* Eliminar una conversación: el botón comparte estilo con el lápiz; la confirmación va en el lugar. */
-.recent-delete:hover {
-  color: var(--danger);
-}
+/* Eliminar una conversación: la confirmación va en el lugar. */
 .recent-confirm {
   flex: 1;
   min-width: 0;
@@ -2301,21 +2298,83 @@ a.ghost {
 .recent-row .recent-edit {
   position: absolute;
   top: 50%;
-  right: 36px;
+  right: 2px;
   translate: 0 -50%;
 }
-.recent-row .recent-delete {
-  right: 2px;
-}
-/* Cuando los botones se ven, el título se corta antes de llegar a ellos. */
+/* Cuando el botón se ve, el título se corta antes de llegar a él. */
 .recent-row:hover .recent,
 .recent-row:focus-within .recent {
-  padding-right: 72px;
+  padding-right: 36px;
 }
 @media (hover: none) {
   .recent-row .recent {
-    padding-right: 72px;
+    padding-right: 36px;
   }
+}
+
+/* Secciones de la lista (Ancladas · Canales · Recientes): el título pliega y despliega. */
+.recents-group {
+  margin-bottom: 6px;
+}
+.recents-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 2px;
+  padding: 4px 12px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+.recents-head:hover {
+  color: var(--text);
+}
+.recents-head svg {
+  transition: rotate 0.15s ease;
+  rotate: 90deg; /* desplegada: la flecha apunta hacia abajo */
+}
+.recents-head[aria-expanded="false"] svg {
+  rotate: 0deg;
+}
+
+/* El menú de tres puntitos. Va en el <body> y fijo: la lista corta lo que se sale de ella. */
+.recent-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.recent-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.recent-menu-item:hover,
+.recent-menu-item:focus-visible {
+  background: var(--surface-2);
+}
+.recent-menu-item.danger {
+  color: var(--danger);
 }
 
 /* Modo IA: selector de tipo de chat, barra de contexto / costo / límite y la marca en «Recientes». */
