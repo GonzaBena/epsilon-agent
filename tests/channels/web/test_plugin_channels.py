@@ -76,6 +76,7 @@ def test_enabling_an_unconfigured_plugin_is_409(client, plugins):
     reply = client.put("/api/channels/fake", json={"enabled": True, "confirmed": True})
 
     assert reply.status_code == 409 and "configurarlo" in reply.json()["detail"]
+    assert "Configuración" in reply.json()["detail"]  # no habla del token y el ID de Telegram
 
 
 def test_enable_and_disable_a_plugin(client, plugins, monkeypatch, tmp_path):

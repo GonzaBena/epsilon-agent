@@ -30,6 +30,12 @@ def is_plugin(name: str) -> bool:
     return CHANNELS.get(name, "").startswith(PLUGIN_PREFIX)
 
 
+def not_configured_message(name: str) -> str:
+    if is_plugin(name):
+        return "Falta configurarlo: cargá sus ajustes en Configuración."
+    return "Falta configurarlo (token y tu ID de usuario)."
+
+
 def plugin_info(name: str):
     """El manifiesto leído de un plugin (label, about…), o None si no es un plugin."""
     return _plugins.get(name) if is_plugin(name) else None
@@ -120,7 +126,7 @@ def start_channel(name: str) -> None:
             state.set(name, "stopped", str(e))
             raise
         if not channel.is_configured(os.environ):
-            raise ChannelError("Falta configurarlo (token y tu ID de usuario).")
+            raise ChannelError(not_configured_message(name))
         thread = _threads.get(name)
         if thread is not None and thread.is_alive():
             return

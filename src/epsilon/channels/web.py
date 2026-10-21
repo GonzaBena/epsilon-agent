@@ -414,7 +414,7 @@ def create_app() -> FastAPI:
         try:
             if body.enabled:
                 if not main.load(name).is_configured(os.environ):
-                    raise main.ChannelError("Falta configurarlo (token y tu ID de usuario).")
+                    raise main.ChannelError(main.not_configured_message(name))
                 config.update({key: "si"}, [])
                 main.start_channel(name)
             else:

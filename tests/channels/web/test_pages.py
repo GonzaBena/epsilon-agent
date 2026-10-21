@@ -408,3 +408,13 @@ def test_markdown_js_matches_the_options_the_test_above_checks():
     source = page("markdown.js")
 
     assert "html: false" in source and "linkify: false" in source and '.disable("image")' in source
+
+
+def test_the_channels_script_names_plugins_from_the_api_and_asks_before_turning_one_on():
+    script = page("canales.js")
+
+    assert "channel.label" in script and "channel.about" in script  # los plugins se nombran solos
+    assert "channel.warning" in script and "confirm(" in script and "confirmed" in script
+    assert "invalid:" in script  # un plugin con manifiesto roto se muestra con su motivo
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
+    assert "innerHTML" not in code

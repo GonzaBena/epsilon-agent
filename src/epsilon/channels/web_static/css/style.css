@@ -1704,10 +1704,12 @@ a.ghost {
 .channel-card.starting .dot {
   background: #e8c15a;
 }
-.channel-card.stopped .dot {
+.channel-card.stopped .dot,
+.channel-card.invalid .dot {
   background: var(--danger);
 }
-.channel-card.stopped .channel-state {
+.channel-card.stopped .channel-state,
+.channel-card.invalid .channel-state {
   color: var(--danger);
 }
 .channel-about,

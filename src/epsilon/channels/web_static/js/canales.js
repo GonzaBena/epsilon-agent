@@ -20,6 +20,7 @@ const STATES = {
   skipped: "Sin configurar",
   stopped: "Detenido",
   off: "Apagado",
+  invalid: "Plugin inválido",
 };
 const SVG_NS = "http://www.w3.org/2000/svg";
 const ICONS = {
@@ -53,6 +54,11 @@ function show(text, ok) {
   result.className = `result ${ok ? "ok" : "fail"}`;
 }
 
+// Los canales incluidos se nombran acá; los plugins traen su nombre y su texto desde la API.
+function nameOf(channel) {
+  return channel.label || NAMES[channel.name] || channel.name;
+}
+
 function card(channel) {
   const row = make("li", `channel-card ${channel.state}${channel.name === "telegram" ? " from-telegram" : ""}`);
   row.dataset.name = channel.name;
@@ -62,15 +68,16 @@ function card(channel) {
 
   const body = make("div", "channel-body");
   const title = make("div", "channel-title");
-  title.append(make("strong", "", NAMES[channel.name] || channel.name));
+  title.append(make("strong", "", nameOf(channel)));
   // El estado va SIEMPRE en palabras; el punto de color solo acompaña.
   const state = make("span", "channel-state");
   state.append(make("span", "dot"), make("span", "", STATES[channel.state] || channel.state));
   title.append(state);
-  body.append(title, make("p", "channel-about", ABOUT[channel.name] || ""));
+  body.append(title, make("p", "channel-about", channel.about || ABOUT[channel.name] || ""));
   if (channel.detail) body.append(make("p", "channel-detail", channel.detail));
   if (channel.state === "skipped") {
-    const hint = make("p", "channel-detail", "Falta cargar el token y tu ID de usuario. ");
+    const what = channel.source === "plugin" ? "Falta configurarlo. " : "Falta cargar el token y tu ID de usuario. ";
+    const hint = make("p", "channel-detail", what);
     const link = make("a", "", "Configuración");
     link.href = "/config";
     hint.append(link, document.createTextNode("."));
@@ -84,12 +91,12 @@ function card(channel) {
     sw.type = "button";
     sw.setAttribute("role", "switch");
     sw.setAttribute("aria-checked", String(channel.enabled));
-    sw.setAttribute("aria-label", `${NAMES[channel.name] || channel.name}: ${channel.enabled ? "prendido" : "apagado"}`);
+    sw.setAttribute("aria-label", `${nameOf(channel)}: ${channel.enabled ? "prendido" : "apagado"}`);
     sw.append(make("span", "knob"));
     sw.disabled = busy || (channel.state === "skipped" && !channel.enabled);
     sw.addEventListener("click", () => toggle(channel));
     row.append(sw);
-  } else {
+  } else if (channel.state !== "invalid") {
     row.append(make("span", "channel-fixed", "Siempre activa"));
   }
   return row;
@@ -127,6 +134,9 @@ async function refresh() {
 
 async function toggle(channel) {
   if (busy) return;
+  // Un plugin corre dentro de Epsilon y ve tus claves: la primera vez que se prende hay que aceptarlo.
+  const confirmed = !channel.enabled && Boolean(channel.warning);
+  if (confirmed && !window.confirm(channel.warning)) return;
   busy = true;
   show(channel.enabled ? "Apagando…" : "Prendiendo…", true);
   for (const button of cards.querySelectorAll("button")) button.disabled = true;
@@ -134,7 +144,7 @@ async function toggle(channel) {
     const data = await request(`/api/channels/${encodeURIComponent(channel.name)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled: !channel.enabled }),
+      body: JSON.stringify({ enabled: !channel.enabled, confirmed }),
     });
     busy = false;
     render(data);
