@@ -34,7 +34,7 @@ def test_plugin_settings_are_editable_and_validated(registered, tmp_path, monkey
     with pytest.raises(config.ConfigError):
         config.update({"DISCORD_TOKEN": TOKEN + "\nOTRA=1"}, [], env)
     with pytest.raises(config.ConfigError):
-        config.update({"DISCORD_TOKEN": TOKEN + "\r"}, [], env)
+        config.update({"DISCORD_TOKEN": TOKEN + "\rX"}, [], env)
 
 
 def test_plugin_enabled_defaults_to_no(registered, monkeypatch):
