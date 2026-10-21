@@ -88,11 +88,12 @@ error claro en vez de fallar adentro (resumir un PDF con un Ollama sin visión, 
 - La paleta es un `<dialog>` modal con un cuadro de búsqueda y una lista. Al escribir se filtra por coincidencia de
   texto, sin distinguir mayúsculas, sobre `proveedor:modelo`. Flechas para moverse, Enter para elegir, Escape o clic
   afuera para cerrar. Si lo escrito tiene la forma `proveedor:modelo` de un proveedor conocido y no está en la lista,
-  aparece una fila «Usar `…`» (un modelo que el proveedor no lista, o con Ollama apagado). Todo se pinta con
-  `textContent`.
+  aparece una fila «Usar `…`» (un modelo que el proveedor no lista), **solo si ese proveedor respondió**. Todo se pinta
+  con `textContent`.
 - La lista sale de `GET /api/models` → `{models: [{id, provider}], errors: {proveedor: mensaje}}`, que consulta
   `list_models()` de cada proveedor al abrir la paleta. Un proveedor que falla (Ollama apagado, sin clave) no rompe
-  nada: sus modelos no aparecen y la paleta muestra una línea con el motivo, sin claves.
+  nada: **ninguno de sus modelos aparece** (ni se ofrece «Usar» para él) y, como única señal, la paleta muestra al pie
+  una línea tenue con el motivo («Ollama no responde»), sin claves.
 - Elegir guarda `AI_MODEL` (el predeterminado) con el `PUT /api/config` de siempre y actualiza el botón. Las tareas
   que tengan modelo propio (`AI_MODEL_*`) no cambian; si hay alguna, la paleta lo dice al pie.
 
@@ -128,7 +129,8 @@ salvo en Configuración y en el botón del modelo.
 - No hay cambio automático de modelo ante un fallo: el error es claro y la persona decide.
 - La paleta cambia el predeterminado (no el modelo de un chat en particular) y no hay modal al guardar en
   Configuración: el aviso de antes de enviar cubre ese caso.
-- La paleta deja escribir un `proveedor:modelo` que no esté en la lista, para no depender de que el proveedor lo liste.
+- La paleta deja escribir un `proveedor:modelo` que no esté en la lista, pero solo de un proveedor que respondió.
+- Un proveedor caído deja una línea tenue al pie de la paleta con el motivo (se puede quitar).
 
 ## Pruebas
 Sin llamar a ningún modelo: `conftest.py` bloquea el registro de proveedores y las llamadas HTTP a Ollama. Cubrir:
