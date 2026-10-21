@@ -90,6 +90,16 @@ TOOLS = (
         ai_default="deny",
     ),
     Tool(
+        "/ia",
+        name="ia",
+        usage="/ia pregunta",
+        help="hacerle una pregunta suelta a la IA (sin el resto de la charla)",
+        panel="Hacerle una pregunta suelta a la IA",
+        menu="Preguntarle algo a la IA (una sola pregunta)",
+        insert="/ia ",
+        uses_ai=True,
+    ),
+    Tool(
         "/ticket",
         name="ticket",
         help="guardar la próxima imagen o PDF en tickets/ (mandala como archivo)",

@@ -8,7 +8,7 @@ import threading
 import weakref
 
 from epsilon import menu, tools
-from epsilon.ai import chat, extract, llm, permissions, summarize, usage
+from epsilon.ai import ask, chat, extract, llm, permissions, summarize, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 from epsilon.settings import config
@@ -331,6 +331,22 @@ def _summarize_cmd(args: str, session: Session) -> Reply:
         )
 
     return _summarize_path(matches[0])
+
+
+def _ask_cmd(args: str, session: Session) -> Reply:
+    """/ia pregunta: una pregunta suelta a la IA, sin el resto de la conversación."""
+    if not args:
+        return Reply("Uso: /ia pregunta")
+    try:
+        answer = ask.ask(args)
+    except ValueError as e:
+        return Reply(str(e))
+    except Exception as e:
+        print(f"Error en /ia: {config.redact(repr(e))}")  # el detalle, a la terminal
+        return Reply("No pude responder.")
+    if not answer or not answer.strip():
+        return Reply("La IA no devolvió texto.")
+    return Reply(answer)
 
 
 def _ticket(args: str, session: Session) -> Reply:
@@ -694,6 +710,7 @@ COMMANDS = {
     "uso": lambda args, s: _usage(args),
     "usage": lambda args, s: _usage(args),
     "resumir": _summarize_cmd,
+    "ia": _ask_cmd,
     "ticket": _ticket,
     "cancelar": _cancel,
     "menu": _menu,

@@ -68,6 +68,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/buscar palabra`   | Busca en las notas.                              |
 | `/archivos [texto]` | Lista lo guardado (lo más nuevo primero).        |
 | `/resumir nombre`   | Resume una nota o archivo guardado. _Usa IA._    |
+| `/ia pregunta`      | Una pregunta suelta a la IA. _Usa IA._           |
 | `/ticket`           | Guarda la próxima imagen o PDF en `tickets/`.    |
 | `/cancelar`         | Cancela el `/ticket` que quedó en espera.        |
 | `/contexto`         | Lista lo que guardaste desde que arrancó el bot. |

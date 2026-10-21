@@ -51,7 +51,7 @@ def test_the_tools_panel_skips_what_the_menu_and_the_shortcuts_already_offer(cli
     # /ver, /archivos y /uso están en el menú de la izquierda; «Guardar nota», en los atajos.
     labels = {row["label"] for row in client.get("/api/tools").json()["tools"]}
 
-    assert labels == {"Imagen a CSV", "/buscar", "/editar", "/olvidar", "/recordar", "/resumir", "/ticket"}
+    assert labels == {"Imagen a CSV", "/buscar", "/editar", "/ia", "/olvidar", "/recordar", "/resumir", "/ticket"}
 
 
 def test_tool_rows_are_buttons_that_fill_the_message_box_without_sending():
@@ -196,7 +196,7 @@ def test_the_tools_panel_has_an_image_to_csv_row_that_works_like_the_pill(client
 
 def test_only_the_tools_that_spend_tokens_say_they_use_ai(client):
     # Si una herramienta pasa a usar (o dejar de usar) el modelo, hay que cambiarla en tools.py.
-    assert {name for name, tagged in tool_rows(client) if tagged} == {"/resumir", "Imagen a CSV"}
+    assert {name for name, tagged in tool_rows(client) if tagged} == {"/ia", "/resumir", "Imagen a CSV"}
 
 
 def test_every_tool_row_is_listed_once(client):

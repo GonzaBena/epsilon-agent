@@ -655,3 +655,42 @@ def test_requests_in_different_conversations_do_not_wait_for_each_other(ai_mode,
     first.join()
 
     assert reply.text == "otra"
+
+
+# --- /ia ---------------------------------------------------------------------
+
+
+def test_ia_command_needs_a_question():
+    assert say("/ia").text == "Uso: /ia pregunta"
+
+
+def test_ia_command_sends_only_the_question_and_returns_the_answer(monkeypatch):
+    sent = []
+
+    def fake_generate(parts, prompt, max_tokens=2000):
+        sent.append((parts, prompt))
+        return "1260"
+
+    monkeypatch.setattr(core.ask.llm, "generate", fake_generate)
+
+    assert say("/ia ¿cuánto es 15% de 8400?").text == "1260"
+    parts, prompt = sent[0]
+    assert parts == [] and prompt.endswith("¿cuánto es 15% de 8400?")
+
+
+def test_ia_command_rejects_a_long_question_without_calling_the_model():
+    reply = say("/ia " + "x" * (core.ask.MAX_QUESTION + 1))
+
+    assert "muy larga" in reply.text
+
+
+def test_ia_command_hides_a_model_failure(monkeypatch):
+    monkeypatch.setattr(core.ask.llm, "generate", lambda *a, **k: 1 / 0)
+
+    assert say("/ia hola").text == "No pude responder."
+
+
+def test_ia_command_says_so_when_the_model_returns_no_text(monkeypatch):
+    monkeypatch.setattr(core.ask.llm, "generate", lambda *a, **k: None)
+
+    assert say("/ia hola").text == "La IA no devolvió texto."
