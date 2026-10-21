@@ -583,7 +583,7 @@ body.view-telegram {
 .shell:is([data-left="collapsed"], .is-narrow) {
   --left-w: 64px;
 }
-.shell:is([data-left="collapsed"], .is-narrow) .side-left .label {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .label {
   max-width: 0;
   margin-left: 0;
   opacity: 0;
@@ -594,7 +594,7 @@ body.view-telegram {
 }
 /* Lo que desaparece también sale del orden de tabulación (visibility), pero recién
    cuando termina el desvanecimiento. */
-.shell:is([data-left="collapsed"], .is-narrow) .side-left .side-title {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .side-title {
   max-height: 0;
   margin-bottom: 0;
   opacity: 0;
@@ -603,7 +603,7 @@ body.view-telegram {
     margin var(--t) ease,
     opacity 0.1s ease;
 }
-.shell:is([data-left="collapsed"], .is-narrow) .side-left .recents {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .recents {
   max-height: 0;
   opacity: 0;
   visibility: hidden;
@@ -612,7 +612,7 @@ body.view-telegram {
     opacity 0.1s ease,
     visibility 0s linear var(--t);
 }
-.shell:is([data-left="collapsed"], .is-narrow) .side-left .local-card {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .local-card {
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -626,9 +626,16 @@ body.view-telegram {
     opacity 0.1s ease,
     visibility 0s linear var(--t);
 }
-/* En ventanas angostas el panel no se puede abrir: no hay lugar. */
-.shell.is-narrow .side-left .panel-toggle {
-  display: none;
+/* En ventanas angostas no hay lugar para empujar el escenario: el botón abre el menú
+   completo como un cajón encima (shell.js pone drawer-open; Escape o tocar afuera lo cierra). */
+.shell.is-narrow.drawer-open .side-left {
+  position: fixed;
+  top: 56px;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  width: min(264px, 85vw);
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45);
 }
 
 /* --- Panel derecho ------------------------------------------------------------

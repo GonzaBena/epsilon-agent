@@ -68,9 +68,25 @@
     updateTooltips();
   }
 
+  // En ventanas angostas el botón del menú abre un cajón con la lista completa.
+  function setDrawer(open) {
+    shell.classList.toggle("drawer-open", open);
+    for (const button of document.querySelectorAll('[data-toggle="left"]')) {
+      button.setAttribute("aria-expanded", String(open));
+      const label = open ? TOGGLE_LABELS.left.open : TOGGLE_LABELS.left.collapsed;
+      button.setAttribute("aria-label", label);
+      button.title = label;
+    }
+    if (open) loadInfo();
+  }
+
   for (const button of document.querySelectorAll("[data-toggle]")) {
     button.addEventListener("click", () => {
       const side = button.dataset.toggle;
+      if (side === "left" && shell.classList.contains("is-narrow")) {
+        setDrawer(!shell.classList.contains("drawer-open"));
+        return;
+      }
       layout[side] = layout[side] === "open" ? "collapsed" : "open";
       saveLayout();
       applyLayout();
@@ -84,9 +100,20 @@
   const narrow = window.matchMedia("(max-width: 62.5rem)");
   function applyNarrow() {
     shell.classList.toggle("is-narrow", narrow.matches);
+    if (!narrow.matches) setDrawer(false);
     updateTooltips();
   }
   narrow.addEventListener("change", applyNarrow);
+  // Tocar afuera del cajón (o Escape) lo cierra; elegir una conversación también.
+  document.addEventListener("click", (event) => {
+    if (!shell.classList.contains("drawer-open")) return;
+    const target = event.target;
+    if (target.closest("[data-toggle='left']")) return;
+    if (!target.closest(".side-left") || target.closest("a.recent, .nav-item, .new-chat")) setDrawer(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && shell.classList.contains("drawer-open")) setDrawer(false);
+  });
 
   // --- «Recientes» y título de la conversación ------------------------------------------
   function make(tag, className, text) {
