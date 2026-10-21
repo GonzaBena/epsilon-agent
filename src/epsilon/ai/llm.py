@@ -13,6 +13,21 @@ def _model() -> str:
     return os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL
 
 
+def current_model() -> str:
+    """El modelo configurado (para saber, por ejemplo, si tiene precio cargado)."""
+    return _model()
+
+
+def _record_usage(model: str, response) -> None:
+    """Anota los tokens gastados (para /uso). Si la respuesta no trae el dato, 0."""
+    meta = response.usage_metadata
+    input_tokens = (meta.prompt_token_count if meta else 0) or 0
+    # El "pensamiento" del modelo se cobra como salida, así que lo sumamos.
+    output_tokens = (meta.candidates_token_count if meta else 0) or 0
+    output_tokens += (getattr(meta, "thoughts_token_count", 0) if meta else 0) or 0
+    usage.record(model, input_tokens, output_tokens)
+
+
 def generate(
     parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool = False
 ) -> str:
@@ -31,14 +46,26 @@ def generate(
         ),
     )
 
-    # Anotamos los tokens gastados (para /uso). Si la respuesta no trae el dato, 0.
-    meta = response.usage_metadata
-    input_tokens = (meta.prompt_token_count if meta else 0) or 0
-    # El "pensamiento" del modelo se cobra como salida, así que lo sumamos.
-    output_tokens = (meta.candidates_token_count if meta else 0) or 0
-    output_tokens += (getattr(meta, "thoughts_token_count", 0) if meta else 0) or 0
-    usage.record(model, input_tokens, output_tokens)
+    _record_usage(model, response)
 
+    return response.text
+
+
+def chat(turns: list[tuple[str, str]], system: str, max_tokens: int = 1500) -> str:
+    """Conversación de varios turnos. turns = [("user" | "model", texto), ...], el último del usuario.
+
+    `system` son las instrucciones fijas. Anota el gasto igual que generate."""
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    model = _model()
+    response = client.models.generate_content(
+        model=model,
+        contents=[types.Content(role=role, parts=[types.Part(text=text)]) for role, text in turns],
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=max_tokens,  # tope de salida, para controlar el costo
+        ),
+    )
+    _record_usage(model, response)
     return response.text
 
 
