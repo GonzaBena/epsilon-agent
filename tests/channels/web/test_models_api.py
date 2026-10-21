@@ -25,6 +25,7 @@ class Listing(Provider):
 def fake_providers(monkeypatch):
     registry = {}
     monkeypatch.setattr(providers, "_PROVIDERS", registry)
+    web._models_cache.clear()  # lo recordado en otro test no cuenta
     for key in ("AI_MODEL", "AI_MODEL_CHAT", "AI_MODEL_ASK", "AI_MODEL_SUMMARY", "AI_MODEL_CSV", "GEMINI_MODEL"):
         monkeypatch.delenv(key, raising=False)
     return registry
@@ -109,3 +110,70 @@ def test_config_state_includes_the_current_default_model(client, monkeypatch):
     monkeypatch.setenv("AI_MODEL", "ollama:qwen3")
 
     assert client.get("/api/config").json()["model"] == "ollama:qwen3"
+
+
+# --- caché de la lista de modelos -----------------------------------------------------
+
+
+class Counting(Listing):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.asked = 0
+
+    def list_models(self):
+        self.asked += 1
+        return super().list_models()
+
+
+@pytest.fixture
+def cached(fake_providers, monkeypatch):
+    web._models_cache.clear()
+    monkeypatch.setattr(web, "MODELS_TTL", {"gemini": 60.0})  # el remoto se recuerda; el local (ollama) no
+    fake_providers["gemini"] = Counting("gemini", ["gemini-a"])
+    fake_providers["ollama"] = Counting("ollama", ["qwen3"])
+    yield fake_providers
+    web._models_cache.clear()
+
+
+def test_a_remote_list_is_remembered_and_a_local_one_is_always_fresh(client, cached):
+    first = client.get("/api/models").json()
+    second = client.get("/api/models").json()
+
+    assert first == second and [m["id"] for m in second["models"]] == ["gemini:gemini-a", "ollama:qwen3"]
+    assert cached["gemini"].asked == 1  # la segunda vez salió del caché
+    assert cached["ollama"].asked == 2  # Ollama es local: si bajaste un modelo, aparece al toque
+
+
+def test_refresh_asks_again(client, cached):
+    client.get("/api/models")
+    client.get("/api/models?refresh=1")
+
+    assert cached["gemini"].asked == 2
+
+
+def test_the_cache_expires(client, cached, monkeypatch):
+    monkeypatch.setattr(web, "MODELS_TTL", {"gemini": 0.1})
+    client.get("/api/models")
+    time.sleep(0.15)
+    client.get("/api/models")
+
+    assert cached["gemini"].asked == 2
+
+
+def test_errors_are_never_remembered(client, cached):
+    cached["gemini"].error = ModelError("Falta la clave de Gemini.")
+    assert "gemini" in client.get("/api/models").json()["errors"]
+
+    cached["gemini"].error = None
+    data = client.get("/api/models").json()
+
+    assert data["errors"] == {} and "gemini:gemini-a" in [m["id"] for m in data["models"]]
+
+
+def test_saving_the_configuration_forgets_the_remembered_lists(client, cached):
+    client.get("/api/models")
+
+    client.put("/api/config", json={"changes": {"OLLAMA_URL": "http://localhost:11434"}, "clear": []})
+    client.get("/api/models")
+
+    assert cached["gemini"].asked == 2  # una clave o una dirección nueva pueden cambiar la lista

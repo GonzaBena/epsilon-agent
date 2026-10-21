@@ -79,6 +79,8 @@
     dialog.setAttribute("aria-label", "Elegir el modelo de IA");
     input = document.createElement("input");
     input.type = "text";
+    input.id = "palette-input";
+    input.name = "palette-search";
     input.className = "palette-input";
     input.placeholder = "Buscá un modelo (proveedor:modelo)";
     input.autocomplete = "off";
@@ -221,7 +223,8 @@
     input.value = "";
     active = 0;
     status.textContent = "";
-    state = { ...state, loaded: false };
+    // Si ya se cargó una vez, se muestra esa lista al instante y se actualiza por detrás (el servidor además
+    // recuerda la de Gemini un rato): abrir la paleta no parpadea ni espera.
     paint();
     dialog.showModal();
     input.focus();

@@ -96,3 +96,16 @@ def test_usable_offers_an_unlisted_model_only_for_a_provider_that_answered():
     assert usable("ollama:", ["ollama"]) is None and usable("phi4", ["gemini", "ollama"]) is None
     assert usable("raro:phi4", ["gemini", "ollama"]) is None
     assert usable("  ollama:phi4  ", ["ollama"]) == "ollama:phi4"
+
+
+def test_the_search_field_has_an_id_and_a_name():
+    # Sin id ni name el navegador avisa (y no puede recordar ni autocompletar el campo).
+    palette = js("palette.js")
+
+    assert 'input.id = "palette-input"' in palette and 'input.name = "palette-search"' in palette
+
+
+def test_reopening_the_palette_shows_the_previous_list_while_it_refreshes():
+    palette = js("palette.js")
+
+    assert "state.loaded" in palette and "state = { ...state, loaded: false }" not in palette

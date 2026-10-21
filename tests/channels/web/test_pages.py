@@ -346,7 +346,7 @@ def test_the_telegram_view_tints_the_stage_and_the_composer_blue():
     assert "--bubble:" in view  # tu burbuja también
     assert "background: var(--stage-bg)" in re.search(r"\n\.stage \{(.*?)\}", css, re.S).group(0)
     assert "background: var(--stage-bg)" in re.search(r"\n\.composer \{(.*?)\}", css, re.S).group(0)
-    assert re.search(r"--stage-bg: var\(--bg\)", css)  # fuera de Telegram, el fondo de siempre
+    assert re.search(r"--stage-bg: var\(\s*--bg\s*\)", css)  # fuera de Telegram, el fondo de siempre (un formateador puede partir la línea)
     assert 'document.body.classList.toggle("view-telegram", on)' in app
 
 

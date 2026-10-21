@@ -33,6 +33,10 @@ SESSION_ID = "web"
 # Mismo tope que Telegram, para que ambos canales acepten lo mismo.
 MAX_UPLOAD = 20 * 1024 * 1024
 MODELS_TIMEOUT = 3.0  # segundos que se espera a cada proveedor para listar sus modelos
+# Cuánto se recuerda la lista de modelos de un proveedor (segundos). Los remotos (Gemini) cambian poco y cada
+# consulta es una llamada a internet; los locales (Ollama) no se recuerdan: bajar un modelo tiene que verse al toque.
+MODELS_TTL = {"gemini": 30 * 60.0}
+_models_cache: dict[str, tuple[float, list[str]]] = {}  # proveedor -> (cuándo se pidió, modelos); solo éxitos
 
 # Únicos nombres con los que se acepta que alguien llame a la web.
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
@@ -592,15 +596,27 @@ def create_app() -> FastAPI:
         return config_state()
 
     @app.get("/api/models")
-    def get_models():
+    def get_models(refresh: bool = Query(False)):
         """Los modelos que se pueden elegir (sin gasto). Un proveedor caído no aporta modelos ni rompe nada:
-        queda en `errors` con su motivo. `providers` son los que respondieron (aunque no tengan modelos)."""
+        queda en `errors` con su motivo. `providers` son los que respondieron (aunque no tengan modelos).
+        La lista de un proveedor remoto se recuerda un rato (MODELS_TTL); `?refresh=1` la pide de nuevo."""
         names = providers.names()
-        pool = ThreadPoolExecutor(max_workers=max(1, len(names)))
-        futures = {name: pool.submit(providers.get(name).list_models) for name in names}
-        deadline = time.monotonic() + MODELS_TIMEOUT
+        now = time.monotonic()
         models, up, errors = [], [], {}
-        for name, future in futures.items():
+        remembered = {}
+        for name in names:
+            found = _models_cache.get(name)
+            if found and not refresh and now - found[0] < MODELS_TTL.get(name, 0.0):
+                remembered[name] = found[1]
+        pool = ThreadPoolExecutor(max_workers=max(1, len(names)))
+        futures = {name: pool.submit(providers.get(name).list_models) for name in names if name not in remembered}
+        deadline = time.monotonic() + MODELS_TIMEOUT
+        for name in names:
+            if name in remembered:
+                up.append(name)
+                models += [{"id": f"{name}:{model}", "provider": name} for model in remembered[name]]
+                continue
+            future = futures[name]
             try:
                 listed = future.result(timeout=max(0.0, deadline - time.monotonic()))
             except FutureTimeout:
@@ -612,6 +628,8 @@ def create_app() -> FastAPI:
             else:
                 up.append(name)
                 models += [{"id": f"{name}:{model}", "provider": name} for model in listed]
+                if name in MODELS_TTL:
+                    _models_cache[name] = (time.monotonic(), list(listed))  # los errores nunca se recuerdan
         pool.shutdown(wait=False, cancel_futures=True)  # uno lento sigue por su cuenta, sin trabar la respuesta
         return {
             "models": models,
@@ -635,6 +653,7 @@ def create_app() -> FastAPI:
         from epsilon import main
 
         main.refresh_plugins()  # que sus ajustes existan antes de validar lo que llega
+        _models_cache.clear()  # una clave o una dirección nuevas pueden cambiar qué modelos hay
         try:
             config.update(body.changes, body.clear)
         except config.ConfigError as e:
