@@ -208,6 +208,40 @@ SETTINGS = (
 
 BY_KEY = {s.key: s for s in SETTINGS}
 
+# Ajustes que declaran los plugins de canales (ver plugins/channels.py). Se suman a los propios
+# sin tocar SETTINGS; main.refresh_plugins los mantiene al día.
+_plugin_settings: tuple[Setting, ...] = ()
+# Claves secretas de plugins que alguna vez se registraron en este proceso. Solo crece: si la
+# carpeta del plugin se borra, su secreto (que sigue en el entorno) se sigue tachando.
+_plugin_secret_keys: set[str] = set()
+
+
+def all_settings() -> tuple[Setting, ...]:
+    """Los ajustes propios más los de los plugins registrados."""
+    return SETTINGS + _plugin_settings
+
+
+def set_plugin_settings(items: list[Setting]) -> None:
+    """Reemplaza el conjunto de ajustes de plugins. No puede pisar un ajuste propio."""
+    global _plugin_settings
+    own = {s.key for s in SETTINGS}
+    clashes = sorted(own.intersection(item.key for item in items))
+    if clashes:
+        raise ValueError(f"«{clashes[0]}» ya es un ajuste de Epsilon.")
+    for old in _plugin_settings:
+        BY_KEY.pop(old.key, None)
+    _plugin_settings = tuple(items)
+    for item in items:
+        BY_KEY[item.key] = item
+        if item.secret:
+            _plugin_secret_keys.add(item.key)
+
+
+def reset_plugin_settings() -> None:
+    """Deja el registro vacío, también el de secretos. Solo lo usan los tests."""
+    set_plugin_settings([])
+    _plugin_secret_keys.clear()
+
 
 # --- Estado ------------------------------------------------------------------
 
@@ -225,7 +259,7 @@ def status(env_file: Path | None = None) -> list[dict]:
     saved = dotenv_values(path) if path.exists() else {}
 
     result = []
-    for s in SETTINGS:
+    for s in all_settings():
         current = _current(s)
         entry = {
             "key": s.key,
@@ -367,10 +401,10 @@ def redact(text: str, env_file: Path | None = None) -> str:
     file_values = dotenv_values(path) if path.exists() else {}
 
     secrets = set()
-    for s in SETTINGS:
-        if s.secret:
-            secrets.add(os.environ.get(s.key, ""))
-            secrets.add(file_values.get(s.key) or "")
+    secret_keys = {s.key for s in SETTINGS if s.secret} | {s.key for s in _plugin_settings if s.secret}
+    for key in secret_keys | _plugin_secret_keys:
+        secrets.add(os.environ.get(key, ""))
+        secrets.add(file_values.get(key) or "")
 
     # Los más largos primero; y nada de valores cortos o vacíos, que
     # reemplazarían texto normal por casualidad.

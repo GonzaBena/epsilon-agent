@@ -79,3 +79,13 @@ def fresh_channel_control(monkeypatch):
 
     monkeypatch.setattr(main, "_threads", {})
     monkeypatch.setattr(main, "_stopping", set())
+
+
+@pytest.fixture(autouse=True)
+def no_plugin_settings():
+    """Los ajustes de plugins son globales (como el estado de los canales): cada test arranca sin ellos."""
+    from epsilon.settings import config
+
+    config.reset_plugin_settings()
+    yield
+    config.reset_plugin_settings()

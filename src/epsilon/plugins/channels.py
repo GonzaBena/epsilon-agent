@@ -183,3 +183,36 @@ def load_module(plugin: Plugin) -> ModuleType:
         if not callable(getattr(module, part, None)):
             raise PluginError(f"Al plugin le falta «{part}» (un canal necesita {', '.join(REQUIRED)}).")
     return module
+
+
+def _validator(setting: PluginSetting):
+    """validate de un ajuste de plugin: sin espacios de más, sin saltos de línea ni caracteres de
+    control, y que cumpla el patrón del manifiesto."""
+
+    def validate(value: str) -> str:
+        value = value.strip()
+        if any(ord(char) < 32 or ord(char) == 127 for char in value) or not re.fullmatch(setting.pattern, value):
+            raise ValueError(setting.message)
+        return value
+
+    return validate
+
+
+def settings_for(plugin: Plugin) -> list[config.Setting]:
+    """Los ajustes de un plugin como los entiende config: los de su manifiesto (se editan en
+    Configuración) más el interruptor <NOMBRE>_ENABLED (en la página Canales, «no» por defecto)."""
+    result = [
+        config.Setting(s.key, s.label, secret=s.secret, live=True, validate=_validator(s))
+        for s in plugin.settings
+    ]
+    result.append(
+        config.Setting(
+            f"{plugin.name.upper()}_ENABLED",
+            f"Canal de {plugin.label} prendido",
+            live=True,
+            default="no",
+            validate=config._yes_no,
+            page="canales",
+        )
+    )
+    return result
