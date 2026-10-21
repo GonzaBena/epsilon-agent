@@ -38,7 +38,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | Variable                                                     | Para qué sirve                                                                                                          |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | `GEMINI_API_KEY`                                             | Clave de Gemini. Sin ella no se pueden leer imágenes ni resumir.                                                        |
-| `GEMINI_MODEL`                                               | Modelo a usar (por defecto, `gemini-3.1-flash-lite`).                                                                   |
+| `GEMINI_MODEL`                                               | Modelo de Gemini a usar si no elegiste otro (por defecto, `gemini-3.1-flash-lite`).                                                                   |
 | `DATA_DIR`                                                   | Carpeta donde se guardan notas, archivos y conversaciones (por defecto, `~/epsilon-data`). Queda fuera del repositorio. |
 | `WEB_PORT`                                                   | Puerto de la web local (por defecto, 8765).                                                                             |
 | `TELEGRAM_TOKEN`, `ALLOWED_USER_ID`                          | Opcionales. Con las dos, el bot responde solo a ese usuario de Telegram.                                                |
@@ -164,7 +164,7 @@ La voz es opcional y el modelo (~1,6 GB) solo se baja con el primer audio. Si no
 ## Desarrollo
 
 ```bash
-uv run pytest      # los tests (carpeta tests/) nunca llaman a Gemini ni cargan Whisper
+uv run pytest      # los tests (carpeta tests/) nunca llaman a un modelo ni cargan Whisper
 ```
 
 Dónde está cada cosa:
@@ -172,9 +172,9 @@ Dónde está cada cosa:
 - `core.py`: la lógica (comandos, confirmaciones, estado de la sesión). No conoce ningún canal.
 - `channels/web.py` y `channels/telegram.py`: traducen entre cada canal y el núcleo.
 - `tools.py`: el **registro de herramientas**, la fuente única de los comandos.
-- `ai/` (Gemini y el gasto), `data/` (notas y conversaciones), `voice/` (Whisper) y `settings/`
+- `ai/` (los modelos de IA y el gasto), `data/` (notas y conversaciones), `voice/` (Whisper) y `settings/`
   (el `.env` y las pruebas de conexión): una carpeta por responsabilidad. `ai/llm.py` es el único
-  lugar que llama a Gemini; `voice/transcribe.py`, el único que carga Whisper.
+  lugar que usa el resto del código para hablar con un modelo (`ai/providers/` tiene uno por proveedor); `voice/transcribe.py`, el único que carga Whisper.
 - `tests/`: los tests, con las mismas carpetas que el código.
 - `docs/`: los planes de diseño de cada parte (`plan-*.md`).
 
@@ -192,3 +192,14 @@ y, si es de solo lectura y se declara en `links`, el enlace `/?cmd=...`. Los tes
 
 [MIT](LICENSE). Podés usar, copiar y modificar Epsilon libremente; solo hay que conservar el aviso de copyright. El archivo
 `js/vendor/markdown-it.min.js` es de terceros y conserva su propia licencia (`markdown-it.LICENSE`, también MIT).
+
+## Usar Ollama (modelos locales)
+
+Epsilon puede usar modelos que corren en tu máquina con [Ollama](https://ollama.com), sin clave y sin costo:
+
+1. Tenelo andando (`ollama serve`) y bajá un modelo (`ollama pull llama3.1:8b`).
+2. En Epsilon, tocá el botón del modelo (arriba a la derecha) y elegí `ollama:llama3.1:8b`, o escribilo en
+   Configuración → «Modelos de IA». Cada tarea (chat, `/ia`, resúmenes, imagen a CSV) puede usar un modelo distinto.
+3. Si Ollama está en otra dirección, cargala en `OLLAMA_URL`. «Probar conexión con Ollama» no gasta nada.
+
+Ollama no lee PDFs, y no todos sus modelos usan herramientas o leen imágenes: Epsilon lo avisa en vez de fallar.

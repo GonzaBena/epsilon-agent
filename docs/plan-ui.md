@@ -68,8 +68,8 @@ PDF no tienen miniatura: llevan un ícono.
 Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA).
 
 - **Barra de arriba** (en las cuatro páginas, repetida a mano; un test vigila que coincidan):
-  Chat · Canales · Uso, con la actual marcada (`aria-current`), y a la derecha el modelo (que
-  también lleva a Configuración). Uso salió del menú de la izquierda; **Configuración sigue ahí,
+  Chat · Canales · Uso, con la actual marcada (`aria-current`), y a la derecha el modelo (un botón que abre
+  la paleta para elegir otro: ver `docs/plan-modelos.md`). Uso salió del menú de la izquierda; **Configuración sigue ahí,
   abajo de todo** (un engranaje arriba, como en el diseño, no se encontraba). Se dejaron afuera
   Memoria y Docs del diseño: todavía no existen.
 - **Interruptores** (`button role="switch"`, pista lima, perilla; sin animación si el sistema pide
