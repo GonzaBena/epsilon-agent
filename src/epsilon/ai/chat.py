@@ -36,13 +36,18 @@ def default_limit() -> float:
 
 
 def status(conversation_id: str) -> dict:
-    """Lo que la barra muestra: {cost, context, limit, blocked, reason}.
+    """Lo que la barra muestra: {cost, context, limit, blocked, reason, model_change}.
 
-    Bloqueada si ya gastó el límite, o si el modelo no tiene precio (sin precio no se puede medir)."""
+    Bloqueada si ya gastó el límite, o si el modelo no tiene precio (sin precio no se puede medir).
+    `model_change` es {from, to} si el modelo del chat no es el de la última llamada de esta conversación
+    (cambiar de modelo hace que la charla se reenvíe entera): el navegador avisa antes de enviar."""
     spent = usage.for_conversation(conversation_id)
     limit = conversations.limit(conversation_id) or default_limit()
     reason = None
-    if not usage.price_known(llm.current_model()):
+    model = llm.model_for("chat")
+    previous = usage.last_model(conversation_id)
+    change = {"from": previous, "to": model} if previous and previous != model else None
+    if not usage.price_known(model):
         reason = (
             "No conozco el precio del modelo de IA que tenés configurado, así que no puedo medir ni limitar "
             "el costo de este chat. En Configuración elegí un modelo con precio conocido, o dejá el campo "
@@ -59,6 +64,7 @@ def status(conversation_id: str) -> dict:
         "limit": limit,
         "blocked": reason is not None,
         "reason": reason,
+        "model_change": change,
     }
 
 

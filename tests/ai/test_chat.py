@@ -298,3 +298,38 @@ def test_step_offers_no_tools_to_a_model_that_cannot_use_them(captured, monkeypa
     chat.step(chat.begin(CID, "hola"))
 
     assert captured[0]["tools"] == []
+
+
+# --- aviso de cambio de modelo ----------------------------------------------------------
+
+
+def chat_call(model):
+    with usage.conversation(CID), usage.action("Chat"):
+        usage.record(model, 100, 10)
+
+
+def test_model_change_is_none_without_previous_calls_or_with_the_same_model(monkeypatch):
+    monkeypatch.setenv("AI_MODEL", "gemini:modelo-a")
+    assert chat.status(CID)["model_change"] is None
+
+    chat_call("modelo-a")
+
+    assert chat.status(CID)["model_change"] is None
+
+
+def test_model_change_reports_from_and_to_when_the_chat_model_changes(monkeypatch):
+    monkeypatch.setenv("AI_MODEL", "gemini:modelo-a")
+    chat_call("modelo-a")
+
+    monkeypatch.setenv("AI_MODEL_CHAT", "ollama:qwen3")
+
+    assert chat.status(CID)["model_change"] == {"from": "gemini:modelo-a", "to": "ollama:qwen3"}
+
+
+def test_status_uses_the_chat_model_for_price_and_limit(monkeypatch):
+    monkeypatch.setenv("AI_MODEL", "gemini:modelo-sin-precio")  # el predeterminado no tiene precio…
+    monkeypatch.setenv("AI_MODEL_CHAT", "ollama:qwen3")  # …pero el chat usa uno local, gratis
+
+    status = chat.status(CID)
+
+    assert status["blocked"] is False

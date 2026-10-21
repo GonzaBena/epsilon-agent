@@ -501,3 +501,15 @@ def test_uploading_in_ai_mode_saves_to_the_library_instead_of_summarizing():
 
     assert '"/api/files"' in source
     assert "wantsCsv" in source.split("uploadToLibrary(file)")[0].split("function setFile")[1]
+
+
+# --- Aviso al cambiar de modelo en una conversación --------------------------------------
+
+
+def test_the_chat_exposes_the_model_guard_and_asks_before_sending_after_a_model_change():
+    source = js("app.js")
+
+    assert "epsilonModelGuard" in source
+    assert "model_change" in source and "epsilonModal" in source
+    assert "window.confirm" not in source and "alert(" not in source
+    assert "Enviar igual" in source

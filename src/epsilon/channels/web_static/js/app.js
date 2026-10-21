@@ -578,12 +578,51 @@ window.addEventListener("paste", (event) => {
 });
 
 // --- Enviar ------------------------------------------------------------------
+// --- Aviso al cambiar de modelo en medio de una conversación ----------------------------------------
+// Otro modelo no tiene la charla en caché: recibe todo el historial de nuevo (puede costar más), y los archivos
+// mencionados antes no se reenvían. El aviso es un modal; el servidor no bloquea nada.
+const MODEL_CHANGE_WARNING =
+  "El modelo nuevo no tiene esta conversación en caché: se le reenvía todo el historial y puede costar más. " +
+  "Los archivos mencionados antes no se reenvían.";
+
+// La paleta de modelos (palette.js) pregunta esto antes de cambiar el modelo: texto del aviso, o null si no hace falta.
+window.epsilonModelGuard = async () => (aiMode() && started ? MODEL_CHANGE_WARNING : null);
+
+// Antes de enviar: ¿cambió el modelo del chat desde la última respuesta (Configuración, otra pestaña)?
+async function modelChange() {
+  if (!conversationId || !aiMode() || !started) return null;
+  try {
+    const response = await fetch(`/api/conversations/${conversationId}`);
+    if (!response.ok) return null;
+    return ((await response.json()).chat || {}).model_change || null;
+  } catch {
+    return null; // sin servidor, el envío mismo va a avisar
+  }
+}
+
+let checkingModel = false; // un Enter doble no abre dos avisos
 async function submit() {
-  if (busy) return;
+  if (busy || checkingModel) return;
   await newChatReady; // ya hay id de conversación (si el servidor responde)
-  if (busy) return; // un Enter doble: el segundo ve el cuadro ya vacío y no hace nada
+  if (busy || checkingModel) return; // un Enter doble: el segundo ve el cuadro ya vacío y no hace nada
   const text = input.value.trim();
   if (!text && !pendingFile) return;
+
+  checkingModel = true;
+  try {
+    const change = await modelChange();
+    if (change) {
+      const go = await window.epsilonModal({
+        title: "Cambió el modelo de IA",
+        body: `${change.from} → ${change.to}. ${MODEL_CHANGE_WARNING}`,
+        confirm: "Enviar igual",
+        cancel: "Cancelar",
+      });
+      if (!go) return; // el mensaje queda en el cuadro, sin enviar
+    }
+  } finally {
+    checkingModel = false;
+  }
 
   if (pendingFile) {
     // Con archivo: el texto es el "pie" (por ejemplo «gastos: fecha, total»).

@@ -441,3 +441,33 @@ def test_a_conversation_with_a_local_model_costs_nothing(tmp_path, monkeypatch):
 
     assert spent["cost"] == pytest.approx(1.0)  # solo cuenta la de Gemini
     assert usage.summary()["total"]["unpriced"] == 0  # la de Ollama tiene precio conocido
+
+
+# --- último modelo de una conversación ---------------------------------------------------
+
+CID = "20261021-130000-aaaa"
+
+
+def chat_call(model, cid=CID, action="Chat"):
+    with usage.conversation(cid), usage.action(action):
+        usage.record(model, 100, 10)
+
+
+def test_last_model_is_the_one_of_the_last_chat_call(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+    assert usage.last_model(CID) is None  # sin llamadas
+
+    chat_call("modelo-a")  # el nombre viejo, sin proveedor, es de Gemini
+    assert usage.last_model(CID) == "gemini:modelo-a"
+
+    chat_call("ollama:qwen3")
+    assert usage.last_model(CID) == "ollama:qwen3"  # el índice incremental ve lo que se agregó
+
+
+def test_last_model_ignores_other_conversations_and_non_chat_calls(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+    chat_call("modelo-a")
+    chat_call("ollama:qwen3", cid="20261021-130001-bbbb")
+    chat_call("ollama:qwen3", action="Resumen")  # un resumen no cambia el modelo de la charla
+
+    assert usage.last_model(CID) == "gemini:modelo-a"

@@ -266,7 +266,7 @@ def _refresh_index() -> None:
         if entry is None or not entry.get("conversation"):
             continue
         found = _index["conversations"].setdefault(
-            entry["conversation"], {"calls": 0, "context": 0, "tokens": {}}
+            entry["conversation"], {"calls": 0, "context": 0, "tokens": {}, "last_model": None}
         )
         found["calls"] += 1
         tokens = found["tokens"].setdefault(entry["model"], [0, 0])
@@ -274,6 +274,20 @@ def _refresh_index() -> None:
         tokens[1] += entry["output"]
         if entry.get("action") == "Chat":
             found["context"] = entry["input"]
+            found["last_model"] = entry["model"]
+
+
+def last_model(conversation_id: str) -> str | None:
+    """El modelo (id completo) de la última llamada de chat de una conversación, o None si no tuvo.
+
+    Los registros viejos, con el nombre solo, son de Gemini."""
+    with _index_lock:
+        _refresh_index()
+        found = _index["conversations"].get(conversation_id)
+    stored = found["last_model"] if found else None
+    if stored is None:
+        return None
+    return stored if stored.startswith("ollama:") else f"gemini:{stored.removeprefix('gemini:')}"
 
 
 def for_conversation(conversation_id: str) -> dict:
