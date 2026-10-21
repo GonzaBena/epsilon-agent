@@ -220,7 +220,11 @@ def delete(conversation_id: str) -> bool:
 
 def _check_limit(usd) -> float:
     """El límite como número, o ValueError. Un bool no cuenta como número."""
-    if isinstance(usd, bool) or not isinstance(usd, (int, float)) or not math.isfinite(usd):
+    try:
+        valid = not isinstance(usd, bool) and isinstance(usd, (int, float)) and math.isfinite(usd)
+    except OverflowError:  # un entero tan grande que no entra en un float
+        valid = False
+    if not valid:
         raise ValueError("El límite tiene que ser un número.")
     if not LIMIT_MIN <= usd <= LIMIT_MAX:
         raise ValueError(f"El límite tiene que estar entre US$ {LIMIT_MIN} y US$ {LIMIT_MAX}.")

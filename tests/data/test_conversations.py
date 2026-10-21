@@ -925,3 +925,10 @@ def test_ai_conversation_title_is_first_user_message():
     conversations.add_message(VALID, "user", "explicame esto")
 
     assert conversations.title(VALID) == "explicame esto"
+
+
+def test_set_limit_rejects_a_number_too_big_for_a_float():
+    conversations.start(VALID, "ai", 0.5)
+
+    with pytest.raises(ValueError):
+        conversations.set_limit(VALID, 10**400)

@@ -476,3 +476,16 @@ def test_telegram_conversation_is_still_read_only(client, ai_web):
 
     assert chat(client, cid, "hola", mode="ai").status_code == 409
     assert conversations.mode(cid) == "normal"
+
+
+def test_put_limit_with_a_huge_number_is_a_422_not_a_500(client, ai_web):
+    cid = new_conversation(client)
+    chat(client, cid, "hola", mode="ai")
+
+    reply = client.put(
+        f"/api/conversations/{cid}/limit",
+        content="{\"usd\": 1" + "0" * 400 + "}",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert reply.status_code == 422
