@@ -390,3 +390,47 @@ def test_chat_waits_for_its_conversation_before_showing_the_greeting():
     assert 'classList.remove("booting")' in js("app.js")
     css = js("style.css")
     assert re.search(r"body\.booting \.log\s*\{\s*opacity:\s*0;", css)
+
+
+# --- Modo IA: selector, barra de costo y límite ---------------------------------------
+
+
+def test_new_chat_mode_selector_exists():
+    html = chat_html()
+
+    for mode in ("normal", "ai"):
+        tag = re.search(rf'<button[^>]*id="mode-{mode}"[^>]*>', html).group(0)
+        assert 'type="button"' in tag and "aria-pressed=" in tag, mode
+    assert "Chat con IA" in html and "IA" in html and "Gemini" not in html
+
+
+def test_ai_bar_exists_and_is_hidden_by_default():
+    html = chat_html()
+
+    assert re.search(r'<div[^>]*id="ai-bar"[^>]*\bhidden\b', html)
+    for needed in ("ai-context", "ai-cost", "ai-limit", "ai-limit-save", "ai-blocked"):
+        assert f'id="{needed}"' in html, needed
+
+
+def test_app_js_sends_the_mode_only_with_the_first_message():
+    code = js("app.js")
+
+    assert "chatMode" in code and "started" in code
+    assert "if (!started)" in code  # el modo viaja solo mientras la conversación no empezó
+    assert 'form.append("mode"' in code
+
+
+def test_app_js_fills_the_ai_bar_with_textcontent_and_edits_the_limit():
+    code = js("app.js")
+
+    # La barra se arma con textContent (que no use innerHTML en general ya lo vigila otro test).
+    assert "aiContext.textContent" in code and "aiCost.textContent" in code and "aiBlocked.textContent" in code
+    assert 'getElementById("ai-context")' in code
+    assert "/limit" in code and '"PUT"' in code
+
+
+def test_conversation_list_marks_ai_mode():
+    code = js("shell.js")
+
+    assert 'conversation.mode === "ai"' in code
+    assert 'make("span", "ai-mark", "IA")' in code  # el texto va como textContent (make)

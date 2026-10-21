@@ -25,6 +25,14 @@ const micButton = document.getElementById("mic");
 const micStatus = document.getElementById("mic-status");
 const newChatLink = document.getElementById("new-chat");
 const readonlyNote = document.getElementById("readonly-note");
+const modePicker = document.getElementById("mode-picker");
+const modeButtons = { normal: document.getElementById("mode-normal"), ai: document.getElementById("mode-ai") };
+const aiBar = document.getElementById("ai-bar");
+const aiContext = document.getElementById("ai-context");
+const aiCost = document.getElementById("ai-cost");
+const aiLimit = document.getElementById("ai-limit");
+const aiLimitSave = document.getElementById("ai-limit-save");
+const aiBlocked = document.getElementById("ai-blocked");
 
 // --- Estado -----------------------------------------------------------------
 const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
@@ -43,6 +51,11 @@ let previewUrl = null;       // dirección local (blob:) de la miniatura; hay qu
 let wantsCsv = false;        // true si el archivo se pidió con el atajo «Imagen a CSV»
 const CSV_TEMPLATE = "nombre: campo1, campo2"; // ejemplo del pedido de CSV
 let busy = false;            // true mientras esperamos una respuesta
+
+// Modo IA: el tipo de chat se elige antes del primer mensaje y después no cambia (el servidor lo
+// fija al crear la conversación). `started` = la conversación ya tiene mensajes.
+let chatMode = "normal";     // lo que está elegido en el selector (solo vale mientras !started)
+let started = false;
 
 // Con un archivo adjunto, el texto que escribas se usa para pedir un CSV.
 // Esa función no se descubre sola, así que el placeholder la explica.
@@ -90,6 +103,59 @@ function setReadOnly(on) {
   composer.classList.toggle("readonly", on);
   readonlyNote.hidden = !on;
 }
+
+// --- Modo IA: selector, barra de contexto / costo / límite ------------------------------------
+function chooseMode(mode) {
+  chatMode = mode;
+  for (const [name, button] of Object.entries(modeButtons)) {
+    button.setAttribute("aria-pressed", String(name === mode));
+  }
+}
+for (const [name, button] of Object.entries(modeButtons)) {
+  button.addEventListener("click", () => chooseMode(name));
+}
+
+const fmtTokens = (n) => Number(n).toLocaleString("es-AR");
+const fmtUsd = (n) => `US$ ${Number(n).toFixed(4)}`;
+
+// Dibuja la barra con lo que mandó el servidor ({cost, context, limit, blocked, reason}).
+function showChatBar(chat) {
+  aiBar.hidden = !chat;
+  if (!chat) return;
+  aiContext.textContent = fmtTokens(chat.context);
+  aiCost.textContent = fmtUsd(chat.cost);
+  if (document.activeElement !== aiLimit) aiLimit.value = String(chat.limit);
+  aiBlocked.textContent = chat.blocked ? chat.reason : "";
+  aiBlocked.hidden = !chat.blocked;
+}
+
+// Qué se ve según la conversación: el selector solo antes del primer mensaje, la barra solo en modo IA.
+function showMode(mode, chat) {
+  modePicker.hidden = started || readOnly;
+  showChatBar(mode === "ai" ? chat : null);
+}
+
+aiLimitSave.addEventListener("click", async () => {
+  if (!conversationId) return;
+  const value = Number(aiLimit.value.trim().replace(",", "."));
+  aiBlocked.hidden = false;
+  try {
+    const response = await fetch(`/api/conversations/${conversationId}/limit`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usd: value }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      aiBlocked.textContent = typeof data.detail === "string" ? data.detail : "Ese límite no sirve.";
+      return;
+    }
+    aiLimit.blur();
+    showChatBar(data.chat);
+  } catch {
+    aiBlocked.textContent = "No pude cambiar el límite. ¿Sigue corriendo Epsilon?";
+  }
+});
 
 // shell.js escucha esto para actualizar «Recientes» y el título del header.
 function announce() {
@@ -162,6 +228,8 @@ function clearScreen() {
   for (const node of log.querySelectorAll(".msg")) node.remove();
   setReadOnly(false); // openConversation lo vuelve a poner si es de Telegram
   setContext([]); // lo guardado es de ESTA conversación
+  started = false; // openConversation / showConversation lo corrigen si ya tiene mensajes
+  showMode("normal", null);
   clearFile(); // un archivo a medio adjuntar no tiene que irse a otra conversación
   empty.hidden = false;
 }
@@ -174,6 +242,8 @@ function showConversation(data) {
   setReadOnly(data.channel === "telegram");
   for (const message of data.messages) render(message); // ya traen used / chosen
   shownCount = data.messages.length;
+  started = data.messages.length > 0;
+  showMode(data.mode, data.chat);
   setContext(data.artifacts || []);
   empty.hidden = data.messages.length > 0;
   scrollToEnd();
@@ -201,6 +271,7 @@ async function openConversation(id) {
 async function startNewChat() {
   const token = ++loadToken;
   clearScreen();
+  chooseMode("normal");
   conversationId = null;
   try {
     const response = await fetch("/api/conversations", { method: "POST" });
@@ -261,6 +332,8 @@ async function ask(request) {
       // decirle después cuál de sus botones tocaste.
       addMessage({ role: "bot", text: data.text, actions: data.actions, id: data.message_id });
       addToContext(data.artifacts || []);
+      started = true;
+      showMode(data.mode, data.chat);
     }
     announce(); // «Recientes» y el título pueden haber cambiado
   } catch (error) {
@@ -287,6 +360,7 @@ async function ask(request) {
 function postJson(body) {
   // Sin conversation_id (no hay servidor al que guardarle) el pedido igual funciona.
   const payload = conversationId ? { ...body, conversation_id: conversationId } : body;
+  if (!started) payload.mode = chatMode; // el modo solo cuenta en el primer mensaje
   return () =>
     fetch("/api/message", {
       method: "POST",
@@ -301,6 +375,7 @@ function postFile(file, text) {
   form.append("file", file);
   form.append("text", text);
   if (conversationId) form.append("conversation_id", conversationId);
+  if (!started) form.append("mode", chatMode);
   return () => fetch("/api/upload", { method: "POST", body: form });
 }
 

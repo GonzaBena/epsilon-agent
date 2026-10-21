@@ -229,6 +229,11 @@
       mark.append(icon(PLANE));
       link.append(mark, make("span", "recent-title", conversation.title));
       link.setAttribute("aria-label", `Telegram: ${conversation.title}`);
+    } else if (conversation.mode === "ai") {
+      // Chat con IA: una marca «IA» antes del título (el texto, para quien no ve el estilo).
+      link.classList.add("ai-chat");
+      link.append(make("span", "ai-mark", "IA"), make("span", "recent-title", conversation.title));
+      link.setAttribute("aria-label", `Chat con IA: ${conversation.title}`);
     } else {
       link.textContent = conversation.title;
     }

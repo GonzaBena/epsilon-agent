@@ -115,6 +115,23 @@
         Esta es tu conversación de Telegram: acá se lee. Para responder, hacelo desde Telegram.
       </p>
 
+      <!-- Modo IA. Al abrir un chat nuevo se elige el tipo (queda fijo cuando se manda el primer
+           mensaje); en uno de modo IA, la barra muestra contexto, costo y límite (app.js). -->
+      <div id="mode-picker" class="mode-picker" role="group" aria-label="Tipo de chat" hidden>
+        <button id="mode-normal" class="mode-btn" type="button" aria-pressed="true">Chat normal</button>
+        <button id="mode-ai" class="mode-btn" type="button" aria-pressed="false">Chat con IA</button>
+      </div>
+
+      <div id="ai-bar" class="ai-bar" role="group" aria-label="Costo del chat con IA" hidden>
+        <span class="ai-stat">Contexto: <strong id="ai-context">0</strong> tokens</span>
+        <span class="ai-stat">Costo: <strong id="ai-cost">US$ 0.00</strong></span>
+        <label class="ai-stat" for="ai-limit">Límite US$
+          <input id="ai-limit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" size="6">
+        </label>
+        <button id="ai-limit-save" class="pill" type="button">Cambiar límite</button>
+        <p id="ai-blocked" class="ai-blocked" role="status" hidden></p>
+      </div>
+
       <form id="composer" class="composer" autocomplete="off">
         <!-- Atajos: preparan el mensaje, no envían nada. -->
         <div class="quick">

@@ -2252,3 +2252,79 @@ a.ghost {
     padding-right: 72px;
   }
 }
+
+
+/* Modo IA: selector de tipo de chat, barra de contexto / costo / límite y la marca en «Recientes». */
+.mode-picker {
+  display: flex;
+  gap: 6px;
+  margin: 0 auto 8px;
+  max-width: var(--column);
+}
+.mode-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  background: none;
+  border: 1px solid #2c3032;
+  border-radius: 999px;
+  color: #c9cdc9;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mode-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.ai-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 auto 8px;
+  max-width: var(--column);
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.ai-bar[hidden],
+.mode-picker[hidden],
+.ai-blocked[hidden] {
+  display: none;
+}
+.ai-stat strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.ai-stat input {
+  width: 6ch;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 2px 6px;
+}
+.ai-blocked {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text);
+}
+.ai-mark {
+  display: inline-block;
+  flex: none;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+.recent.ai-chat {
+  display: flex;
+  align-items: center;
+}
