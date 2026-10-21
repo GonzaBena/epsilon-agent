@@ -109,6 +109,14 @@ class ConfigIn(BaseModel):
 
 class ChannelIn(BaseModel):
     enabled: bool
+    confirmed: bool = False  # para prender un plugin: ya aceptó el aviso de que ve tus claves
+
+
+# Aviso de la primera vez que se prende un plugin (el servidor lo exige; la página lo muestra).
+PLUGIN_WARNING = (
+    "Este canal corre dentro de Epsilon y puede ver tus claves. "
+    "Prendelo solo si confiás en quien lo escribió."
+)
 
 
 class RevealIn(BaseModel):
@@ -351,10 +359,13 @@ def create_app() -> FastAPI:
     def channels_state() -> dict:
         from epsilon import main
 
+        main.refresh_plugins()  # solo lee manifiestos: no ejecuta nada de los plugins
         snapshot = state.snapshot()
         found = []
         for name in main.CHANNELS:
             info = snapshot.get(name, {"state": "skipped", "detail": ""})
+            plugin = main.is_plugin(name)
+            manifest = main.plugin_info(name)
             found.append(
                 {
                     "name": name,
@@ -362,6 +373,24 @@ def create_app() -> FastAPI:
                     "detail": info["detail"],
                     "switchable": main.switchable(name),  # la web no se puede apagar a sí misma
                     "enabled": not main.switched_off(name),
+                    "source": "plugin" if plugin else "builtin",
+                    "label": manifest.label if manifest else None,  # los incluidos los nombra la página
+                    "about": manifest.about if manifest else None,
+                    "warning": PLUGIN_WARNING if plugin else None,
+                }
+            )
+        for folder, reason in main.INVALID.items():
+            found.append(
+                {
+                    "name": folder,
+                    "state": "invalid",
+                    "detail": reason,
+                    "switchable": False,
+                    "enabled": False,
+                    "source": "plugin",
+                    "label": folder,
+                    "about": None,
+                    "warning": None,
                 }
             )
         return {"channels": found}
@@ -376,8 +405,11 @@ def create_app() -> FastAPI:
         así el servicio la respeta al reiniciar."""
         from epsilon import main
 
+        main.refresh_plugins()
         if name not in main.CHANNELS or not main.switchable(name):
             raise HTTPException(404, "Ese canal no se puede apagar ni prender desde acá.")
+        if body.enabled and main.is_plugin(name) and not body.confirmed:
+            raise HTTPException(428, PLUGIN_WARNING)
         key = f"{name.upper()}_ENABLED"
         try:
             if body.enabled:

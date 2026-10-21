@@ -30,6 +30,11 @@ def is_plugin(name: str) -> bool:
     return CHANNELS.get(name, "").startswith(PLUGIN_PREFIX)
 
 
+def plugin_info(name: str):
+    """El manifiesto leído de un plugin (label, about…), o None si no es un plugin."""
+    return _plugins.get(name) if is_plugin(name) else None
+
+
 def refresh_plugins() -> None:
     """Pone CHANNELS y los ajustes al día con la carpeta de plugins. Solo lee manifiestos: no
     importa ni ejecuta código de ningún plugin. Un plugin nuevo queda apagado."""
