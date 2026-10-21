@@ -1,5 +1,6 @@
 import pytest
 
+from epsilon import tools
 from epsilon.ai import chat, llm, permissions, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store
@@ -199,26 +200,27 @@ def captured(monkeypatch):
 
 
 def test_step_offers_only_non_denied_tools_by_id(captured):
+    states = permissions.load()
+    states["ver"] = "deny"
+    permissions.save(states)
+
     chat.step(chat.begin(CID, "hola"))
 
     names = [spec.name for spec in captured[0]["tools"]]
-    assert names == [tools_id(t) for t in permissions.offered()]
-    assert names and all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
-
-
-def tools_id(tool):
-    from epsilon import tools
-
-    return tools.ai_id(tool)
+    assert "ver" not in names and "olvidar" not in names and "resumir" not in names
+    assert len(names) == 6
+    assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
 
 
 def test_step_stops_offering_tools_after_the_cap(captured):
     turn = chat.begin(CID, "hola")
+    turn.steps = chat.MAX_TOOL_STEPS - 1
+    chat.step(turn)
     turn.steps = chat.MAX_TOOL_STEPS
-
     chat.step(turn)
 
-    assert captured[0]["tools"] == []
+    assert captured[0]["tools"] != []
+    assert captured[1]["tools"] == []
 
 
 def test_step_appends_model_turn_and_counts(captured):
@@ -243,3 +245,15 @@ def test_step_cost_is_recorded_as_chat_action(captured):
     chat.step(chat.begin(CID, "hola"))
 
     assert captured[0]["action"] == "Chat"
+
+
+def test_add_results_redacts_keys(captured, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    received = []
+    monkeypatch.setattr(llm, "results_turn", lambda results: received.append(results) or "turno")
+    turn = chat.begin(CID, "hola")
+
+    chat.add_results(turn, [("ver", f"clave {KEY}")])
+
+    assert KEY not in str(received) and "clave" in str(received)
+    assert turn.history[-1] == "turno"

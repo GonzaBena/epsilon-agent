@@ -116,7 +116,7 @@ def step(turn: Turn) -> llm.Step:
 
 def add_results(turn: Turn, results: list[tuple[str, str]]) -> None:
     """Agrega al historial lo que devolvieron las herramientas: [(nombre, resultado)]."""
-    turn.history.append(llm.results_turn(results))
+    turn.history.append(llm.results_turn([(name, config.redact(result)) for name, result in results]))
 
 
 def answer(conversation_id: str, text: str) -> str:
