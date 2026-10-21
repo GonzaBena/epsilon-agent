@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import unicodedata
 
 from dotenv import dotenv_values, set_key
 
@@ -54,9 +55,16 @@ def _language(value: str) -> str:
     return value
 
 
+def _plain(name: str) -> str:
+    """Minúsculas y sin tilde (la ñ se queda): son más fáciles de decir y de reconocer por voz."""
+    name = name.lower().replace("ñ", "\0")  # la ñ no es una tilde: se guarda aparte del resto
+    plain = "".join(c for c in unicodedata.normalize("NFD", name) if not unicodedata.combining(c))
+    return plain.replace("\0", "ñ")
+
+
 def _assistant_names(value: str) -> str:
-    """Hasta 5 nombres separados por coma (la voz puede escribirlos distinto): letras, números y espacios."""
-    names = [name.strip() for name in value.split(",") if name.strip()]
+    """Hasta 5 nombres separados por coma, en minúsculas y sin tilde (letras, números y espacios)."""
+    names = list(dict.fromkeys(_plain(name.strip()) for name in value.split(",") if name.strip()))
     if not names or len(names) > 5 or not all(re.fullmatch(r"[\w ]{1,30}", name) for name in names):
         raise ValueError(
             "Escribí de 1 a 5 nombres separados por coma (hasta 30 letras, números o espacios cada uno)."
@@ -207,7 +215,7 @@ SETTINGS = (
         "ASSISTANT_NAME",
         "Nombre del asistente para hablarle por voz",
         live=True,
-        default="IA, AI",
+        default="ia, ai",
         validate=_assistant_names,
     ),
     # Interruptor del canal de Telegram (la página Canales lo prende y apaga en caliente; si está

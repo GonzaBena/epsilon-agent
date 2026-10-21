@@ -300,7 +300,7 @@ _SPOKEN_NOTE = re.compile(rf"(?:m[aá]s){_SEP}(?=\S)(.+)", re.IGNORECASE | re.DO
 _SPOKEN_COMMAND = re.compile(rf"barra{_SEP}([a-záéíóúñ]+)(.*)", re.IGNORECASE | re.DOTALL)
 
 
-DEFAULT_NAMES = "IA, AI"
+DEFAULT_NAMES = "ia, ai"
 # Whisper puede escribir «Melí» por «Meli»: las vocales aceptan su versión con tilde.
 _ACCENTED = {"a": "aáàä", "e": "eéèë", "i": "iíìï", "o": "oóòö", "u": "uúùü"}
 

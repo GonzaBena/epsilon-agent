@@ -575,11 +575,20 @@ def test_chat_limit_default_is_fifty_cents(env_file):
     assert entry("CHAT_LIMIT_USD", env_file)["value"] in ("", "0.50")
 
 
-@pytest.mark.parametrize("value", ["Meli", "Meli, Melí, Mely", "Mi asistente"])
-def test_valid_assistant_names_are_saved_and_apply_at_once(value, env_file):
+@pytest.mark.parametrize(
+    "value, saved",
+    [
+        ("meli", "meli"),
+        ("Meli, Melí, Mely", "meli, mely"),  # minúsculas, sin tilde y sin repetidos
+        ("Mi Asistente", "mi asistente"),
+        ("ÑANDÚ", "ñandu"),  # la ñ no es una tilde
+    ],
+)
+def test_assistant_names_are_saved_lowercase_without_accents_and_apply_at_once(value, saved, env_file):
     config.update({"ASSISTANT_NAME": value}, [], env_file)
 
-    assert os.environ["ASSISTANT_NAME"] == value and f"ASSISTANT_NAME='{value}'" in env_file.read_text(encoding="utf-8")
+    assert os.environ["ASSISTANT_NAME"] == saved
+    assert f"ASSISTANT_NAME='{saved}'" in env_file.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
