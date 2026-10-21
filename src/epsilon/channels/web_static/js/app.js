@@ -447,6 +447,8 @@ function setFile(file) {
     addMessage({ role: "bot", error: true, text: "Solo puedo recibir imágenes y PDFs." });
     return;
   }
+  // En un chat de modo IA el archivo se guarda y queda mencionado en el cuadro (salvo «Imagen a CSV»).
+  if (aiMode() && !wantsCsv) return uploadToLibrary(file);
   pendingFile = file;
   chipName.textContent = file.name;
   chipName.title = file.name; // el nombre completo, por si se corta
@@ -463,6 +465,25 @@ function setFile(file) {
       resizeInput();
       input.select();
     }
+  }
+}
+
+// Sube el archivo a la biblioteca (sin llamar a la IA) y deja «@ruta » al final del cuadro, sin enviar.
+async function uploadToLibrary(file) {
+  fileInput.value = ""; // permite elegir el mismo archivo otra vez
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const response = await fetch("/api/files", { method: "POST", body: form });
+    const data = await response.json();
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "");
+    const gap = input.value && !/\s$/.test(input.value) ? " " : "";
+    input.value += gap + mentionText(data.path);
+    resizeInput();
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  } catch (error) {
+    addMessage({ role: "bot", error: true, text: error.message || "No pude subir el archivo." });
   }
 }
 

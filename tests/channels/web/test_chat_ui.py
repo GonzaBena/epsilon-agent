@@ -494,3 +494,10 @@ def test_at_suggestions_come_from_the_library_and_only_in_ai_mode():
 
     assert "/api/library?" in source
     assert "viewMode" in source
+
+
+def test_uploading_in_ai_mode_saves_to_the_library_instead_of_summarizing():
+    source = js("app.js")
+
+    assert '"/api/files"' in source
+    assert "wantsCsv" in source.split("uploadToLibrary(file)")[0].split("function setFile")[1]
