@@ -72,3 +72,36 @@ def test_the_readme_lists_every_setting_a_person_can_edit():
     for setting in config.SETTINGS:
         if setting.editable:
             assert f"`{setting.key}`" in readme or setting.key in readme, setting.key
+
+
+def test_ai_tools_are_the_nine_of_the_spec():
+    assert [(tools.ai_id(t), t.ai) for t in tools.ai_tools()] == [
+        ("nota", "write"),
+        ("ver", "read"),
+        ("buscar", "read"),
+        ("archivos", "read"),
+        ("resumir", "write"),
+        ("recordar", "write"),
+        ("memoria", "read"),
+        ("olvidar", "delete"),
+        ("editar", "write"),
+    ]
+
+
+def test_ai_ids_are_unique_and_kinds_valid():
+    ids = [tools.ai_id(t) for t in tools.ai_tools()]
+    assert len(ids) == len(set(ids))
+    assert all(t.ai in {"read", "write", "delete"} for t in tools.ai_tools())
+
+
+def test_only_resumir_overrides_its_default():
+    overrides = {tools.ai_id(t): t.ai_default for t in tools.ai_tools() if t.ai_default}
+    assert overrides == {"resumir": "deny"}
+
+
+def test_ai_read_tools_never_write_or_use_ai():
+    for t in tools.ai_tools():
+        if t.ai == "read":
+            assert not t.writes and not t.uses_ai
+        else:
+            assert t.writes

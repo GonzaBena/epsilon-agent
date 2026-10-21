@@ -22,6 +22,9 @@ class Tool:
     writes: bool = False  # escribe en DATA_DIR o cambia el estado de la sesión
     links: tuple[str, ...] = ()  # pedidos completos que /?cmd=... puede ejecutar solos
     channel: str = ""  # si lo atiende un solo canal (no el núcleo): su nombre, p. ej. «telegram»
+    ai: str = ""  # si la IA la puede usar: «read», «write» o «delete» (el tipo); vacío = la IA no la ve
+    ai_name: str = ""  # nombre para el modelo cuando no tiene `name` (p. ej. «nota»)
+    ai_default: str = ""  # estado inicial del permiso, si no es el que sale del tipo (p. ej. «deny»)
 
 
 # El panel de la web muestra solo lo que no tiene otra puerta de entrada: lo que ya está en el
@@ -33,6 +36,8 @@ TOOLS = (
         help="guardar una nota en inbox",
         insert="+ ",
         writes=True,
+        ai="write",
+        ai_name="nota",
     ),
     Tool(
         "Imagen a CSV",
@@ -49,6 +54,7 @@ TOOLS = (
         menu="Ver una nota (por defecto, inbox)",
         insert="/ver ",
         links=("/ver",),
+        ai="read",
     ),
     Tool(
         "/buscar",
@@ -58,6 +64,7 @@ TOOLS = (
         panel="Buscar una palabra en tus notas",
         menu="Buscar texto en todas las notas",
         insert="/buscar ",
+        ai="read",
     ),
     Tool(
         "/archivos",
@@ -67,6 +74,7 @@ TOOLS = (
         menu="Listar lo guardado (opcional: filtrar por nombre)",
         insert="/archivos ",
         links=("/archivos", "/archivos tickets"),
+        ai="read",
     ),
     Tool(
         "/resumir",
@@ -78,6 +86,8 @@ TOOLS = (
         insert="/resumir ",
         uses_ai=True,
         writes=True,
+        ai="write",
+        ai_default="deny",
     ),
     Tool(
         "/ticket",
@@ -109,6 +119,7 @@ TOOLS = (
         menu="Anotar algo en la memoria",
         insert="/recordar ",
         writes=True,
+        ai="write",
     ),
     Tool(
         "/memoria",
@@ -116,6 +127,7 @@ TOOLS = (
         help="ver lo que anotaste en la memoria",
         menu="Ver lo que anotaste en la memoria",
         insert="/memoria",
+        ai="read",
     ),
     Tool(
         "/olvidar",
@@ -126,6 +138,7 @@ TOOLS = (
         menu="Borrar una línea de la memoria",
         insert="/olvidar ",
         writes=True,
+        ai="delete",
     ),
     Tool(
         "/editar",
@@ -136,6 +149,7 @@ TOOLS = (
         menu="Cambiar una línea de la memoria",
         insert="/editar ",
         writes=True,
+        ai="write",
     ),
     Tool(
         "/uso",
@@ -193,3 +207,13 @@ def link_commands() -> list[str]:
 def uses_ai_command(name: str) -> bool:
     """¿Este comando (o alias) llama al modelo? Un nombre desconocido no."""
     return any(tool.uses_ai for tool in TOOLS if name == tool.name or name in tool.aliases)
+
+
+def ai_id(tool: Tool) -> str:
+    """El nombre con que el modelo conoce la herramienta."""
+    return tool.ai_name or tool.name
+
+
+def ai_tools() -> tuple[Tool, ...]:
+    """Las herramientas que la IA puede usar, en el orden de TOOLS."""
+    return tuple(tool for tool in TOOLS if tool.ai)
