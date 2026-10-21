@@ -54,11 +54,13 @@ def _money(value) -> str:
 def text() -> str:
     """Las cotizaciones en texto, una línea por casa. ValueError si no hay datos."""
     by_house = {item.get("casa"): item for item in rates() if isinstance(item, dict)}
-    lines = [
-        f"{label}: compra {_money(by_house[key].get('compra'))} · venta {_money(by_house[key].get('venta'))}"
+    rows = [
+        f"| {label} | {_money(by_house[key].get('compra'))} | {_money(by_house[key].get('venta'))} |"
         for key, label in HOUSES.items()
         if key in by_house
     ]
-    if not lines:
+    if not rows:
         raise ValueError("La API de cotizaciones no devolvió ninguna casa conocida.")
-    return "Dólar hoy (DolarApi):\n" + "\n".join(lines)
+    # Tabla markdown: la web la dibuja; los números van alineados a la derecha.
+    header = "**Dólar hoy** (DolarApi)\n\n| Casa | Compra | Venta |\n|---|---:|---:|\n"
+    return header + "\n".join(rows)

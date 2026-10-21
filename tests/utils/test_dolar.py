@@ -16,9 +16,11 @@ def test_text_lists_known_houses_in_order_with_argentine_format(monkeypatch):
     monkeypatch.setattr(dolar, "_get", lambda: DATA)
 
     assert dolar.text() == (
-        "Dólar hoy (DolarApi):\n"
-        "Oficial: compra $1.400,5 · venta $1.450\n"
-        "Blue: compra $1.480 · venta $1.500"
+        "**Dólar hoy** (DolarApi)\n\n"
+        "| Casa | Compra | Venta |\n"
+        "|---|---:|---:|\n"
+        "| Oficial | $1.400,5 | $1.450 |\n"
+        "| Blue | $1.480 | $1.500 |"
     )
 
 
@@ -55,7 +57,7 @@ def test_unknown_houses_only_is_an_error(monkeypatch):
 def test_missing_price_shows_a_dash(monkeypatch):
     monkeypatch.setattr(dolar, "_get", lambda: [{"casa": "tarjeta", "compra": None, "venta": 2000}])
 
-    assert "Tarjeta: compra — · venta $2.000" in dolar.text()
+    assert "| Tarjeta | — | $2.000 |" in dolar.text()
 
 
 def test_network_failure_gives_a_clear_message_without_details(monkeypatch):
