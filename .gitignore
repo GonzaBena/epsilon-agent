@@ -11,3 +11,6 @@ wheels/
 
 # env
 .env
+
+# archivos personales de prueba (pueden traer datos de terceros)
+ticket.jpeg

@@ -21,6 +21,8 @@ y la respuesta del modelo siempre tiene un tope de tokens. Los datos quedan en t
 Necesitás [uv](https://docs.astral.sh/uv/) y Python 3.12 o más nuevo.
 
 ```bash
+git clone https://github.com/GonzaBena/epsilon.git
+cd epsilon
 uv sync                # instala las dependencias
 uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 ```
@@ -63,27 +65,27 @@ uv run epsilon     # o: uv run python -m epsilon.main
 Abre la web en <http://127.0.0.1:8765> y, si Telegram está configurado, el bot. En el chat
 podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 
-| Comando             | Qué hace                                         |
-| ------------------- | ------------------------------------------------ |
-| `+ texto`           | Guarda una nota en inbox.                        |
-| `/ver [nota]`       | Lee una nota (por defecto, inbox).               |
-| `/buscar palabra`   | Busca en las notas.                              |
-| `/archivos [texto]` | Lista lo guardado (lo más nuevo primero).        |
-| `/resumir nombre`   | Resume una nota o archivo guardado. _Usa IA._    |
-| `/ia pregunta`      | Una pregunta suelta a la IA. _Usa IA._           |
-| `/ticket`           | Guarda la próxima imagen o PDF en `tickets/`.    |
-| `/cancelar`         | Cancela el `/ticket` que quedó en espera.        |
-| `/contexto`         | Lista lo que guardaste desde que arrancó el bot. |
-| `/recordar texto`   | Anota un dato o preferencia tuya en la memoria.  |
-| `/memoria`          | Muestra lo que anotaste en la memoria.           |
-| `/olvidar número`   | Borra una línea de la memoria (pide confirmar).  |
-| `/editar número texto` | Cambia una línea de la memoria.               |
-| `/uso`              | Tokens y precio gastados, hoy y en total.        |
-| `/menu`             | Ajustes del bot con botones (hoy, la voz).       |
-| `/nuevo`            | Telegram: empieza una conversación nueva.        |
-| `/ayuda`            | Muestra la ayuda.                                |
+| Comando                | Qué hace                                                                  |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `+ texto`              | Guarda una nota en inbox.                                                 |
+| `/ver [nota]`          | Lee una nota (por defecto, inbox).                                        |
+| `/buscar palabra`      | Busca en las notas.                                                       |
+| `/archivos [texto]`    | Lista lo guardado (lo más nuevo primero).                                 |
+| `/resumir nombre`      | Resume una nota o archivo guardado. _Usa IA._                             |
+| `/ia pregunta`         | Una pregunta suelta a la IA, con tu memoria y sus herramientas. _Usa IA._ |
+| `/ticket`              | Guarda la próxima imagen o PDF en `tickets/`.                             |
+| `/cancelar`            | Cancela el `/ticket` que quedó en espera.                                 |
+| `/contexto`            | Lista lo que guardaste desde que arrancó el bot.                          |
+| `/recordar texto`      | Anota un dato o preferencia tuya en la memoria.                           |
+| `/memoria`             | Muestra lo que anotaste en la memoria.                                    |
+| `/olvidar número`      | Borra una línea de la memoria (pide confirmar).                           |
+| `/editar número texto` | Cambia una línea de la memoria.                                           |
+| `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
+| `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
+| `/nuevo`               | Telegram: empieza una conversación nueva.                                 |
+| `/ayuda`               | Muestra la ayuda.                                                         |
 
-**Páginas de la web:** arriba están **Chat**, **Canales** y **Uso**; en el menú de la izquierda, **Biblioteca** y, abajo de todo,
+**Páginas de la web:** arriba están **Chat**, **Canales**, **Uso** y **Permisos**; en el menú de la izquierda, **Biblioteca** y, abajo de todo,
 **Configuración**. En **Biblioteca** ves tus notas, archivos y tickets en una cuadrícula, con buscador y filtros por
 tipo; al tocar uno se abre ahí mismo y un botón abre su carpeta en tu gestor de archivos. Es solo para ver, no cambia nada. En **Canales** ves el estado de cada canal y podés **apagar y prender el bot de
 Telegram sin reiniciar nada** (queda así aunque reinicies el servicio; la web no se puede apagar
@@ -95,6 +97,19 @@ también en pesos, cargá la cotización en Configuración (`USD_ARS`).
 conversación aparte (con el ícono y el color de Telegram), que se actualiza sola y es **solo de
 lectura**: para responder, usá Telegram. Telegram no avisa cuando borrás un chat, así que para
 empezar una conversación de cero escribí `/nuevo` (la anterior queda guardada en disco).
+
+**Modo IA:** al abrir un chat nuevo en la web podés elegir el modo IA: una conversación libre con la IA, que
+recibe lo que escribís, sus respuestas y tu memoria, y puede usar las herramientas de Epsilon (buscar en tus notas,
+guardar una nota, anotar en la memoria…). **Vos decidís qué puede hacer sola** en la página **Permisos**: cada
+herramienta se permite, pregunta antes o se bloquea (por defecto, leer corre sola, escribir pregunta y borrar está
+bloqueado). Cada chat tiene un límite de costo en dólares (`CHAT_LIMIT_USD`) y, al llegar, se frena lo que usa IA.
+
+**Hablarle por voz:** si empezás un audio con «Hola ia, …» (o con el nombre que pongas en `ASSISTANT_NAME`), lo
+que sigue se manda como un `/ia`: «Hola ia, ¿tengo algo anotado de filamento?».
+
+**Canales de terceros:** otros canales pueden sumarse como plugins, una carpeta en `DATA_DIR/plugins/<nombre>/`
+con su `plugin.toml`. Aparecen apagados en **Canales** y prenderlos pide confirmación, porque corren dentro de
+Epsilon y ven tus claves (ver `docs/plan-plugins.md`).
 
 **Imagen a CSV:** adjuntá una imagen con un texto como `gastos: fecha, proveedor, total`.
 Epsilon muestra lo que leyó y **espera tu confirmación** antes de guardar (la IA puede

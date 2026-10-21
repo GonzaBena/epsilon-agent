@@ -1,5 +1,5 @@
 # Servicio de usuario de systemd para Epsilon (web local + canales opcionales).
-# Si lo instalás en otra máquina, cambiá las dos rutas de abajo.
+# %h es tu carpeta personal. Si Epsilon está en otro lugar, cambiá las dos rutas de abajo.
 # Instalar:  systemctl --user enable --now /ruta/a/deploy/epsilon.service
 [Unit]
 Description=Epsilon
@@ -9,8 +9,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 # Las claves las carga el propio programa desde src/epsilon/.env (no van acá).
-WorkingDirectory=/home/atlas/Documents/workspace/epsilon-agent/epsilon
-ExecStart=/home/atlas/Documents/workspace/epsilon-agent/epsilon/.venv/bin/python -u -m epsilon.main
+WorkingDirectory=%h/Documents/workspace/epsilon-agent/epsilon
+ExecStart=%h/Documents/workspace/epsilon-agent/epsilon/.venv/bin/python -u -m epsilon.main
 Restart=on-failure
 RestartSec=5
 
