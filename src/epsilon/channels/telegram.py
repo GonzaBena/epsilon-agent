@@ -23,7 +23,7 @@ from telegram.ext import (
 )
 
 from epsilon import core, state, tools
-from epsilon.data import conversations
+from epsilon.data import conversations, library
 from epsilon.settings import config
 from epsilon.voice import transcribe
 
@@ -187,11 +187,24 @@ def log_action(chat_id: int, sent_message_id: int, action_id: str) -> None:
         print(f"No pude anotar la conversación de Telegram: {config.redact(repr(e))}")
 
 
+async def send_files(context: ContextTypes.DEFAULT_TYPE, chat_id: int, files: list[str]) -> None:
+    """Manda como documento (el original, sin comprimir) cada archivo que el núcleo pidió enviar.
+    Las rutas se vuelven a validar con la biblioteca: este canal no confía en una ruta solo porque venga del núcleo."""
+    for rel in files:
+        try:
+            path = library.resolve(rel)
+            await context.bot.send_document(chat_id, path.read_bytes(), filename=path.name)
+        except Exception as e:
+            print(f"No pude enviar un archivo por Telegram: {config.redact(repr(e))}")
+            await context.bot.send_message(chat_id, f"No pude enviar {rel}.")
+
+
 async def respond(message, context, chat_id: int, msg: core.Message, said: str | None) -> None:
     """Le pasa el mensaje al núcleo, muestra la respuesta y la anota (con lo que dijiste)."""
     reply = await ask_core(chat_id, context, msg)
     sent = await message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
     log_turn(chat_id, said, reply, getattr(sent, "message_id", None))
+    await send_files(context, chat_id, reply.files)
 
 
 async def on_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -371,6 +384,7 @@ def make_on_button(allowed_user_id: int):
         )
         # El mensaje se editó en el lugar: la respuesta nueva queda anotada para el siguiente toque.
         log_turn(chat_id, None, reply, query.message.message_id)
+        await send_files(context, chat_id, reply.files)
 
     return on_button
 

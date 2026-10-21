@@ -868,3 +868,68 @@ def test_the_real_bot_stops_even_if_it_is_asked_while_still_connecting(offline_p
     telegram.stop()  # sin esperar a que conecte
 
     assert finished.wait(timeout=8)
+
+
+# --- Enviar archivos guardados ---------------------------------------------------
+
+
+class SendingContext(FakeContext):
+    def __init__(self):
+        super().__init__()
+        self.documents, self.messages = [], []
+        self.bot.send_document = self.send_document
+        self.bot.send_message = self.send_message
+
+    async def send_document(self, chat_id, document, filename=None):
+        self.documents.append((chat_id, document, filename))
+
+    async def send_message(self, chat_id, text):
+        self.messages.append((chat_id, text))
+
+
+@pytest.fixture
+def stored(tmp_path, monkeypatch):
+    from epsilon.data import notes
+
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+    (tmp_path / "tickets").mkdir()
+    (tmp_path / "tickets" / "super.jpg").write_bytes(b"JPGDATA")
+    return tmp_path
+
+
+def test_enviar_sends_the_original_file_as_a_document(stored):
+    update = FakeUpdate(chat_id=7)
+    update.message.text = "/enviar super"
+    context = SendingContext()
+
+    asyncio.run(telegram.on_text(update, context))
+
+    assert update.replies == ["Te mando tickets/super.jpg."]
+    assert context.documents == [(7, b"JPGDATA", "super.jpg")]
+
+
+def test_a_failure_sending_is_reported_without_details(stored, monkeypatch):
+    context = SendingContext()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("detalle interno con https://api.telegram.org/botTOKEN")
+
+    context.bot.send_document = boom
+
+    asyncio.run(telegram.send_files(context, 7, ["tickets/super.jpg"]))
+
+    assert context.messages == [(7, "No pude enviar tickets/super.jpg.")]
+
+
+def test_send_files_does_not_trust_a_path_that_is_not_in_the_library(stored):
+    (stored / "secreto.env").write_text("TOKEN=x\n", encoding="utf-8")
+    context = SendingContext()
+
+    asyncio.run(telegram.send_files(context, 7, ["secreto.env", "../fuera.md"]))
+
+    assert context.documents == []
+    assert len(context.messages) == 2
+
+
+def test_enviar_is_in_the_telegram_menu():
+    assert "enviar" in {c.command for c in telegram.COMMANDS}

@@ -12,7 +12,7 @@ import weakref
 from epsilon import menu, tools
 from epsilon.ai import ask, attachments, chat, extract, llm, permissions, summarize, usage
 from epsilon.ai.messages import ModelError
-from epsilon.data import conversations, notes, todo
+from epsilon.data import conversations, library, notes, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
 from epsilon.utils import clima, clock, dolar
@@ -87,6 +87,9 @@ class Reply:
     stacked: bool = False
     # True: la escribió la IA del chat (la conversación lo anota para armar la charla del modelo).
     ai: bool = False
+    # Archivos guardados que el canal tiene que ENVIAR junto con la respuesta (rutas relativas a DATA_DIR,
+    # armadas por el servidor). Solo los llena handle(); el canal que no puede enviar (la web) los ignora.
+    files: list[str] = field(default_factory=list)
 
 
 def _artifact(kind: str, path) -> Artifact:
@@ -357,6 +360,42 @@ def _done_cmd(args: str) -> Reply:
     except ValueError as e:
         return Reply(str(e))
     return Reply(f"Hecha: {task.text}")
+
+
+SEND_MAX_BYTES = 50 * 1024 * 1024  # lo máximo que Telegram deja subir a un bot
+SEND_MAX_MATCHES = 20
+
+# Los archivos que la respuesta en curso le pide enviar al canal. handle() abre la bandeja: una lista si el
+# canal puede enviar archivos (Telegram) y None si no (la web, donde todo está en la biblioteca).
+_outbox: ContextVar[list[str] | None] = ContextVar("outbox", default=None)
+
+
+def _send(args: str) -> Reply:
+    """/enviar nombre: manda por el canal una nota o archivo guardado (hoy, solo Telegram). No usa el modelo."""
+    wanted = args.strip().strip("\"'")
+    if not wanted:
+        return Reply("Uso: /enviar nombre\nPuede ser parte del nombre: /enviar ticket")
+    found, total = notes.list_files(Path(wanted).name, limit=SEND_MAX_MATCHES)
+    if "/" in wanted:  # la ruta tal como la muestra /archivos (tickets/foto.jpg): tiene que ser esa, no otra parecida
+        found = [p for p in found if str(p.relative_to(notes.DATA_DIR)) == wanted]
+    if not found:
+        return Reply("No encontré nada con ese nombre.")
+    if len(found) > 1:
+        listing = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in found[:5])
+        extra = f"\n(y {len(found) - 5} más)" if len(found) > 5 else ""
+        return Reply(f"Hay varias coincidencias. Probá con un nombre más específico:\n{listing}{extra}")
+    rel = str(found[0].relative_to(notes.DATA_DIR))
+    try:
+        path = library.resolve(rel)  # las mismas reglas que la biblioteca: nada fuera de DATA_DIR, ni resúmenes
+    except ValueError as e:
+        return Reply(str(e))
+    if path.stat().st_size > SEND_MAX_BYTES:
+        return Reply(f"{rel} pesa más de {SEND_MAX_BYTES // 1024 // 1024} MB; Telegram no deja enviarlo.")
+    outbox = _outbox.get()
+    if outbox is None:
+        return Reply(f"{rel} ya está en la Biblioteca de la web; desde acá no se envían archivos.")
+    outbox.append(rel)
+    return Reply(f"Te mando {rel}.")
 
 
 def _help(args: str, session: Session) -> Reply:
@@ -819,6 +858,7 @@ COMMANDS = {
     "todo": lambda args, s: _todo_cmd(args),
     "tareas": lambda args, s: _tasks_cmd(args),
     "hecho": lambda args, s: _done_cmd(args),
+    "enviar": lambda args, s: _send(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -839,7 +879,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar)\b:?)\s*", "", args)
 
 
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
@@ -854,6 +894,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "todo": lambda args: _todo_cmd(_bare(args).strip()),
     "tareas": lambda args: _tasks_cmd(_bare(args)),
     "hecho": lambda args: _done_cmd(_bare(args)),
+    "enviar": lambda args: _send(_bare(args)),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
@@ -889,9 +930,15 @@ def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Repl
     {"type": "model", "step": n} al llamar al modelo y {"type": "tool", "name", "arg", "state"}
     (running | done | blocked) por cada herramienta."""
     token = _on_event.set(on_event)
+    # Solo Telegram puede enviar archivos (ver _send): en los demás canales la bandeja no existe.
+    outbox: list[str] | None = [] if msg.session_id.startswith("telegram:") else None
+    outbox_token = _outbox.set(outbox)
     try:
-        return _handle(msg)
+        reply = _handle(msg)
+        reply.files = list(outbox or [])
+        return reply
     finally:
+        _outbox.reset(outbox_token)
         _on_event.reset(token)
 
 

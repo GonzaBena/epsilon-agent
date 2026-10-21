@@ -250,6 +250,16 @@ TOOLS = (
         ai_arg="el número de la tarea pendiente, como aparece en tareas",
     ),
     Tool(
+        "/enviar",
+        name="enviar",
+        usage="/enviar nombre",
+        help="mandarte por Telegram una nota o archivo guardado (en la web ya está en la biblioteca)",
+        menu="Mandarme una nota o archivo guardado",
+        insert="/enviar ",
+        ai="read",
+        ai_arg="el nombre del archivo o parte de él, como aparece en archivos (puede incluir la carpeta)",
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

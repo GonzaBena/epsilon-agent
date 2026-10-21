@@ -234,6 +234,7 @@ def to_json(reply: core.Reply) -> dict:
     data = asdict(reply)  # {"text": ..., "actions": [...], "artifacts": [{"kind": ..., "path": ...}]}
     data.pop("ai")  # solo importa al guardar la conversación (ver reply_json)
     data.pop("stacked")  # cómo se acomodan los botones es cosa de cada canal; la web no lo usa
+    data.pop("files")  # archivos para ENVIAR: solo Telegram los envía; en la web todo está en la biblioteca
     return data
 
 

@@ -95,6 +95,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/tareas [todas]`      | Tus tareas pendientes, numeradas (con «todas», también las hechas).       |
 | `/todo texto`          | Agrega una tarea pendiente.                                               |
 | `/hecho número`        | Marca como hecha la tarea pendiente con ese número.                       |
+| `/enviar nombre`       | Te manda por Telegram una nota o archivo guardado (en la web ya está en la biblioteca). |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

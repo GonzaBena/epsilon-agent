@@ -74,7 +74,7 @@ def test_the_readme_lists_every_setting_a_person_can_edit():
             assert f"`{setting.key}`" in readme or setting.key in readme, setting.key
 
 
-def test_ai_tools_are_the_sixteen_of_the_spec():
+def test_ai_tools_are_the_seventeen_of_the_spec():
     assert [(tools.ai_id(t), t.ai) for t in tools.ai_tools()] == [
         ("nota", "write"),
         ("nota_nombrada", "write"),
@@ -92,6 +92,7 @@ def test_ai_tools_are_the_sixteen_of_the_spec():
         ("tareas", "read"),
         ("todo", "write"),
         ("hecho", "write"),
+        ("enviar", "read"),
     ]
 
 

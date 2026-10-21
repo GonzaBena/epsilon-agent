@@ -69,6 +69,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   header/menú; la barra de arriba y el menú están repetidos en cada HTML (un test vigila que
   coincidan). Ver `docs/plan-ui.md`.
 - Progreso en vivo (solo web): `core.handle(msg, on_event=...)` avisa cada paso de un turno de IA (`{"type":"model","step":n}` y `{"type":"tool","name","arg","state"}` con `running|done|blocked`; los emiten `_loop` y `_run_calls`, el argumento va redactado y corto). `POST /api/message/stream` es `/api/message` + esos eventos, una línea JSON por evento (NDJSON) y al final `{"type":"reply","data":...}`; la respuesta se guarda en el hilo, no en el flujo. `app.js` (`readStream`, `trackProgress`) los dibuja en el globo «Pensando» y desaparecen con la respuesta: no se guardan en la conversación. Telegram no lo usa.
+- Enviar archivos (`/enviar`, y la herramienta `enviar` de la IA): el núcleo no conoce Telegram. `handle()` abre una «bandeja» por llamada (`core._outbox`: lista en Telegram, `None` en la web), `_send` valida con `library.resolve` y anota la ruta, y `handle` la cuelga de `Reply.files`. Telegram los manda como documento (`send_files`, que vuelve a validar la ruta); la web no los envía (`to_json` los quita) y contesta que el archivo ya está en la biblioteca.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `settings/config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
