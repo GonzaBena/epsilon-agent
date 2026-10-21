@@ -89,6 +89,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/olvidar número`      | Borra una línea de la memoria (pide confirmar).                           |
 | `/editar número texto` | Cambia una línea de la memoria.                                           |
 | `/fecha`               | Fecha y hora de ahora (sin IA).                                           |
+| `/dolar`               | Cotización del dólar hoy: oficial, blue, MEP… (sin IA).                   |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

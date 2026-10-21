@@ -193,7 +193,7 @@ def test_step_offers_only_non_denied_tools_by_id(captured):
 
     names = [spec.name for spec in captured[0]["tools"]]
     assert "ver" not in names and "olvidar" not in names and "resumir" not in names
-    assert len(names) == 8
+    assert len(names) == 9
     assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
 
 

@@ -151,3 +151,18 @@ def test_fecha_and_its_alias_answer_the_time_without_the_model(monkeypatch):
 
     assert "14:32" in say("/fecha").text
     assert "14:32" in say("/hora").text
+
+
+def test_dolar_answers_without_the_model(monkeypatch):
+    monkeypatch.setattr(core.dolar, "text", lambda: "Dólar hoy: Blue $1.500")
+
+    assert say("/dolar").text == "Dólar hoy: Blue $1.500"
+
+
+def test_dolar_failure_is_a_plain_message(monkeypatch):
+    def fail():
+        raise ValueError("No pude consultar las cotizaciones del dólar.")
+
+    monkeypatch.setattr(core.dolar, "text", fail)
+
+    assert "No pude consultar" in say("/dolar").text

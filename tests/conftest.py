@@ -45,6 +45,18 @@ def block_real_ollama(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_dolar_api(monkeypatch):
+    """Ningún test consulta la API del dólar de verdad, y la caché arranca vacía."""
+    from epsilon.utils import dolar
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó consultar la API del dólar de verdad")
+
+    monkeypatch.setattr(dolar, "_get", forbidden)
+    monkeypatch.setattr(dolar, "_cache", None)
+
+
+@pytest.fixture(autouse=True)
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()

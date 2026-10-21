@@ -194,6 +194,16 @@ TOOLS = (
         ai_arg="no lleva argumento: mandalo vacío",
     ),
     Tool(
+        "/dolar",
+        name="dolar",
+        help="cotización del dólar hoy (oficial, blue, MEP…)",
+        menu="Cotización del dólar hoy",
+        insert="/dolar",
+        links=("/dolar",),
+        ai="read",
+        ai_arg="no lleva argumento: mandalo vacío",
+    ),
+    Tool(
         "/uso",
         name="uso",
         help="tokens y precio gastados (hoy y total)",

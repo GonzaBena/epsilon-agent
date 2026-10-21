@@ -14,7 +14,7 @@ from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 from epsilon.settings import config
-from epsilon.utils import clock
+from epsilon.utils import clock, dolar
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -304,6 +304,14 @@ def _context(args: str, session: Session) -> Reply:
 def _date(args: str) -> Reply:
     """/fecha: fecha y hora de ahora. No usa el modelo."""
     return Reply(clock.now_text())
+
+
+def _dollar(args: str) -> Reply:
+    """/dolar: cotizaciones de hoy desde una API pública. No usa el modelo."""
+    try:
+        return Reply(dolar.text())
+    except ValueError as error:
+        return Reply(str(error))
 
 
 def _help(args: str, session: Session) -> Reply:
@@ -761,6 +769,7 @@ COMMANDS = {
     "contexto": _context,
     "fecha": lambda args, s: _date(args),
     "hora": lambda args, s: _date(args),
+    "dolar": lambda args, s: _dollar(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -791,6 +800,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "buscar": _search,
     "archivos": _files,
     "fecha": _date,
+    "dolar": _dollar,
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
