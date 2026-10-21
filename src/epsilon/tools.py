@@ -24,6 +24,7 @@ class Tool:
     channel: str = ""  # si lo atiende un solo canal (no el núcleo): su nombre, p. ej. «telegram»
     ai: str = ""  # si la IA la puede usar: «read», «write» o «delete» (el tipo); vacío = la IA no la ve
     ai_name: str = ""  # nombre para el modelo cuando no tiene `name` (p. ej. «nota»)
+    ai_help: str = ""  # lo que el modelo lee de la herramienta, si no hay `help` ni `panel` (solo para la IA)
     ai_default: str = ""  # estado inicial del permiso, si no es el que sale del tipo (p. ej. «deny»)
 
 
@@ -38,6 +39,14 @@ TOOLS = (
         writes=True,
         ai="write",
         ai_name="nota",
+    ),
+    Tool(
+        "Nota con nombre",
+        usage="nombre de la nota en la primera línea y el texto en las siguientes",
+        ai_help="guardar una nota con nombre propio (se crea si no existe; si existe, agrega al final)",
+        writes=True,
+        ai="write",
+        ai_name="nota_nombrada",
     ),
     Tool(
         "Imagen a CSV",

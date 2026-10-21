@@ -603,3 +603,36 @@ def test_ia_inside_an_ai_conversation_respects_that_conversations_limit(script):
     reply = say("/ia hola")
 
     assert "límite" in reply.text and script.seen == []
+
+
+# --- Nota con nombre ---------------------------------------------------------------------
+
+
+def test_named_note_is_created_then_appended_never_overwritten(script):
+    allow("nota_nombrada")
+    script.steps = [step(calls=[("nota_nombrada", "Compras Casa\nleche")]), step("ok")]
+    say("guardá la lista de compras")
+    script.steps = [step(calls=[("nota_nombrada", "compras casa\npan")]), step("ok")]
+    say("agregá pan")
+
+    lines = (notes.DATA_DIR / "compras_casa.md").read_text(encoding="utf-8").splitlines()
+    assert [l.split(" ", 2)[2] for l in lines] == ["leche", "pan"]
+    assert not (notes.DATA_DIR / "inbox.md").exists()
+
+
+def test_named_note_reports_new_or_existing(script):
+    assert core._save_named("ideas\nuna").text == "Nota nueva creada: ideas.md"
+    assert core._save_named("ideas\notra").text == "Agregado a la nota existente: ideas.md"
+
+
+@pytest.mark.parametrize("arg", ["", "solo nombre", "\ntexto sin nombre", "///\ntexto"])
+def test_named_note_without_name_or_text_saves_nothing(script, arg):
+    assert "No se guardó nada" in core._save_named(arg).text
+    assert list(notes.DATA_DIR.glob("*.md")) == []
+
+
+def test_named_note_cannot_escape_data_dir(script):
+    core._save_named("../../fuera\ntexto")
+
+    assert (notes.DATA_DIR / "fuera.md").exists()
+    assert not (notes.DATA_DIR.parent / "fuera.md").exists()

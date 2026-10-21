@@ -80,3 +80,9 @@ def test_save_file_folder_cannot_escape_or_use_summaries(tmp_path, monkeypatch):
     assert a.is_relative_to(tmp_path)  # el "../" no sale de DATA_DIR
     assert b.parent == tmp_path / "files"  # carpeta reservada -> files/
     assert c.parent == tmp_path / "files"  # vacío -> files/
+
+
+def test_clean_note_name_keeps_only_safe_characters():
+    assert notes.clean_note_name("  Compras Casa ") == "compras_casa"
+    assert notes.clean_note_name("../../etc/passwd") == "etc_passwd"
+    assert notes.clean_note_name("///") == ""

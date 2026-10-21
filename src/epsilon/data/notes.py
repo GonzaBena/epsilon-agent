@@ -50,6 +50,12 @@ def save_note(name: str, texto: str) -> str:
     return f"Guardado en {path.name}"
 
 
+def clean_note_name(name: str) -> str:
+    """Nombre de nota seguro a partir de un texto libre; vacío si no queda nada utilizable."""
+    # Mismas reglas que clean_folder: sin «/» ni «..», así la nota queda siempre en DATA_DIR.
+    return re.sub(r"[^\w\-]", "_", name.strip().lower())[:60].strip("_")
+
+
 def save_csv(name: str, fields: list[str], rows: list[dict]) -> str:
     """Agrega filas a un CSV (lo crea con encabezado si no existe)."""
     path = safe_path(f"{name}.csv")

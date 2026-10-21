@@ -117,7 +117,7 @@ def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
 def _specs() -> list[llm.ToolSpec]:
     """Las herramientas que se le ofrecen al modelo: las no bloqueadas, con su descripción."""
     return [
-        llm.ToolSpec(tools.ai_id(tool), tool.help or tool.panel or tool.label, tool.usage or tool.label)
+        llm.ToolSpec(tools.ai_id(tool), tool.ai_help or tool.help or tool.panel or tool.label, tool.usage or tool.label)
         for tool in permissions.offered()
     ]
 

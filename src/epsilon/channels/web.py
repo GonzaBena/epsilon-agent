@@ -155,7 +155,7 @@ def permissions_view() -> dict:
             {
                 "id": tools.ai_id(tool),
                 "label": tool.label,
-                "desc": tool.help or tool.panel or "",
+                "desc": tool.ai_help or tool.help or tool.panel or "",
                 "kind": tool.ai,
                 "state": saved[tools.ai_id(tool)],
                 "default": permissions.default_state(tool),

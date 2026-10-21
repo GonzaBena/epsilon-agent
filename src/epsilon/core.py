@@ -151,6 +151,20 @@ def _save(text: str) -> Reply:
     return Reply(saved, artifacts=[_artifact("note", notes.safe_path("inbox.md"))])
 
 
+def _save_named(args: str) -> Reply:
+    """Herramienta de la IA: primera línea = nombre de la nota, el resto = texto. Crea o agrega, nunca pisa."""
+    raw_name, _, text = args.strip().partition("\n")
+    name, text = notes.clean_note_name(raw_name), text.strip()
+    if not name or not text:
+        return Reply("Falta el nombre (primera línea) o el texto (siguientes líneas). No se guardó nada.")
+
+    path = notes.safe_path(f"{name}.md")
+    existed = path.exists()
+    notes.save_note(name, f"- {date.today().isoformat()} {text}")
+    verb = "Agregado a la nota existente" if existed else "Nota nueva creada"
+    return Reply(f"{verb}: {path.name}", artifacts=[_artifact("note", path)])
+
+
 def _remember_cmd(args: str, session: Session) -> Reply:
     """/recordar texto: agrega un dato a la memoria (memory.md)."""
     if not args:
@@ -741,6 +755,7 @@ COMMANDS = {
 # Sin estado de sesión: las que lo piden reciben una Session() descartable, así la IA no toca la tuya.
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nota": lambda args: _save("+ " + config.redact(args)),
+    "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "ver": _watch,
     "buscar": _search,
     "archivos": _files,
