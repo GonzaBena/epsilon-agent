@@ -144,3 +144,10 @@ def test_command_with_bot_suffix_still_works(tmp_path, monkeypatch):
     use_tmp_data(tmp_path, monkeypatch)
 
     assert say("/ayuda@epsilon_bot").text == core.HELP
+
+
+def test_fecha_and_its_alias_answer_the_time_without_the_model(monkeypatch):
+    monkeypatch.setattr(core.clock, "now_text", lambda moment=None: "miércoles 21 de octubre de 2026, 14:32 (UTC-03:00)")
+
+    assert "14:32" in send("/fecha").text
+    assert "14:32" in send("/hora").text
