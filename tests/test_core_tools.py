@@ -669,3 +669,72 @@ def test_every_ai_tool_describes_its_argument_without_command_syntax():
 
     for spec in chat._specs():
         assert not spec.arg_description.startswith(("+", "/")), spec.name
+
+
+# --- Progreso en vivo (on_event) ------------------------------------------------------------
+
+
+def say_listening(text, cid=CID):
+    """Como say(), pero devuelve también los eventos de progreso que vio el oyente."""
+    events = []
+    conversations.add_message(cid, "user", text)
+    msg = core.Message(text=text, session_id=f"web:{cid}", conversation_id=cid)
+    return core.handle(msg, on_event=events.append), events
+
+
+def test_progress_events_follow_the_turn_in_order(script):
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [step(calls=[("buscar", "switch")]), step("Lo encontré")]
+
+    reply, events = say_listening("¿qué anoté del switch?")
+
+    assert reply.text == "Lo encontré"
+    assert events == [
+        {"type": "model", "step": 1},
+        {"type": "tool", "name": "buscar", "arg": "switch", "state": "running"},
+        {"type": "tool", "name": "buscar", "arg": "switch", "state": "done"},
+        {"type": "model", "step": 2},
+    ]
+
+
+def test_blocked_tool_is_reported_and_ask_stops_before_running(script):
+    states = permissions.load()
+    states["buscar"] = "deny"
+    states["nota"] = "ask"
+    permissions.save(states)
+    script.steps = [step(calls=[("buscar", "x"), ("nota", "algo")])]
+
+    reply, events = say_listening("hacé cosas")
+
+    assert reply.actions  # la pregunta del permiso
+    tools_seen = [(e["name"], e["state"]) for e in events if e["type"] == "tool"]
+    assert tools_seen == [("buscar", "blocked")]  # la que espera permiso no corrió ni se anunció como corriendo
+
+
+def test_event_args_are_redacted_short_and_one_line(script, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    script.steps = [step(calls=[("buscar", f"clave {KEY}\n" + "x" * 500)]), step("ok")]
+
+    _, events = say_listening("buscá")
+
+    (running,) = [e for e in events if e.get("state") == "running"]
+    assert KEY not in running["arg"] and "\n" not in running["arg"]
+    assert len(running["arg"]) <= core.EVENT_ARG_CHARS
+
+
+def test_a_failing_listener_never_stops_the_turn(script):
+    script.steps = [step("Hola")]
+
+    def boom(event):
+        raise RuntimeError("oyente roto")
+
+    conversations.add_message(CID, "user", "hola")
+    reply = core.handle(core.Message(text="hola", session_id=f"web:{CID}", conversation_id=CID), on_event=boom)
+
+    assert reply.text == "Hola"
+
+
+def test_without_a_listener_nothing_changes(script):
+    script.steps = [step("Hola")]
+    assert say("hola").text == "Hola"
+    assert core._on_event.get() is None  # y no queda un oyente colgado de la llamada anterior

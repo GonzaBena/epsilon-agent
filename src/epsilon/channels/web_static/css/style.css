@@ -1100,6 +1100,21 @@ body.booting .log {
 .thinking .text {
   color: var(--muted);
 }
+/* Los pasos que va dando la IA (herramientas): una línea por paso, solo mientras trabaja. */
+.thinking .step {
+  margin: 0.25rem 0 0;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+.thinking .step.running::after {
+  content: " …";
+}
+.thinking .step.done::before {
+  content: "✓ ";
+}
+.thinking .step.blocked {
+  font-style: italic;
+}
 .dots span {
   animation: blink 1.2s infinite both;
 }

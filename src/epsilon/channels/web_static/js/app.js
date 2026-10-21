@@ -330,6 +330,61 @@ function showThinking() {
   return row;
 }
 
+// Cada evento de progreso del servidor se agrega al globo como una línea. Es solo para mirar en vivo:
+// no se guarda en la conversación y desaparece con la respuesta.
+function trackProgress(row, event) {
+  const body = row.querySelector(".body");
+  if (event.type === "model") {
+    // El paso 1 es el «Pensando» de siempre; desde el 2 el modelo está leyendo lo que devolvieron las herramientas.
+    if (event.step > 1) body.append(make("p", "step", `Consultando a la IA (paso ${event.step})`));
+    return;
+  }
+  if (event.type !== "tool") return;
+  const detail = event.arg ? `: ${event.arg}` : "";
+  if (event.state === "running") {
+    const line = make("p", "step running", `Usando ${event.name}${detail}`);
+    line.dataset.tool = event.name;
+    body.append(line);
+  } else {
+    // «done» cierra la última línea de esa herramienta que seguía corriendo; «blocked» no tuvo línea previa.
+    const open = [...body.querySelectorAll(".step.running")].reverse().find((l) => l.dataset.tool === event.name);
+    if (event.state === "done" && open) {
+      open.classList.remove("running");
+      open.classList.add("done");
+    } else if (event.state === "blocked") {
+      body.append(make("p", "step blocked", `${event.name}: no disponible`));
+    }
+  }
+  scrollToEnd();
+}
+
+// Lee la respuesta de /api/message/stream (una línea JSON por evento) y devuelve la respuesta final,
+// igual a la de /api/message. Los eventos de progreso van a `onEvent`.
+async function readStream(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let reply = null;
+  const handleLine = (line) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.type === "reply") reply = event.data;
+    else if (event.type === "error") throw new Error(event.detail || "No pude responder.");
+    else onEvent(event);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split("\n");
+    pending = lines.pop(); // lo último puede estar cortado: espera al resto
+    lines.forEach(handleLine);
+  }
+  handleLine(pending);
+  if (!reply) throw new Error("La respuesta llegó cortada.");
+  return reply;
+}
+
 function setBusy(value) {
   busy = value;
   sendButton.disabled = value;
@@ -350,10 +405,15 @@ async function ask(request) {
   const target = conversationId; // en qué conversación se hizo el pedido
   try {
     const response = await request();
-    const data = await response.json();
-    if (!response.ok) {
-      // El servidor explica el problema en "detail" (por ejemplo, archivo muy grande).
-      throw new Error(typeof data.detail === "string" ? data.detail : "Pedido no válido");
+    let data;
+    if (response.ok && (response.headers.get("Content-Type") || "").includes("ndjson")) {
+      data = await readStream(response, (event) => trackProgress(thinking, event));
+    } else {
+      data = await response.json();
+      if (!response.ok) {
+        // El servidor explica el problema en "detail" (por ejemplo, archivo muy grande).
+        throw new Error(typeof data.detail === "string" ? data.detail : "Pedido no válido");
+      }
     }
     setStatus(true);
     // Si cambiaste de conversación mientras esperabas, la respuesta no se dibuja acá
@@ -394,7 +454,7 @@ function postJson(body) {
   const payload = conversationId ? { ...body, conversation_id: conversationId } : body;
   if (!started) payload.mode = chatMode; // el modo solo cuenta en el primer mensaje
   return () =>
-    fetch("/api/message", {
+    fetch("/api/message/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

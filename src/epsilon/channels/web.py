@@ -1,16 +1,18 @@
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import asdict
+import json
 import os
 from pathlib import Path
 import socket
+from queue import Queue
 import tempfile
 import threading
 import time
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
@@ -301,8 +303,8 @@ def create_app() -> FastAPI:
     # en un hilo aparte, así core.handle() puede esperar a Gemini sin trabar
     # a los demás requests.
 
-    @app.post("/api/message")
-    def message(body: MessageIn):
+    def prepare(body: MessageIn) -> tuple[core.Message, str | None]:
+        """Valida, guarda lo que escribiste y arma el mensaje para el núcleo (lo comparten los dos endpoints)."""
         cid = conversation_of(body.conversation_id)
         ensure_writable(cid)
         if cid:
@@ -313,8 +315,37 @@ def create_app() -> FastAPI:
                 conversations.add_action(cid, body.message_id, body.action)
         elif cid:
             conversations.add_message(cid, "user", body.text)
-        msg = core.Message(text=body.text, action=body.action, session_id=session_for(cid), conversation_id=cid)
+        return core.Message(text=body.text, action=body.action, session_id=session_for(cid), conversation_id=cid), cid
+
+    @app.post("/api/message")
+    def message(body: MessageIn):
+        msg, cid = prepare(body)
         return reply_json(core.handle(msg), cid)
+
+    @app.post("/api/message/stream")
+    def message_stream(body: MessageIn):
+        """Lo mismo que /api/message, pero mientras la IA trabaja manda el progreso (qué paso, qué herramienta).
+        Una línea JSON por evento; la última es {"type": "reply", "data": ...} (o {"type": "error"}). Los errores
+        de validación salen como siempre, antes de empezar a transmitir."""
+        msg, cid = prepare(body)
+        events: Queue = Queue()
+
+        def work():
+            # La respuesta se arma y se guarda acá, no en el generador: si el navegador corta, no se pierde.
+            try:
+                events.put({"type": "reply", "data": reply_json(core.handle(msg, on_event=events.put), cid)})
+            except Exception as e:
+                print(f"Error en el mensaje: {config.redact(repr(e))}")  # el detalle, a la terminal
+                events.put({"type": "error", "detail": "No pude responder."})
+            events.put(None)
+
+        threading.Thread(target=work, daemon=True).start()
+
+        def lines():
+            while (event := events.get()) is not None:
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     @app.post("/api/upload")
     def upload(

@@ -67,6 +67,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   pesos si cargaste `USD_ARS`). `shell.js` maneja los paneles que se contraen y los datos del
   header/menú; la barra de arriba y el menú están repetidos en cada HTML (un test vigila que
   coincidan). Ver `docs/plan-ui.md`.
+- Progreso en vivo (solo web): `core.handle(msg, on_event=...)` avisa cada paso de un turno de IA (`{"type":"model","step":n}` y `{"type":"tool","name","arg","state"}` con `running|done|blocked`; los emiten `_loop` y `_run_calls`, el argumento va redactado y corto). `POST /api/message/stream` es `/api/message` + esos eventos, una línea JSON por evento (NDJSON) y al final `{"type":"reply","data":...}`; la respuesta se guarda en el hilo, no en el flujo. `app.js` (`readStream`, `trackProgress`) los dibuja en el globo «Pensando» y desaparecen con la respuesta: no se guardan en la conversación. Telegram no lo usa.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
   entre Telegram y el núcleo; sin lógica de negocio.
 - `settings/config.py`: ajustes editables desde la web (claves, modelo, puerto). Único

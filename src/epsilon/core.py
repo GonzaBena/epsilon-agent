@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from contextlib import nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -597,6 +598,7 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         if check_limit and (reason := _limit_reason(turn.conversation_id)):
             return Reply(reason, artifacts=artifacts)
         check_limit = True
+        _emit(type="model", step=turn.steps + 1)
         try:
             step = chat.step(turn)
         except ModelError as e:  # sin conexión, sin clave, el modelo no soporta algo: el mensaje es para el usuario
@@ -638,6 +640,7 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
             if stop := _run(state, name, args):
                 return stop
         else:
+            _tool_event(name, args, "blocked")
             state.results.append((name, UNAVAILABLE))
     chat.add_results(state.turn, state.results)
     return None
@@ -649,7 +652,9 @@ def _run(state: PendingTool, name: str, args: str) -> Reply | None:
     tool = _ai_tool(name)
     if tool and tool.uses_ai and (reason := _limit_reason(state.turn.conversation_id)):
         return Reply(reason, artifacts=state.artifacts)
+    _tool_event(name, args, "running")
     state.results.append((name, _execute(name, args, state.artifacts)))
+    _tool_event(name, args, "done")
     return None
 
 
@@ -773,9 +778,40 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
 }
 
 
-def handle(msg: Message) -> Reply:
+# Quien quiera ver el progreso de un turno de IA (la web, para mostrarlo en vivo) pasa `on_event` a handle().
+# Va en una variable de contexto y no como parámetro por todas las funciones: lo emiten _loop y _run_calls.
+_on_event: ContextVar[Callable[[dict], None] | None] = ContextVar("on_event", default=None)
+EVENT_ARG_CHARS = 80  # cuánto del argumento de una herramienta viaja en el evento (solo para mostrar)
+
+
+def _emit(**event) -> None:
+    """Avisa un paso del turno a quien lo escucha. Solo informa: un fallo del oyente nunca frena el turno."""
+    listener = _on_event.get()
+    if listener:
+        try:
+            listener(event)
+        except Exception:
+            pass
+
+
+def _tool_event(name: str, args: str, state: str) -> None:
+    arg = " ".join(config.redact(args).split())[:EVENT_ARG_CHARS]  # una línea, redactada y corta
+    _emit(type="tool", name=name, arg=arg, state=state)
+
+
+def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Reply:
     """Punto de entrada único: ver _dispatch. Además, recuerda en la sesión lo que la
-    respuesta guardó, para /contexto."""
+    respuesta guardó, para /contexto. `on_event` (opcional) recibe el progreso de un turno de IA:
+    {"type": "model", "step": n} al llamar al modelo y {"type": "tool", "name", "arg", "state"}
+    (running | done | blocked) por cada herramienta."""
+    token = _on_event.set(on_event)
+    try:
+        return _handle(msg)
+    finally:
+        _on_event.reset(token)
+
+
+def _handle(msg: Message) -> Reply:
     # El canal queda anotado en cada llamada al modelo (página Uso): la sesión dice de dónde viene.
     # En modo IA también se anota la conversación: cada una suma lo que gasta (chat, resúmenes…).
     ai_conversation = _is_ai_conversation(msg)
