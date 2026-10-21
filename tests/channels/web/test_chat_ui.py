@@ -381,7 +381,7 @@ def test_the_shell_script_no_longer_draws_channels_or_voice_in_the_panel():
     for gone in ("renderSideChannels", "renderSideVoice", "VOICE_ROWS", "side-channels"):
         assert gone not in shell, gone
     assert ".side-right .channels" not in css and ".side-link" not in css
-    assert "GEMINI_MODEL" in shell  # lo que sí sigue leyendo: el modelo del header
+    assert "state.model" in shell  # lo que sí sigue leyendo: el modelo del header
 
 
 def test_chat_waits_for_its_conversation_before_showing_the_greeting():

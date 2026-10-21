@@ -11,6 +11,7 @@
   <!-- Todo el estilo está en style.css; la lógica del chat en app.js y la del
        esqueleto (paneles que se contraen, datos del header y del menú) en shell.js. -->
   <script src="/static/js/boot.js"></script>
+  <script src="/static/js/palette.js" defer></script>
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/money.js" defer></script>
   <script src="/static/js/vendor/markdown-it.min.js" defer></script>
@@ -35,7 +36,7 @@
     <!-- El título de la conversación actual lo pone shell.js. -->
     <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb" data-dynamic>Conversación nueva</span></p>
     <div class="top-actions">
-      <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
+      <button type="button" class="model-chip" id="model-chip" aria-haspopup="dialog" title="Cambiar el modelo de IA"><span id="model-name">…</span></button>
       <span id="status" class="status" role="status">Conectando…</span>
     </div>
   </header>

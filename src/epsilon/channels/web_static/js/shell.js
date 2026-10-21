@@ -376,7 +376,7 @@
       const find = (key) => state.settings.find((setting) => setting.key === key);
 
       const modelName = document.getElementById("model-name");
-      if (modelName) modelName.textContent = (find("GEMINI_MODEL") || {}).value || "sin modelo";
+      if (modelName) modelName.textContent = state.model || "sin modelo"; // «proveedor:modelo», lo arma el servidor
 
       const dataDir = (find("DATA_DIR") || {}).value;
       const path = document.getElementById("local-path");
@@ -399,6 +399,10 @@
       refreshRecents(); // pudo haber conversaciones nuevas (por ejemplo, desde otra pestaña)
     }
   });
+
+  // El botón con el modelo abre la paleta para elegir otro (palette.js).
+  const modelChip = document.getElementById("model-chip");
+  if (modelChip) modelChip.addEventListener("click", () => window.epsilonPalette.open());
 
   // --- Arranque -------------------------------------------------------------------------------
   applyLayout();

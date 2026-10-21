@@ -1,0 +1,98 @@
+import json
+import re
+import shutil
+import subprocess
+
+import pytest
+
+from epsilon.channels import web
+from tests.channels.web.helpers import js, page, static_path
+
+PAGES = ["index.html", "biblioteca.html", "permisos.html", "canales.html", "uso.html", "config.html"]
+NODE = shutil.which("node")
+
+
+def chip_tag(name):
+    return re.search(r"<button[^>]*id=\"model-chip\"[^>]*>.*?</button>", page(name), re.S).group(0)
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_the_model_chip_is_a_button_that_opens_the_palette(name):
+    html = page(name)
+
+    assert '<a class="model-chip"' not in html
+    tag = chip_tag(name)
+    assert 'type="button"' in tag and 'class="model-chip"' in tag and 'aria-haspopup="dialog"' in tag
+    assert 'id="model-name"' in tag
+
+
+def test_the_model_chip_is_identical_in_every_page():
+    assert len({chip_tag(name) for name in PAGES}) == 1
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_every_page_loads_the_palette_before_the_shell(name):
+    html = page(name)
+
+    assert html.index("/static/js/palette.js") < html.index("/static/js/shell.js")
+
+
+def test_palette_and_shell_follow_the_web_rules():
+    palette, shell = js("palette.js"), js("shell.js")
+
+    assert not re.search(r"\.innerHTML|innerHTML\s*=", palette + shell)  # solo textContent
+    assert "confirm(" not in palette.replace("epsilonModal", "") and "alert(" not in palette
+    assert "/api/models" in palette and "showModal" in palette and "PUT" in palette
+    assert "GEMINI_MODEL" not in shell and "epsilonPalette" in shell
+
+
+def test_the_server_serves_the_palette_script(client):
+    reply = client.get("/static/js/palette.js")
+
+    assert reply.status_code == 200 and "javascript" in reply.headers["content-type"]
+
+
+# --- La lógica pura de la paleta, ejecutada con node (si está) ---------------------
+
+
+def run_node(expression):
+    script = (
+        "const window = {}; const document = undefined;\n"
+        + static_path("palette.js").read_text(encoding="utf-8")
+        + f"\nconsole.log(JSON.stringify({expression}));"
+    )
+    done = subprocess.run([NODE, "-e", script], capture_output=True, text=True, timeout=20)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+MODELS = [
+    {"id": "gemini:gemini-3.1-flash-lite", "provider": "gemini"},
+    {"id": "ollama:qwen3:8b", "provider": "ollama"},
+    {"id": "ollama:llama3.1:8b", "provider": "ollama"},
+]
+
+
+@pytest.mark.skipif(not NODE, reason="node no está instalado")
+def test_filter_matches_text_anywhere_in_provider_model_ignoring_case():
+    ids = lambda query: [m["id"] for m in run_node(f"window.epsilonPalette.filter({json.dumps(MODELS)}, {json.dumps(query)})")]
+
+    assert ids("") == [m["id"] for m in MODELS]
+    assert ids("  QWEN ") == ["ollama:qwen3:8b"]
+    assert ids("ollama:") == ["ollama:qwen3:8b", "ollama:llama3.1:8b"]
+    assert ids("8b") == ["ollama:qwen3:8b", "ollama:llama3.1:8b"]
+    assert ids("flash") == ["gemini:gemini-3.1-flash-lite"]
+    assert ids("nada") == []
+
+
+@pytest.mark.skipif(not NODE, reason="node no está instalado")
+def test_usable_offers_an_unlisted_model_only_for_a_provider_that_answered():
+    def usable(query, up):
+        return run_node(f"window.epsilonPalette.usable({json.dumps(query)}, {json.dumps(MODELS)}, {json.dumps(up)})")
+
+    assert usable("ollama:phi4", ["gemini", "ollama"]) == "ollama:phi4"
+    assert usable("ollama:phi4", ["gemini"]) is None  # Ollama no respondió: no se ofrece nada de él
+    assert usable("ollama:qwen3:8b", ["gemini", "ollama"]) is None  # ya está en la lista
+    assert usable("ollama:", ["ollama"]) is None and usable("phi4", ["gemini", "ollama"]) is None
+    assert usable("raro:phi4", ["gemini", "ollama"]) is None
+    assert usable("  ollama:phi4  ", ["ollama"]) == "ollama:phi4"

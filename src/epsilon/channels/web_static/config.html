@@ -13,6 +13,7 @@
        son fijos; el estado de cada ajuste (cargado, largo, valor) lo pone
        config.js con lo que responde la API. -->
   <script src="/static/js/boot.js"></script>
+  <script src="/static/js/palette.js" defer></script>
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/config.js" defer></script>
 </head>
@@ -31,7 +32,7 @@
     </nav>
     <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Configuración</span></p>
     <div class="top-actions">
-      <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
+      <button type="button" class="model-chip" id="model-chip" aria-haspopup="dialog" title="Cambiar el modelo de IA"><span id="model-name">…</span></button>
     </div>
   </header>
 

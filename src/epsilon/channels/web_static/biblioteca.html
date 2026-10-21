@@ -12,6 +12,7 @@
        esqueleto (paneles, menú) en shell.js. Las tarjetas las dibuja biblioteca.js con lo que
        responde GET /api/library. Es de solo lectura. -->
   <script src="/static/js/boot.js"></script>
+  <script src="/static/js/palette.js" defer></script>
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/biblioteca.js" defer></script>
 </head>
@@ -30,7 +31,7 @@
     </nav>
     <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Biblioteca</span></p>
     <div class="top-actions">
-      <a class="model-chip" id="model-chip" href="/config" title="Modelo de IA. Se cambia en Configuración."><span id="model-name">…</span></a>
+      <button type="button" class="model-chip" id="model-chip" aria-haspopup="dialog" title="Cambiar el modelo de IA"><span id="model-name">…</span></button>
     </div>
   </header>
 
