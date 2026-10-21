@@ -179,3 +179,8 @@ Dónde está cada cosa:
 De la entrada salen solos la ayuda, el menú de Telegram, el panel de la web (`GET /api/tools`)
 y, si es de solo lectura y se declara en `links`, el enlace `/?cmd=...`. Los tests avisan si
 `tools.py` y `core.COMMANDS` dejan de coincidir.
+
+## Licencia
+
+[MIT](LICENSE). Podés usar, copiar y modificar Epsilon libremente; solo hay que conservar el aviso de copyright. El archivo
+`js/vendor/markdown-it.min.js` es de terceros y conserva su propia licencia (`markdown-it.LICENSE`, también MIT).

@@ -1,10 +1,12 @@
 [project]
 name = "epsilon"
 version = "1.0.0"
-description = "Add your description here"
+description = "Agente personal local: notas, archivos, imagen a CSV, resúmenes con IA, memoria, voz y Telegram."
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 authors = [
-    { name = "Gonzalo Benavente", email = "elgonzatron@gmail.com" }
+    { name = "Gonzalo Benavente", email = "34586600+GonzaBena@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
