@@ -90,6 +90,7 @@ class Turn:
     conversation_id: str
     history: list
     steps: int = 0
+    label: str = "Chat"  # cómo se anota el gasto en la página Uso
 
 
 def begin(conversation_id: str, text: str) -> Turn:
@@ -110,7 +111,7 @@ def step(turn: Turn) -> llm.Step:
     """Una llamada al modelo. Pasado el tope de pasos no puede pedir herramientas, para que cierre con texto.
     Las declaraciones van igual: el historial ya trae llamadas y respuestas que las nombran."""
     allow_calls = turn.steps < MAX_TOOL_STEPS
-    with usage.action("Chat"):
+    with usage.action(turn.label):
         result = llm.chat_tools(turn.history, system_prompt(), _specs(), MAX_TOKENS, allow_calls=allow_calls)
     turn.history.append(result.turn)
     turn.steps += 1

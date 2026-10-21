@@ -335,19 +335,16 @@ def _summarize_cmd(args: str, session: Session) -> Reply:
 
 
 def _ask_cmd(args: str, session: Session) -> Reply:
-    """/ia pregunta: una pregunta suelta a la IA, sin el resto de la conversación."""
+    """/ia pregunta: una pregunta suelta a la IA, sin el resto de la conversación. Puede usar herramientas,
+    según los permisos (ver _run_calls)."""
     if not args:
         return Reply("Uso: /ia pregunta")
     try:
-        answer = ask.ask(args)
+        turn = ask.begin(args)
     except ValueError as e:
         return Reply(str(e))
-    except Exception as e:
-        print(f"Error en /ia: {config.redact(repr(e))}")  # el detalle, a la terminal
-        return Reply("No pude responder.")
-    if not answer or not answer.strip():
-        return Reply("La IA no devolvió texto.")
-    return Reply(answer)
+    session.pending_tool = None  # una pregunta nueva deja sin efecto la que esperaba permiso
+    return _loop(turn, [], session, check_limit=False)
 
 
 def _ticket(args: str, session: Session) -> Reply:
@@ -547,6 +544,15 @@ TOO_MANY = "Demasiadas herramientas a la vez."
 STALE = "Esa pregunta ya no está vigente. Escribí de nuevo lo que querías."
 
 
+def _limit_reason(conversation_id: str) -> str | None:
+    """Por qué la conversación no puede seguir gastando (None si puede). Una pregunta de /ia no tiene
+    conversación guardada ni límite propio: la acotan los topes de pasos, de salida y de resultados."""
+    if ask.is_scope(conversation_id):
+        return None
+    status = chat.status(conversation_id)
+    return status["reason"] if status["blocked"] else None
+
+
 def _chat(msg: Message, session: Session) -> Reply:
     """Texto libre en una conversación de modo IA: responde la IA, que puede usar herramientas
     según sus permisos (ver _run_calls)."""
@@ -565,8 +571,8 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
     """Llama al modelo y ejecuta lo que pide hasta que conteste con texto (o haya que preguntar)."""
     while True:
         # Cada vuelta gasta: si la conversación llegó al límite en el medio, se corta acá.
-        if check_limit and (status := chat.status(turn.conversation_id))["blocked"]:
-            return Reply(status["reason"], artifacts=artifacts)
+        if check_limit and (reason := _limit_reason(turn.conversation_id)):
+            return Reply(reason, artifacts=artifacts)
         check_limit = True
         try:
             step = chat.step(turn)
@@ -616,8 +622,8 @@ def _run(state: PendingTool, name: str, args: str) -> Reply | None:
     """Ejecuta una llamada permitida. Una herramienta que gasta IA (/resumir) no corre si la
     conversación ya llegó a su límite: se corta el turno con el motivo."""
     tool = _ai_tool(name)
-    if tool and tool.uses_ai and (status := chat.status(state.turn.conversation_id))["blocked"]:
-        return Reply(status["reason"], artifacts=state.artifacts)
+    if tool and tool.uses_ai and (reason := _limit_reason(state.turn.conversation_id)):
+        return Reply(reason, artifacts=state.artifacts)
     state.results.append((name, _execute(name, args, state.artifacts)))
     return None
 
@@ -673,7 +679,8 @@ def _answer_permission(answer: str, msg: Message, session: Session) -> Reply:
     if (
         state is None
         or answer not in ("si", "siempre", "no")
-        or msg.conversation_id != state.turn.conversation_id
+        # Una pregunta de /ia no tiene conversación: el pendiente es de esta sesión, que ya lo aísla.
+        or (msg.conversation_id != state.turn.conversation_id and not ask.is_scope(state.turn.conversation_id))
     ):
         return Reply(STALE)
     name, args = state.step.calls[state.index]

@@ -481,3 +481,130 @@ def test_calls_after_the_step_cap_are_ignored(script, monkeypatch):
 
     assert reply.text == "cierro" and reply.ai
     assert script.seen[1][1] == []  # al segundo llamado ya no podía pedir herramientas
+
+
+# --- /ia: una pregunta suelta, con herramientas pero sin la charla ---------------------------------------
+
+
+def ia(text, session_id="telegram:1"):
+    """/ia desde un canal sin conversaciones de modo IA (como Telegram): el mensaje no lleva conversación."""
+    return core.handle(core.Message(text=text, session_id=session_id))
+
+
+def tap(action, session_id="telegram:1"):
+    return core.handle(core.Message(action=action, session_id=session_id))
+
+
+def test_ia_needs_a_question(script):
+    assert ia("/ia").text == "Uso: /ia pregunta"
+    assert script.seen == []
+
+
+def test_ia_sends_only_the_question_and_offers_the_tools(script):
+    script.steps = [step("1260")]
+
+    reply = ia("/ia ¿cuánto es 15% de 8400?")
+
+    assert reply.text == "1260" and reply.ai
+    (history, offered), = script.seen
+    assert len(history) == 1 and history[0].role == "user"  # sin charla anterior
+    assert "buscar" in offered and "olvidar" not in offered  # las del chat, con sus permisos
+
+
+def test_ia_rejects_a_long_question_without_calling_the_model(script):
+    reply = ia("/ia " + "x" * (core.ask.MAX_QUESTION + 1))
+
+    assert "muy larga" in reply.text and script.seen == []
+
+
+def test_ia_runs_a_read_tool_by_itself(script):
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [step(calls=[("buscar", "switch")]), step("Lo encontré")]
+
+    reply = ia("/ia ¿qué anoté del switch?")
+
+    assert reply.text == "Lo encontré"
+    (sent,) = results(script.seen[1][0])
+    assert "switch" in sent
+
+
+def test_ia_hides_a_model_failure(script, monkeypatch):
+    monkeypatch.setattr(llm, "chat_tools", lambda *a, **k: 1 / 0)
+
+    assert ia("/ia hola").text == "No pude responder."
+
+
+def test_ia_asks_before_writing_and_runs_it_after_yes(script):
+    script.steps = [step(calls=[("nota", "comprar pan")]), step("Anotado")]
+
+    question = ia("/ia anotá que tengo que comprar pan")
+
+    assert [a.id for a in question.actions] == ["perm:si", "perm:siempre", "perm:no"]
+    assert inbox() == ""
+    assert tap("perm:si").text == "Anotado"
+    assert "comprar pan" in inbox()
+
+
+def test_ia_no_to_the_question_runs_nothing(script):
+    script.steps = [step(calls=[("nota", "comprar pan")])]
+    ia("/ia anotá comprar pan")
+
+    assert tap("perm:no").text.startswith("Dijiste que no a:")
+    assert inbox() == ""
+
+
+def test_the_yes_of_another_session_does_not_run_it(script):
+    script.steps = [step(calls=[("nota", "comprar pan")])]
+    ia("/ia anotá comprar pan")
+
+    assert tap("perm:si", session_id="telegram:2").text == core.STALE
+    assert inbox() == ""
+
+
+def test_a_second_tap_does_not_run_it_twice(script):
+    script.steps = [step(calls=[("nota", "comprar pan")]), step("Anotado")]
+    ia("/ia anotá comprar pan")
+
+    tap("perm:si")
+
+    assert tap("perm:si").text == core.STALE
+    assert inbox().count("comprar pan") == 1
+
+
+def test_always_only_lasts_for_that_question(script):
+    script.steps = [step(calls=[("nota", "uno")]), step("ok"), step(calls=[("nota", "dos")])]
+    ia("/ia anotá uno")
+    tap("perm:siempre")
+
+    second = ia("/ia anotá dos")
+
+    assert [a.id for a in second.actions] == ["perm:si", "perm:siempre", "perm:no"]  # vuelve a preguntar
+    assert "dos" not in inbox()
+
+
+def test_ia_does_not_run_a_blocked_tool_and_never_offers_it(script):
+    script.steps = [step(calls=[("olvidar", "1")]), step("No pude")]
+
+    ia("/ia borrá la línea 1 de la memoria")
+
+    assert "olvidar" not in script.seen[0][1]
+    assert results(script.seen[1][0]) == [core.UNAVAILABLE]
+
+
+def test_a_new_ia_question_drops_the_one_waiting_for_permission(script):
+    script.steps = [step(calls=[("nota", "uno")]), step("hola")]
+    ia("/ia anotá uno")
+    ia("/ia hola")
+
+    assert tap("perm:si").text == core.STALE
+    assert inbox() == ""
+
+
+def test_ia_inside_an_ai_conversation_respects_that_conversations_limit(script):
+    conversations.set_limit(CID, 0.01)
+    with usage.conversation(CID):
+        usage.record("modelo-a", 20_000, 0)  # US$ 0.02: ya pasó el límite
+
+    reply = say("/ia hola")
+
+    assert "límite" in reply.text and script.seen == []

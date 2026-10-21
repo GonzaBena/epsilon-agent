@@ -107,7 +107,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   `decide`, `grant`, `offered`). Sin modelo ni canales. Las herramientas son las de `tools.py` con el campo `ai`. Ver `docs/plan-permisos.md`.
 - `voice/transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
   el modelo se baja solo y se descarga de memoria tras un rato). Ver `docs/plan-voz.md`.
-- `ai/ask.py`: `/ia pregunta`, una pregunta suelta a la IA (web y Telegram). Una sola llamada: sin historial, sin herramientas, solo la pregunta (máx. 1.000 caracteres) más la memoria. No es modo IA: no tiene límite de costo por conversación, lo acotan los topes de entrada y salida.
+- `ai/ask.py`: `/ia pregunta`, una pregunta suelta a la IA (web y Telegram). Es un turno de modo IA de un solo mensaje: sin la charla de antes, con la memoria y con las herramientas, que pasan por los mismos permisos (`core._run_calls`). No tiene conversación guardada sino un «ámbito» en memoria (`ia:<n>`, único por pregunta): los permisos y el «siempre» valen solo para esa pregunta y el pendiente es de la sesión. Sin límite de costo por conversación: lo acotan los topes de pasos, de salida y de resultados (máx. 1.000 caracteres de pregunta); dentro de un chat de modo IA, el costo suma a ese chat. Gasto anotado como «Pregunta» en /uso.
 - `ai/extract.py`, `ai/summarize.py`: lógica de imagen→CSV y resúmenes. `ai/usage.py`: el registro del gasto.
 
 ## Reglas del proyecto
