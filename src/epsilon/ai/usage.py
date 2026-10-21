@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import contextvars
 import json
+import threading
 from datetime import date, datetime, timedelta
 
 from epsilon.data import notes
@@ -150,22 +151,25 @@ def _cost(entry: dict) -> float | None:
     return (entry["input"] * price[0] + entry["output"] * price[1]) / 1_000_000
 
 
+def _parse_line(line: str) -> dict | None:
+    """Una línea del registro como dict, o None si está rota o incompleta (no rompe nada)."""
+    try:
+        entry = json.loads(line)
+        entry["date"] = date.fromisoformat(entry["date"]).isoformat()
+        entry["model"] = str(entry["model"])
+        entry["input"], entry["output"] = int(entry["input"]), int(entry["output"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    return entry
+
+
 def _entries() -> list[dict]:
     """Las llamadas anotadas. Una línea rota o incompleta se salta (no rompe la página)."""
     path = notes.safe_path(USAGE_FILE)
     if not path.exists():
         return []
-    found = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        try:
-            entry = json.loads(line)
-            entry["date"] = date.fromisoformat(entry["date"]).isoformat()
-            entry["model"] = str(entry["model"])
-            entry["input"], entry["output"] = int(entry["input"]), int(entry["output"])
-        except (ValueError, KeyError, TypeError):
-            continue
-        found.append(entry)
-    return found
+    parsed = (_parse_line(line) for line in path.read_text(encoding="utf-8", errors="replace").splitlines())
+    return [entry for entry in parsed if entry is not None]
 
 
 def report(today: date | None = None) -> dict:
@@ -213,15 +217,61 @@ def price_known(model: str) -> bool:
     return model in PRICES
 
 
+# El registro solo se agrega, y for_conversation se consulta en cada mensaje del chat. En vez de releerlo
+# entero cada vez, se recuerda hasta dónde se leyó y se interpreta solo lo que se sumó después. Se guardan
+# TOKENS por modelo (no pesos): el precio se aplica al consultar, así un cambio en PRICES vale al instante.
+_index_lock = threading.Lock()
+_index: dict = {"file": None, "inode": None, "offset": 0, "conversations": {}}
+
+
+def _reset_index(path, inode) -> None:
+    _index.update(file=path, inode=inode, offset=0, conversations={})
+
+
+def _refresh_index() -> None:
+    """Pone al día _index con las líneas nuevas del registro. Llamar con _index_lock tomado."""
+    path = notes.safe_path(USAGE_FILE)
+    try:
+        info = path.stat()
+    except OSError:  # todavía no hay registro
+        _reset_index(path, None)
+        return
+    # Otro archivo (otra carpeta de datos, reemplazado) o uno más corto que lo leído: se arma de cero.
+    if _index["file"] != path or _index["inode"] != info.st_ino or info.st_size < _index["offset"]:
+        _reset_index(path, info.st_ino)
+    if info.st_size == _index["offset"]:
+        return
+    with path.open("rb") as f:
+        f.seek(_index["offset"])
+        chunk = f.read()
+    complete = chunk[: chunk.rfind(b"\n") + 1]  # una última línea a medio escribir espera a la próxima
+    _index["offset"] += len(complete)
+    for raw in complete.decode("utf-8", errors="replace").splitlines():
+        entry = _parse_line(raw)
+        if entry is None or not entry.get("conversation"):
+            continue
+        found = _index["conversations"].setdefault(
+            entry["conversation"], {"calls": 0, "context": 0, "tokens": {}}
+        )
+        found["calls"] += 1
+        tokens = found["tokens"].setdefault(entry["model"], [0, 0])
+        tokens[0] += entry["input"]
+        tokens[1] += entry["output"]
+        if entry.get("action") == "Chat":
+            found["context"] = entry["input"]
+
+
 def for_conversation(conversation_id: str) -> dict:
     """{cost, calls, context} de una conversación. cost: solo llamadas con precio; context: la
     entrada (tokens) de su última llamada de chat, que es lo que se manda en cada pregunta."""
-    result = {"cost": 0.0, "calls": 0, "context": 0}
-    for entry in _entries():
-        if entry.get("conversation") != conversation_id:
-            continue
-        result["calls"] += 1
-        result["cost"] += _cost(entry) or 0.0
-        if entry.get("action") == "Chat":
-            result["context"] = entry["input"]
-    return result
+    with _index_lock:
+        _refresh_index()
+        found = _index["conversations"].get(conversation_id)
+        if found is None:
+            return {"cost": 0.0, "calls": 0, "context": 0}
+        cost = 0.0
+        for model, (tokens_in, tokens_out) in found["tokens"].items():
+            price = PRICES.get(model)
+            if price is not None:
+                cost += (tokens_in * price[0] + tokens_out * price[1]) / 1_000_000
+        return {"cost": cost, "calls": found["calls"], "context": found["context"]}

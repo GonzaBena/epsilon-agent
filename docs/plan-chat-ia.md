@@ -9,6 +9,9 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-modo-ia-design.md`. Plan de
   `config.redact`; más la memoria en el prompt de sistema, marcada como dato. Nunca la salida de comandos ni adjuntos.
 - **Costo.** `usage.conversation(id)` anota cada llamada con su conversación (también `/resumir` e imagen→CSV dentro
   de ella); `usage.for_conversation(id)` suma. Contexto = tokens de entrada de la última llamada «Chat».
+- **Rendimiento.** `usage.for_conversation` se consulta en cada mensaje; no relee el registro entero: recuerda hasta
+  dónde leyó y solo interpreta lo que se agregó (guarda tokens por modelo y aplica el precio al consultar). Se
+  rearma de cero si cambia el archivo (otra carpeta de datos, reemplazado o más corto).
 - **Límite.** Línea `limit` en el archivo (gana la última); `PUT /api/conversations/{id}/limit` la cambia. El chequeo es
   antes de cada llamada: una respuesta puede pasarse un poco. Chequeo y llamada van bajo un candado por
   conversación (`core._ai_lock`), así dos pedidos a la vez no pasan los dos el límite; las conversaciones no se esperan. Bloqueada = `core` no llama al modelo para texto libre,

@@ -321,3 +321,90 @@ def test_price_known(monkeypatch):
 
     assert usage.price_known("modelo-a")
     assert not usage.price_known("modelo-b")
+
+
+# --- for_conversation no relee todo el registro en cada consulta ------------------------
+
+
+def counting_parser(monkeypatch):
+    """Cuenta cuántas líneas del registro se interpretan (para saber si se relee todo)."""
+    real = usage._parse_line
+    seen = []
+
+    def counting(line):
+        seen.append(line)
+        return real(line)
+
+    monkeypatch.setattr(usage, "_parse_line", counting)
+    return seen
+
+
+def test_for_conversation_only_parses_lines_added_since_the_last_call(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    with usage.conversation(CID):
+        for _ in range(3):
+            usage.record("modelo-a", 1_000_000, 0)
+    usage.for_conversation(CID)  # primera vez: lee lo que hay
+    seen = counting_parser(monkeypatch)
+
+    with usage.conversation(CID):
+        usage.record("modelo-a", 1_000_000, 0)
+    result = usage.for_conversation(CID)
+
+    assert len(seen) == 1
+    assert result["calls"] == 4 and result["cost"] == 4.0
+    usage.for_conversation(CID)
+    assert len(seen) == 1  # sin líneas nuevas, no se interpreta nada
+
+
+def test_for_conversation_rebuilds_when_the_file_is_replaced_by_a_smaller_one(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    with usage.conversation(CID):
+        usage.record("modelo-a", 1_000_000, 0)
+        usage.record("modelo-a", 1_000_000, 0)
+    assert usage.for_conversation(CID)["calls"] == 2
+
+    only_one = (tmp_path / usage.USAGE_FILE).read_text().splitlines()[0] + "\n"
+    (tmp_path / usage.USAGE_FILE).write_text(only_one)
+
+    assert usage.for_conversation(CID)["calls"] == 1
+
+
+def test_for_conversation_waits_for_a_half_written_last_line(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    line = json.dumps(
+        {"date": "2026-10-20", "model": "modelo-a", "input": 1_000_000, "output": 0, "action": "Chat", "conversation": CID}
+    )
+    path = tmp_path / usage.USAGE_FILE
+    path.write_text(line[:40])  # se está escribiendo: todavía sin terminar ni salto de línea
+
+    assert usage.for_conversation(CID)["calls"] == 0
+
+    with path.open("a") as f:
+        f.write(line[40:] + "\n")
+
+    assert usage.for_conversation(CID)["calls"] == 1
+
+
+def test_for_conversation_applies_the_current_prices(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    with usage.conversation(CID):
+        usage.record("modelo-a", 1_000_000, 0)
+    assert usage.for_conversation(CID)["cost"] == 1.0
+
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (3.0, 4.0)})
+
+    assert usage.for_conversation(CID)["cost"] == 3.0
+
+
+def test_for_conversation_follows_a_change_of_data_folder(tmp_path, monkeypatch):
+    first, second = tmp_path / "uno", tmp_path / "dos"
+    first.mkdir(), second.mkdir()
+    use_tmp_data(first, monkeypatch)
+    with usage.conversation(CID):
+        usage.record("modelo-a", 1_000_000, 0)
+    assert usage.for_conversation(CID)["calls"] == 1
+
+    monkeypatch.setattr(notes, "DATA_DIR", second)
+
+    assert usage.for_conversation(CID)["calls"] == 0
