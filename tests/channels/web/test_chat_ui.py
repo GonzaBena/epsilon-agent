@@ -447,3 +447,31 @@ def test_sending_waits_for_the_new_chat_id_so_the_mode_is_not_lost():
     body = submit.split("\n}\n")[0]
     assert "await newChatReady" in body
     assert body.index("await newChatReady") < body.index("ask(")
+
+
+def _function_body(code, signature):
+    """El texto de una función de nivel superior de app.js (hasta el `}` en la columna 0)."""
+    return code[code.index(signature):].split("\n}\n")[0]
+
+
+def test_the_mode_picker_does_not_flash_while_an_existing_conversation_loads():
+    code = js("app.js")
+
+    # Limpiar la pantalla esconde el selector; no lo muestra (antes parpadeaba al abrir una conversación).
+    clear = _function_body(code, "function clearScreen()")
+    assert "showMode(" not in clear and "modePicker.hidden = true" in clear
+    # Solo un chat nuevo, o una conversación que el servidor no tiene todavía (404), lo muestran.
+    assert 'showMode("normal", null)' in _function_body(code, "async function openNewChat()")
+    opening = _function_body(code, "async function openConversation(id)")
+    assert "response.status === 404" in opening and 'showMode("normal", null)' in opening
+
+
+def test_a_failed_first_request_resyncs_the_mode_with_the_server():
+    code = js("app.js")
+
+    sync = _function_body(code, "async function syncMode()")
+    assert "/api/conversations/${conversationId}" in sync and "showMode(" in sync and "started =" in sync
+    # Si el primer pedido falla, el servidor pudo haber creado la conversación igual: se vuelve a mirar.
+    ask = _function_body(code, "async function ask(request)")
+    catch = ask[ask.index("} catch (error) {"):]
+    assert "syncMode()" in catch

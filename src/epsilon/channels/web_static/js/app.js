@@ -229,7 +229,9 @@ function clearScreen() {
   setReadOnly(false); // openConversation lo vuelve a poner si es de Telegram
   setContext([]); // lo guardado es de ESTA conversación
   started = false; // openConversation / showConversation lo corrigen si ya tiene mensajes
-  showMode("normal", null);
+  // Selector y barra escondidos: ya sabremos cuál mostrar (un chat nuevo, o lo que diga el servidor).
+  modePicker.hidden = true;
+  aiBar.hidden = true;
   clearFile(); // un archivo a medio adjuntar no tiene que irse a otra conversación
   empty.hidden = false;
 }
@@ -259,8 +261,10 @@ async function openConversation(id) {
     if (token !== loadToken) return; // ya abriste otra mientras esta cargaba
     if (response.ok) {
       showConversation(await response.json());
+    } else if (response.status === 404) {
+      // Una conversación nueva que todavía no tiene mensajes: pantalla vacía, y se elige el tipo de chat.
+      showMode("normal", null);
     }
-    // Un 404 es una conversación nueva que todavía no tiene mensajes: pantalla vacía.
   } catch {
     setStatus(false);
   }
@@ -280,6 +284,7 @@ async function openNewChat() {
   const token = ++loadToken;
   clearScreen();
   chooseMode("normal");
+  showMode("normal", null); // chat nuevo: se elige el tipo
   conversationId = null;
   try {
     const response = await fetch("/api/conversations", { method: "POST" });
@@ -289,6 +294,22 @@ async function openNewChat() {
   }
   rememberCurrent(conversationId);
   announce();
+}
+
+// Si un pedido falla, el servidor pudo haber creado la conversación igual (con su modo) antes de fallar:
+// se vuelve a mirar para que el selector y la barra digan lo mismo que él. Sin respuesta, no se toca nada.
+async function syncMode() {
+  if (!conversationId || started) return;
+  const target = conversationId;
+  try {
+    const response = await fetch(`/api/conversations/${conversationId}`);
+    if (!response.ok || target !== conversationId) return; // 404: no se creó, el selector sigue valiendo
+    const data = await response.json();
+    started = data.messages.length > 0;
+    showMode(data.mode, data.chat);
+  } catch {
+    // Sin servidor no hay nada que sincronizar.
+  }
 }
 
 // --- "Pensando…" mientras el modelo trabaja -----------------------------------
@@ -349,6 +370,7 @@ async function ask(request) {
     const offline = error instanceof TypeError;
     setStatus(!offline);
     if (target === conversationId) {
+      syncMode();
       addMessage({
         role: "bot",
         error: true,
