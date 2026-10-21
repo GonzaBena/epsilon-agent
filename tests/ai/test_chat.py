@@ -339,3 +339,9 @@ def test_system_prompt_says_what_day_it_is(monkeypatch):
     monkeypatch.setattr(chat.clock, "today_text", lambda moment=None: "miércoles 21 de octubre de 2026")
 
     assert "Hoy es miércoles 21 de octubre de 2026." in chat.system_prompt()
+
+
+def test_system_prompt_tells_the_model_not_to_claim_it_has_no_access():
+    prompt = chat.system_prompt()
+
+    assert "nunca digas que no tenés acceso" in prompt and "enviar" in prompt

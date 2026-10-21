@@ -282,7 +282,11 @@ def test_resumir_command_needs_a_name():
 
 
 def test_resumir_command_without_matches():
-    assert say("/resumir nada").text == "No encontré nada con ese nombre."
+    assert say("/resumir nada").text.startswith("Todavía no hay nada guardado")
+
+    say("+ algo guardado")  # ahora hay algo, pero no con ese nombre
+
+    assert say("/resumir nada").text.startswith("No encontré ningún archivo guardado con «nada»")
 
 
 def test_resumir_command_with_several_matches_does_not_guess(monkeypatch):

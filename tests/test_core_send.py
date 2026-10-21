@@ -96,3 +96,17 @@ def test_the_ai_tool_asks_the_channel_to_send_the_file():
 
 def test_the_ai_tool_in_the_web_reports_that_nothing_was_sent():
     assert "Biblioteca" in core.AI_RUNNERS["enviar"]("super").text
+
+
+def test_not_found_says_what_happened_and_what_to_try():
+    text = telegram("/enviar pepito").text
+
+    assert "No encontré ningún archivo guardado con «pepito»" in text and "/archivos" in text
+
+
+def test_not_found_in_an_empty_library_says_nothing_is_saved(data_dir):
+    for path in sorted(data_dir.rglob("*"), reverse=True):
+        path.unlink() if path.is_file() else path.rmdir()
+
+    assert "Todavía no hay nada guardado" in telegram("/enviar ticket de pepito").text
+    assert "Todavía no hay nada guardado" in core.handle(core.Message(text="/resumir algo")).text

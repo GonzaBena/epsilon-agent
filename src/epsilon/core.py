@@ -362,6 +362,18 @@ def _done_cmd(args: str) -> Reply:
     return Reply(f"Hecha: {task.text}")
 
 
+def _not_found(wanted: str) -> Reply:
+    """Nada coincide con ese nombre. Dice QUÉ pasó (no hay, o no con ese nombre) y qué probar: un modelo chico
+    toma un «no encontré» seco por «no tengo acceso» y se lo cuenta así al usuario."""
+    if not notes.list_files("", limit=1)[1]:
+        return Reply("Todavía no hay nada guardado: no hay notas, archivos ni tickets.")
+    shown = " ".join(wanted.split())[:60]
+    return Reply(
+        f"No encontré ningún archivo guardado con «{shown}» en el nombre. La búsqueda es por nombre: "
+        "probá con una sola palabra, o mirá lo que hay con /archivos."
+    )
+
+
 SEND_MAX_BYTES = 50 * 1024 * 1024  # lo máximo que Telegram deja subir a un bot
 SEND_MAX_MATCHES = 20
 
@@ -379,7 +391,7 @@ def _send(args: str) -> Reply:
     if "/" in wanted:  # la ruta tal como la muestra /archivos (tickets/foto.jpg): tiene que ser esa, no otra parecida
         found = [p for p in found if str(p.relative_to(notes.DATA_DIR)) == wanted]
     if not found:
-        return Reply("No encontré nada con ese nombre.")
+        return _not_found(wanted)
     if len(found) > 1:
         listing = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in found[:5])
         extra = f"\n(y {len(found) - 5} más)" if len(found) > 5 else ""
@@ -446,7 +458,7 @@ def _summarize_cmd(args: str, session: Session) -> Reply:
 
     matches = notes.find_files(args)
     if not matches:
-        return Reply("No encontré nada con ese nombre.")
+        return _not_found(args)
 
     # Si hay más de una, NO adivinamos: mostramos hasta 5 y pedimos precisión.
     if len(matches) > 1:
