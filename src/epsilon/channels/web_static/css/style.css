@@ -940,25 +940,42 @@ body.booting .log {
   gap: 0.75rem;
 }
 
-/* Lo que escribís vos: a la derecha, en un bloque. */
+/* Cada mensaje: una columna con la burbuja y, abajo, el botón de copiar. */
+.msg .col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Lo que escribís vos: a la derecha, en una burbuja con el acento. */
 .msg.user {
   justify-content: flex-end;
 }
-.msg.user .body {
+.msg.user .col {
   max-width: 80%;
+  align-items: flex-end;
+}
+.msg.user .body {
   padding: 10px 14px;
   background: var(--bubble);
   border-radius: 14px;
 }
 
-/* Lo que responde Epsilon: a la izquierda, sin burbuja, con su marca. */
+/* Lo que responde Epsilon: a la izquierda, con su marca y su propia burbuja (más neutra). */
 .msg.bot .mark {
   flex: none;
   margin-top: 0.1rem;
 }
+.msg.bot .col {
+  max-width: 68ch;
+  align-items: flex-start;
+}
 .msg.bot .body {
   min-width: 0;
-  max-width: 68ch;
+  max-width: 100%;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-radius: 14px;
 }
 
 /* Botón de copiar: aparece al pasar el mouse o con el foco; en pantallas táctiles queda siempre visible. */
@@ -972,9 +989,6 @@ body.booting .log {
   color: var(--muted);
   cursor: pointer;
   opacity: 0;
-}
-.msg.user .msg-copy {
-  margin-left: auto;
 }
 .msg:hover .msg-copy,
 .msg-copy:focus-visible {
@@ -1440,7 +1454,7 @@ textarea::placeholder {
   .status {
     display: none;
   }
-  .msg.user .body {
+  .msg.user .col {
     max-width: 92%;
   }
 }

@@ -209,9 +209,10 @@ function render(message) {
     body.append(box);
   }
 
-  body.append(copyButton(message.text));
-
-  row.append(body);
+  // La burbuja y, debajo (afuera de ella), el botón de copiar.
+  const column = make("div", "col");
+  column.append(body, copyButton(message.text));
+  row.append(column);
   log.append(row);
   return row;
 }

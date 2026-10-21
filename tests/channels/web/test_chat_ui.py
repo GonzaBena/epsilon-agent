@@ -529,7 +529,7 @@ def test_the_chat_exposes_the_model_guard_and_asks_before_sending_after_a_model_
 def test_every_bubble_gets_a_copy_button_that_copies_the_original_text():
     code = js("app.js")
 
-    assert "body.append(copyButton(message.text))" in code  # tuyos y de la IA, con el texto sin dibujar
+    assert "column.append(body, copyButton(message.text))" in code  # tuyos y de la IA, debajo de la burbuja, con el texto sin dibujar
     assert "navigator.clipboard.writeText(text)" in code
     assert ".msg-copy" in static_path("style.css").read_text(encoding="utf-8")
 
