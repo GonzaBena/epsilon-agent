@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import importlib.util
 from pathlib import Path
 import re
+import stat
 import tomllib
 from types import ModuleType
 
@@ -72,9 +73,9 @@ def _setting(name: str, table: object) -> PluginSetting:
     if (
         not isinstance(key, str)
         or not re.fullmatch(rf"{prefix}[A-Z0-9_]+", key, re.ASCII)
-        or key == f"{prefix}ENABLED"
+        or key.endswith("_ENABLED")
     ):
-        raise PluginError(f"La clave «{key}» tiene que empezar con {prefix} (y no ser {prefix}ENABLED).")
+        raise PluginError(f"La clave «{key}» tiene que empezar con {prefix} y no puede terminar en _ENABLED (esa la pone Epsilon).")
     if key in {own.key for own in config.SETTINGS}:
         raise PluginError(f"La clave «{key}» ya es un ajuste de Epsilon.")
     pattern = table.get("pattern", DEFAULT_PATTERN)
@@ -95,9 +96,13 @@ def read_manifest(folder: Path) -> Plugin:
     """Lee y valida el manifiesto de la carpeta de un plugin. Lanza PluginError si no sirve."""
     path = folder / MANIFEST
     try:
-        if path.stat().st_size > MAX_MANIFEST_BYTES:
+        if not stat.S_ISREG(path.stat().st_mode):  # un FIFO o /dev/zero colgaría o llenaría la memoria
+            raise PluginError(f"{MANIFEST} tiene que ser un archivo común.")
+        with path.open("rb") as f:
+            raw = f.read(MAX_MANIFEST_BYTES + 1)  # nunca más que el tope, aunque el archivo crezca
+        if len(raw) > MAX_MANIFEST_BYTES:
             raise PluginError(f"{MANIFEST} es demasiado grande (máximo {MAX_MANIFEST_BYTES // 1024} KB).")
-        data = tomllib.loads(path.read_bytes().decode("utf-8"))
+        data = tomllib.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         raise PluginError(f"Falta {MANIFEST}.") from None
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
@@ -110,14 +115,21 @@ def read_manifest(folder: Path) -> Plugin:
         raise PluginError(f"«name» ({name}) tiene que ser igual al nombre de la carpeta ({folder.name}).")
     if name in RESERVED_NAMES:
         raise PluginError(f"«{name}» es un canal de Epsilon.")
+    if f"{name.upper()}_ENABLED" in {own.key for own in config.SETTINGS}:
+        raise PluginError(f"«{name}» choca con un ajuste de Epsilon ({name.upper()}_ENABLED): elegí otro nombre.")
 
     entry_name = data.get("entry", DEFAULT_ENTRY)
     if not isinstance(entry_name, str):
         raise PluginError("«entry» tiene que ser un texto.")
-    entry = (folder / entry_name).resolve()
-    if not entry.is_relative_to(folder.resolve()):
+    try:
+        entry = (folder / entry_name).resolve()
+        inside = entry.is_relative_to(folder.resolve())
+        is_file = inside and entry.is_file()
+    except (OSError, RuntimeError):  # sin permisos, o un lazo de symlinks
+        raise PluginError(f"No se puede leer el archivo «{entry_name}».") from None
+    if not inside:
         raise PluginError("«entry» apunta fuera de la carpeta del plugin.")
-    if not entry.is_file():
+    if not is_file:
         raise PluginError(f"No existe el archivo «{entry_name}».")
 
     raw_settings = data.get("settings", [])
@@ -159,6 +171,9 @@ def discover() -> Discovery:
                 raise PluginError(f"La clave «{sorted(repeated)[0]}» ya la usa otro plugin.")
         except PluginError as e:
             invalid[folder.name] = str(e)
+            continue
+        except OSError as e:  # una carpeta que no se puede ni mirar no tumba a las demás
+            invalid[folder.name] = f"No se pudo leer la carpeta: {type(e).__name__}."
             continue
         taken.update(s.key for s in plugin.settings)
         plugins[plugin.name] = plugin

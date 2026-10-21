@@ -413,7 +413,7 @@ def create_app() -> FastAPI:
         key = f"{name.upper()}_ENABLED"
         try:
             if body.enabled:
-                if not main.load(name).is_configured(os.environ):
+                if not main.check_configured(name, os.environ):
                     raise main.ChannelError(main.not_configured_message(name))
                 config.update({key: "si"}, [])
                 main.start_channel(name)

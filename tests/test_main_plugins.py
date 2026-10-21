@@ -180,3 +180,58 @@ def test_a_running_plugin_removed_from_disk_stays_until_stopped(plugins_dir, mon
     main.stop_channel("fake")
     main.refresh_plugins()
     assert "fake" not in main.CHANNELS
+
+
+# --- Hallazgos de la revisión final ------------------------------------------
+
+
+def test_a_plugin_named_like_an_epsilon_setting_is_listed_invalid_and_nothing_breaks(plugins_dir):
+    toml = TOML.replace('name = "fake"', 'name = "voice"').replace("FAKE_", "VOICE_")
+    make_plugin(plugins_dir, "voice", toml, CODE)
+
+    main.refresh_plugins()  # no tiene que lanzar
+
+    assert "voice" in main.INVALID and "voice" not in main.CHANNELS
+
+
+def test_a_plugin_whose_is_configured_raises_is_stopped_but_the_web_runs(plugins_dir, monkeypatch):
+    code = CODE.replace("return bool(env.get(\"FAKE_TOKEN\"))", 'raise RuntimeError("no sé si estoy configurado")')
+    make_plugin(plugins_dir, "fake", TOML, code)
+    monkeypatch.setenv("FAKE_ENABLED", "si")
+    web = fake_web_and_real_plugins(monkeypatch)
+
+    main.main()
+
+    assert web.threads == [threading.main_thread()]
+    assert state.snapshot()["fake"]["state"] == "stopped"
+    assert "RuntimeError" in state.snapshot()["fake"]["detail"]
+    with pytest.raises(main.ChannelError, match="RuntimeError"):
+        main.start_channel("fake")
+
+
+def test_a_plugin_whose_reset_raises_cannot_start_but_does_not_crash(plugins_dir, monkeypatch):
+    code = CODE.replace("_stop.clear()", 'raise RuntimeError("reset roto")')
+    make_plugin(plugins_dir, "fake", TOML, code)
+    monkeypatch.setenv("FAKE_TOKEN", "x")
+    main.refresh_plugins()
+
+    with pytest.raises(main.ChannelError, match="reset roto"):
+        main.start_channel("fake")
+    assert state.snapshot()["fake"]["state"] == "stopped"
+
+
+def test_a_plugin_whose_stop_raises_reports_it_instead_of_crashing(plugins_dir, monkeypatch):
+    code = CODE.replace("    _stop.set()", '    raise RuntimeError("stop roto")')
+    make_plugin(plugins_dir, "fake", TOML, code)
+    monkeypatch.setenv("FAKE_TOKEN", "x")
+    main.refresh_plugins()
+    main.start_channel("fake")
+    module = main.load("fake")
+    for _ in range(100):
+        if module.THREAD:
+            break
+        threading.Event().wait(0.02)
+
+    with pytest.raises(main.ChannelError, match="stop roto"):
+        main.stop_channel("fake")
+    module._stop.set()  # que el hilo de la prueba termine

@@ -116,3 +116,12 @@ def test_plugin_token_never_appears_in_api_responses(client, plugins, monkeypatc
     assert TOKEN not in str(config_body)
     entry = next(s for s in config_body["settings"] if s["key"] == "FAKE_TOKEN")
     assert entry["set"] is True and entry["length"] == len(TOKEN)
+
+
+def test_a_plugin_whose_is_configured_raises_gives_409_with_the_reason(client, plugins):
+    code = CODE.replace("return bool(env.get(\"FAKE_TOKEN\"))", 'raise RuntimeError("no sé")')
+    make_plugin(plugins, "fake", TOML, code)
+
+    reply = client.put("/api/channels/fake", json={"enabled": True, "confirmed": True})
+
+    assert reply.status_code == 409 and "RuntimeError" in reply.json()["detail"]

@@ -209,3 +209,52 @@ def test_listing_never_imports_the_code(root):
     assert "discord" in found.plugins
     assert not marker.exists()
     assert "epsilon_plugin_discord" not in sys.modules
+
+
+# --- Hallazgos de la revisión final ------------------------------------------
+
+
+def test_a_plugin_whose_enabled_key_is_an_epsilon_setting_is_invalid(root):
+    # «voice» generaría VOICE_ENABLED, que ya es un ajuste de Epsilon
+    toml = GOOD.replace('name = "discord"', 'name = "voice"').replace("DISCORD_", "VOICE_")
+    assert invalid_reason(root, name="voice", toml=toml)
+
+
+def test_a_declared_key_ending_in_enabled_is_invalid(root):
+    # FOO_BAR_ENABLED sería el interruptor de un plugin llamado «foo_bar»
+    assert invalid_reason(root, toml=GOOD.replace("DISCORD_TOKEN", "DISCORD_BAR_ENABLED"))
+
+
+def test_a_fifo_as_manifest_is_invalid_and_does_not_hang(root):
+    import os
+    import threading
+
+    folder = make_plugin(root)
+    (folder / "plugin.toml").unlink()
+    os.mkfifo(folder / "plugin.toml")
+    result = {}
+    worker = threading.Thread(target=lambda: result.update(found=channels.discover()), daemon=True)
+    worker.start()
+    worker.join(2)
+    assert not worker.is_alive(), "discover() se quedó esperando el FIFO"
+    assert "discord" in result["found"].invalid
+
+
+def test_an_entry_inside_an_unreadable_folder_is_invalid_not_a_crash(root):
+    folder = make_plugin(root, toml="entry = \"sub/x.py\"\n" + GOOD)
+    sub = folder / "sub"
+    sub.mkdir()
+    (sub / "x.py").write_text("")
+    sub.chmod(0)
+    try:
+        assert "discord" in channels.discover().invalid
+    finally:
+        sub.chmod(0o755)
+
+
+def test_a_manifest_that_is_a_symlink_to_a_device_is_invalid(root):
+    # Regresión del mismo arreglo que el FIFO: no es un archivo común, no se lee (y /dev/zero no se agota).
+    folder = make_plugin(root)
+    (folder / "plugin.toml").unlink()
+    (folder / "plugin.toml").symlink_to("/dev/zero")
+    assert "discord" in channels.discover().invalid

@@ -83,13 +83,25 @@ def switched_off(name: str) -> bool:
     return key in config.BY_KEY and not config.enabled(key)
 
 
+def check_configured(name: str, env) -> bool:
+    """¿Tiene su configuración completa? Carga el canal; si es un plugin y su código falla (al
+    cargar o dentro de is_configured) lanza ChannelError con el motivo, en vez de tumbar a Epsilon."""
+    channel = load(name)
+    if not is_plugin(name):
+        return channel.is_configured(env)
+    try:
+        return bool(channel.is_configured(env))
+    except (Exception, SystemExit) as e:  # código ajeno: nada de lo que haga puede tumbar el arranque
+        raise ChannelError(describe(channel, e)) from None
+
+
 def _usable(name: str, env) -> bool:
     """¿Está prendido y con su configuración completa? Un canal apagado ni se carga (así un plugin
     apagado no corre código). Si un plugin prendido no carga, queda «detenido» con el motivo."""
     if switched_off(name):
         return False
     try:
-        return load(name).is_configured(env)
+        return check_configured(name, env)
     except ChannelError as e:
         state.set(name, "stopped", str(e))
         return False
@@ -117,21 +129,36 @@ def switchable(name: str) -> bool:
     return f"{name.upper()}_ENABLED" in config.BY_KEY and hasattr(load(name), "stop")
 
 
+def _reset(name: str, channel) -> None:
+    """Que no quede un pedido de apagado viejo. El reset de un plugin que falla no tumba nada."""
+    try:
+        getattr(channel, "reset", lambda: None)()
+    except (Exception, SystemExit) as e:
+        if not is_plugin(name):
+            raise
+        raise ChannelError(describe(channel, e)) from None
+
+
 def start_channel(name: str) -> None:
     """Prende un canal opcional en su propio hilo (si ya está corriendo, no hace nada)."""
     with _control:
         try:
             channel = load(name)
+            configured = check_configured(name, os.environ)
         except ChannelError as e:
             state.set(name, "stopped", str(e))
             raise
-        if not channel.is_configured(os.environ):
+        if not configured:
             raise ChannelError(not_configured_message(name))
         thread = _threads.get(name)
         if thread is not None and thread.is_alive():
             return
         _stopping.discard(name)
-        getattr(channel, "reset", lambda: None)()  # que no quede un pedido de apagado viejo
+        try:
+            _reset(name, channel)
+        except ChannelError as e:
+            state.set(name, "stopped", str(e))
+            raise
         state.set(name, "starting")
         thread = threading.Thread(target=run_isolated, args=(name, channel), name=f"canal-{name}", daemon=True)
         _threads[name] = thread
@@ -149,7 +176,13 @@ def stop_channel(name: str, timeout: float = 15) -> None:
             state.set(name, "off", "Apagado.")
             return
         _stopping.add(name)
-        channel.stop()
+        try:
+            channel.stop()
+        except (Exception, SystemExit) as e:
+            _stopping.discard(name)
+            if not is_plugin(name):
+                raise
+            raise ChannelError(describe(channel, e)) from None
         thread.join(timeout)
         if thread.is_alive():
             _stopping.discard(name)
