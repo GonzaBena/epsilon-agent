@@ -72,6 +72,11 @@ Una página nueva «Permisos», basada en el mockup que hizo la persona
   `/resumir` bloqueada a pedido de la persona (es una escritura, pero la pidió bloqueada). Desde ahí se
   cambia herramienta por herramienta.
 - Una barra «Tenés cambios sin guardar» con **Descartar** y **Guardar cambios**.
+- Si hay cambios sin guardar y la persona intenta salir de la sección (otro enlace del menú o de la barra
+  de arriba, atrás, cerrar la pestaña), la página avisa que hay cambios y deja elegir **Guardar** o
+  **Descartar** (salir sin guardar), o quedarse en la página para seguir editando (mi llamada: sin una
+  tercera salida sería fácil perder los cambios sin querer). Al guardar, se sale recién después de que el
+  guardado salió bien; si falla, la persona se queda y ve el error.
 - Se agrega «Permisos» a la barra de arriba y al menú de la izquierda, como en el mockup. Mi llamada:
   el mockup tiene otras entradas (Memoria, Docs, Resúmenes…) que no son parte de este trabajo y no se tocan.
 
@@ -121,6 +126,7 @@ Una página nueva «Permisos», basada en el mockup que hizo la persona
 - «No» corta el turno y espera el próximo mensaje.
 - Estado inicial: lectura permitida, escritura pregunta, borrado bloqueado, y `/resumir` bloqueada.
 - Sin perfiles: un solo conjunto de valores iniciales.
+- Al salir de la pantalla con cambios sin guardar, avisa y permite guardar o descartar.
 - Se ve como el mockup de la pantalla de permisos.
 
 ## Lo que queda a criterio de quien construye
