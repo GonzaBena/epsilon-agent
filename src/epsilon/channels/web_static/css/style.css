@@ -2674,9 +2674,52 @@ a.ghost {
   outline: 1px solid var(--accent-line);
 }
 .palette-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Títulos de sección (Favoritos, un proveedor): no se eligen. */
+.palette-heading {
+  padding: 0.6rem 0.65rem 0.25rem;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.palette-heading:first-child {
+  padding-top: 0.2rem;
+}
+/* La estrella: se toca con el mouse; con el teclado, Ctrl+F. */
+.palette-star {
+  flex: none;
+  width: 1.1rem;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}
+.palette-star.is-on {
+  color: var(--accent);
+}
+.palette-star:hover {
+  color: var(--accent);
+}
+/* Un favorito cuyo proveedor no responde: se ve, pero apagado. */
+.palette-item.is-down .palette-name {
+  opacity: 0.55;
+}
+.palette-item.is-down .palette-badge {
+  color: var(--muted);
+}
+.palette-hint {
+  margin: 0;
+  padding: 0.45rem 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
 }
 .palette-badge {
   flex: none;

@@ -109,3 +109,58 @@ def test_reopening_the_palette_shows_the_previous_list_while_it_refreshes():
     palette = js("palette.js")
 
     assert "state.loaded" in palette and "state = { ...state, loaded: false }" not in palette
+
+
+# --- Favoritos y agrupación por proveedor ----------------------------------------
+
+
+def layout(favorites, query="", up=None):
+    return run_node(
+        f"window.epsilonPalette.layout({json.dumps(MODELS)}, {json.dumps(favorites)}, {json.dumps(query)}, {json.dumps(up)})"
+    )
+
+
+def summary(rows):
+    return [row["text"] if row["type"] == "heading" else row["id"] + ("*" if row["favorite"] else "") for row in rows]
+
+
+@pytest.mark.skipif(not NODE, reason="node no está instalado")
+def test_an_empty_search_shows_favorites_first_and_then_one_group_per_provider():
+    rows = layout(["ollama:qwen3:8b"])
+
+    assert summary(rows) == [
+        "Favoritos", "ollama:qwen3:8b*",
+        "gemini", "gemini:gemini-3.1-flash-lite",
+        "ollama", "ollama:qwen3:8b*", "ollama:llama3.1:8b",
+    ]
+
+
+@pytest.mark.skipif(not NODE, reason="node no está instalado")
+def test_without_favorites_there_is_no_favorites_heading():
+    assert summary(layout([]))[0] == "gemini"
+
+
+@pytest.mark.skipif(not NODE, reason="node no está instalado")
+def test_typing_gives_a_flat_filtered_list_with_favorites_first_and_no_headings():
+    rows = layout(["ollama:llama3.1:8b"], query="8b")
+
+    assert summary(rows) == ["ollama:llama3.1:8b*", "ollama:qwen3:8b"]
+    assert all(row["type"] == "model" for row in rows)
+
+
+@pytest.mark.skipif(not NODE, reason="node no está instalado")
+def test_a_favorite_of_a_provider_that_did_not_answer_is_kept_but_marked_down():
+    rows = [r for r in layout(["ollama:phi4", "gemini:otro"], up=["gemini"]) if r["type"] == "model" and r["section"] == "favorites"]
+
+    assert [(r["id"], r["down"]) for r in rows] == [("ollama:phi4", True), ("gemini:otro", False)]
+    assert not any(r.get("down") for r in layout(["ollama:phi4"], up=None))  # sin saber todavía, nada se apaga
+
+
+def test_ctrl_f_and_the_star_save_favorites_through_the_server():
+    palette = js("palette.js")
+
+    assert '"/api/models/favorites"' in palette and 'method: "PUT"' in palette
+    assert 'event.key.toLowerCase() === "f"' in palette and "toggleFavorite" in palette
+    assert "event.preventDefault()" in palette  # que Ctrl+F no abra la búsqueda del navegador
+    css = static_path("style.css").read_text(encoding="utf-8")
+    assert ".palette-heading" in css and ".palette-star" in css

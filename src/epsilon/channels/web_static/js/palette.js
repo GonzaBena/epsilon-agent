@@ -22,6 +22,34 @@
     return models.some((model) => model.id === typed) ? null : typed;
   }
 
+  // Las filas de la paleta, en orden. Con el cuadro vacío: «Favoritos» y un título por proveedor con sus
+  // modelos (un favorito sale en Favoritos y también en el suyo). Escribiendo: lista plana filtrada, con los
+  // favoritos primero. `up` son los proveedores que respondieron (null = todavía no se sabe): un favorito de
+  // otro proveedor se muestra igual, pero marcado `down`.
+  // Filas: {type: "heading", text} o {type: "model", id, section, favorite, down}.
+  function layout(models, favorites, query, up) {
+    const isFavorite = (id) => favorites.includes(id);
+    const isDown = (id) => up !== null && !up.includes(id.split(":")[0]);
+    const row = (id, section) => ({ type: "model", id, section, favorite: isFavorite(id), down: isDown(id) });
+
+    if (query.trim()) {
+      const found = filter(models, query).map((model) => model.id);
+      const ordered = [...found.filter(isFavorite), ...found.filter((id) => !isFavorite(id))];
+      return ordered.map((id) => row(id, "found"));
+    }
+    const rows = [];
+    if (favorites.length) {
+      rows.push({ type: "heading", text: "Favoritos" });
+      for (const id of favorites) rows.push(row(id, "favorites"));
+    }
+    const providers = [...new Set(models.map((model) => model.provider))];
+    for (const provider of providers) {
+      rows.push({ type: "heading", text: provider });
+      for (const model of models) if (model.provider === provider) rows.push(row(model.id, provider));
+    }
+    return rows;
+  }
+
   // --- Modal de aviso (se arma con el DOM al usarlo) -----------------------------------------
   // Devuelve una promesa: true si se confirma, false si se cancela (Cancelar, Escape o clic afuera).
   function modal({ title, body, confirm, cancel }) {
@@ -68,10 +96,10 @@
 
   // --- La paleta ---------------------------------------------------------------------------
   let dialog = null;
-  let state = { models: [], providers: [], errors: {}, overrides: [], current: "", loaded: false };
-  let shown = []; // las filas de la lista: [{id, extra}]
+  let state = { models: [], providers: [], errors: {}, overrides: [], favorites: [], current: "", loaded: false };
+  let shown = []; // los modelos elegibles de la lista, sin los títulos: [{id, extra, section}]
   let active = 0;
-  let input, list, notes, status;
+  let input, list, notes, status, hint;
 
   function build() {
     dialog = document.createElement("dialog");
@@ -98,7 +126,10 @@
     status = document.createElement("p");
     status.className = "palette-status";
     status.setAttribute("role", "status");
-    dialog.append(input, list, notes, status);
+    hint = document.createElement("p");
+    hint.className = "palette-hint";
+    hint.textContent = "Ctrl+F marca o desmarca el favorito";
+    dialog.append(input, list, notes, status, hint);
 
     input.addEventListener("input", () => {
       active = 0;
@@ -111,6 +142,9 @@
         paintActive();
       } else if (event.key === "Enter" && !event.isComposing) {
         if (shown.length) pick(shown[active].id);
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        // Ctrl+F: dentro de la paleta es «favorito» y no la búsqueda del navegador.
+        if (shown.length && !shown[active].extra) toggleFavorite(shown[active].id);
       } else {
         return;
       }
@@ -123,12 +157,13 @@
   }
 
   function paintActive() {
-    list.querySelectorAll("li").forEach((row, index) => {
+    const options = list.querySelectorAll(".palette-item");
+    options.forEach((row, index) => {
       row.setAttribute("aria-selected", String(index === active));
     });
     if (shown.length) {
       input.setAttribute("aria-activedescendant", `palette-opt-${active}`);
-      list.children[active].scrollIntoView({ block: "nearest" });
+      options[active].scrollIntoView({ block: "nearest" });
     } else {
       input.removeAttribute("aria-activedescendant");
     }
@@ -136,32 +171,26 @@
 
   function paint() {
     const query = input.value;
-    shown = filter(state.models, query).map((model) => ({ id: model.id, extra: false }));
+    const rows = layout(state.models, state.favorites, query, state.loaded ? state.providers : null);
+    shown = rows.filter((row) => row.type === "model").map((row) => ({ id: row.id, extra: false, section: row.section }));
     const typed = usable(query, state.models, state.providers);
-    if (typed) shown.push({ id: typed, extra: true });
+    if (typed) shown.push({ id: typed, extra: true, section: "found" });
+    active = Math.min(active, Math.max(0, shown.length - 1));
     list.replaceChildren();
-    shown.forEach((item, index) => {
-      const row = document.createElement("li");
-      row.id = `palette-opt-${index}`;
-      row.className = "palette-item";
-      row.setAttribute("role", "option");
-      const name = document.createElement("span");
-      name.className = "palette-name";
-      name.textContent = item.extra ? `Usar ${item.id}` : item.id;
-      row.append(name);
-      if (item.id === state.current) {
-        const badge = document.createElement("span");
-        badge.className = "palette-badge";
-        badge.textContent = "actual";
-        row.append(badge);
+
+    let index = 0;
+    for (const item of rows) {
+      if (item.type === "heading") {
+        const heading = document.createElement("li");
+        heading.className = "palette-heading";
+        heading.setAttribute("role", "presentation");
+        heading.textContent = item.text;
+        list.append(heading);
+        continue;
       }
-      // mousedown (no click) para que el cuadro de búsqueda no pierda el foco.
-      row.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        pick(item.id);
-      });
-      list.append(row);
-    });
+      list.append(modelRow(item, index++));
+    }
+    if (typed) list.append(modelRow({ id: typed, extra: true, favorite: false, down: false }, index++));
     if (!shown.length) {
       const empty = document.createElement("li");
       empty.className = "palette-empty";
@@ -183,6 +212,80 @@
       line.textContent = "Las tareas con modelo propio no cambian.";
       notes.append(line);
     }
+  }
+
+  // Una fila elegible: la estrella (tocable), el nombre y, si corresponde, «actual» o «sin conexión».
+  function modelRow(item, index) {
+    const row = document.createElement("li");
+    row.id = `palette-opt-${index}`;
+    row.className = item.down ? "palette-item is-down" : "palette-item";
+    row.setAttribute("role", "option");
+    if (!item.extra) {
+      const star = document.createElement("span");
+      star.className = item.favorite ? "palette-star is-on" : "palette-star";
+      star.textContent = item.favorite ? "★" : "☆";
+      star.title = item.favorite ? "Quitar de favoritos" : "Marcar como favorito";
+      star.setAttribute("aria-hidden", "true"); // el teclado usa Ctrl+F; el nombre accesible ya dice si lo es
+      star.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation(); // tocar la estrella no elige el modelo
+        toggleFavorite(item.id);
+      });
+      row.append(star);
+      row.setAttribute("aria-label", item.favorite ? `${item.id}, favorito` : item.id);
+    }
+    const name = document.createElement("span");
+    name.className = "palette-name";
+    name.textContent = item.extra ? `Usar ${item.id}` : item.id;
+    row.append(name);
+    if (item.id === state.current) row.append(badge("actual"));
+    if (item.down) row.append(badge("sin conexión"));
+    // mousedown (no click) para que el cuadro de búsqueda no pierda el foco.
+    row.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      pick(item.id);
+    });
+    return row;
+  }
+
+  function badge(text) {
+    const node = document.createElement("span");
+    node.className = "palette-badge";
+    node.textContent = text;
+    return node;
+  }
+
+  // Marca o desmarca un favorito y lo guarda en el servidor (la lista entera). Se ve al instante; si el
+  // servidor no lo guarda, vuelve a como estaba. La fila resaltada se queda en el mismo modelo y sección.
+  async function toggleFavorite(id) {
+    const before = state.favorites;
+    const keep = shown[active];
+    state.favorites = before.includes(id) ? before.filter((fav) => fav !== id) : [...before, id];
+    repaintKeeping(keep);
+    status.textContent = "";
+    try {
+      const response = await fetch("/api/models/favorites", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorites: state.favorites }),
+      });
+      if (!response.ok) throw new Error();
+      state.favorites = (await response.json()).favorites;
+    } catch {
+      state.favorites = before;
+      status.textContent = "No pude guardar el favorito.";
+    }
+    repaintKeeping(keep);
+  }
+
+  function repaintKeeping(previous) {
+    paint();
+    if (!previous) return;
+    // Misma fila si sigue; si no (se quitó de Favoritos), el mismo modelo en otra sección.
+    let at = shown.findIndex((item) => item.id === previous.id && item.section === previous.section);
+    if (at < 0) at = shown.findIndex((item) => item.id === previous.id);
+    if (at >= 0) active = at;
+    paintActive();
   }
 
   async function pick(id) {
@@ -237,6 +340,7 @@
         providers: data.providers,
         errors: data.errors,
         overrides: data.overrides,
+        favorites: data.favorites || [],
         current: data.default,
         loaded: true,
       };
@@ -248,5 +352,5 @@
   }
 
   window.epsilonModal = modal;
-  window.epsilonPalette = { open, filter, usable };
+  window.epsilonPalette = { open, filter, usable, layout };
 })();
