@@ -123,20 +123,10 @@
       </p>
 
       <!-- Modo IA. Al abrir un chat nuevo se elige el tipo (queda fijo cuando se manda el primer
-           mensaje); en uno de modo IA, la barra muestra contexto, costo y límite (app.js). -->
+           mensaje); en uno de modo IA, el panel de la derecha muestra tokens, costo y límite (app.js). -->
       <div id="mode-picker" class="mode-picker" role="group" aria-label="Tipo de chat" hidden>
         <button id="mode-normal" class="mode-btn" type="button" aria-pressed="true">Chat normal</button>
         <button id="mode-ai" class="mode-btn" type="button" aria-pressed="false">Chat con IA</button>
-      </div>
-
-      <div id="ai-bar" class="ai-bar" role="group" aria-label="Costo del chat con IA" hidden>
-        <span class="ai-stat">Contexto: <strong id="ai-context">0</strong> tokens</span>
-        <span class="ai-stat">Costo: <strong id="ai-cost">US$ 0.00</strong></span>
-        <label class="ai-stat" for="ai-limit">Límite US$
-          <input id="ai-limit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" size="6">
-        </label>
-        <button id="ai-limit-save" class="pill" type="button">Cambiar límite</button>
-        <p id="ai-blocked" class="ai-blocked" role="status" hidden></p>
       </div>
 
       <form id="composer" class="composer" autocomplete="off">
@@ -227,6 +217,21 @@
                el comando útil en el cuadro de texto; no lo envía. -->
           <ul class="context" id="context"></ul>
           <p class="context-empty" id="context-empty">Acá aparece lo que guardes en esta conversación: archivos, notas, CSV y resúmenes.</p>
+        </section>
+
+        <!-- Solo en una conversación de modo IA (app.js lo muestra u oculta): cuánto lleva gastado y su límite. -->
+        <section id="ai-bar" class="ai-bar" aria-labelledby="h-ai-cost" hidden>
+          <h2 class="side-title" id="h-ai-cost">Costo del chat</h2>
+          <dl class="ai-stats">
+            <div class="ai-stat"><dt>Tokens en contexto</dt><dd id="ai-context">0</dd></div>
+            <div class="ai-stat"><dt>Costo</dt><dd id="ai-cost">US$ 0.00</dd></div>
+            <div class="ai-stat">
+              <dt><label for="ai-limit">Límite US$</label></dt>
+              <dd><input id="ai-limit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" size="6"></dd>
+            </div>
+          </dl>
+          <button id="ai-limit-save" class="pill" type="button">Cambiar límite</button>
+          <p id="ai-blocked" class="ai-blocked" role="status" hidden></p>
         </section>
       </div>
     </aside>

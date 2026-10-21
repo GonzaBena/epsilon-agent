@@ -366,11 +366,12 @@ def test_the_open_telegram_conversation_refreshes_itself_and_follows_nuevo():
 # --- El panel derecho ya no muestra canales (tienen su página) ---------------------
 
 
-def test_the_right_panel_has_only_tools_and_context():
+def test_the_right_panel_has_only_tools_context_and_the_ai_cost():
     right = right_panel()
     headings = re.findall(r"<h2[^>]*>\s*(.*?)\s*</h2>", right, re.S)
 
-    assert headings == ["Panel", "Herramientas", "Contexto"] or headings == ["Herramientas", "Contexto"]
+    assert headings[0] in ("Panel", "Herramientas")
+    assert headings[-3:] == ["Herramientas", "Contexto", "Costo del chat"]
     for gone in ("side-channels", "Administrar canales", "Canales"):
         assert gone not in right, gone
 
@@ -404,10 +405,17 @@ def test_new_chat_mode_selector_exists():
     assert "Chat con IA" in html and "IA" in html and "Gemini" not in html
 
 
+def test_ai_cost_lives_in_the_right_panel_below_the_context():
+    right = right_panel()
+
+    assert 'id="ai-bar"' in right and 'id="ai-bar"' not in chat_html().replace(right, "")
+    assert right.index("h-context") < right.index("h-ai-cost")
+
+
 def test_ai_bar_exists_and_is_hidden_by_default():
     html = chat_html()
 
-    assert re.search(r'<div[^>]*id="ai-bar"[^>]*\bhidden\b', html)
+    assert re.search(r'<section[^>]*id="ai-bar"[^>]*\bhidden\b', html)
     for needed in ("ai-context", "ai-cost", "ai-limit", "ai-limit-save", "ai-blocked"):
         assert f'id="{needed}"' in html, needed
 
