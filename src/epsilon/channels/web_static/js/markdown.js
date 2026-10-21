@@ -10,6 +10,7 @@
 const md = window.markdownit
   ? window.markdownit({ html: false, linkify: false, breaks: true }).disable("image")
   : null;
+if (md && window.katex && window.markdownMath) md.use((m) => window.markdownMath(m, window.katex));
 
 // Devuelve un fragmento con el texto ya dibujado. Si la librería no cargó, el texto plano.
 window.renderMarkdown = function renderMarkdown(text) {

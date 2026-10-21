@@ -404,6 +404,34 @@ def test_markdown_it_is_configured_so_model_output_cannot_inject_html():
     assert "<script" not in done.stdout and "<img" not in done.stdout and 'href="javascript' not in done.stdout
 
 
+def test_the_chat_loads_katex_and_the_math_rule_before_markdown_js():
+    html = page("index.html")
+
+    order = ["vendor/katex.min.js", "math.js", "markdown.js", "app.js"]
+    assert [html.index(f"/static/js/{name}") for name in order] == sorted(html.index(f"/static/js/{name}") for name in order)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="sin node no se puede correr KaTeX")
+def test_formulas_are_drawn_as_mathml_and_cannot_inject_html_or_links():
+    # MathML y no HTML con estilos: la política de seguridad no deja estilos en línea.
+    script = (
+        "global.window = {};"
+        "const md = require(process.argv[1])({html:false, linkify:false, breaks:true}).disable('image');"
+        "require(process.argv[2])(md, require(process.argv[3]));"
+        "process.stdout.write(md.render(process.argv[4]));"
+    )
+    text = r"$$\frac{a}{b}$$ y $v$, cuesta $5 y $10. $\href{javascript:alert(1)}{x}$ $<img src=x onerror=alert(1)>$"
+    done = subprocess.run(
+        ["node", "-e", script, str(static_path("vendor/markdown-it.min.js")), str(static_path("math.js")),
+         str(static_path("vendor/katex.min.js")), text],
+        capture_output=True, text=True,
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "<math" in done.stdout and "<mfrac>" in done.stdout and "cuesta $5 y $10" in done.stdout
+    assert "style=" not in done.stdout and "<img" not in done.stdout and "<a " not in done.stdout
+
+
 def test_markdown_js_matches_the_options_the_test_above_checks():
     source = page("markdown.js")
 

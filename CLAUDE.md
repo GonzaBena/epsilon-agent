@@ -122,7 +122,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - La web escucha SOLO en 127.0.0.1, sin login (uso personal; el celular usa
   Telegram). Cada request valida Host y Origin; no sacar esas defensas ni
   exponerla a la red sin agregar contraseña y HTTPS.
-- Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML. Única excepción: las respuestas del bot pasan por markdown-it (`js/vendor/`, `js/markdown.js`) con `html: false` e imágenes apagadas, y su salida se parsea con `DOMParser` (nada de `innerHTML`); un test vigila esas opciones.
+- Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML. Única excepción: las respuestas del bot pasan por markdown-it (`js/vendor/`, `js/markdown.js`) con `html: false` e imágenes apagadas, y fórmulas `$…$`/`$$…$$` con KaTeX (`js/math.js`, `js/vendor/katex.min.js`) en salida **MathML** (la CSP no deja estilos en línea, así que no hay HTML de KaTeX, CSS ni fuentes), y su salida se parsea con `DOMParser` (nada de `innerHTML`); un test vigila esas opciones.
 - El patrón del id de conversación está en `conversations.py` Y en `app.js`; un test
   vigila que coincidan (si se cambia uno, cambiar el otro).
 - Los permisos de las herramientas de la IA se aplican en código (`core._run_calls`): una herramienta bloqueada no se le ofrece al modelo y nunca corre, diga lo que diga el modelo.

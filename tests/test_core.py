@@ -24,6 +24,16 @@ def test_plus_saves_dated_line_in_inbox(tmp_path, monkeypatch):
     assert saved == f"- {date.today().isoformat()} comprar filamento\n"
 
 
+def test_plus_keeps_a_multiline_or_markdown_note_out_of_a_list_item(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    say("+ # Título\nlínea dos")
+
+    saved = (tmp_path / "inbox.md").read_text(encoding="utf-8")
+    assert saved == f"*{date.today().isoformat()}*\n\n# Título\nlínea dos\n\n"
+    assert not saved.startswith("- ")
+
+
 def test_plus_without_text_asks_for_it(tmp_path, monkeypatch):
     use_tmp_data(tmp_path, monkeypatch)
 
