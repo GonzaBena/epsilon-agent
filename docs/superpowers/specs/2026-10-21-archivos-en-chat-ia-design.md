@@ -56,7 +56,7 @@ aceptando que cuesta más tokens.
 | Ajuste | Por defecto | Qué limita |
 |---|---|---|
 | `CHAT_MAX_FILES` | 5 | archivos por mensaje |
-| `CHAT_MAX_MB` | 30 | tamaño total de los archivos de un mensaje |
+| `CHAT_MAX_MB` | 15 | tamaño total de los archivos de un mensaje |
 
 El texto sigue con su tope de `summarize.MAX_TEXT` (300.000 caracteres) por archivo. Valores fuera de rango o inválidos
 en el `.env` caen al predeterminado (como `CHAT_LIMIT_USD`).
@@ -72,7 +72,7 @@ archivos entra con `label` propio en Uso («Chat con archivos») para distinguir
   tener espacios; el autocompletado inserta la ruta entre comillas si hace falta, y `mentions` entiende las dos formas.
 - Tipos admitidos: los de `library.resolve` (notas, texto, CSV, PDF, imágenes).
 
-## Riesgo a verificar al construir
+## Riesgo (resuelto al construir: el valor por defecto quedó en 15 MB, editable hasta 100)
 Con 30 MB totales puede que no entre todo en una sola petición «inline» a Gemini (históricamente el tope inline era
 ~20 MB; más grande pide la API de Files). Hay que revisar el límite vigente en la documentación. Si es menor, bajar el
 valor por defecto de `CHAT_MAX_MB` o subir con la API de Files.

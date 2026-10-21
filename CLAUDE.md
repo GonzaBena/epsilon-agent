@@ -96,7 +96,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - `ai/llm.py`: ÚNICO lugar que llama a Gemini (`generate` de un disparo, `chat_tools` la llamada con herramientas).
 - `ai/chat.py`: el **modo IA** (conversación libre con la IA, solo web). El modo se elige al crear la conversación
   (línea `meta` con `mode: ai`) y no cambia; las normales nunca usan IA libre. Al modelo le llegan solo lo que
-  escribís y lo que la IA contestó (no la salida de comandos ni adjuntos) más la memoria. En modo IA el modelo puede pedir herramientas: `chat.begin/step/add_results` arman el historial y `core` decide y ejecuta según
+  escribís y lo que la IA contestó (no la salida de comandos) más la memoria, y los archivos que mencionás con `@` en ese mensaje (ver `ai/attachments.py`). En modo IA el modelo puede pedir herramientas: `chat.begin/step/add_results` arman el historial y `core` decide y ejecuta según
   los permisos (`docs/plan-permisos.md`; tope `MAX_TOOL_STEPS`). Cada conversación lleva su
   límite de costo en US$ (línea `limit`; ajuste `CHAT_LIMIT_USD` para las nuevas): `chat.status()` da contexto, costo
   y si está bloqueada. **Toda** llamada al modelo dentro de una conversación de modo IA se anota con su `conversation`
@@ -107,6 +107,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   `decide`, `grant`, `offered`). Sin modelo ni canales. Las herramientas son las de `tools.py` con el campo `ai`. Ver `docs/plan-permisos.md`.
 - `voice/transcribe.py`: ÚNICO lugar que carga Whisper (voz → texto, local, opcional con `uv sync --extra voz`;
   el modelo se baja solo y se descarga de memoria tras un rato). Ver `docs/plan-voz.md`.
+- `ai/attachments.py`: archivos en el chat de modo IA. `mentions(text)` saca las rutas escritas con `@` (al inicio o tras un espacio, así los mails no cuentan; entre comillas si tienen espacios) y `load(paths)` las valida con `library.resolve` y arma las partes del modelo, rotuladas como dato y redactadas. El contenido viaja **solo en ese mensaje** (`chat.begin(..., parts)`, gasto «Chat con archivos»); si una mención no existe o se pasa de los topes (`CHAT_MAX_FILES`, por defecto 5, y `CHAT_MAX_MB`, por defecto 15: el tope de una petición a Gemini es ~20 MB), `core._chat` contesta el error sin llamar al modelo. En la web, `@` abre el autocompletado de la biblioteca y el clip, en modo IA, sube con `POST /api/files` (no llama al modelo) y deja la mención en el cuadro. Ver `docs/plan-chat-ia.md`.
 - `ai/ask.py`: `/ia pregunta`, una pregunta suelta a la IA (web y Telegram). Es un turno de modo IA de un solo mensaje: sin la charla de antes, con la memoria y con las herramientas, que pasan por los mismos permisos (`core._run_calls`). No tiene conversación guardada sino un «ámbito» en memoria (`ia:<n>`, único por pregunta): los permisos y el «siempre» valen solo para esa pregunta y el pendiente es de la sesión. Sin límite de costo por conversación: lo acotan los topes de pasos, de salida y de resultados (máx. 1.000 caracteres de pregunta); dentro de un chat de modo IA, el costo suma a ese chat. Gasto anotado como «Pregunta» en /uso.
 - `ai/extract.py`, `ai/summarize.py`: lógica de imagen→CSV y resúmenes. `ai/usage.py`: el registro del gasto.
 

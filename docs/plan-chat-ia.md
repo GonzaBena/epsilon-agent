@@ -20,3 +20,11 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-modo-ia-design.md`. Plan de
   modo IA queda bloqueado con un aviso.
 - **Tools.** El modelo puede pedir herramientas según permisos por herramienta: ver `docs/plan-permisos.md`.
 - **Fuera por ahora.** MCP, Telegram.
+
+
+## Archivos en el chat
+
+Se mencionan con `@` (`@files/informe.pdf`, o `@"files/mi informe.pdf"` si la ruta tiene espacios) y la IA los lee **en ese
+mensaje**; en los siguientes ya no los ve, salvo que se vuelvan a mencionar. Topes por mensaje: `CHAT_MAX_FILES` (5) y
+`CHAT_MAX_MB` (15). Una mención que no existe devuelve un error y no gasta. La respuesta es texto: la presentación en
+`.pptx` es un proyecto aparte. Diseño y plan: `docs/superpowers/specs/2026-10-21-archivos-en-chat-ia-design.md`.
