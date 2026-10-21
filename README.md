@@ -21,8 +21,8 @@ y la respuesta del modelo siempre tiene un tope de tokens. Los datos quedan en t
 Necesitás [uv](https://docs.astral.sh/uv/) y Python 3.12 o más nuevo.
 
 ```bash
-git clone https://github.com/GonzaBena/epsilon.git
-cd epsilon
+git clone https://github.com/GonzaBena/epsilon-agent.git
+cd epsilon-agent
 uv sync                # instala las dependencias
 uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 ```
