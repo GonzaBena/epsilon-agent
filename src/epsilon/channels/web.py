@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
 from epsilon.ai import chat, permissions, usage
-from epsilon.data import conversations, library
+from epsilon.data import conversations, library, notes
 from epsilon.settings import checks, config
 from epsilon.voice import transcribe
 
@@ -161,6 +161,18 @@ class TitleIn(BaseModel):
     title: str = Field(max_length=200)
 
 
+def read_image_or_pdf(file: UploadFile) -> tuple[bytes, str]:
+    """Los bytes y el tipo de un archivo subido. Mismos tipos que acepta Telegram: imágenes y PDFs, hasta MAX_UPLOAD."""
+    mime = file.content_type or ""
+    if not (mime.startswith("image/") or mime == "application/pdf"):
+        raise HTTPException(415, "Solo imágenes y PDFs")
+    # Leemos un byte de más para saber si se pasó del tope sin cargar todo.
+    data = file.file.read(MAX_UPLOAD + 1)
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "Ese archivo pesa más de 20 MB")
+    return data, mime
+
+
 def conversation_of(raw: str | None) -> str | None:
     """None si no se mandó conversación (no se guarda nada); 422 si el id no es válido."""
     if not raw:
@@ -305,16 +317,7 @@ def create_app() -> FastAPI:
     ):
         cid = conversation_of(conversation_id)
         ensure_writable(cid)
-        mime = file.content_type or ""
-        # Mismos tipos que acepta Telegram: imágenes y PDFs.
-        if not (mime.startswith("image/") or mime == "application/pdf"):
-            raise HTTPException(415, "Solo imágenes y PDFs")
-
-        # Leemos un byte de más para saber si se pasó del tope sin cargar todo.
-        data = file.file.read(MAX_UPLOAD + 1)
-        if len(data) > MAX_UPLOAD:
-            raise HTTPException(413, "Ese archivo pesa más de 20 MB")
-
+        data, mime = read_image_or_pdf(file)
         name = file.filename or "archivo"
         if cid:
             conversations.start(cid, mode or "normal", chat.default_limit())
@@ -324,6 +327,13 @@ def create_app() -> FastAPI:
         attachment = core.Attachment(data=data, name=name, mime=mime)
         msg = core.Message(text=text, attachment=attachment, session_id=session_for(cid), conversation_id=cid)
         return reply_json(core.handle(msg), cid)
+
+    @app.post("/api/files")
+    def save_file(file: UploadFile = File(...)):
+        """Sube un archivo a la biblioteca SIN llamar al modelo: el chat con IA lo menciona después con «@»."""
+        data, _ = read_image_or_pdf(file)
+        path = notes.save_file(file.filename or "archivo", data)
+        return {"path": path.relative_to(notes.DATA_DIR).as_posix()}
 
     @app.post("/api/transcribe")
     def transcribe_audio(file: UploadFile = File(...)):
