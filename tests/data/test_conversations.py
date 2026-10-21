@@ -606,10 +606,10 @@ def test_the_channel_is_known_from_the_file_and_web_is_the_default():
     assert conversations.channel("20261019-153000-ffff") is None
 
 
-def test_a_conversation_with_an_unknown_channel_in_its_meta_line_counts_as_web(tmp_path):
+def test_a_conversation_with_an_badly_named_channel_in_its_meta_line_counts_as_web(tmp_path):
     path = folder(tmp_path) / f"{VALID}.jsonl"
     path.parent.mkdir(parents=True)
-    path.write_text('{"type": "meta", "channel": "otro"}\n{"type": "message", "role": "user", "text": "x"}\n')
+    path.write_text('{"type": "meta", "channel": "Otro"}\n{"type": "message", "role": "user", "text": "x"}\n')
 
     assert conversations.channel(VALID) == "web"
 
@@ -679,7 +679,7 @@ def test_closing_is_not_activity_so_it_does_not_reorder_recent():
 
 
 def test_only_known_channels_other_than_web_can_be_opened():
-    for bad in ("web", "otro", "../x", ""):
+    for bad in ("web", "Otro", "../x", ""):
         with pytest.raises(ValueError):
             conversations.for_channel(bad)
         with pytest.raises(ValueError):
@@ -772,3 +772,47 @@ def test_an_old_button_does_not_bring_a_deleted_conversation_back(tmp_path):
     conversations.add_action(VALID, "abc12345", "guardar")  # un toque tardío (por ejemplo, desde Telegram)
 
     assert not (folder(tmp_path) / f"{VALID}.jsonl").exists()
+
+
+# --- Canales de plugins ------------------------------------------------------
+
+
+def test_a_plugin_channel_keeps_its_own_conversation():
+    conversation_id = conversations.for_channel("discord")
+    conversations.add_message(conversation_id, "user", "hola")
+
+    assert conversations.channel(conversation_id) == "discord"
+    assert conversations.current("discord") == conversation_id
+    assert conversations.for_channel("discord") == conversation_id  # la misma, no otra
+
+
+def test_a_plugin_channel_conversation_is_listed_with_a_fixed_title():
+    conversation_id = conversations.for_channel("discord")
+    conversations.add_message(conversation_id, "user", "hola")
+
+    entry = conversations.list_all()[0]
+    assert entry["title"] == "Discord" and entry["channel"] == "discord"
+
+
+def test_closing_a_plugin_channel_conversation_starts_a_new_one_next_time():
+    first = conversations.for_channel("discord")
+    conversations.add_message(first, "user", "hola")
+
+    assert conversations.close_channel("discord") is True
+    assert conversations.current("discord") is None
+    assert conversations.for_channel("discord") != first
+
+
+@pytest.mark.parametrize("name", ["web", "Web", "../x", "", "a", "x" * 21, "con espacio"])
+def test_invalid_channel_names_are_rejected(name):
+    for function in (conversations.for_channel, conversations.current, conversations.close_channel):
+        with pytest.raises(ValueError):
+            function(name)
+
+
+def test_a_file_with_an_invalid_channel_in_its_meta_reads_as_web(tmp_path):
+    path = folder(tmp_path)
+    path.mkdir()
+    (path / f"{VALID}.jsonl").write_text('{"type": "meta", "channel": "../x"}\n')
+
+    assert conversations.channel(VALID) == "web"

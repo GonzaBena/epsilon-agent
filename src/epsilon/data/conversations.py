@@ -7,6 +7,7 @@ import secrets
 import threading
 
 from epsilon.data import notes
+from epsilon.plugins.channels import NAME_PATTERN
 from epsilon.settings import config
 
 # Conversaciones guardadas como archivos: DATA_DIR/conversations/<id>.jsonl, una
@@ -44,6 +45,19 @@ ARTIFACT_PATH_MAX = 300
 # Canales conocidos. «web» es el de siempre (sin línea meta); lo demás se anota al crear.
 CHANNELS = ("web", "telegram")
 CHANNEL_TITLES = {"telegram": "Telegram"}  # título fijo: una conversación así no tiene «primer mensaje»
+
+
+def is_channel(name) -> bool:
+    """¿Es un canal que puede tener conversaciones? Los incluidos o un plugin (su nombre tiene la
+    forma de plugins.channels.NAME_PATTERN; este módulo no sabe cuáles plugins existen)."""
+    return isinstance(name, str) and (name in CHANNELS or NAME_PATTERN.fullmatch(name) is not None)
+
+
+def fixed_title(name) -> str | None:
+    """El título fijo de una conversación de canal: «Telegram», o el nombre del plugin. None para la web."""
+    if name == "web" or not is_channel(name):
+        return None
+    return CHANNEL_TITLES.get(name) or name.capitalize()
 MAX_BYTES = 1024 * 1024  # una conversación de canal más grande se cierra sola y arranca otra
 
 UNTITLED = "Conversación sin título"
@@ -207,7 +221,7 @@ def _channel(path: Path) -> str:
             first = json.loads(f.readline())
     except (OSError, ValueError):
         return "web"
-    if isinstance(first, dict) and first.get("type") == "meta" and first.get("channel") in CHANNELS:
+    if isinstance(first, dict) and first.get("type") == "meta" and is_channel(first.get("channel")):
         return first["channel"]
     return "web"
 
@@ -236,7 +250,7 @@ def _open_one(name: str) -> str | None:
 def current(name: str) -> str | None:
     """El id de la conversación abierta de un canal, o None. Si pasó de MAX_BYTES la cierra
     (y devuelve None: la próxima vez nace otra)."""
-    if name not in CHANNELS or name == "web":
+    if name == "web" or not is_channel(name):
         raise ValueError("Canal no válido")
     with _channel_lock:
         found = _open_one(name)
@@ -249,7 +263,7 @@ def current(name: str) -> str | None:
 def for_channel(name: str) -> str:
     """La conversación abierta de un canal; si no hay, crea una (con su línea meta). El llamador
     agrega un mensaje enseguida, así no queda un archivo vacío."""
-    if name not in CHANNELS or name == "web":
+    if name == "web" or not is_channel(name):
         raise ValueError("Canal no válido")
     with _channel_lock:
         found = _open_one(name)
@@ -264,7 +278,7 @@ def for_channel(name: str) -> str:
 
 def close_channel(name: str) -> bool:
     """Cierra la conversación abierta de un canal (/nuevo). True si había una."""
-    if name not in CHANNELS or name == "web":
+    if name == "web" or not is_channel(name):
         raise ValueError("Canal no válido")
     with _channel_lock:
         found = _open_one(name)
@@ -368,7 +382,7 @@ def _title(path: Path) -> str:
                 if not isinstance(entry, dict):
                     continue
                 if entry.get("type") == "meta":
-                    fixed = CHANNEL_TITLES.get(entry.get("channel"))
+                    fixed = fixed_title(entry.get("channel"))
                 elif entry.get("type") == "title":
                     custom = str(entry.get("text", "")).strip() or None  # vacío = volver al automático
                 elif automatic is None and entry.get("type") == "message" and entry.get("role") == "user":
