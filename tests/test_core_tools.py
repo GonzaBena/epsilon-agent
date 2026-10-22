@@ -1,3 +1,4 @@
+import dataclasses
 import re
 from types import SimpleNamespace
 
@@ -738,3 +739,77 @@ def test_without_a_listener_nothing_changes(script):
     script.steps = [step("Hola")]
     assert say("hola").text == "Hola"
     assert core._on_event.get() is None  # y no queda un oyente colgado de la llamada anterior
+
+
+# --- Grupos de herramientas ----------------------------------------------------------------
+
+
+@pytest.fixture
+def grouped(script, monkeypatch):
+    """nota y buscar, vistas por el modelo como las acciones «guardar» y «buscar» del grupo «notas»."""
+    actions = {"nota": "guardar", "buscar": "buscar"}
+    monkeypatch.setattr(
+        tools,
+        "TOOLS",
+        tuple(
+            dataclasses.replace(t, ai_group="notas", ai_action=actions[tools.ai_id(t)]) if tools.ai_id(t) in actions else t
+            for t in tools.TOOLS
+        ),
+    )
+    monkeypatch.setattr(tools, "AI_GROUPS", {"notas": "Tus notas"})
+    return script
+
+
+def sent_names(history) -> list[str]:
+    return [result.name for turn in history for result in turn.results]
+
+
+def test_a_grouped_call_asks_and_runs_the_internal_tool_and_answers_under_the_group_name(grouped):
+    grouped.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
+
+    reply = say("anotá pan")
+    assert reply.text == "La IA quiere usar + texto con:\n```\ncomprar pan\n```"  # el permiso es el de «nota»
+    press("perm:si")
+
+    assert "comprar pan" in inbox()
+    assert sent_names(grouped.seen[1][0]) == ["notas"]  # el modelo recibe el resultado con el nombre que usó
+
+
+def test_a_read_action_of_a_group_runs_alone(grouped):
+    notes.save_note("compras", "- un switch")
+    grouped.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
+
+    reply = say("buscá switch")
+
+    assert reply.text == "Lo encontré" and "switch" in results(grouped.seen[1][0])[0]
+
+
+@pytest.mark.parametrize("call_id", ["notas.borrar", "notas", "nota", "buscar", "notas.", "nota.guardar"])
+def test_what_the_model_was_not_offered_is_unavailable_and_runs_nothing(grouped, call_id):
+    grouped.steps = [step(calls=[(call_id, "pan")]), step("no pude")]
+
+    say("anotá pan")
+
+    assert results(grouped.seen[1][0]) == [core.UNAVAILABLE] and inbox() == ""
+
+
+def test_a_blocked_action_does_not_run_even_if_the_model_forces_it(grouped):
+    states = permissions.load()
+    states["nota"] = "deny"
+    permissions.save(states)
+    grouped.steps = [step(calls=[("notas.guardar", "pan")]), step("no pude")]
+
+    say("anotá pan")
+
+    assert results(grouped.seen[1][0]) == [core.UNAVAILABLE] and inbox() == ""
+    assert "notas" in grouped.seen[0][1]  # el grupo se ofrece igual: le queda buscar
+
+
+def test_yes_for_the_conversation_is_per_internal_tool(grouped):
+    grouped.steps = [step(calls=[("notas.guardar", "uno")]), step("ok"), step(calls=[("notas.guardar", "dos")]), step("ok")]
+    say("uno")
+    press("perm:siempre")
+
+    reply = say("dos")  # ya no pregunta: nota quedó permitida en esta conversación
+
+    assert reply.text == "ok" and "dos" in inbox()
