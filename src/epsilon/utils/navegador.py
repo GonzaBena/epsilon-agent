@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import socket
 import subprocess
@@ -8,6 +9,7 @@ from urllib.parse import quote
 import httpx
 from websockets.sync.client import connect
 
+from epsilon.data import notes
 from epsilon.settings import config
 from epsilon.utils import navegador_reglas as reglas
 
@@ -23,6 +25,8 @@ BROWSERS = ("Chrome/", "Chromium/", "HeadlessChrome/")
 TIMEOUT = 5.0
 LOAD_TRIES = 20  # al abrir: cuántas veces se mira si la pestaña cargó (de a medio segundo)
 LAUNCH_WAIT = 15.0  # segundos que se espera a que un Chromium recién lanzado abra el puerto
+LOG_FILE = "browser.log"
+LOG_RESULT_CHARS = 120
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
 MAX_TEXT = 3000  # caracteres de texto que devuelve `read`
@@ -337,3 +341,18 @@ def type_text(tab_ref: str, n: int, text: str) -> str:
 def tab_host(tab_ref: str) -> str:
     """El sitio actual de la pestaña (para decidir permisos por el sitio real)."""
     return resolve_tab(tab_ref).host
+
+
+# --- Registro --------------------------------------------------------------------------------------
+
+
+def audit(action: str, host: str, result: str, asked: bool) -> None:
+    """Agrega una línea al registro de lo que hizo la IA en el navegador (DATA_DIR/browser.log): hora, acción, sitio,
+    resultado (una línea, redactado y corto) y si se pidió permiso. Solo se agrega. Un fallo al escribir nunca rompe la acción."""
+    short = " ".join(config.redact(result).split())[:LOG_RESULT_CHARS]
+    fields = [datetime.now().isoformat(timespec="seconds"), action, host or "-", short, "preguntó" if asked else "directo"]
+    try:
+        with notes.safe_path(LOG_FILE).open("a", encoding="utf-8") as log:
+            log.write("\t".join(fields) + "\n")
+    except OSError:
+        pass

@@ -255,3 +255,50 @@ def test_open_url_makes_sure_chromium_is_running_first(monkeypatch):
     navegador.open_url("https://music.youtube.com/")
 
     assert called == [1]
+
+
+# --- registro de acciones -------------------------------------------------------------------------
+
+
+@pytest.fixture
+def data_dir(tmp_path, monkeypatch):
+    from epsilon.data import notes
+
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+    return tmp_path
+
+
+def test_audit_appends_one_line_per_action(data_dir):
+    navegador.audit("nav_abrir", "music.youtube.com", "Abrí la pestaña ABCDEF", asked=False)
+    navegador.audit("nav_clic", "otro-sitio.com", "Hice clic", asked=True)
+
+    lines = (data_dir / "browser.log").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert "nav_abrir" in lines[0] and "music.youtube.com" in lines[0] and "directo" in lines[0]
+    assert "nav_clic" in lines[1] and "preguntó" in lines[1]
+
+
+def test_audit_redacts_keys_and_keeps_one_line(data_dir, monkeypatch):
+    key = "AIzaSyD-ejemplo_de_clave_larga_QzXw"
+    monkeypatch.setenv("GEMINI_API_KEY", key)
+
+    navegador.audit("nav_leer", "a.com", f"línea uno\nlínea dos con {key}", asked=False)
+
+    text = (data_dir / "browser.log").read_text(encoding="utf-8")
+    assert key not in text and len(text.splitlines()) == 1
+
+
+def test_audit_trims_long_results(data_dir):
+    navegador.audit("nav_leer", "a.com", "x" * 1000, asked=False)
+
+    assert len((data_dir / "browser.log").read_text(encoding="utf-8")) < 400
+
+
+def test_audit_never_breaks_the_action_if_it_cannot_write(tmp_path, monkeypatch):
+    from epsilon.data import notes
+
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(notes, "DATA_DIR", blocker.resolve())
+
+    navegador.audit("nav_leer", "a.com", "ok", asked=False)  # no lanza

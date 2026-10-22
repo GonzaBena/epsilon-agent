@@ -889,7 +889,7 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
     return None
 
 
-def _run(state: PendingTool, tool: tools.Tool, name: str, args: str) -> Reply | None:
+def _run(state: PendingTool, tool: tools.Tool, name: str, args: str, asked: bool = False) -> Reply | None:
     """Ejecuta una llamada permitida. `name` es el nombre con que el modelo la pidió (el del resultado).
     Una herramienta que gasta IA (/resumir) no corre si la conversación ya llegó a su límite: se corta el turno con el motivo."""
     tool_id = tools.ai_id(tool)
@@ -897,6 +897,7 @@ def _run(state: PendingTool, tool: tools.Tool, name: str, args: str) -> Reply | 
         return Reply(reason, artifacts=state.artifacts)
     _tool_event(tool_id, args, "running")
     state.results.append((name, _execute(tool_id, args, state.artifacts)))
+    browser_guard.record(tool, args, state.results[-1][1], asked)
     browser_guard.after_run(tool, args, state.turn)
     _tool_event(tool_id, args, "done")
     return None
@@ -965,7 +966,7 @@ def _answer_permission(answer: str, msg: Message, session: Session) -> Reply:
     # Si mientras esperaba la bloqueaste en la configuración, el «sí» ya no alcanza.
     if permissions.decide(state.turn.conversation_id, tool_id) == "block":
         state.results.append((name, UNAVAILABLE))
-    elif stop := _run(state, tool, name, args):
+    elif stop := _run(state, tool, name, args, asked=True):
         return stop
     state.index += 1
     question = _run_calls(state, session)

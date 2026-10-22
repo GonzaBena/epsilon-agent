@@ -206,3 +206,40 @@ def test_the_browser_cap_stops_the_turn_with_a_clear_message(script, monkeypatch
 
     last = results(script.seen[3][0])
     assert any("tope" in text for text in last)
+
+
+# --- registro de acciones ---------------------------------------------------------------------------------
+
+
+def log() -> str:
+    from epsilon.data import notes
+
+    path = notes.DATA_DIR / "browser.log"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def test_a_direct_browser_action_is_logged_as_direct(script, monkeypatch):
+    monkeypatch.setattr(navegador, "open_url", lambda url: tab())
+    script.steps = [step(calls=[("navegador.abrir", "https://music.youtube.com/")]), step("ok")]
+
+    say("abrí")
+
+    assert "nav_abrir" in log() and "music.youtube.com" in log() and "directo" in log()
+
+
+def test_an_approved_browser_action_is_logged_as_asked(script, monkeypatch):
+    monkeypatch.setattr(navegador, "open_url", lambda url: tab())
+    script.steps = [step(calls=[("navegador.abrir", "https://otro-sitio.com/")]), step("ok")]
+    say("abrí")
+
+    press("perm:si")
+
+    assert "otro-sitio.com" in log() and "preguntó" in log()
+
+
+def test_other_tools_leave_no_browser_log(script):
+    script.steps = [step(calls=[("consultar.fecha", "")]), step("ok")]
+
+    say("qué día es")
+
+    assert log() == ""

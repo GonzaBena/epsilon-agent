@@ -76,3 +76,22 @@ def after_run(tool: tools.Tool, args: str, turn: chat.Turn) -> None:
             turn.tainted = turn.tainted or not _trusted(navegador.tab_host(args.strip()))
         except navegador.NavegadorError:
             turn.tainted = True
+
+
+def _site_of(tool_id: str, args: str) -> str:
+    """El sitio de una acción, para el registro; vacío si no se puede saber."""
+    if tool_id == "nav_abrir":
+        return reglas.host_of(args.strip())
+    if tool_id == "nav_pestanas":
+        return ""
+    try:
+        return navegador.tab_host(args.split()[0] if args.split() else "")
+    except navegador.NavegadorError:
+        return ""
+
+
+def record(tool: tools.Tool, args: str, result: str, asked: bool) -> None:
+    """Deja en el registro de acciones lo que hizo una herramienta del navegador (las demás no dejan nada)."""
+    if tool.ai_group == "navegador":
+        tool_id = tools.ai_id(tool)
+        navegador.audit(tool_id, _site_of(tool_id, args), result.partition("\n")[2] or result, asked)
