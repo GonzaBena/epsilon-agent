@@ -56,6 +56,9 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `AI_MODEL_SUMMARY`                                          | Opcional: modelo de los resúmenes. Si falta, el predeterminado. |
 | `AI_MODEL_CSV`                                              | Opcional: modelo de imagen a CSV. Si falta, el predeterminado. |
 | `OLLAMA_URL`                                                | Opcional: dirección de Ollama. Por defecto `http://127.0.0.1:11434`. |
+| `BROWSER_ENABLED`                                             | Navegador: deja que la IA use tu Chromium (por defecto, `si`; `no` la deja sin esa herramienta).                         |
+| `BROWSER_TRUSTED_SITES`                                       | Sitios donde la IA actúa sin preguntar, separados por coma (por defecto, `music.youtube.com,youtube.com`).              |
+| `BROWSER_BLOCKED_SITES`                                       | Sitios que la IA nunca ve ni toca (por defecto, `accounts.google.com,myaccount.google.com,mail.google.com`).           |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `ASSISTANT_NAME`                                              | Nombre para hablarle por voz: «Hola Meli, ¿qué tengo hoy?» equivale a `/ia ¿qué tengo hoy?`. Varios, separados por coma (se guardan en minúsculas y sin tilde; por defecto, `ia, ai`). |

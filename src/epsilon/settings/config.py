@@ -74,6 +74,14 @@ def _assistant_names(value: str) -> str:
     return ", ".join(names)
 
 
+def _sites(value: str) -> str:
+    """Nombres de sitio separados por coma, en minúsculas y sin repetidos (sin esquema, ruta ni espacios)."""
+    sites = list(dict.fromkeys(site.strip().lower() for site in value.split(",") if site.strip()))
+    if not sites or not all(re.fullmatch(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?", site) for site in sites):
+        raise ValueError("Escribí uno o más sitios separados por coma, solo el nombre (por ejemplo youtube.com).")
+    return ",".join(sites)
+
+
 def _minutes(value: str) -> str:
     if not re.fullmatch(r"\d{1,4}", value, re.ASCII) or not 1 <= int(value) <= 1440:
         raise ValueError("Los minutos tienen que ser un número entero entre 1 y 1440.")
@@ -333,6 +341,28 @@ SETTINGS = (
         default="no",
         validate=_yes_no,
     ),
+    # El navegador de la IA (utils/navegador.py y ai/browser_guard.py los leen en cada uso).
+    Setting(
+        "BROWSER_ENABLED",
+        "Navegador (la IA puede usar tu Chromium)",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    Setting(
+        "BROWSER_TRUSTED_SITES",
+        "Sitios de confianza del navegador (la IA actúa sin preguntar)",
+        live=True,
+        default="music.youtube.com,youtube.com",
+        validate=_sites,
+    ),
+    Setting(
+        "BROWSER_BLOCKED_SITES",
+        "Sitios que la IA nunca puede ver ni tocar",
+        live=True,
+        default="accounts.google.com,myaccount.google.com,mail.google.com",
+        validate=_sites,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
@@ -435,6 +465,13 @@ def enabled(key: str) -> bool:
     setting = BY_KEY[key]
     value = os.environ.get(key, setting.default).strip().lower()
     return (value or setting.default) == "si"
+
+
+def site_list(key: str) -> list[str]:
+    """Un ajuste de lista de sitios como lista (en minúsculas, sin vacíos ni repetidos). Vacío usa el valor por defecto."""
+    setting = BY_KEY[key]
+    value = os.environ.get(key, setting.default).strip() or setting.default
+    return list(dict.fromkeys(site.strip().lower() for site in value.split(",") if site.strip()))
 
 
 def pending_restart(env_file: Path | None = None) -> list[dict]:

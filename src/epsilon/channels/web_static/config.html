@@ -296,6 +296,40 @@
             <p class="help">Ajustes de los plugins de canal instalados. Prender o apagar cada canal se hace en la página Canales.</p>
           </section>
 
+          <section aria-labelledby="h-browser">
+            <h3 id="h-browser">Navegador</h3>
+            <p class="help">Deja que la IA use tu Chromium (el de todos los días) para abrir páginas, leerlas y tocar botones. Hace falta abrir Chromium con <code>--remote-debugging-port=9222</code>. En los sitios de confianza actúa sin preguntar; en cualquier otro pregunta siempre, y los bloqueados no los ve ni los toca.</p>
+
+            <div class="field switch-field">
+              <div class="switch-row">
+                <span class="switch-label" id="label-BROWSER_ENABLED">Navegador (la IA puede usar tu Chromium)</span>
+                <button type="button" class="switch" role="switch" id="f-BROWSER_ENABLED" data-key="BROWSER_ENABLED"
+                        value="si" aria-checked="true"
+                        aria-labelledby="label-BROWSER_ENABLED" aria-describedby="hint-BROWSER_ENABLED err-BROWSER_ENABLED"><span class="knob"></span></button>
+              </div>
+              <p class="hint" id="hint-BROWSER_ENABLED"></p>
+              <p class="error" id="err-BROWSER_ENABLED" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-BROWSER_TRUSTED_SITES">Sitios de confianza (separados por coma)</label>
+              <input id="f-BROWSER_TRUSTED_SITES" data-key="BROWSER_TRUSTED_SITES" type="text" placeholder="music.youtube.com,youtube.com"
+                     autocomplete="off" spellcheck="false" maxlength="500"
+                     aria-describedby="hint-BROWSER_TRUSTED_SITES err-BROWSER_TRUSTED_SITES">
+              <p class="hint" id="hint-BROWSER_TRUSTED_SITES"></p>
+              <p class="error" id="err-BROWSER_TRUSTED_SITES" role="alert"></p>
+            </div>
+
+            <div class="field">
+              <label for="f-BROWSER_BLOCKED_SITES">Sitios bloqueados (separados por coma)</label>
+              <input id="f-BROWSER_BLOCKED_SITES" data-key="BROWSER_BLOCKED_SITES" type="text" placeholder="accounts.google.com,mail.google.com"
+                     autocomplete="off" spellcheck="false" maxlength="500"
+                     aria-describedby="hint-BROWSER_BLOCKED_SITES err-BROWSER_BLOCKED_SITES">
+              <p class="hint" id="hint-BROWSER_BLOCKED_SITES"></p>
+              <p class="error" id="err-BROWSER_BLOCKED_SITES" role="alert"></p>
+            </div>
+          </section>
+
           <section aria-labelledby="h-voice">
             <h3 id="h-voice">Voz</h3>
             <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Apagada, no se descarga ni se usa el modelo. Los dos primeros ajustes también se cambian desde el bot con <code>/menu</code>; confirmar vale solo para Telegram.</p>

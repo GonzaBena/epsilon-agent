@@ -622,6 +622,50 @@ def test_invalid_assistant_names_are_rejected(value, env_file):
     assert "ASSISTANT_NAME" in error.value.errors and not env_file.exists()
 
 
+# --- navegador de la IA ---------------------------------------------------------------
+
+
+def test_browser_site_lists_default_when_not_defined(monkeypatch):
+    monkeypatch.delenv("BROWSER_TRUSTED_SITES", raising=False)
+    monkeypatch.delenv("BROWSER_BLOCKED_SITES", raising=False)
+
+    assert config.site_list("BROWSER_TRUSTED_SITES") == ["music.youtube.com", "youtube.com"]
+    assert config.site_list("BROWSER_BLOCKED_SITES") == ["accounts.google.com", "myaccount.google.com", "mail.google.com"]
+
+
+def test_site_list_lowercases_and_drops_empty_and_repeated(monkeypatch):
+    monkeypatch.setenv("BROWSER_TRUSTED_SITES", " A.com, ,a.com,B.org ")
+
+    assert config.site_list("BROWSER_TRUSTED_SITES") == ["a.com", "b.org"]
+
+
+def test_site_lists_are_saved_normalized_and_apply_at_once(env_file):
+    config.update({"BROWSER_TRUSTED_SITES": "A.com, b.org"}, [], env_file)
+
+    assert os.environ["BROWSER_TRUSTED_SITES"] == "a.com,b.org"
+
+
+@pytest.mark.parametrize("value", ["https://a.com", "a.com/x", "a.com\nb.com", " , ", "a b.com"])
+def test_invalid_site_lists_are_rejected(value, env_file):
+    with pytest.raises(config.ConfigError) as error:
+        config.update({"BROWSER_TRUSTED_SITES": value}, [], env_file)
+
+    assert "BROWSER_TRUSTED_SITES" in error.value.errors and not env_file.exists()
+
+
+def test_browser_is_enabled_by_default_and_can_be_turned_off(monkeypatch):
+    monkeypatch.delenv("BROWSER_ENABLED", raising=False)
+    assert config.enabled("BROWSER_ENABLED") is True
+
+    monkeypatch.setenv("BROWSER_ENABLED", "no")
+    assert config.enabled("BROWSER_ENABLED") is False
+
+
+def test_browser_settings_are_live_and_known():
+    for key in ("BROWSER_ENABLED", "BROWSER_TRUSTED_SITES", "BROWSER_BLOCKED_SITES"):
+        assert config.BY_KEY[key].live
+
+
 # --- modelos de IA por tarea ---------------------------------------------------------
 
 MODEL_KEYS = ["AI_MODEL", "AI_MODEL_CHAT", "AI_MODEL_ASK", "AI_MODEL_SUMMARY", "AI_MODEL_CSV"]
