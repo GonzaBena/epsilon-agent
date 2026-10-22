@@ -383,14 +383,30 @@ async def _ensure(name: str, slot: _Slot, entry: dict) -> tuple[Link, list[str] 
     return link, await _discover(name, slot, link, env)
 
 
-async def _use(name: str, work):
-    """Abre el conector si hace falta y corre `work(link)` con su tope; se encarga de los errores y del uso."""
+CHANGED_TOOL = "La herramienta «{tool}» del conector «{name}» cambió desde la última vez; volvé a autorizarla antes de usarla."
+GONE_TOOL = "El conector «{name}» ya no tiene la herramienta «{tool}»."
+
+
+async def _use(name: str, work, tool: str | None = None):
+    """Abre el conector si hace falta y corre `work(link)` con su tope; se encarga de los errores y del uso.
+    Con `tool`: si al abrirlo esa herramienta resultó nueva, cambiada o ya no está, NO se la llama. El permiso
+    y los argumentos se decidieron con lo que había antes; el gancho ya la volvió a «preguntar» (`_discover`
+    lo espera antes de volver), así que el próximo intento pregunta con el esquema nuevo."""
     entry = _entry(name)
     env = entry.get("env", {})
     slot = _slot(name)
     slot.busy += 1  # antes de esperar nada: así un `tick` que llega ahora no lo cierra
     try:
-        link, _ = await _ensure(name, slot, entry)
+        link, changed = await _ensure(name, slot, entry)
+        if tool is not None and changed is not None:  # recién abierto: lo descubierto puede no ser lo autorizado
+            listed = {t.get("name") for t in (store.get(name) or {}).get("tools", []) if isinstance(t, dict)}
+            known = {t.get("name") for t in entry.get("tools", []) if isinstance(t, dict)}  # lo de antes de abrirlo
+            if tool not in listed:
+                raise ConnectorError(GONE_TOOL.format(name=name, tool=tool[:100]))
+            # Una que ya se conocía y cambió. Una que nadie conocía todavía (primer arranque) no tenía nada
+            # autorizado: la IA ni la pudo pedir (sale del store), así que no hay permiso viejo que frenar.
+            if tool in changed and tool in known:
+                raise ConnectorError(CHANGED_TOOL.format(name=name, tool=tool[:100]))
         slot.last_used = time.monotonic()
         try:
             return await asyncio.wait_for(work(link), CALL_TIMEOUT)
@@ -449,7 +465,7 @@ def start(name: str) -> list[str]:
 def call(name: str, tool: str, args: dict) -> str:
     """Llama a una herramienta del conector y devuelve su texto (redactado y recortado). ConnectorError si no se pudo."""
     env = _entry(name).get("env", {})
-    text = _run(_use(name, lambda link: link.call(tool, args)), _wait())
+    text = _run(_use(name, lambda link: link.call(tool, args), tool), _wait())
     return _clean(text if isinstance(text, str) else "", env, MAX_RESULT_CHARS)
 
 

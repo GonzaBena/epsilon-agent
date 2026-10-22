@@ -111,4 +111,8 @@ def grant(conversation_id: str, tool_id: str) -> None:
 def offered() -> list[tools.Tool]:
     """Las herramientas que la IA puede ver: todas menos las bloqueadas."""
     states = load()
-    return [tool for tool in tools.ai_tools() if states[tools.ai_id(tool)] != "deny" and not _browser_off(tool)]
+    # Un conector pudo sumar una herramienta entre las dos lecturas: sin estado guardado, la de su inicial.
+    return [
+        tool for tool in tools.ai_tools()
+        if states.get(tools.ai_id(tool), default_state(tool)) != "deny" and not _browser_off(tool)
+    ]

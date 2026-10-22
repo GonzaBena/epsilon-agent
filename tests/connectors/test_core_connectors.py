@@ -128,3 +128,61 @@ def test_result_is_redacted_and_truncated(script, lights, monkeypatch):  # noqa:
     (sent,) = results(script.seen[1][0])
     assert key not in sent
     assert len(sent) < core.MAX_RESULT_CHARS + 100
+
+
+# --- Al reabrir: lo autorizado era la herramienta de antes ---------------------------------------------------
+
+
+def allow_lights():
+    states = permissions.load()
+    states[TOOL_ID] = "allow"
+    permissions.save(states)
+
+
+def test_tool_changed_on_lazy_reopen_is_not_called_and_asks_again(script, lights):  # noqa: F811
+    allow_lights()
+    manager.stop("luces")  # p. ej. se cerró por inactividad, o Epsilon se reinició
+    lights.tools = [tool("apagar", "Apaga la luz", {**LIGHTS, "properties": {"habitacion": {"type": "string"}, "todo": {"type": "boolean"}}})]
+    script.steps = [step(calls=[("luces.apagar", '{"habitacion": "living"}')]), step("hay que autorizarla")]
+
+    assert say("apagá").text == "hay que autorizarla"
+
+    assert lights.calls == []
+    (sent,) = results(script.seen[1][0])
+    assert "cambió desde la última vez" in sent and "volvé a autorizarla" in sent
+    assert permissions.load()[TOOL_ID] == "ask"
+
+
+def test_tool_removed_on_lazy_reopen_is_not_called(script, lights):  # noqa: F811
+    allow_lights()
+    manager.stop("luces")
+    lights.tools = [tool("prender", "Prende la luz", LIGHTS)]
+    script.steps = [step(calls=[("luces.apagar", '{"habitacion": "living"}')]), step("ya no está")]
+
+    assert say("apagá").text == "ya no está"
+
+    assert lights.calls == []
+    (sent,) = results(script.seen[1][0])
+    assert "ya no tiene la herramienta" in sent
+
+
+def test_unchanged_tool_after_lazy_reopen_runs(script, lights):  # noqa: F811
+    allow_lights()
+    manager.stop("luces")
+    script.steps = [step(calls=[("luces.apagar", '{"habitacion": "living"}')]), step("ok")]
+
+    assert say("apagá").text == "ok"
+    assert lights.calls == [("apagar", {"habitacion": "living"})]
+    assert len(lights.opens) == 2  # sí se reabrió
+
+
+def test_another_tool_changing_does_not_block_an_unchanged_one(script, lights):  # noqa: F811
+    allow_lights()
+    manager.stop("luces")
+    lights.tools = [tool("apagar", "Apaga la luz", LIGHTS), tool("prender", "Prende la luz", LIGHTS)]  # una nueva
+    script.steps = [step(calls=[("luces.apagar", '{"habitacion": "living"}')]), step("ok")]
+
+    assert say("apagá").text == "ok"
+    assert lights.calls == [("apagar", {"habitacion": "living"})]
+    assert permissions.load()[TOOL_ID] == "allow"
+    assert permissions.load()["mcp_luces__prender"] == "ask"

@@ -211,3 +211,22 @@ def test_existing_group_consistency_tests_still_pass():
     # sin conectores, los grupos son los de siempre (lo mismo que vigila tests/test_tools.py)
     assert set(tools.AI_GROUPS) == {t.ai_group for t in tools.ai_tools() if t.ai_group}
     assert all(not tools.ai_id(t).startswith("mcp_") for t in tools.ai_tools())
+
+
+def test_offered_survives_a_tool_appearing_between_the_two_reads(monkeypatch):
+    add_lights(monkeypatch)
+    real_load = permissions.load
+
+    def load_then_add():
+        states = real_load()  # lo leído ANTES de que el conector sume una herramienta
+        fake = FakeLink(tools=[tool("abrir", "Abre la puerta")])
+        install(monkeypatch, {"puerta": fake})
+        store.add("puerta", ["puerta"], {})
+        manager.start("puerta")
+        return states
+
+    monkeypatch.setattr(permissions, "load", load_then_add)
+
+    offered = [tools.ai_id(t) for t in permissions.offered()]
+
+    assert "mcp_puerta__abrir" in offered  # con su inicial («preguntar»), no un KeyError
