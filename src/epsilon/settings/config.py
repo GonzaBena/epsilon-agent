@@ -350,6 +350,13 @@ SETTINGS = (
         validate=_yes_no,
     ),
     Setting(
+        "BROWSER_GUARD",
+        "Guardia del navegador (preguntar en sitios que no son de confianza)",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    Setting(
         "BROWSER_TRUSTED_SITES",
         "Sitios de confianza del navegador (la IA actúa sin preguntar)",
         live=True,

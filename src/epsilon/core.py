@@ -843,7 +843,7 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         if _cancelled():  # cancelaron mientras el modelo pensaba: ni se usa lo que contestó ni se ejecutan sus herramientas
             return Reply(CANCELLED, artifacts=artifacts)
         # Pasado el tope de pasos el modelo ya no podía pedir herramientas: si igual pide alguna, no se ejecuta.
-        if not step.calls or turn.steps > chat.MAX_TOOL_STEPS:
+        if not step.calls or turn.steps > chat.step_limit(turn):
             # Sin texto (por ejemplo, la IA bloqueó la respuesta): no se guarda como si fuera una respuesta.
             if not step.text or not step.text.strip():
                 return Reply("La IA no devolvió texto.", artifacts=artifacts)

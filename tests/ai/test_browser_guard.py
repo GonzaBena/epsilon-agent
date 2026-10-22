@@ -205,3 +205,29 @@ def test_action_cap_blocks_any_browser_action(turn, page):
     assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"
     assert guard.review(tool("navegador.leer"), "abcdef", turn).verdict == "block"
     assert guard.review(tool("consultar.fecha"), "", turn).verdict == "run"  # solo cuenta el navegador
+
+
+def test_with_the_guard_off_an_untrusted_site_runs_without_asking(turn, page, monkeypatch):
+    monkeypatch.setenv("BROWSER_GUARD", "no")
+    page.host = "sitio-raro.com"
+
+    assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "run"
+    assert guard.review(tool("navegador.abrir"), "https://otro-sitio.com/", turn).verdict == "run"
+
+
+def test_with_the_guard_off_a_tainted_turn_and_sensitive_labels_do_not_ask(turn, page, monkeypatch):
+    monkeypatch.setenv("BROWSER_GUARD", "no")
+    page.label = "Eliminar cuenta"
+    turn.tainted = True
+
+    assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "run"
+
+
+def test_with_the_guard_off_blocked_links_and_the_caps_still_hold(turn, page, monkeypatch):
+    monkeypatch.setenv("BROWSER_GUARD", "no")
+    page.href = "http://192.168.1.1/"
+
+    assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"
+    page.href = ""
+    turn.browser_actions = guard.MAX_BROWSER_ACTIONS
+    assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"

@@ -11,8 +11,8 @@ from epsilon.utils import navegador, navegador_reglas as reglas
 # bloquean. Falla cerrado: si no se puede determinar el sitio, el rótulo o la pestaña, pregunta.
 # Ver docs/superpowers/specs/2026-10-22-navegador-design.md (guardrails 3, 7, 8 y 9).
 
-MAX_BROWSER_ACTIONS = 20  # acciones del navegador por mensaje
-MAX_NEW_TABS = 3  # pestañas nuevas por mensaje
+MAX_BROWSER_ACTIONS = 40  # acciones del navegador por mensaje
+MAX_NEW_TABS = 5  # pestañas nuevas por mensaje
 ACTING = ("nav_abrir", "nav_clic", "nav_escribir")
 CONTEXT_SEPARATOR = " — "  # navegador.py le suma al rótulo de un botón repetido el texto de su tarjeta, tras este separador
 LINK_BLOCKED = "Ese enlace lleva a un sitio bloqueado o a esta red: no lo toco."
@@ -83,6 +83,12 @@ def review(tool: tools.Tool, args: str, turn: chat.Turn) -> Review:
     if tool_id == "nav_abrir" and turn.browser_tabs >= MAX_NEW_TABS:
         return Review("block", "Llegué al tope de pestañas nuevas para este mensaje.")
     acting = Review()
+    if not config.enabled("BROWSER_GUARD"):
+        # Guardia apagada (BROWSER_GUARD=no): no pregunta por sitios ni rótulos. Siguen los topes de arriba y los bloqueos duros
+        # (sitios bloqueados, red local, esquemas raros), que viven en navegador.py y en el verdicto «block» de los enlaces.
+        if tool_id in ACTING and tool_id != "nav_abrir":
+            acting = _element_action(tool_id, args)
+        return Review(shown=acting.shown) if acting.verdict != "block" else acting
     if tool_id == "nav_abrir":
         acting = _open(args)
     elif tool_id in ACTING:

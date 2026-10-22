@@ -53,3 +53,7 @@ se agrega, redactada, a `DATA_DIR/browser.log`.
 - Todo se hace con clics reales sobre lo que `leer` numeró; si la página cambia entre `leer` y `clic`, se pide leer de nuevo.
 - `pestanas` muestra títulos de pestañas que abrió Epsilon en sitios de afuera y no contamina el mensaje.
 - Solo Chromium, solo esta compu; no hay capturas de pantalla ni control de otros programas.
+
+## Puesta en marcha (2026-10-22)
+
+Primero que ande, después la seguridad: un mensaje con navegador tiene 16 vueltas del modelo; `click` espera la carga y adopta pestañas nuevas; `leer id abajo|arriba`; `BROWSER_GUARD=no` apaga las preguntas de la guardia (no los bloqueos ni los topes).

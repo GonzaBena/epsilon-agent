@@ -17,6 +17,9 @@ MAX_TOKENS = 1500  # tope de salida de cada respuesta
 # Llamadas al modelo por mensaje que pueden pedir herramientas; pasado el tope hay una última que ya no
 # puede pedir ninguna y cierra con texto (hasta MAX_TOOL_STEPS + 1 = 7 llamadas por mensaje).
 MAX_TOOL_STEPS = 6
+# Una tarea con el navegador (abrir, leer, iniciar sesión, buscar la página…) necesita muchas más vueltas: en cuanto
+# el mensaje usó el navegador rige este tope, que sigue acotando el gasto.
+MAX_BROWSER_STEPS = 16
 DEFAULT_TURNS = 10  # pares (tu mensaje y la respuesta) que se reenvían, si CHAT_MAX_TURNS no está
 DEFAULT_TURNS_TELEGRAM = 5  # lo mismo en Telegram (CHAT_MAX_TURNS_TELEGRAM): ahí la charla es más corta
 
@@ -171,10 +174,15 @@ def _specs() -> list[llm.ToolSpec]:
     return list(specs.values())
 
 
+def step_limit(turn: Turn) -> int:
+    """Cuántas llamadas al modelo de este mensaje pueden pedir herramientas."""
+    return MAX_BROWSER_STEPS if turn.browser_actions else MAX_TOOL_STEPS
+
+
 def step(turn: Turn) -> llm.Step:
     """Una llamada al modelo. Pasado el tope de pasos no puede pedir herramientas, para que cierre con texto.
     Las declaraciones van igual: el historial ya trae llamadas y respuestas que las nombran."""
-    allow_calls = turn.steps < MAX_TOOL_STEPS
+    allow_calls = turn.steps < step_limit(turn)
     with usage.action(turn.label), llm.task(turn.task):
         # Un modelo que no usa herramientas (algunos locales) no las recibe: contesta solo con texto.
         specs = _specs() if llm.capabilities().tools else []

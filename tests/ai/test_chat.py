@@ -487,3 +487,12 @@ def test_step_does_not_offer_a_group_whose_actions_are_all_blocked(captured, mon
     chat.step(chat.begin(CID, "hola"))
 
     assert captured[0]["tools"] == []
+
+
+def test_a_message_that_used_the_browser_gets_more_steps():
+    turn = chat.begin(CID, "hola")
+    assert chat.step_limit(turn) == chat.MAX_TOOL_STEPS
+
+    turn.browser_actions = 1
+
+    assert chat.step_limit(turn) == chat.MAX_BROWSER_STEPS > chat.MAX_TOOL_STEPS

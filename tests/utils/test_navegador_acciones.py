@@ -236,3 +236,67 @@ def test_escribir_checks_the_field_is_still_not_sensitive_right_before_typing(mo
         navegador.type_text("AAAA11", 1, "4111")
 
     assert fake.sent("Input.insertText") == [] and fake.sent("Input.dispatchMouseEvent") == []
+
+
+def test_read_scrolls_with_the_mouse_wheel_and_never_with_script(monkeypatch):
+    fake = Page(monkeypatch, [el("Tareas")])
+
+    navegador.read("AAAA11 abajo")
+    navegador.read("AAAA11 arriba")
+
+    wheels = fake.sent("Input.dispatchMouseEvent")
+    assert [(w["type"], w["deltaY"]) for w in wheels] == [("mouseWheel", navegador.SCROLL_PIXELS), ("mouseWheel", -navegador.SCROLL_PIXELS)]
+    assert [p["expression"] for p in fake.sent("Runtime.evaluate")] == [navegador.READ_JS] * 2
+
+
+@pytest.mark.parametrize("args", ["AAAA11 izquierda", "AAAA11 abajo mucho"])
+def test_read_rejects_any_other_direction(monkeypatch, args):
+    fake = Page(monkeypatch, [el("Tareas")])
+
+    with pytest.raises(navegador.NavegadorError, match="abajo"):
+        navegador.read(args)
+
+    assert fake.orders == []
+
+
+def test_read_tells_when_there_is_more_below(monkeypatch):
+    fake = Page(monkeypatch, [el("Tareas")])
+    fake.data["more"] = True
+
+    assert "AAAA11 abajo" in navegador.read("AAAA11")
+
+
+def test_click_waits_for_the_page_to_finish_loading(monkeypatch):
+    fake = Page(monkeypatch, [el("Nivel 10")])
+    navegador.read("AAAA11")
+    states = iter(["loading", "loading", "complete"])
+    original = fake.cdp
+
+    def cdp(ws_url, method, params=None):
+        if method == "Runtime.evaluate" and params["expression"] == "document.readyState":
+            fake.orders.append((method, params))
+            return {"result": {"type": "string", "value": next(states)}}
+        return original(ws_url, method, params)
+
+    monkeypatch.setattr(navegador, "_cdp", cdp)
+
+    navegador.click("AAAA11", 1)
+
+    assert next(states, None) is None  # esperó hasta ver «complete»
+
+
+def test_click_reports_and_adopts_a_tab_the_click_opened(monkeypatch):
+    fake = Page(monkeypatch, [el("Curso", "link")], url="https://music.youtube.com/")
+    navegador.read("AAAA11")
+    real_press = navegador._press
+
+    def press(*args, **kwargs):
+        result = real_press(*args, **kwargs)
+        fake.chromium.tabs.append(page("BBBB2222", "Curso", "https://music.youtube.com/curso"))  # el clic abrió una pestaña
+        return result
+
+    monkeypatch.setattr(navegador, "_press", press)
+
+    result = navegador.click("AAAA11", 1)
+
+    assert "BBBB22" in result and "BBBB2222" in navegador._opened

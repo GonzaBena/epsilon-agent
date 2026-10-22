@@ -311,6 +311,17 @@
               <p class="error" id="err-BROWSER_ENABLED" role="alert"></p>
             </div>
 
+            <div class="field switch-field">
+              <div class="switch-row">
+                <span class="switch-label" id="label-BROWSER_GUARD">Guardia del navegador (preguntar en sitios que no son de confianza)</span>
+                <button type="button" class="switch" role="switch" id="f-BROWSER_GUARD" data-key="BROWSER_GUARD"
+                        value="si" aria-checked="true"
+                        aria-labelledby="label-BROWSER_GUARD" aria-describedby="hint-BROWSER_GUARD err-BROWSER_GUARD"><span class="knob"></span></button>
+              </div>
+              <p class="hint" id="hint-BROWSER_GUARD"></p>
+              <p class="error" id="err-BROWSER_GUARD" role="alert"></p>
+            </div>
+
             <div class="field">
               <label for="f-BROWSER_TRUSTED_SITES">Sitios de confianza (separados por coma)</label>
               <input id="f-BROWSER_TRUSTED_SITES" data-key="BROWSER_TRUSTED_SITES" type="text" placeholder="music.youtube.com,youtube.com"

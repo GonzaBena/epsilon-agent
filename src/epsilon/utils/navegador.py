@@ -29,6 +29,9 @@ WS_PREFIX = f"ws://127.0.0.1:{PORT}/"
 BROWSERS = ("Chrome/", "Chromium/", "HeadlessChrome/")
 TIMEOUT = 5.0
 LOAD_TRIES = 20  # al abrir: cuántas veces se mira si la pestaña cargó (de a medio segundo)
+SETTLE_PAUSE = 0.7  # tras un clic: pausa para que la página empiece a navegar antes de preguntarle si cargó
+SETTLE_TRIES = 10  # y cuántas veces se mira si terminó de cargar (de a medio segundo)
+SCROLL_PIXELS = 600  # cuánto baja o sube `leer … abajo|arriba`
 LAUNCH_WAIT = 15.0  # segundos que se espera a que un Chromium recién lanzado abra el puerto
 LOG_FILE = "browser.log"
 LOG_RESULT_CHARS = 120
@@ -80,7 +83,8 @@ READ_JS = """(() => {
     }
     delete o.el;
   }
-  return {url: location.href, title: document.title, text: clean(document.body ? document.body.innerText : '', 3000), elements: out};
+  const more = document.documentElement.scrollHeight - (scrollY + innerHeight) > 40;
+  return {url: location.href, title: document.title, more, text: clean(document.body ? document.body.innerText : '', 3000), elements: out};
 })()"""
 
 
@@ -392,9 +396,18 @@ def _collect(tab: Tab) -> tuple[dict, list[Element]]:
     return data, elements
 
 
-def read(tab_ref: str) -> str:
-    """El título, el texto principal (acotado) y los elementos tocables numerados de la pestaña."""
-    tab = resolve_tab(tab_ref)
+def read(args: str) -> str:
+    """El título, el texto principal (acotado) y los elementos tocables numerados de la pestaña.
+    «id abajo» o «id arriba» desplaza la página antes de leer (con la rueda del mouse, sin JavaScript)."""
+    parts = args.split()
+    direction = parts[1].lower() if len(parts) > 1 else ""
+    if len(parts) > 2 or direction not in ("", "abajo", "arriba"):
+        raise NavegadorError("Después del id de la pestaña solo puede ir «abajo» o «arriba».")
+    tab = resolve_tab(parts[0] if parts else "")
+    if direction:
+        delta = SCROLL_PIXELS if direction == "abajo" else -SCROLL_PIXELS
+        _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": "mouseWheel", "x": 300.0, "y": 300.0, "deltaX": 0, "deltaY": delta})
+        time.sleep(0.4)
     data, elements = _collect(tab)
     _elements[tab.id] = elements
     _sites[tab.id] = tab.host
@@ -402,6 +415,8 @@ def read(tab_ref: str) -> str:
     title = " ".join(str(data.get("title", "")).split())[:MAX_TITLE]
     lines = [f"Título: {title}", f"Sitio: {tab.host}", "Elementos:"]
     lines += [f"{e.n}: {KINDS.get(e.kind, 'elemento')} «{e.label}»" for e in elements]
+    if data.get("more") is True:
+        lines.append(f"(Hay más abajo: leer con «{tab.short} abajo» para ver el resto.)")
     lines += ["Texto:", str(data.get("text", ""))[:MAX_TEXT]]  # al final: si el resultado se recorta, se pierde texto y no números
     return "\n".join(lines)
 
@@ -439,11 +454,39 @@ def _press(tab: Tab, n: int, saved: Element, field: bool = False) -> Element:
     return now
 
 
+def _settle(tab: Tab) -> None:
+    """Después de un clic, espera a que la página termine de cargar (si el clic la hizo navegar): leer antes mostraba la anterior."""
+    time.sleep(SETTLE_PAUSE)
+    for _ in range(SETTLE_TRIES):
+        try:
+            state = _cdp(tab.ws, "Runtime.evaluate", {"expression": "document.readyState", "returnByValue": True})
+        except NavegadorError:  # justo navegando, el contexto de la página desaparece un instante
+            time.sleep(0.5)
+            continue
+        value = state.get("result", {}).get("value")
+        if not isinstance(value, str) or value == "complete":
+            return
+        time.sleep(0.5)
+
+
 def click(tab_ref: str, n: int) -> str:
-    """Hace clic en el elemento `n` de la última lectura. Es un clic real: la reproducción lo necesita."""
+    """Hace clic en el elemento `n` de la última lectura. Es un clic real: la reproducción lo necesita.
+    Espera a que cargue lo que abrió el clic; si abrió una pestaña nueva (enlace «target=_blank»), la suma a las que Epsilon puede usar."""
     tab, saved = resolve_tab(tab_ref), element(tab_ref, n)
+    before = {item.get("id") for item in _raw_tabs()}
     now = _press(tab, n, saved)
-    return f"Hice clic en «{now.label}»."
+    message = f"Hice clic en «{now.label}»."
+    try:
+        _settle(tab)
+        fresh = [_tab(item) for item in _raw_tabs() if item.get("id") not in before]
+        _opened.update(t.id for t in fresh if t.id)
+        shown = {t.id for t in tabs()[0]}
+        for t in fresh:
+            if t.id in shown:
+                message += f" Se abrió una pestaña nueva: {t.short} ({t.host})."
+    except NavegadorError:
+        pass  # el clic ya se hizo: avisar de esto no puede tirarlo abajo
+    return message
 
 
 def type_text(tab_ref: str, n: int, text: str) -> str:

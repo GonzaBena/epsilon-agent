@@ -200,11 +200,11 @@ def test_page_text_that_gives_orders_comes_back_labeled_as_data(script, monkeypa
 def test_the_browser_cap_stops_the_turn_with_a_clear_message(script, monkeypatch):
     monkeypatch.setattr(navegador, "tabs", lambda: ([], 0))
     calls = [("navegador.pestanas", "")] * 8
-    script.steps = [step(calls=calls), step(calls=calls), step(calls=calls), step("ok")]
+    script.steps = [step(calls=calls)] * 6 + [step("ok")]  # 5 pasos de 8 llegan al tope de 40; el sexto ya lo choca
 
     say("mirá")
 
-    last = results(script.seen[3][0])
+    last = results(script.seen[6][0])
     assert any("tope" in text for text in last)
 
 
