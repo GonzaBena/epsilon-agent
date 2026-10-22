@@ -304,3 +304,74 @@ def test_a_tool_without_a_stored_hash_is_refused(script, lights):  # noqa: F811
 def test_the_person_path_without_a_hash_still_works(script, lights):  # noqa: F811
     # /c y los botones (más adelante) no tienen permiso guardado: llaman sin hash.
     assert manager.call("luces", "apagar", {"habitacion": "living"}) == "apagué living"
+
+
+# --- Orden: primero se vuelve a «preguntar», después el store muestra el hash nuevo ---------------------------
+
+
+def test_permission_is_reset_before_the_store_shows_the_new_hash(script, lights):  # noqa: F811
+    allow_lights()
+    old = core._connector_hash(TOOL_ID)
+    seen = []
+
+    def hook(name, changed, found):
+        registry.reset_changed(name, changed, found)
+        seen.append((core._connector_hash(TOOL_ID), permissions.load()[TOOL_ID]))  # lo que ve core en ese momento
+
+    manager.set_changed_hook(hook)
+    lights.tools = [tool("apagar", "Apaga la luz", CHANGED)]
+    manager.stop("luces")
+    manager.start("luces")
+
+    assert seen == [(old, "ask")]  # ya en «preguntar» y el store todavía con el hash de antes
+    assert core._connector_hash(TOOL_ID) not in ("", old)  # después, el nuevo
+
+
+def test_call_inside_the_hook_gap_never_runs_the_changed_tool(script, lights):  # noqa: F811
+    allow_lights()
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_hook(name, changed, found):
+        entered.set()
+        release.wait(2)  # la llamada de la IA corre mientras el gancho no terminó
+        registry.reset_changed(name, changed, found)
+
+    manager.set_changed_hook(slow_hook)
+    lights.tools = [tool("apagar", "Apaga la luz", CHANGED)]
+    manager.stop("luces")
+    opener, out = in_thread(manager.start, "luces")
+    assert entered.wait(2)
+    threading.Timer(0.2, release.set).start()
+    script.steps = [step(calls=[("luces.apagar", '{"habitacion": "living"}')]), step("hay que autorizarla")]
+
+    assert say("apagá").text == "hay que autorizarla"
+    opener.join(2)
+
+    assert out == {"result": ["apagar"]}
+    assert lights.calls == []
+    assert permissions.load()[TOOL_ID] == "ask"
+
+
+def test_a_failing_hook_fails_closed_and_is_retried(script, lights):  # noqa: F811
+    allow_lights()
+
+    def broken(name, changed, found):
+        raise RuntimeError("roto")
+
+    manager.set_changed_hook(broken)
+    lights.tools = [tool("apagar", "Apaga la luz", CHANGED)]
+    manager.stop("luces")
+    assert manager.start("luces") == ["apagar"]  # el arranque sigue
+
+    assert core._connector_hash(TOOL_ID) == ""  # guardada sin hash: nunca coincide con el del enlace
+    script.steps = [step(calls=[("luces.apagar", '{"habitacion": "living"}')]), step("no")]
+    assert say("apagá").text == "no"
+    assert lights.calls == []
+    (sent,) = results(script.seen[1][0])
+    assert "volvé a autorizarla" in sent
+
+    manager.set_changed_hook(registry.reset_changed)  # el próximo arranque reintenta el aviso
+    manager.stop("luces")
+    assert manager.start("luces") == ["apagar"]
+    assert permissions.load()[TOOL_ID] == "ask"
+    assert core._connector_hash(TOOL_ID) not in ("", None)

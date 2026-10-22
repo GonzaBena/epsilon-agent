@@ -99,7 +99,7 @@ def test_start_stores_tools_and_reports_new_then_changed(monkeypatch):
     install(monkeypatch, {"luces": link})
     add("luces")
     seen = []
-    manager.set_changed_hook(lambda name, changed: seen.append((name, changed)))
+    manager.set_changed_hook(lambda name, changed, found: seen.append((name, changed)))
 
     assert sorted(manager.start("luces")) == ["apagar", "prender"]
     saved = store.get("luces")["tools"]
@@ -140,7 +140,7 @@ def test_a_failing_hook_does_not_break_start(monkeypatch):
     install(monkeypatch, {"luces": FakeLink()})
     add("luces")
 
-    def broken(name, changed):
+    def broken(name, changed, found):
         raise RuntimeError("roto")
 
     manager.set_changed_hook(broken)
@@ -424,7 +424,7 @@ def test_full_and_idle_concurrent_opens_evict_without_going_over(monkeypatch):
 def test_hook_that_calls_back_into_the_manager_does_not_freeze_it(monkeypatch):
     install(monkeypatch, {"luces": FakeLink()})
     add("luces")
-    manager.set_changed_hook(lambda name, changed: manager.stop(name))
+    manager.set_changed_hook(lambda name, changed, found: manager.stop(name))
 
     began = time.monotonic()
     assert manager.start("luces") == ["saludar"]

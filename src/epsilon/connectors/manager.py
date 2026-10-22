@@ -62,7 +62,7 @@ class _Slot:
 
 
 _slots: dict[str, _Slot] = {}
-_changed_hook: Callable[[str, list[str]], None] | None = None
+_changed_hook: Callable[[str, list[str], list[dict]], None] | None = None
 _loop_ref: asyncio.AbstractEventLoop | None = None
 _loop_thread: threading.Thread | None = None
 _ticker_future = None  # el reloj de inactividad (stop_all lo frena; `_loop` lo vuelve a poner)
@@ -315,10 +315,15 @@ def _normalize(found: object) -> list[dict]:
     return tools
 
 
-async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> list[str]:
-    """Pide la lista de herramientas, la guarda (en el store y en `slot.hashes`) y devuelve las nuevas o cambiadas.
+Found = tuple[list[dict], list[str]]  # (herramientas tal como las contó el enlace, nombres de las nuevas o cambiadas)
+
+
+async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> Found:
+    """Pide la lista de herramientas, la anota en `slot.hashes` y devuelve (herramientas, nuevas o cambiadas).
+    NO la guarda en el store: eso lo hace `_settle`, DESPUÉS de que el gancho volvió lo cambiado a «preguntar»
+    (si el store mostrara el hash nuevo antes, una llamada podría decidir con el «permitir» viejo y el hash nuevo).
     Se llama con `slot.lock` tomado y `slot.ready` apagado. Si falla, cierra acá mismo (sin `_fail`, que vuelve a
-    tomar el candado). El gancho NO va acá: lo corre `_settle`, ya sin el candado."""
+    tomar el candado)."""
     try:
         found = await asyncio.wait_for(link.list_tools(), CALL_TIMEOUT)
     except ConnectorError as error:
@@ -335,27 +340,37 @@ async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> 
     tools = _normalize(found)
     before = {t.get("name"): t.get("hash") for t in (store.get(name) or {}).get("tools", []) if isinstance(t, dict)}
     changed = [t["name"] for t in tools if before.get(t["name"]) != t["hash"]]
-    try:
-        store.update(name, tools=tools, error="")
-    except store.StoreError as error:
-        raise ConnectorError(str(error)) from None
     slot.hashes = {t["name"]: t["hash"] for t in tools}
+    return tools, changed
+
+
+async def _settle(name: str, slot: _Slot, found: Found) -> list[str]:
+    """En este orden: avisa al gancho (fuera del ciclo y sin el candado: puede volver a usar el manager) y lo
+    espera; recién después guarda las herramientas en el store; y al final deja usar el enlace. Así nadie ve el
+    hash nuevo mientras el permiso de antes sigue en pie.
+
+    Si el gancho falla, se cierra hacia lo seguro: las cambiadas se guardan con hash vacío. Así la IA no las puede
+    correr (su hash nunca coincide con el del enlace: «volvé a autorizarla») y el próximo arranque las vuelve a
+    contar como cambiadas y reintenta el aviso."""
+    tools, changed = found
+    stored = tools
+    try:
+        if _changed_hook is not None:
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, _changed_hook, name, changed, tools)
+            except Exception:  # noqa: BLE001 - el gancho es de otro módulo: no rompe el arranque
+                log.exception("Falló el aviso de herramientas cambiadas")
+                stored = [{**t, "hash": ""} if t["name"] in changed else t for t in tools]
+        try:
+            store.update(name, tools=stored, error="")
+        except store.StoreError as error:  # el store queda con lo de antes: sus hashes no coinciden, no corren
+            raise ConnectorError(str(error)) from None
+    finally:
+        slot.ready.set()
     return changed
 
 
-async def _settle(name: str, slot: _Slot, changed: list[str]) -> None:
-    """Avisa al gancho (fuera del ciclo y sin el candado: puede volver a usar el manager) y, cuando terminó,
-    deja usar el enlace. Así, al volver una llamada, lo cambiado ya está otra vez en «preguntar»."""
-    try:
-        if _changed_hook is not None:
-            await asyncio.get_running_loop().run_in_executor(None, _changed_hook, name, changed)
-    except Exception:  # noqa: BLE001 - el gancho es de otro módulo: no rompe el arranque
-        log.exception("Falló el aviso de herramientas cambiadas")
-    finally:
-        slot.ready.set()
-
-
-async def _discover_locked(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> list[str]:
+async def _discover_locked(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> Found:
     """`_discover` con `slot.ready` apagado (con `slot.lock` ya tomado). Si falla, lo vuelve a prender; si no,
     queda apagado hasta `_settle`. El hilo del ciclo es uno solo: entre el candado y apagarlo no se cuela nadie."""
     slot.ready.clear()
@@ -416,8 +431,7 @@ async def _ensure(name: str, slot: _Slot, entry: dict) -> tuple[Link, list[str] 
         finally:
             slot.opening -= 1
         if opened is not None:
-            await _settle(name, slot, opened[1])
-            return opened
+            return opened[0], await _settle(name, slot, opened[1])
 
 
 CHANGED_TOOL = "La herramienta «{tool}» del conector «{name}» cambió desde la última vez; volvé a autorizarla antes de usarla."
@@ -473,13 +487,12 @@ async def _start(name: str) -> list[str]:
             if changed is not None:
                 return changed
             # Ya estaba abierto: igual vuelve a mirar las herramientas; mientras, nadie lo usa (`slot.ready`).
-            changed = None
+            found = None
             async with slot.lock:
                 if slot.link is link and link.alive and slot.ready.is_set():
-                    changed = await _discover_locked(name, slot, link, entry.get("env", {}))
-            if changed is not None:
-                await _settle(name, slot, changed)
-                return changed
+                    found = await _discover_locked(name, slot, link, entry.get("env", {}))
+            if found is not None:
+                return await _settle(name, slot, found)
             # lo cerraron, o lo estaba mirando otro, mientras esperábamos el candado: de nuevo
         raise ConnectorError(f"El conector «{name}» se cerró mientras lo arrancaba; probá de nuevo.")
     finally:
@@ -566,8 +579,11 @@ def status(name: str) -> str:
     return "detenido" if entry.get("error") else "dormido"
 
 
-def set_changed_hook(fn: Callable[[str, list[str]], None] | None) -> None:
-    """Quién se entera cuando un conector trae herramientas nuevas o cambiadas (p. ej. para volverlas a «preguntar»)."""
+def set_changed_hook(fn: Callable[[str, list[str], list[dict]], None] | None) -> None:
+    """Quién se entera cuando un conector trae herramientas nuevas o cambiadas (p. ej. para volverlas a «preguntar»):
+    `fn(conector, nombres MCP de las cambiadas, herramientas nuevas completas)`. Corre fuera del ciclo y ANTES de
+    que el store muestre las herramientas nuevas (por eso recibe la lista). Si falla, las cambiadas quedan sin poder
+    correr por la IA hasta que un arranque posterior lo logre (ver `_settle`)."""
     global _changed_hook
     _changed_hook = fn
 

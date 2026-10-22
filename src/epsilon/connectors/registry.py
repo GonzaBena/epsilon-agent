@@ -63,15 +63,18 @@ def provide() -> tuple[tuple[tools.Tool, ...], dict[str, str]]:
     return built
 
 
-def reset_changed(name: str, changed: list[str]) -> None:
+def reset_changed(name: str, changed: list[str], found: list[dict] | None = None) -> None:
     """El gancho de manager.set_changed_hook: las herramientas nuevas o cambiadas (por su nombre MCP) vuelven a
-    «preguntar». No vuelve a usar el manager (corre fuera de su ciclo, pero igual: solo toca el store y los permisos)."""
-    entry = store.get(name)
-    if entry is None:
-        return
+    «preguntar». `found` es la lista NUEVA (el manager llama antes de guardarla: el store todavía tiene la de antes);
+    sin ella, la del store. No vuelve a usar el manager: solo toca los permisos."""
+    if found is None:
+        entry = store.get(name)
+        if entry is None:
+            return
+        found = entry.get("tools", [])
     actions: dict[str, str] = {}
     taken: set[str] = set()
-    for item in entry.get("tools", []):
+    for item in found if isinstance(found, list) else []:
         if not isinstance(item, dict) or not isinstance(item.get("name"), str):
             continue
         action = bridge.action_name(item["name"], taken)  # el mismo orden que build_tools: la misma acción
