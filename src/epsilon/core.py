@@ -922,11 +922,14 @@ def _question(tool: tools.Tool, args: str, shown: str = "") -> Reply:
     """El pedido de permiso: qué herramienta y con qué datos (no es una respuesta de la IA). `shown`, si viene,
     lo armó el código desde la pestaña real (ai/browser_guard.py) y reemplaza a los argumentos tal cual los pidió el modelo."""
     full = config.redact(shown or args)
-    shown = full[:MAX_QUESTION_ARG]
-    more = f"\n… (y {len(full) - len(shown)} caracteres más)" if len(full) > len(shown) else ""
+    if shown:  # armado por el código y acotado: se muestra entero (el texto a escribir no puede quedar escondido)
+        cut, more = full, ""
+    else:
+        cut = full[:MAX_QUESTION_ARG]
+        more = f"\n… (y {len(full) - len(cut)} caracteres más)" if len(full) > len(cut) else ""
     preview = _edit_preview(args) if tools.ai_id(tool) == "nota_editar" else ""
     return Reply(
-        f"La IA quiere usar {tool.label} con:\n{_fenced(shown)}{more}{preview}",
+        f"La IA quiere usar {tool.label} con:\n{_fenced(cut)}{more}{preview}",
         actions=[
             Action("perm:si", "Sí"),
             Action("perm:siempre", "Sí, por el resto de la conversación"),
@@ -1028,9 +1031,14 @@ def _nav(action: Callable[[str], str]) -> Callable[[str], Reply]:
     return run
 
 
+def _nav_title(tab: navegador.Tab) -> str:
+    return " ".join(tab.title.split())[:100] if navegador.trusted(tab.host) else ""
+
+
 def _nav_tabs(args: str) -> str:
     visible, hidden = navegador.tabs()
-    lines = [f"{tab.short}: {tab.title or tab.url} ({tab.host})" for tab in visible]
+    # El título lo escribe la página: solo se muestra el de un sitio de confianza (en los demás, el sitio alcanza).
+    lines = [f"{tab.short}: {_nav_title(tab)} ({tab.host})".replace(":  (", ": (") for tab in visible]
     if hidden:
         lines.append(f"({hidden} pestañas más que no puedo ver)")
     return "\n".join(lines) or "No hay pestañas abiertas."
@@ -1038,7 +1046,7 @@ def _nav_tabs(args: str) -> str:
 
 def _nav_open(args: str) -> str:
     tab = navegador.open_url(args.strip())
-    return f"Abrí la pestaña {tab.short}: {tab.title or tab.url}"
+    return f"Abrí la pestaña {tab.short}: {_nav_title(tab) or tab.host}"
 
 
 def _nav_click(args: str) -> str:

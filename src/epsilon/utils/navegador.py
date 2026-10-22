@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import socket
 import subprocess
+import threading
 import time
 from urllib.parse import quote
 
@@ -36,6 +37,9 @@ KINDS = {"button": "botón", "link": "enlace", "input": "campo"}
 
 _opened: set[str] = set()  # ids de las pestañas que abrió Epsilon en esta ejecución
 _elements: dict[str, list["Element"]] = {}  # pestaña -> elementos de su última lectura
+_sites: dict[str, str] = {}  # pestaña -> sitio que tenía cuando se leyó (para no actuar si cambió)
+_last = threading.local()  # lo último que leyó `read` en este hilo (ver last_read_hosts)
+MAX_TITLE = 200
 
 # El ÚNICO código que corre dentro de una pestaña: fijo, sin nada que venga del modelo. Devuelve el título, el texto
 # visible y los elementos tocables a la vista (jamás el valor de un campo). Marca como sensibles los de contraseña, tarjeta o CVV.
@@ -54,7 +58,7 @@ READ_JS = """(() => {
     const field = tag === 'input' || tag === 'textarea' || tag === 'select';
     const kind = type === 'password' ? 'password' : tag === 'a' ? 'link' : field ? 'input' : 'button';
     const label = clean(el.getAttribute('aria-label') || (field ? (el.placeholder || el.title || el.name) : (el.innerText || el.textContent)) || el.title || el.alt, 80);
-    out.push({label, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive, el});
+    out.push({label, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive, href: tag === 'a' ? el.href : '', el});
     if (out.length >= 200) break;
   }
   // Varios botones con el mismo rótulo («Reproducir» en cada tarjeta): se les suma el texto de su tarjeta para distinguirlos.
@@ -70,7 +74,7 @@ READ_JS = """(() => {
     }
     delete o.el;
   }
-  return {title: document.title, text: clean(document.body ? document.body.innerText : '', 3000), elements: out};
+  return {url: location.href, title: document.title, text: clean(document.body ? document.body.innerText : '', 3000), elements: out};
 })()"""
 
 
@@ -86,6 +90,7 @@ class Element:
     x: float
     y: float
     sensitive: bool  # contraseña, tarjeta o CVV: no se escribe
+    href: str = ""  # a dónde lleva, si es un enlace
 
 
 @dataclass(frozen=True)
@@ -217,11 +222,17 @@ def tabs() -> tuple[list[Tab], int]:
     visible, hidden = [], 0
     for item in _raw_tabs():
         tab = _tab(item)
-        if tab.id and not reglas.matches(tab.host, blocked) and (tab.id in _opened or reglas.matches(tab.host, trusted)):
+        shown = tab.id and not reglas.matches(tab.host, blocked) and reglas.local_problem(tab.url) is None
+        if shown and (tab.id in _opened or reglas.matches(tab.host, trusted)):
             visible.append(tab)
         else:
             hidden += 1
     return visible, hidden
+
+
+def trusted(host: str) -> bool:
+    """¿El sitio es de confianza (BROWSER_TRUSTED_SITES)? Un sitio vacío no."""
+    return reglas.matches(host, config.site_list("BROWSER_TRUSTED_SITES"))
 
 
 def resolve_tab(ref: str) -> Tab:
@@ -240,7 +251,7 @@ def open_url(url: str) -> Tab:
     ensure_running()
     url = url.strip()
     _check_destination(url)
-    item = _http("PUT", "/json/new?" + quote(url, safe=":/?&=#%+,;~!$'()*@"))
+    item = _http("PUT", "/json/new?" + quote(url, safe=""))  # Chromium parte el pedido en «&» y decodifica: todo escapado
     if not isinstance(item, dict) or not item.get("id"):
         raise NavegadorError("Chromium no abrió la pestaña.")
     tab_id = str(item["id"])
@@ -255,10 +266,22 @@ def open_url(url: str) -> Tab:
             break
         time.sleep(0.5)
     try:
-        if not tab.url.startswith("about:"):
-            _check_destination(tab.url)
+        landing = tab.url
+        if not landing.startswith("about:"):
+            for _ in range(LOAD_TRIES):  # la dirección de /json/list puede ser la pedida: se mira la que cargó de verdad
+                state = _cdp(tab.ws, "Runtime.evaluate", {"expression": "document.readyState + '|' + location.href", "returnByValue": True})
+                ready, _, href = str(state.get("result", {}).get("value", "")).partition("|")
+                landing = href or landing
+                if ready == "complete" and not href.startswith("about:"):  # el about:blank inicial también está «complete»
+                    break
+                time.sleep(0.5)
+            if not landing.startswith("about:"):  # sigue en blanco tras la espera: tabs() la revisa cada vez que se usa
+                _check_destination(landing)
     except NavegadorError:
-        _http("GET", f"/json/close/{tab_id}")
+        try:
+            _http("GET", f"/json/close/{tab_id}")
+        except NavegadorError:
+            pass
         _opened.discard(tab_id)
         raise
     return tab
@@ -293,7 +316,15 @@ def _collect(tab: Tab) -> tuple[dict, list[Element]]:
         raise NavegadorError("No pude leer la página.")
     found = [e for e in data["elements"] if isinstance(e, dict) and e.get("kind") != "password"][:MAX_ELEMENTS]
     elements = [
-        Element(n, str(e.get("label", "")), str(e.get("kind", "button")), float(e.get("x", 0)), float(e.get("y", 0)), bool(e.get("sensitive", True)))
+        Element(
+            n,
+            " ".join(str(e.get("label", "")).split())[:80],  # una sola línea: la página no puede fingir otras
+            str(e.get("kind", "button")),
+            float(e.get("x", 0)),
+            float(e.get("y", 0)),
+            bool(e.get("sensitive", True)),
+            str(e.get("href", ""))[:500],
+        )
         for n, e in enumerate(found, 1)
     ]
     return data, elements
@@ -304,9 +335,18 @@ def read(tab_ref: str) -> str:
     tab = resolve_tab(tab_ref)
     data, elements = _collect(tab)
     _elements[tab.id] = elements
-    lines = [f"Título: {data.get('title', '')}", f"Sitio: {tab.host}", "Texto:", str(data.get("text", ""))[:MAX_TEXT], "Elementos:"]
+    _sites[tab.id] = tab.host
+    _last.hosts = [tab.host, reglas.host_of(str(data.get("url", "")))]  # el de antes y el de después: la página pudo navegar
+    title = " ".join(str(data.get("title", "")).split())[:MAX_TITLE]
+    lines = [f"Título: {title}", f"Sitio: {tab.host}", "Elementos:"]
     lines += [f"{e.n}: {KINDS.get(e.kind, 'elemento')} «{e.label}»" for e in elements]
+    lines += ["Texto:", str(data.get("text", ""))[:MAX_TEXT]]  # al final: si el resultado se recorta, se pierde texto y no números
     return "\n".join(lines)
+
+
+def last_read_hosts() -> list[str]:
+    """Los sitios que tenía la pestaña antes y después de la última lectura de este hilo (vacío si no hubo)."""
+    return list(getattr(_last, "hosts", []))
 
 
 def element(tab_ref: str, n: int) -> Element:
@@ -320,12 +360,17 @@ def element(tab_ref: str, n: int) -> Element:
     return elements[n - 1]
 
 
-def _press(tab: Tab, n: int, saved: Element) -> Element:
-    """Hace clic de verdad en el elemento `n`, después de comprobar que la página sigue siendo la que se leyó."""
+def _press(tab: Tab, n: int, saved: Element, field: bool = False) -> Element:
+    """Hace clic de verdad en el elemento `n`, después de comprobar que la página sigue siendo la que se leyó
+    (mismo sitio y mismo rótulo). Con `field`, además tiene que seguir siendo un campo que no sea sensible."""
+    if _sites.get(tab.id) != tab.host:
+        raise NavegadorError("La página cambió de sitio: leé la pestaña de nuevo.")
     _, fresh = _collect(tab)
     now = next((e for e in fresh if e.n == n), None)
     if now is None or now.label != saved.label:
         raise NavegadorError("La página cambió: leé la pestaña de nuevo.")
+    if field and (now.kind != "input" or now.sensitive):
+        raise NavegadorError("Ese campo es de contraseña o de tarjeta, o ya no es un campo: no escribo ahí.")
     _elements[tab.id] = fresh
     for kind in ("mousePressed", "mouseReleased"):
         _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": kind, "x": now.x, "y": now.y, "button": "left", "clickCount": 1})
@@ -342,11 +387,13 @@ def click(tab_ref: str, n: int) -> str:
 def type_text(tab_ref: str, n: int, text: str) -> str:
     """Escribe en el campo `n` de la última lectura. Nunca en contraseñas ni datos de tarjeta."""
     tab, saved = resolve_tab(tab_ref), element(tab_ref, n)
+    if saved.kind != "input":
+        raise NavegadorError("Ese elemento no es un campo de texto: para tocarlo usá clic.")
     if saved.sensitive:
         raise NavegadorError("Ese campo es de contraseña o de tarjeta: no escribo ahí.")
     if len(text) > MAX_TYPED:
         raise NavegadorError(f"Ese texto es muy largo (máximo {MAX_TYPED} caracteres).")
-    now = _press(tab, n, saved)
+    now = _press(tab, n, saved, field=True)
     _cdp(tab.ws, "Input.insertText", {"text": text})
     return f"Escribí en «{now.label}»."
 

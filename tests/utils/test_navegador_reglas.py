@@ -61,3 +61,37 @@ def test_sensitive_labels(label):
 @pytest.mark.parametrize("label", ["Reproducir", "Play", "Mi Supermix", "Buscar"])
 def test_harmless_labels(label):
     assert not reglas.is_sensitive_label(label)
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:9222/json/list", "http://192.168.1.1/", "file:///x", "http://localhost/", "http://a.local/", "https://a.com@b.com/", "https://evil.com%2F.github.io/", "about:blank"])
+def test_local_problem_rejects_without_any_dns(url):
+    assert reglas.local_problem(url)
+
+
+def test_local_problem_accepts_a_public_name_or_ip():
+    assert reglas.local_problem("https://music.youtube.com/") is None
+    assert reglas.local_problem("http://8.8.8.8/") is None
+
+
+def test_url_problem_rejects_percent_escapes_in_the_site():
+    assert reglas.url_problem("https://evil.com%2F.github.io/", ["1.2.3.4"])
+
+
+@pytest.mark.parametrize("url", ["https://www.youtube.com/redirect?q=https://evil.tld/x", "https://www.youtube.com/watch?next=http%3A%2F%2Fevil.tld", "https://www.youtube.com/redirect?event=1"])
+def test_has_embedded_url_flags_redirects(url):
+    assert reglas.has_embedded_url(url)
+
+
+@pytest.mark.parametrize("url", ["https://music.youtube.com/watch?v=abc&list=RD123", "https://music.youtube.com/"])
+def test_has_embedded_url_leaves_normal_addresses_alone(url):
+    assert not reglas.has_embedded_url(url)
+
+
+@pytest.mark.parametrize("label", ["Responder", "Reply", "Compartir", "Share", "Guardar", "Save", "Crear", "Subir", "Upload", "Denunciar", "Report", "Bloquear", "Cerrar sesión", "Sign out", "Unsubscribe", "Anular suscripción", "Suscripción", "Aceptar", "Accept"])
+def test_more_sensitive_labels(label):
+    assert reglas.is_sensitive_label(label)
+
+
+@pytest.mark.parametrize("label", ["Siguiente", "Anteriores", "Más", "Iniciar búsqueda", "Reproducir", "Pausa"])
+def test_navigation_labels_stay_harmless(label):
+    assert not reglas.is_sensitive_label(label)

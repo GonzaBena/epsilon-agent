@@ -1,3 +1,5 @@
+from urllib.parse import quote, unquote
+
 import pytest
 
 from epsilon.utils import navegador
@@ -14,7 +16,18 @@ class FakeChromium:
         self.version = {"Browser": "Chrome/154.0.0.0", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser/x"}
         monkeypatch.setattr(navegador, "_http", self.http)
         monkeypatch.setattr(navegador, "_resolve", lambda host: self.addresses.get(host, ["142.250.0.1"]))
+        self.pending = {}  # id de pestaña -> lista de "estado|dirección" que va devolviendo location.href
+        monkeypatch.setattr(navegador, "_cdp", self.cdp)
         monkeypatch.setattr(navegador.time, "sleep", lambda seconds: None)
+
+    def cdp(self, ws_url, method, params=None):
+        tab_id = ws_url.rsplit("/", 1)[1]
+        staged = self.pending.get(tab_id)
+        if staged:
+            value = staged.pop(0) if len(staged) > 1 else staged[0]
+        else:
+            value = "complete|" + next(t["url"] for t in self.tabs if t["id"] == tab_id)
+        return {"result": {"type": "string", "value": value}}
 
     def http(self, method, path):
         self.calls.append((method, path))
@@ -23,7 +36,8 @@ class FakeChromium:
         if path == "/json/list":
             return self.tabs
         if method == "PUT" and path.startswith("/json/new?"):
-            url = path.split("?", 1)[1]
+            url = unquote(path.split("?", 1)[1])
+            self.requested = path
             tab = page("NEWTAB123456", "", self.redirects.get(url, url))
             self.tabs.append(tab)
             return tab
@@ -302,3 +316,48 @@ def test_audit_never_breaks_the_action_if_it_cannot_write(tmp_path, monkeypatch)
     monkeypatch.setattr(notes, "DATA_DIR", blocker.resolve())
 
     navegador.audit("nav_leer", "a.com", "ok", asked=False)  # no lanza
+
+
+# --- pase de arreglos de la revisión final ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:9222/json/list", "http://192.168.1.1/", "file:///etc/passwd", "http://localhost:8765/"])
+def test_tabs_hides_even_an_opened_tab_that_drifted_to_the_local_machine_or_network(monkeypatch, url):
+    FakeChromium(monkeypatch, [page("AAAA1111", "x", url)])
+    navegador._opened.add("AAAA1111")
+
+    assert navegador.tabs() == ([], 1)
+    with pytest.raises(navegador.NavegadorError):
+        navegador.resolve_tab("AAAA11")
+
+
+def test_open_url_checks_the_committed_address_not_the_requested_one(monkeypatch):
+    chromium = FakeChromium(monkeypatch)
+    chromium.pending["NEWTAB123456"] = ["loading|https://corto.com/a", "complete|https://accounts.google.com/"]
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.open_url("https://corto.com/a")
+
+    assert ("GET", "/json/close/NEWTAB123456") in chromium.calls
+
+
+def test_open_url_escapes_the_whole_address_so_the_playlist_survives(monkeypatch):
+    chromium = FakeChromium(monkeypatch)
+    url = "https://music.youtube.com/watch?v=abc&list=RD123#t=1"
+
+    navegador.open_url(url)
+
+    assert chromium.requested == "/json/new?" + quote(url, safe="")
+
+
+def test_trusted_matches_the_configured_sites(monkeypatch):
+    assert navegador.trusted("music.youtube.com") and not navegador.trusted("eviltyoutube.com") and not navegador.trusted("")
+
+
+def test_open_url_waits_past_the_initial_blank_document(monkeypatch):
+    chromium = FakeChromium(monkeypatch)
+    chromium.pending["NEWTAB123456"] = ["complete|about:blank", "loading|https://music.youtube.com/", "complete|https://music.youtube.com/"]
+
+    tab = navegador.open_url("https://music.youtube.com/")
+
+    assert tab.id in navegador._opened

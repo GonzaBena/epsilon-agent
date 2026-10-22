@@ -45,6 +45,11 @@ se agrega, redactada, a `DATA_DIR/browser.log`.
 
 ## Límites conocidos
 
+- **DNS rebinding:** Epsilon resuelve el sitio para revisarlo y Chromium lo resuelve por su cuenta; un sitio malicioso con TTL 0
+  podría pasar la revisión y conectar a la red local. Hace falta antes que la persona apruebe abrir un sitio de afuera. Cerrarlo del todo
+  pide el dominio `Network` de CDP (`remoteIPAddress`); por ahora queda como límite.
+- Una pestaña que ya está abierta y se va a `localhost`, la red local o un sitio bloqueado deja de verse y de poder usarse (se revisa en cada uso).
+
 - Todo se hace con clics reales sobre lo que `leer` numeró; si la página cambia entre `leer` y `clic`, se pide leer de nuevo.
 - `pestanas` muestra títulos de pestañas que abrió Epsilon en sitios de afuera y no contamina el mensaje.
 - Solo Chromium, solo esta compu; no hay capturas de pantalla ni control de otros programas.
