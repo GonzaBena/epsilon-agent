@@ -1,4 +1,5 @@
 import json
+import math
 import re
 import shlex
 
@@ -10,8 +11,12 @@ from epsilon.connectors.manager import MAX_DESCRIPTION
 # y enum, más `required`): lo demás se deja pasar. Lo que dice el conector (nombres, descripciones) es DATO, nunca se ejecuta.
 
 MAX_ERROR = 200  # caracteres de un mensaje de ArgsError
+MAX_TEXT = 20_000  # caracteres de argumentos que se aceptan antes de parsear
+MAX_HELP = 300     # caracteres de arg_help
 SHOWN = 80       # cuánto de lo recibido se repite en el mensaje
 
+INT_RE = re.compile(r"-?[0-9]{1,18}")  # solo dígitos ASCII: nada de «1_000» ni cifras de otros alfabetos
+FLOAT_RE = re.compile(r"-?[0-9]{1,18}(\.[0-9]{1,18})?([eE][+-]?[0-9]{1,3})?")
 TYPE_NAMES = {"string": "texto", "integer": "entero", "number": "número", "boolean": "sí/no"}
 
 
@@ -38,7 +43,7 @@ def action_name(tool_name: str, taken: set[str]) -> str:
 
 
 def tool_id(connector: str, action: str) -> str:
-    return f"mcp_{connector}_{action}"
+    return f"mcp_{connector}__{action}"  # «__» separa: el conector no puede llevarlo (store), así no chocan a_b+c y a+b_c
 
 
 def _trim(text: object, limit: int = MAX_DESCRIPTION) -> str:
@@ -69,7 +74,8 @@ def arg_help(schema: dict) -> str:
             kind = TYPE_NAMES.get(spec.get("type"), "cualquiera")
         sep = "; " if kind.startswith("uno de") else ", "  # como en el ejemplo: «uno de: on, off; opcional»
         parts.append(f"{_short(key, 40)} ({kind}{sep}{'obligatorio' if key in required else 'opcional'})")
-    return "objeto JSON con: " + ", ".join(parts)
+    text = "objeto JSON con: " + ", ".join(parts)
+    return text if len(text) <= MAX_HELP else text[: MAX_HELP - 1] + "…"
 
 
 def real_name(entry: dict, action: str) -> str | None:
@@ -135,6 +141,8 @@ def _validate(schema: dict, data: dict, received: str) -> dict:
         enum = spec.get("enum")
         if isinstance(enum, list) and enum and value not in enum:
             raise ArgsError(f"«{_short(key, 40)}» debe ser uno de: {_short(', '.join(map(str, enum)), 60)}. Recibí: {_short(value, 40)}")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ArgsError(f"«{_short(key, 40)}» no puede ser infinito ni NaN. Recibí: {_short(received)}")
         if not _type_ok(spec.get("type"), value):
             raise ArgsError(
                 f"«{_short(key, 40)}» debe ser {TYPE_NAMES.get(spec.get('type'), 'otro tipo')}. Recibí: {_short(json.dumps(value, ensure_ascii=False), 40)}"
@@ -147,10 +155,12 @@ def parse_args(schema: dict, text: str) -> dict:
     raw = (text or "").strip()
     if not raw:
         data: object = {}
+    elif len(raw) > MAX_TEXT:
+        raise ArgsError(f"Los argumentos son demasiado largos ({len(raw)} caracteres, el máximo es {MAX_TEXT}). Empiezan con: {_short(raw, 60)}")
     else:
         try:
             data = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):
             raise ArgsError(f"Los argumentos tienen que ser un objeto JSON. Recibí: {_short(raw, 120)}") from None
     if not isinstance(data, dict):
         raise ArgsError(f"Los argumentos tienen que ser un objeto JSON. Recibí: {_short(raw, 120)}")
@@ -158,13 +168,14 @@ def parse_args(schema: dict, text: str) -> dict:
 
 
 def _coerce(kind: object, key: str, value: str) -> object:
-    try:
-        if kind == "integer":
-            return int(value)
-        if kind == "number":
-            return float(value)
-    except ValueError:
-        raise ArgsError(f"«{_short(key, 40)}» debe ser {TYPE_NAMES[kind]}. Recibí: {_short(value, 40)}") from None
+    if kind == "integer":
+        if not INT_RE.fullmatch(value):
+            raise ArgsError(f"«{_short(key, 40)}» debe ser {TYPE_NAMES[kind]}. Recibí: {_short(value, 40)}")
+        return int(value)
+    if kind == "number":
+        if not FLOAT_RE.fullmatch(value):
+            raise ArgsError(f"«{_short(key, 40)}» debe ser {TYPE_NAMES[kind]}. Recibí: {_short(value, 40)}")
+        return float(value)
     if kind == "boolean":
         low = value.lower()
         if low in ("true", "si", "sí", "1"):

@@ -42,7 +42,7 @@ def test_action_name_never_empty():
 
 
 def test_tool_id():
-    assert bridge.tool_id("luces", "apagar") == "mcp_luces_apagar"
+    assert bridge.tool_id("luces", "apagar") == "mcp_luces__apagar"
 
 
 def test_build_tools_are_ask_by_default_and_routable():
@@ -52,7 +52,7 @@ def test_build_tools_are_ask_by_default_and_routable():
     assert [t.ai_action for t in built] == ["apagar_luz", "apagar_luz_2"]
     t = built[0]
     assert (t.ai, t.ai_default, t.ai_group) == ("write", "ask", "luces")
-    assert t.ai_name == "mcp_luces_apagar_luz"
+    assert t.ai_name == "mcp_luces__apagar_luz"
     assert t.label == "luces.apagar_luz"
     assert t.ai_help == "apaga"
     assert "habitacion" in t.ai_arg
@@ -157,3 +157,58 @@ def test_parse_cli_errors():
         with pytest.raises(bridge.ArgsError) as e:
             bridge.parse_cli(SCHEMA, bad)
         assert len(str(e.value)) <= 200
+
+
+def test_parse_args_deep_nesting_is_a_normal_error():
+    with pytest.raises(bridge.ArgsError) as e:
+        bridge.parse_args(SCHEMA, "[" * 100000)
+    assert len(str(e.value)) <= 200
+    with pytest.raises(bridge.ArgsError):
+        bridge.parse_args(SCHEMA, '{"habitacion": ' + "[" * 100000)
+
+
+def test_parse_args_too_long_text_is_rejected_before_parsing():
+    with pytest.raises(bridge.ArgsError, match="largos") as e:
+        bridge.parse_args(SCHEMA, '{"habitacion": "' + "a" * 30000 + '"}')
+    assert len(str(e.value)) <= 200
+
+
+@pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity"])
+def test_parse_args_rejects_non_finite_numbers(bad):
+    with pytest.raises(bridge.ArgsError, match="infinito"):
+        bridge.parse_args(SCHEMA, '{"habitacion": "a", "ratio": %s}' % bad)
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-inf", "Infinity", "1_0", "١٢", "1e999999", " 1", "+1"])
+def test_parse_cli_rejects_odd_numbers(bad):
+    for key in ("ratio", "brillo"):
+        with pytest.raises(bridge.ArgsError):
+            bridge.parse_cli(SCHEMA, f"habitacion=a {key}={bad}")
+
+
+def test_parse_cli_integers_strict():
+    assert bridge.parse_cli(SCHEMA, "habitacion=a brillo=-5")["brillo"] == -5
+    with pytest.raises(bridge.ArgsError):
+        bridge.parse_cli(SCHEMA, "habitacion=a brillo=1_000")
+    with pytest.raises(bridge.ArgsError):
+        bridge.parse_cli(SCHEMA, "habitacion=a brillo=١٢")
+    assert bridge.parse_cli(SCHEMA, "habitacion=a ratio=2e3")["ratio"] == 2000.0
+
+
+def test_tool_ids_do_not_collide_across_underscored_connectors():
+    a = bridge.tool_id("a_b", "c")
+    b = bridge.tool_id("a", "b_c")
+    assert a != b
+    assert a == "mcp_a_b__c"
+    t1 = bridge.build_tools({"name": "a_b", "tools": [{"name": "c", "schema": {}}]})[0]
+    t2 = bridge.build_tools({"name": "a", "tools": [{"name": "b_c", "schema": {}}]})[0]
+    assert t1.ai_name != t2.ai_name
+
+
+def test_arg_help_is_capped_for_hostile_schemas():
+    props = {f"p{i}": {"type": "string", "enum": [f"valor{j}" * 5 for j in range(50)]} for i in range(200)}
+    h = bridge.arg_help({"type": "object", "properties": props, "required": list(props)})
+    assert len(h) <= 300 and h.endswith("…")
+    assert len(bridge.arg_help({"type": "object", "properties": {f"p{i}": {} for i in range(500)}})) <= 300
+    t = bridge.build_tools({"name": "x1", "tools": [{"name": "t", "schema": {"type": "object", "properties": props}}]})[0]
+    assert len(t.ai_arg) <= 300

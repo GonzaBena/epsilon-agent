@@ -103,3 +103,9 @@ def test_remove():
     assert store.list_all() == []
     with pytest.raises(store.StoreError, match="No hay"):
         store.remove("luces")
+
+
+def test_name_cannot_contain_double_underscore(tmp_path, monkeypatch):
+    from epsilon.connectors import store
+    with pytest.raises(store.StoreError, match="guiones bajos"):
+        store.add("a__b", ["x"], {})

@@ -83,6 +83,8 @@ def add(name: str, argv: list[str], env: dict[str, str]) -> dict:
     """Guarda un conector nuevo (activo, sin arrancar solo y sin herramientas todavía). StoreError si algo no vale."""
     if not isinstance(name, str) or not NAME.fullmatch(name):
         raise StoreError("El nombre va en minúsculas, de 2 a 20 caracteres: letras, números y guion bajo (empieza con letra).")
+    if "__" in name:
+        raise StoreError("El nombre no puede llevar dos guiones bajos seguidos.")  # separan conector y acción en el id
     if name in _reserved():
         raise StoreError(f"«{name}» está reservado: ya es un grupo o una herramienta de Epsilon.")
     if not isinstance(argv, list) or not argv or not all(_one_line(a) and a.strip() for a in argv):
