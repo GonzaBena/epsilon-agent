@@ -4,7 +4,7 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-modo-ia-design.md`. Plan de
 `docs/superpowers/plans/2026-10-20-modo-ia.md`. Este archivo es el contrato corto.
 
 - **Modo fijo.** «Chat normal» o «Chat con IA» se elige al crear la conversación (la web manda `mode` con el primer
-  mensaje) y no cambia. Una conversación sin línea `meta` (todas las anteriores), de Telegram o normal nunca usa IA libre.
+  mensaje) y no cambia. Una conversación sin línea `meta` (todas las anteriores), o normal nunca usa IA libre. (Telegram sí puede tenerla desde `/chat`: ver `docs/plan-telegram-ia.md`.)
 - **Qué ve el modelo.** `ai/chat.py::turns`: pares (tu mensaje, respuesta con `ai: true`) + el mensaje nuevo, todo por
   `config.redact`; más la memoria en el prompt de sistema, marcada como dato. Nunca la salida de comandos ni adjuntos.
 - **Costo.** `usage.conversation(id)` anota cada llamada con su conversación (también `/resumir` e imagen→CSV dentro
@@ -19,7 +19,7 @@ Diseño completo: `docs/superpowers/specs/2026-10-20-modo-ia-design.md`. Plan de
 - **Sin precio.** Si `usage.PRICES` no tiene el modelo configurado, el límite no se puede medir: todo lo que usa IA en
   modo IA queda bloqueado con un aviso.
 - **Tools.** El modelo puede pedir herramientas según permisos por herramienta: ver `docs/plan-permisos.md`.
-- **Fuera por ahora.** MCP, Telegram.
+- **Fuera por ahora.** MCP. (Telegram ya tiene su charla con IA: `docs/plan-telegram-ia.md`.)
 
 
 ## Archivos en el chat

@@ -71,7 +71,12 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Progreso en vivo (solo web): `core.handle(msg, on_event=...)` avisa cada paso de un turno de IA (`{"type":"model","step":n}` y `{"type":"tool","name","arg","state"}` con `running|done|blocked`; los emiten `_loop` y `_run_calls`, el argumento va redactado y corto). `POST /api/message/stream` es `/api/message` + esos eventos, una línea JSON por evento (NDJSON) y al final `{"type":"reply","data":...}`; la respuesta se guarda en el hilo, no en el flujo. `app.js` (`readStream`, `trackProgress`) los dibuja en el globo «Pensando» y desaparecen con la respuesta: no se guardan en la conversación. Telegram no lo usa.
 - Enviar archivos (`/enviar`, y la herramienta `enviar` de la IA): el núcleo no conoce Telegram. `handle()` abre una «bandeja» por llamada (`core._outbox`: lista en Telegram, `None` en la web), `_send` valida con `library.resolve` y anota la ruta, y `handle` la cuelga de `Reply.files`. Telegram los manda como documento (`send_files`, que vuelve a validar la ruta); la web no los envía (`to_json` los quita) y contesta que el archivo ya está en la biblioteca.
 - `channels/telegram.py`: Telegram (whitelist, botones, límites). Solo traduce
-  entre Telegram y el núcleo; sin lógica de negocio.
+  entre Telegram y el núcleo; sin lógica de negocio. **Charla con IA**: `/chat` abre una conversación de canal en modo IA
+  (`conversations.start_channel("telegram", "ai", ...)`; `/nuevo` la cierra y se vuelve al modo normal). Mientras esté
+  abierta, `new_message` pone su id en TODO lo que Telegram le manda al núcleo (texto, archivos, voz y botones: sin él las
+  preguntas de permiso quedan «vencidas») y `log_turn` guarda `ai=reply.ai`; el texto sin `/` va a la IA y los comandos
+  siguen sin modelo (el núcleo los resuelve antes que `_chat`). El contexto es más corto (`CHAT_MAX_TURNS_TELEGRAM`, por
+  defecto 5 pares) y el límite de costo y los permisos son los de la web. La web la ve de solo lectura. Ver `docs/plan-telegram-ia.md`.
 - `settings/config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
   que escribe el `.env`; también `redact()` y el filtro de logs. Ver
   `docs/plan-config.md`.
@@ -86,7 +91,8 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   la web son tres secciones plegables (Ancladas · Canales · Recientes, `shell.js`; el pliegue se recuerda en `localStorage`) y
   `list_all(limit)` corta solo Recientes. Cada fila tiene un menú de tres puntitos (Editar, Anclar, Borrar). Ver `docs/plan-conversations.md`.
 - `menu.py`: el `/menu` (ajustes con botones, como BotFather): pantallas como datos. Solo puede
-  cambiar los ajustes de sí/no que lista; el mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
+  cambiar los ajustes de sí/no que lista y, en la pantalla «Modelo», `AI_MODEL` entre los favoritos (el botón lleva un
+  hash corto del nombre; al tocarlo se busca entre los favoritos de ese momento). El mensaje se edita en el lugar. Ver `docs/plan-voz.md`.
 - `state.py`: estado de cada canal (activo, detenido y por qué, o apagado a propósito). `settings/checks.py`:
   pruebas de conexión que no gastan tokens (Gemini `models.get`, Telegram `getMe`).
 - `tools.py`: registro de herramientas, la fuente única de los comandos (ayuda, menú de Telegram,
@@ -101,9 +107,9 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - `ai/llm.py`: la fachada, ÚNICO lugar que el resto del código usa para hablar con un modelo (`generate` de un disparo, `chat_tools` con herramientas). Elige proveedor y modelo según la **tarea** en curso (`llm.task(...)`: `chat`, `ask`, `summary`, `csv`), anota el gasto y revisa antes de llamar lo que el modelo puede hacer (`llm.capabilities`: herramientas, imágenes, PDFs → `ModelError` en español, sin gastar). Los modelos se escriben `proveedor:modelo` (`gemini:gemini-3.1-flash-lite`, `ollama:llama3.1:8b`; sin proveedor, Gemini): `AI_MODEL` es el predeterminado (si falta rige `GEMINI_MODEL`) y `AI_MODEL_CHAT|ASK|SUMMARY|CSV` el de cada tarea. No hay cambio automático de modelo ante un fallo.
 - `ai/messages.py`: el idioma común (`Message`, `File`, `Call`, `Result`, `Step`, `ToolSpec`, `ModelError`); ningún tipo de un proveedor sale de `ai/providers/`. `ai/providers/` (`gemini.py`, `ollama.py`, interfaz en `base.py`, registro en `__init__.py`): ÚNICOS lugares que hablan con cada API; cada uno traduce los mensajes neutros (`Message.raw` guarda el turno original de Gemini, que reenvía sus firmas de razonamiento, y se ignora si cambia el proveedor), lista sus modelos y prueba la conexión sin gastar. Ollama va por HTTP (`OLLAMA_URL`), sin clave, y no lee PDFs. Un modelo local es gratis y de precio conocido (`usage.price`); los registros de Gemini guardan el nombre sin proveedor y los de Ollama `ollama:<modelo>`. **Agregar un proveedor = un archivo en `providers/` y una línea en el registro.**
 - Botón del modelo (arriba a la derecha, todas las páginas): abre la paleta de `js/palette.js` (búsqueda sobre `GET /api/models`, que no lista los modelos de un proveedor caído) y guarda `AI_MODEL`. Con el cuadro vacío muestra Favoritos y un grupo por proveedor; Ctrl+F (o la estrella) marca favoritos, que se guardan en `DATA_DIR/model_favorites.json` (`ai/favorites.py`, `PUT /api/models/favorites`); el favorito de un proveedor caído se ve atenuado. Si hay una conversación de modo IA empezada, o si el modelo del chat cambió desde su última llamada (`chat.status()["model_change"]`), un modal avisa que se reenvía todo el historial antes de seguir.
-- `ai/chat.py`: el **modo IA** (conversación libre con la IA, solo web). El modo se elige al crear la conversación
+- `ai/chat.py`: el **modo IA** (conversación libre con la IA, en la web y, con `/chat`, en Telegram). El modo se elige al crear la conversación
   (línea `meta` con `mode: ai`) y no cambia; las normales nunca usan IA libre. Al modelo le llegan solo lo que
-  escribís y lo que la IA contestó (no la salida de comandos; solo los últimos `CHAT_MAX_TURNS` pares, por defecto 10: lo anterior sigue guardado y la barra avisa con `status()["trimmed"]`) más la memoria, y los archivos que mencionás con `@` en ese mensaje (ver `ai/attachments.py`). En modo IA el modelo puede pedir herramientas: `chat.begin/step/add_results` arman el historial y `core` decide y ejecuta según
+  escribís y lo que la IA contestó (no la salida de comandos; solo los últimos `CHAT_MAX_TURNS` pares, por defecto 10 (en Telegram, `CHAT_MAX_TURNS_TELEGRAM`, 5): lo anterior sigue guardado y la barra avisa con `status()["trimmed"]`) más la memoria, y los archivos que mencionás con `@` en ese mensaje (ver `ai/attachments.py`). En modo IA el modelo puede pedir herramientas: `chat.begin/step/add_results` arman el historial y `core` decide y ejecuta según
   los permisos (`docs/plan-permisos.md`; tope `MAX_TOOL_STEPS`). Cada conversación lleva su
   límite de costo en US$ (línea `limit`; ajuste `CHAT_LIMIT_USD` para las nuevas): `chat.status()` da contexto, costo
   y si está bloqueada. **Toda** llamada al modelo dentro de una conversación de modo IA se anota con su `conversation`
@@ -162,7 +168,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Más adelante: Obsidian, MCP. Las «plantillas» se descartaron por ahora: si hay un chat conversacional, lo que
   cumpla ese papel serían skills.
 - Modo IA, siguientes pasos: MCP. El modelo ya guarda memoria solo y busca/lista (`buscar`, `ver`, `archivos`); falta
-  buscar por el CONTENIDO de los tickets (p. ej. «¿qué día hice esta compra?»: `archivos` filtra solo por nombre). Telegram en modo IA quedó afuera.
+  buscar por el CONTENIDO de los tickets (p. ej. «¿qué día hice esta compra?»: `archivos` filtra solo por nombre).
   Limitación conocida: en un chat de modo IA, un mensaje que empieza con `/` y no es un comando muestra la ayuda en vez de llegar al modelo (p. ej. una ruta pegada).
 - Archivos en el chat, parte 2: que la IA genere archivos (p. ej. una presentación `.pptx` con `python-pptx`) a partir de los que se mencionan con `@`. Puede ser una herramienta propia de `tools.py` (pasa por los mismos permisos) o MCP. Hoy la respuesta es solo texto.
 - Memoria: el modelo ya la maneja con las herramientas `recordar`/`memoria`/`editar`/`olvidar` (con permisos). No se le pasa a los resúmenes, salvo que el resumen se pida dentro de un chat de modo IA (ahí ya la recibe).
