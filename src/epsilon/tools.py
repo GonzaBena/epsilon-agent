@@ -59,6 +59,24 @@ TOOLS = (
         ai_name="nota_nombrada",
     ),
     Tool(
+        "Editar nota",
+        usage="nombre de la nota en la primera línea, el texto a cambiar, una línea «=>» y el texto nuevo",
+        ai_help=(
+            "cambiar un fragmento de una nota que YA existe: marcar una tarea como hecha, corregir o borrar una línea. "
+            "El fragmento tiene que aparecer una sola vez (leé la nota antes para copiarlo igual); con el texto nuevo vacío se borra"
+        ),
+        ai_arg=(
+            "primera línea: el nombre de la nota; después el texto exacto a cambiar; una línea que diga solo «=>»; "
+            "y el texto nuevo (vacío para borrar). Ej. para tachar una tarea: tres líneas después del nombre «todo»: "
+            "«- [ ] pagar internet», «=>» y «- [x] pagar internet»"
+        ),
+        writes=True,
+        ai="write",
+        ai_group="notas",
+        ai_action="editar",
+        ai_name="nota_editar",
+    ),
+    Tool(
         "Imagen a CSV",
         panel="Pasar una imagen a una tabla: adjuntala y escribí «nombre: campos»",
         action="csv",
@@ -250,25 +268,16 @@ TOOLS = (
         menu="Ver tus tareas pendientes",
         insert="/tareas",
         links=("/tareas",),
-        ai="read",
-        ai_group="tareas",
-        ai_action="ver",
-        ai_arg="vacío para las pendientes, o «todas» para incluir las hechas",
     ),
     Tool(
         "/todo",
         name="todo",
         usage="/todo texto",
         help="agregar una tarea pendiente",
-        ai_help="agregar algo que hay que HACER y después se marca como hecho. Si el usuario habla de una lista o nota con nombre (la compra, ideas), no es esto: usá notas",
         panel="Agregar una tarea pendiente",
         menu="Agregar una tarea pendiente",
         insert="/todo ",
         writes=True,
-        ai="write",
-        ai_group="tareas",
-        ai_action="agregar",
-        ai_arg="solo el texto de la tarea, sin prefijos",
     ),
     Tool(
         "/hecho",
@@ -279,10 +288,6 @@ TOOLS = (
         menu="Marcar una tarea como hecha",
         insert="/hecho ",
         writes=True,
-        ai="write",
-        ai_group="tareas",
-        ai_action="completar",
-        ai_arg="el número de la tarea pendiente, como aparece en tareas",
     ),
     Tool(
         "/enviar",
@@ -372,10 +377,9 @@ TOOLS = (
 # cuál de las suyas usar (menos declaraciones, y entre las que quedan se elige mejor). Por dentro nada cambia: cada
 # acción es una herramienta de TOOLS, con su permiso, y `route` traduce la llamada a ella. Grupo -> para qué sirve.
 AI_GROUPS: dict[str, str] = {
-    "notas": "Tus notas guardadas: guardar, leer y buscar",
+    "notas": "Tus notas: guardar, leer, buscar y editar. Las TAREAS también son una nota, la llamada «todo», con una casilla por línea («- [ ] texto»): para agregar una, guardar_con_nombre; para ver las pendientes, leer; para marcar una como hecha, editar (cambiá «- [ ]» por «- [x]»)",
     "archivos": "Lo guardado en la biblioteca (notas, tickets, CSV): listar, mandar, resumir y consultar CSV",
     "memoria": "Lo que Epsilon recuerda de la persona (datos y preferencias)",
-    "tareas": "Cosas por hacer que se marcan como hechas (el /todo). NO sirve para listas ni apuntes (la compra, ideas, recetas): eso va en notas",
     "consultar": "Datos de afuera, sin guardar nada: fecha y hora, dólar, clima y estado de la máquina",
 }
 

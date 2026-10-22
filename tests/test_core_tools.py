@@ -797,3 +797,62 @@ def test_yes_for_the_conversation_is_per_internal_tool(script):
     reply = say("dos")  # ya no pregunta: nota quedó permitida en esta conversación
 
     assert reply.text == "ok" and "dos" in inbox()
+
+
+# --- Editar notas y tareas como notas ---------------------------------------------------------
+
+
+def todo_text() -> str:
+    path = notes.DATA_DIR / "todo.md"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def test_checkbox_lines_are_saved_as_they_are_so_tareas_still_reads_them(script):
+    allow("nota_nombrada")
+    script.steps = [step(calls=[("notas.guardar_con_nombre", "todo\n- [ ] comprar café")]), step("listo")]
+
+    say("agregá comprar café a mis tareas")
+
+    assert todo_text() == "- [ ] comprar café\n"
+    assert core.handle(core.Message(text="/tareas", session_id="web:x")).text.count("comprar café") == 1
+
+
+def test_a_task_can_be_marked_done_by_editing_its_note_after_asking(script):
+    notes.save_note("todo", "- [ ] pagar internet")
+    script.steps = [step(calls=[("notas.editar", "todo\n- [ ] pagar internet\n=>\n- [x] pagar internet")]), step("Listo")]
+
+    reply = say("ya pagué internet")
+    assert "Editar nota" in reply.text and "- [x] pagar internet" in reply.text and todo_text() == "- [ ] pagar internet\n"  # pregunta y no toca nada
+    press("perm:si")
+
+    assert todo_text() == "- [x] pagar internet\n"
+    assert "Editada la nota todo.md" in results(script.seen[1][0])[0]
+
+
+def test_an_edit_that_does_not_match_tells_the_model_and_changes_nothing(script):
+    allow("nota_editar")
+    notes.save_note("todo", "- [ ] pagar internet")
+    script.steps = [step(calls=[("notas.editar", "todo\n- [ ] pagar luz\n=>\n- [x] pagar luz")]), step("no pude")]
+
+    say("ya pagué la luz")
+
+    assert "No encontré" in results(script.seen[1][0])[0] and todo_text() == "- [ ] pagar internet\n"
+
+
+def test_a_badly_formatted_edit_is_refused(script):
+    allow("nota_editar")
+    notes.save_note("todo", "- [ ] pagar internet")
+    script.steps = [step(calls=[("notas.editar", "todo\n- [ ] pagar internet")]), step("no pude")]
+
+    say("ya pagué internet")
+
+    assert "Formato" in results(script.seen[1][0])[0] and todo_text() == "- [ ] pagar internet\n"
+
+
+@pytest.mark.parametrize("call_id", ["todo", "tareas", "hecho", "tareas.agregar"])
+def test_the_task_tools_are_gone_for_the_model(script, call_id):
+    script.steps = [step(calls=[(call_id, "x")]), step("no pude")]
+
+    say("hacé algo")
+
+    assert results(script.seen[1][0]) == [core.UNAVAILABLE] and todo_text() == ""

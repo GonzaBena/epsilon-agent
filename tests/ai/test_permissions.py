@@ -22,8 +22,8 @@ def write_file(content):
 
 def test_defaults_follow_the_kind_and_resumir_is_denied():
     assert permissions.load() == {
-        "ver": "allow", "buscar": "allow", "archivos": "allow", "memoria": "allow", "fecha": "allow", "dolar": "allow", "clima": "allow", "tareas": "allow", "todo": "ask", "hecho": "ask", "enviar": "allow", "csv": "allow", "sistema": "ask",
-        "nota": "ask", "nota_nombrada": "ask", "recordar": "ask", "editar": "ask",
+        "ver": "allow", "buscar": "allow", "archivos": "allow", "memoria": "allow", "fecha": "allow", "dolar": "allow", "clima": "allow", "enviar": "allow", "csv": "allow", "sistema": "ask",
+        "nota": "ask", "nota_nombrada": "ask", "nota_editar": "ask", "recordar": "ask", "editar": "ask",
         "olvidar": "deny", "resumir": "deny",
     }
 
@@ -62,7 +62,7 @@ def test_broken_file_falls_back_to_defaults(content):
 
     assert loaded["ver"] == "allow"
     assert "xyz" not in loaded
-    assert len(loaded) == 19
+    assert len(loaded) == 17
     if "nota" in content:
         assert loaded["nota"] == "allow"
     else:
@@ -105,5 +105,5 @@ def test_invalid_ai_default_falls_back_to_kind(monkeypatch):
 def test_offered_excludes_denied():
     ids = [tools.ai_id(t) for t in permissions.offered()]
 
-    assert len(ids) == 17
+    assert len(ids) == 15
     assert "olvidar" not in ids and "resumir" not in ids

@@ -293,7 +293,7 @@ def captured(monkeypatch):
     return calls
 
 
-def test_step_offers_the_five_groups_without_the_denied_actions(captured):
+def test_step_offers_the_four_groups_without_the_denied_actions(captured):
     states = permissions.load()
     states["ver"] = "deny"
     permissions.save(states)
@@ -301,10 +301,10 @@ def test_step_offers_the_five_groups_without_the_denied_actions(captured):
     chat.step(chat.begin(CID, "hola"))
 
     specs = {spec.name: spec for spec in captured[0]["tools"]}
-    assert list(specs) == ["notas", "archivos", "memoria", "consultar", "tareas"]
+    assert list(specs) == ["notas", "archivos", "memoria", "consultar"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
-    assert sum(len(spec.actions) for spec in specs.values()) == 16
+    assert sum(len(spec.actions) for spec in specs.values()) == 14
     assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
 
 

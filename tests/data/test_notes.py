@@ -1,3 +1,5 @@
+import pytest
+
 from epsilon.data import notes
 
 
@@ -86,3 +88,55 @@ def test_clean_note_name_keeps_only_safe_characters():
     assert notes.clean_note_name("  Compras Casa ") == "compras_casa"
     assert notes.clean_note_name("../../etc/passwd") == "etc_passwd"
     assert notes.clean_note_name("///") == ""
+
+
+# --- edit_note: la única forma de pisar una nota ------------------------------------------
+
+
+def make_note(tmp_path, monkeypatch, text="- [ ] pagar internet\n- [ ] comprar café\n"):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+    (tmp_path / "todo.md").write_text(text, encoding="utf-8")
+    return tmp_path / "todo.md"
+
+
+def test_edit_note_changes_only_that_fragment_and_keeps_the_previous_version(tmp_path, monkeypatch):
+    path = make_note(tmp_path, monkeypatch)
+
+    assert notes.edit_note("todo", "- [ ] pagar internet", "- [x] pagar internet") == "Editado todo.md"
+
+    assert path.read_text(encoding="utf-8") == "- [x] pagar internet\n- [ ] comprar café\n"
+    assert (tmp_path / "todo.md.bak").read_text(encoding="utf-8") == "- [ ] pagar internet\n- [ ] comprar café\n"
+    assert not (tmp_path / "todo.md.tmp").exists()  # el temporal no queda
+
+
+def test_edit_note_with_empty_new_text_deletes_the_fragment(tmp_path, monkeypatch):
+    path = make_note(tmp_path, monkeypatch)
+
+    notes.edit_note("todo", "- [ ] comprar café\n", "")
+
+    assert path.read_text(encoding="utf-8") == "- [ ] pagar internet\n"
+
+
+@pytest.mark.parametrize(
+    "old, message",
+    [("- [ ] inventada", "No encontré"), ("- [ ] ", "2 veces"), ("", "Falta el texto")],
+)
+def test_edit_note_refuses_and_touches_nothing_when_the_fragment_is_missing_ambiguous_or_empty(tmp_path, monkeypatch, old, message):
+    path = make_note(tmp_path, monkeypatch)
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        notes.edit_note("todo", old, "x")
+
+    assert path.read_text(encoding="utf-8") == before and not (tmp_path / "todo.md.bak").exists()
+
+
+def test_edit_note_never_creates_a_note_and_stays_inside_the_data_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+
+    with pytest.raises(ValueError, match="No existe"):
+        notes.edit_note("nueva", "a", "b")
+    with pytest.raises(ValueError, match="fuera"):
+        notes.edit_note("../../etc/passwd", "a", "b")
+
+    assert list(tmp_path.iterdir()) == []

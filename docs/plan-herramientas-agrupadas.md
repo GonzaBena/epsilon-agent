@@ -19,14 +19,23 @@ Con 17-19 herramientas el prompt crecía y el modelo (sobre todo uno chico) eleg
 ## Grupos
 | Grupo | Acciones (herramienta) |
 |---|---|
-| notas | guardar (nota), guardar_con_nombre (nota_nombrada), leer (ver), buscar |
+| notas | guardar (nota), guardar_con_nombre (nota_nombrada), editar (nota_editar), leer (ver), buscar |
 | archivos | listar (archivos), enviar, resumir, csv |
 | memoria | agregar (recordar), ver (memoria), editar, borrar (olvidar) |
-| tareas | agregar (todo), ver (tareas), completar (hecho) |
 | consultar | fecha, dolar, clima, sistema |
 
+## Las tareas son una nota
+Primero hubo un grupo `tareas`, pero el modelo lo confundía con una lista con nombre («la lista de la compra» iba a
+`/todo`). Como `todo.md` ya es una nota de casillas, la IA ya no tiene herramientas de tareas: agrega con
+`notas.guardar_con_nombre` (nota `todo`, `- [ ] texto`), lee con `notas.leer` y marca con `notas.editar`
+(`- [ ]` -> `- [x]`). `/todo`, `/tareas` y `/hecho` siguen para la persona.
+
+`notas.editar` (`nota_editar`, permiso «preguntar») es la única excepción a «nunca pisar»: reemplaza un fragmento
+exacto y único (`notes.edit_note`), con archivo temporal y `.bak`. Memoria, archivos y consultas quedan como están, para no
+perder precisión ni permisos por herramienta.
+
 ## Medición
-Declaraciones de Gemini: 17 herramientas / 5.323 caracteres -> 5 grupos / 4.669 (-12%). La ganancia esperada es
+Declaraciones de Gemini: 17 herramientas / 5.323 caracteres -> 5 grupos / 4.669 (-12%); después, sin el grupo de tareas, 4 grupos. La ganancia esperada es
 sobre todo en la elección de herramienta, no en el tamaño.
 
 ## Plan B

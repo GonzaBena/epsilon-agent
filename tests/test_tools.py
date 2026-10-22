@@ -74,10 +74,11 @@ def test_the_readme_lists_every_setting_a_person_can_edit():
             assert f"`{setting.key}`" in readme or setting.key in readme, setting.key
 
 
-def test_ai_tools_are_the_nineteen_of_the_spec():
+def test_ai_tools_are_the_seventeen_of_the_spec():
     assert [(tools.ai_id(t), t.ai) for t in tools.ai_tools()] == [
         ("nota", "write"),
         ("nota_nombrada", "write"),
+        ("nota_editar", "write"),
         ("ver", "read"),
         ("buscar", "read"),
         ("archivos", "read"),
@@ -89,9 +90,6 @@ def test_ai_tools_are_the_nineteen_of_the_spec():
         ("fecha", "read"),
         ("dolar", "read"),
         ("clima", "read"),
-        ("tareas", "read"),
-        ("todo", "write"),
-        ("hecho", "write"),
         ("enviar", "read"),
         ("csv", "read"),
         ("sistema", "read"),
@@ -179,9 +177,10 @@ def test_a_group_name_never_collides_with_a_loose_tool():
     assert not loose & set(tools.AI_GROUPS)
 
 
-def test_tareas_and_notas_tell_the_model_which_one_a_named_list_goes_to():
-    # «agregá X a la lista de la compra» es una nota con nombre, no una tarea.
-    by_id = {tools.ai_id(t): t for t in tools.ai_tools()}
+def test_notas_tells_the_model_that_tasks_are_the_todo_note_and_how_to_use_it():
+    # Las tareas ya no son herramientas de la IA: son la nota «todo», con una casilla por línea.
+    group = tools.AI_GROUPS["notas"]
 
-    assert "lista" in by_id["nota_nombrada"].ai_help and "notas" in by_id["todo"].ai_help
-    assert "NO sirve para listas" in tools.AI_GROUPS["tareas"]
+    assert "todo" in group and "- [ ]" in group and "- [x]" in group
+    assert "tareas" not in tools.AI_GROUPS
+    assert not [t for t in tools.ai_tools() if tools.ai_id(t) in {"todo", "tareas", "hecho"}]

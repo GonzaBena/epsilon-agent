@@ -170,6 +170,24 @@ def _save(text: str) -> Reply:
     return Reply(saved, artifacts=[_artifact("note", notes.safe_path("inbox.md"))])
 
 
+CHECKBOX = re.compile(r"- \[[ x]\] \S")
+
+
+def _edit_note(args: str) -> Reply:
+    """Herramienta de la IA: primera línea = nota, luego el texto a cambiar, una línea «=>» y el texto nuevo."""
+    raw_name, _, rest = args.strip("\n").partition("\n")
+    lines = rest.split("\n")
+    arrow = next((i for i, line in enumerate(lines) if line.strip() == "=>"), None)
+    name = notes.clean_note_name(raw_name)
+    if not name or arrow is None:
+        return Reply("Formato: el nombre de la nota, el texto a cambiar, una línea «=>» y el texto nuevo. No se cambió nada.")
+    try:
+        notes.edit_note(name, "\n".join(lines[:arrow]), "\n".join(lines[arrow + 1 :]))
+    except ValueError as e:
+        return Reply(str(e))
+    return Reply(f"Editada la nota {name}.md", artifacts=[_artifact("note", notes.safe_path(f"{name}.md"))])
+
+
 def _save_named(args: str) -> Reply:
     """Herramienta de la IA: primera línea = nombre de la nota, el resto = texto. Crea o agrega, nunca pisa."""
     raw_name, _, text = args.strip().partition("\n")
@@ -179,7 +197,9 @@ def _save_named(args: str) -> Reply:
 
     path = notes.safe_path(f"{name}.md")
     existed = path.exists()
-    notes.save_note(name, _dated(text))
+    # Las casillas («- [ ] tarea») van tal cual, sin la fecha delante: así /tareas las sigue leyendo.
+    checkboxes = all(CHECKBOX.match(line) for line in text.splitlines())
+    notes.save_note(name, text if checkboxes else _dated(text))
     verb = "Agregado a la nota existente" if existed else "Nota nueva creada"
     return Reply(f"{verb}: {path.name}", artifacts=[_artifact("note", path)])
 
@@ -930,15 +950,13 @@ def _bare(args: str) -> str:
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
+    "nota_editar": lambda args: _edit_note(config.redact(args)),
     "ver": _watch,
     "buscar": _search,
     "archivos": _files,
     "fecha": _date,
     "dolar": _dollar,
     "clima": lambda args: _weather(_bare(args)),
-    "todo": lambda args: _todo_cmd(_bare(args).strip()),
-    "tareas": lambda args: _tasks_cmd(_bare(args)),
-    "hecho": lambda args: _done_cmd(_bare(args)),
     "enviar": lambda args: _send(_bare(args)),
     "csv": lambda args: _csv_cmd(_bare(args)),
     "sistema": lambda args: _system_cmd(_bare(args)),

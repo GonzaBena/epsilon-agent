@@ -50,6 +50,28 @@ def save_note(name: str, texto: str) -> str:
     return f"Guardado en {path.name}"
 
 
+def edit_note(name: str, old: str, new: str) -> str:
+    """Cambia UN fragmento de una nota que ya existe: `old` tiene que aparecer exactamente una vez (con `new` vacío
+    se borra). Es la única forma de pisar una nota: nunca la reescribe entera. Deja la versión anterior en
+    «<nota>.md.bak» (una sola, la de antes de la última edición) y escribe por un archivo temporal."""
+    path = safe_path(f"{name}.md")
+    if not path.exists():
+        raise ValueError(f"No existe la nota '{name}'.")
+    if not old:
+        raise ValueError("Falta el texto a cambiar.")
+    text = path.read_text(encoding="utf-8")
+    count = text.count(old)
+    if count == 0:
+        raise ValueError("No encontré ese texto en la nota (tiene que ser idéntico).")
+    if count > 1:
+        raise ValueError(f"Ese texto aparece {count} veces en la nota: agregá más contexto para que sea único.")
+    path.with_name(path.name + ".bak").write_text(text, encoding="utf-8")
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(text.replace(old, new, 1), encoding="utf-8")
+    os.replace(temp, path)  # la nota nunca queda a medias
+    return f"Editado {path.name}"
+
+
 def clean_note_name(name: str) -> str:
     """Nombre de nota seguro a partir de un texto libre; vacío si no queda nada utilizable."""
     # Mismas reglas que clean_folder: sin «/» ni «..», así la nota queda siempre en DATA_DIR.
