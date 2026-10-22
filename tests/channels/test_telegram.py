@@ -273,7 +273,7 @@ def heard(monkeypatch):
             raise seen.error
         return seen.text
 
-    def fake_handle(msg):
+    def fake_handle(msg, on_event=None):
         seen.messages.append(msg)
         return core.Reply("Guardado en inbox.md")
 
@@ -631,7 +631,7 @@ def core_says(monkeypatch):
     monkeypatch.setattr(
         core,
         "handle",
-        lambda msg: replies.pop(0) if replies else core.Reply("ok"),
+        lambda msg, on_event=None: replies.pop(0) if replies else core.Reply("ok"),
     )
     telegram.LOGGED.clear()
     return replies
@@ -755,7 +755,7 @@ def seen_by_core(monkeypatch):
     """Los mensajes que llegan al núcleo (el núcleo de mentira contesta «ok»)."""
     messages = []
 
-    def fake_handle(msg):
+    def fake_handle(msg, on_event=None):
         messages.append(msg)
         return core.Reply("ok")
 
@@ -857,7 +857,7 @@ def test_a_voice_note_carries_the_ai_conversation(heard):
 
 
 def test_the_answer_of_the_ai_is_saved_marked_as_ai(monkeypatch):
-    monkeypatch.setattr(core, "handle", lambda msg: core.Reply("Buenas", ai=True))
+    monkeypatch.setattr(core, "handle", lambda msg, on_event=None: core.Reply("Buenas", ai=True))
     open_ai_chat()
 
     say_text("hola")
@@ -939,6 +939,184 @@ def test_chat_is_wired_before_the_generic_text_handler_and_only_for_me():
 def test_chat_is_in_the_telegram_menu_and_is_not_a_core_command():
     assert "chat" in [c.command for c in telegram.COMMANDS]
     assert "chat" not in core.COMMANDS and "chat" not in tools.command_names()
+
+
+# --- Mientras la IA piensa: «escribiendo…» y un mensaje de progreso que se borra ----------------------------
+# El núcleo avisa cada paso (on_event, desde otro hilo); Telegram lo dibuja si la espera se alarga.
+
+import time
+
+
+class ProgressBot:
+    """El bot de Telegram de mentira: anota qué se mandó, editó y borró."""
+
+    def __init__(self):
+        self.sent, self.edits, self.deleted, self.actions = [], [], [], []
+        self.fail = set()  # nombres de métodos que fallan, para ver que el bot no se rompe
+
+    async def send_chat_action(self, chat_id, action):
+        self.actions.append(action)
+
+    async def send_message(self, chat_id, text):
+        if "send_message" in self.fail:
+            raise OSError("sin red")
+        self.sent.append(text)
+        return SimpleNamespace(message_id=500 + len(self.sent))
+
+    async def edit_message_text(self, text, chat_id=None, message_id=None):
+        if "edit_message_text" in self.fail:
+            raise OSError("sin red")
+        self.edits.append((message_id, text))
+
+    async def delete_message(self, chat_id, message_id):
+        if "delete_message" in self.fail:
+            raise OSError("sin red")
+        self.deleted.append(message_id)
+
+
+@pytest.fixture
+def waiting(monkeypatch):
+    """Tiempos cortos para el test y un núcleo lento que emite `events` (uno cada `pause` segundos)."""
+    monkeypatch.setattr(telegram, "PROGRESS_AFTER", 0.05)
+    monkeypatch.setattr(telegram, "TYPING_EVERY", 0.05)
+    monkeypatch.setattr(telegram, "EDIT_EVERY", 0.01)
+    monkeypatch.setattr(telegram, "TICK", 0.01)
+    bot = ProgressBot()
+
+    def slow(events=(), pause=0.1, reply="listo", error=None):
+        def fake_handle(msg, on_event=None):
+            time.sleep(pause)
+            for event in events:
+                on_event(event)
+                time.sleep(pause)
+            if error:
+                raise error
+            return core.Reply(reply)
+
+        monkeypatch.setattr(core, "handle", fake_handle)
+
+    def ask():
+        msg = core.Message(text="hola", session_id=telegram.session_id(7))
+        return asyncio.run(telegram.ask_core(7, SimpleNamespace(bot=bot), msg))
+
+    return SimpleNamespace(bot=bot, slow=slow, ask=ask)
+
+
+def test_a_quick_answer_shows_no_progress_message(waiting):
+    waiting.slow(pause=0)
+
+    assert waiting.ask().text == "listo"
+    assert waiting.bot.sent == [] and waiting.bot.deleted == []
+
+
+def test_a_slow_answer_shows_a_progress_message_and_deletes_it_at_the_end(waiting):
+    waiting.slow(pause=0.3)
+
+    reply = waiting.ask()
+
+    assert reply.text == "listo"
+    assert waiting.bot.sent == ["⏳ Trabajando…"]
+    assert waiting.bot.deleted == [501]
+
+
+def test_typing_is_renewed_while_waiting(waiting):
+    waiting.slow(pause=0.3)
+
+    waiting.ask()
+
+    assert len(waiting.bot.actions) >= 3  # el del principio y los que se renuevan
+
+
+def test_the_progress_follows_the_steps_of_the_turn(waiting):
+    waiting.slow(
+        [
+            {"type": "model", "step": 1},
+            {"type": "tool", "name": "ver", "arg": "casa", "state": "running"},
+            {"type": "tool", "name": "ver", "arg": "casa", "state": "done"},
+            {"type": "model", "step": 2},
+            {"type": "tool", "name": "borrar", "arg": "", "state": "blocked"},
+        ]
+    )
+
+    waiting.ask()
+
+    shown = [waiting.bot.sent[0]] + [text for _, text in waiting.bot.edits]
+    assert shown == [
+        "⏳ Trabajando…",
+        "🤔 Pensando…",
+        "🔧 Usando ver: casa…",
+        "🤔 Consultando a la IA (paso 2)…",
+        "🚫 borrar: no disponible",
+    ]
+    assert waiting.bot.deleted == [501]  # siempre el mismo mensaje, editado en el lugar
+
+
+def test_the_same_text_is_not_edited_twice(waiting):
+    waiting.slow([{"type": "model", "step": 1}, {"type": "model", "step": 1}])
+
+    waiting.ask()
+
+    assert [text for _, text in waiting.bot.edits] == ["🤔 Pensando…"]
+
+
+def test_the_progress_hides_secrets_and_is_never_saved_in_the_conversation(waiting, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_TOKEN", "123456789:AAH-ejemplo_de_token_de_telegram_vKjP")
+    waiting.slow([{"type": "tool", "name": "ver", "arg": "123456789:AAH-ejemplo_de_token_de_telegram_vKjP", "state": "running"}])
+    telegram.LOGGED.clear()
+
+    update = FakeUpdate()
+    update.message.text = "hola"
+    bot = waiting.bot
+    context = FakeContext()
+    context.bot = bot
+    asyncio.run(telegram.on_text(update, context))
+
+    assert all("AAH-ejemplo" not in text for text in bot.sent + [t for _, t in bot.edits])
+    assert [m["text"] for m in telegram_conversation()[1]] == ["hola", "listo"]
+
+
+@pytest.mark.parametrize("method", ["send_message", "edit_message_text", "delete_message"])
+def test_a_telegram_failure_drawing_the_progress_never_loses_the_answer(waiting, method, capsys):
+    waiting.bot.fail.add(method)
+    waiting.slow([{"type": "model", "step": 1}], pause=0.15)
+
+    assert waiting.ask().text == "listo"
+    assert "No pude" in capsys.readouterr().out
+
+
+def test_if_the_core_fails_the_progress_is_still_deleted_and_the_error_goes_up(waiting):
+    waiting.slow(pause=0.3, error=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        waiting.ask()
+
+    assert waiting.bot.deleted == [501]
+
+
+def test_an_answer_that_arrives_while_the_progress_is_being_sent_still_deletes_it(waiting):
+    class SlowSend(ProgressBot):
+        async def send_message(self, chat_id, text):
+            await asyncio.sleep(0.2)  # la respuesta llega mientras esto viaja
+            return await super().send_message(chat_id, text)
+
+    waiting.bot.__class__ = SlowSend
+    waiting.slow(pause=0.1)
+
+    assert waiting.ask().text == "listo"
+    assert waiting.bot.sent == ["⏳ Trabajando…"] and waiting.bot.deleted == [501]
+
+
+def test_a_button_that_resumes_the_ai_also_shows_progress(waiting):
+    waiting.slow(pause=0.3)
+    query = FakeQuery("perm:si")
+    query.message.message_id = 9
+    context = FakeContext()
+    context.bot = waiting.bot
+
+    asyncio.run(telegram.make_on_button(42)(SimpleNamespace(callback_query=query), context))
+
+    assert waiting.bot.sent == ["⏳ Trabajando…"] and waiting.bot.deleted == [501]
+    assert query.edits[-1][0] == "listo"
 
 
 # --- Apagar el bot desde la página Canales -----------------------------------

@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import tempfile
 import threading
+import time
 
 from telegram import Bot, BotCommand, BotCommandScopeChat
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -130,12 +131,83 @@ def keyboard(actions: list[core.Action], stacked: bool = False) -> InlineKeyboar
     return InlineKeyboardMarkup([[b] for b in buttons] if stacked else [buttons])
 
 
+# Mientras el núcleo trabaja: Telegram apaga el «escribiendo…» a los 5 segundos, así que se renueva; y si la
+# espera se alarga aparece un mensaje de progreso (editado en el lugar, borrado al terminar). Segundos.
+PROGRESS_AFTER = 3.0  # cuánto se espera antes de mostrar el mensaje de progreso
+TYPING_EVERY = 4.0  # cada cuánto se renueva «escribiendo…»
+EDIT_EVERY = 1.0  # Telegram limita las ediciones: como mucho una por segundo en un chat
+TICK = 0.5  # cada cuánto el vigilante mira si hay algo para mostrar
+
+
+def progress_text(event: dict) -> str | None:
+    """Lo que dice el mensaje de progreso para un paso del turno (None: no cambia). Mismos eventos que la web."""
+    if event.get("type") == "model":
+        step = event.get("step", 1)
+        return "🤔 Pensando…" if step <= 1 else f"🤔 Consultando a la IA (paso {step})…"
+    if event.get("type") == "tool":
+        name, arg = event.get("name", ""), event.get("arg", "")
+        if event.get("state") == "running":
+            return f"🔧 Usando {name}{': ' + arg if arg else ''}…"
+        if event.get("state") == "blocked":
+            return f"🚫 {name}: no disponible"
+    return None
+
+
+async def watch(bot, chat_id: int, events: "asyncio.Queue[dict]") -> None:
+    """Corre junto al núcleo hasta que lo cancelen: renueva «escribiendo…» y, pasado PROGRESS_AFTER, muestra un
+    mensaje con el paso en curso. Dibujar nunca puede romper la respuesta: lo que falle se avisa y se sigue."""
+    clock = time.monotonic
+    start = last_typing = last_edit = clock()
+    wanted, shown, message_id = "⏳ Trabajando…", None, None
+    try:
+        while True:
+            try:
+                if (text := progress_text(await asyncio.wait_for(events.get(), TICK))) is not None:
+                    wanted = text
+            except asyncio.TimeoutError:
+                pass
+            now = clock()
+            try:
+                if now - last_typing >= TYPING_EVERY:
+                    last_typing = now
+                    await bot.send_chat_action(chat_id, ChatAction.TYPING)
+                if now - start >= PROGRESS_AFTER and wanted != shown and now - last_edit >= EDIT_EVERY:
+                    last_edit, shown = now, wanted
+                    if message_id is None:
+                        # Si la respuesta llega mientras viaja, el envío termina igual y hay que borrarlo.
+                        sending = asyncio.ensure_future(bot.send_message(chat_id, trim(config.redact(wanted))))
+                        try:
+                            message_id = (await asyncio.shield(sending)).message_id
+                        except asyncio.CancelledError:
+                            message_id = (await asyncio.gather(sending, return_exceptions=True))[0]
+                            message_id = getattr(message_id, "message_id", None)
+                            raise
+                    else:
+                        await bot.edit_message_text(trim(config.redact(wanted)), chat_id=chat_id, message_id=message_id)
+            except Exception as e:
+                print(f"No pude mostrar el progreso en Telegram: {config.redact(repr(e))}")
+    finally:
+        if message_id is not None:
+            try:
+                await bot.delete_message(chat_id, message_id)
+            except Exception as e:
+                print(f"No pude borrar el mensaje de progreso: {config.redact(repr(e))}")
+
+
 async def ask_core(chat_id: int, context: ContextTypes.DEFAULT_TYPE, msg: core.Message):
-    """Le pasa el mensaje al núcleo sin trabar el bot mientras espera al modelo."""
+    """Le pasa el mensaje al núcleo sin trabar el bot mientras espera al modelo, mostrando que sigue vivo."""
     # "escribiendo…" mientras tarda (reemplaza los viejos avisos «Analizando…»).
     await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
-    # handle() es síncrona (puede llamar a Gemini): la corremos en otro hilo.
-    return await asyncio.to_thread(core.handle, msg)
+    loop = asyncio.get_running_loop()
+    events: asyncio.Queue = asyncio.Queue()
+    # handle() es síncrona (puede llamar a Gemini): la corremos en otro hilo, que avisa sus pasos a este bucle.
+    work = asyncio.to_thread(core.handle, msg, lambda event: loop.call_soon_threadsafe(events.put_nowait, event))
+    watcher = asyncio.create_task(watch(context.bot, chat_id, events))
+    try:
+        return await work
+    finally:
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)  # espera a que borre el mensaje de progreso
 
 
 # --- Handlers ----------------------------------------------------------------
