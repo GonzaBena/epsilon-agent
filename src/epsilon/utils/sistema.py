@@ -78,6 +78,24 @@ def ram() -> list[tuple[str, str]]:
     return rows
 
 
+def disk_percent(data_dir: Path) -> float | None:
+    """Cuánto del disco donde viven los datos está usado (0-100), o None si no se puede leer. Es el mismo disco de /sistema."""
+    try:
+        usage = shutil.disk_usage(data_dir)
+    except OSError:
+        return None
+    return usage.used / usage.total * 100 if usage.total else None
+
+
+def ram_percent() -> float | None:
+    """Cuánta memoria está en uso (0-100: lo que NO está disponible), o None si no se puede leer."""
+    try:
+        info = _meminfo()
+        return (1 - info["MemAvailable"] / info["MemTotal"]) * 100
+    except (OSError, KeyError, ZeroDivisionError):
+        return None
+
+
 def _duration(seconds: float) -> str:
     minutes = int(seconds // 60)
     days, minutes = divmod(minutes, 1440)

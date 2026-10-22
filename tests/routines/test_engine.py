@@ -183,3 +183,101 @@ def test_start_and_stop_the_thread(monkeypatch):
     engine.stop()
 
     assert not first.is_alive()
+
+
+# --- condiciones ------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def readings(monkeypatch):
+    """Lo que «mide» el sistema: un diccionario que el test cambia. `asked` anota qué se midió."""
+    state = {"disco": 50.0, "ram": 40.0}
+    asked = []
+    monkeypatch.setattr(engine, "_read", lambda metric: asked.append(metric) or state[metric])
+    state["asked"] = asked
+    return state
+
+
+def test_a_condition_fires_once_when_crossing_and_the_notice_says_why(quiet, readings):
+    sent, _ = quiet
+    add("disco>90 | avisar poco espacio")
+
+    engine.tick(NOW)
+    assert sent == []
+
+    readings["disco"] = 93.4
+    engine.tick(NOW + timedelta(seconds=30)), engine.tick(NOW + timedelta(seconds=60))
+
+    assert sent == ["⚠ poco espacio (el disco al 93 %)"]  # una sola vez aunque siga alto
+    assert "ejecutada" in log()
+
+
+def test_a_condition_can_also_run_an_action(quiet, readings):
+    sent, done = quiet
+    add("ram>80 | musica pausa")
+    readings["ram"] = 85.0
+
+    engine.tick(NOW)
+
+    assert done == [("musica", "pausa")] and sent == ["Rutina 1: Pausé. (chromium) (la memoria al 85 %)"]
+
+
+def test_it_warns_again_after_dropping_and_rising_once_the_cooldown_passed(quiet, readings):
+    sent, _ = quiet
+    add("disco>90 | avisar poco espacio")
+    readings["disco"] = 95.0
+    engine.tick(NOW)
+    readings["disco"] = 60.0
+    engine.tick(NOW + timedelta(minutes=10))
+    readings["disco"] = 96.0
+    engine.tick(NOW + timedelta(minutes=20))  # volvió a subir, pero avisó hace 20 min
+    assert len(sent) == 1
+
+    engine.tick(NOW + timedelta(minutes=61))  # terminó el reposo y sigue alto
+
+    assert len(sent) == 2
+
+
+def test_only_what_an_active_condition_watches_is_measured(quiet, readings):
+    add("23:00 | volumen 20")
+    engine.tick(NOW)
+    assert readings["asked"] == []  # sin condiciones no se mide nada
+
+    add("disco>90 | avisar x")
+    add("disco>95 | avisar y")
+    store.set_enabled(add("ram>90 | avisar z")["id"], False, NOW)
+    engine.tick(NOW)
+
+    assert readings["asked"] == ["disco"]  # una vez, aunque haya dos reglas; la pausada no cuenta
+
+
+def test_an_unreadable_metric_does_not_fire_or_break_other_rules(quiet, readings, monkeypatch):
+    sent, done = quiet
+    add("disco>90 | avisar x"), add("23:00 | volumen 20")
+    monkeypatch.setattr(engine, "_read", lambda metric: None)
+
+    engine.tick(NOW)
+
+    assert sent == ["Rutina 2: Volumen: 20 %"] and done == [("volumen", "20")]
+
+
+def test_a_paused_condition_does_not_fire(quiet, readings):
+    sent, _ = quiet
+    add("disco>90 | avisar x")
+    store.set_enabled(1, False, NOW)
+    readings["disco"] = 99.0
+
+    engine.tick(NOW)
+
+    assert sent == []
+
+
+def test_the_global_switch_also_stops_conditions(quiet, readings, monkeypatch):
+    sent, _ = quiet
+    add("disco>90 | avisar x")
+    readings["disco"] = 99.0
+    monkeypatch.setenv("ROUTINES_ENABLED", "no")
+
+    engine.tick(NOW)
+
+    assert sent == [] and readings["asked"] == []

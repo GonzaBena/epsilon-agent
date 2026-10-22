@@ -417,11 +417,12 @@ TOOLS = (
         ai_action="crear",
         ai_name="rutina_crear",
         ai_help=(
-            "programar algo que Epsilon hace solo más tarde: a una hora, o dentro de un rato. Solo puede avisarle algo a la persona, cambiar el volumen o controlar "
+            "programar algo que Epsilon hace solo más tarde: a una hora, dentro de un rato o cuando el disco o la memoria pasan de cierto %. Solo puede avisarle algo a la persona, cambiar el volumen o controlar "
             "la música. No hay fechas: para otro día solo sirve «en» hasta 7 días (en 20h). La persona confirma la regla antes de guardarla"
         ),
         ai_arg=(
-            "«cuándo | qué» en una sola línea. Cuándo: 23:00 (todos los días), lun-vie 09:00, sab,dom 10:30, en 30m, en 2h (una sola vez). "
+            "«cuándo | qué» en una sola línea. Cuándo: 23:00 (todos los días), lun-vie 09:00, sab,dom 10:30, en 30m, en 2h (una sola vez), "
+            "o disco>90 / ram>85 (cuando el uso pasa de ese %: avisa al cruzarlo y no más de una vez por hora). "
             "Qué: avisar texto, volumen 20 (o +5, -10, silenciar, activar), musica pausa (o play, siguiente, anterior). "
             "Ejemplos: 23:00 | volumen 20   ·   lun-vie 09:00 | avisar Standup   ·   en 30m | avisar sacar la pizza"
         ),

@@ -252,6 +252,20 @@ def test_rutina_creates_and_rutinas_lists(tmp_path, monkeypatch):
     assert "| 2 | una vez, 22/10 a las 15:00 → avisar: sacar la pizza | jue 22/10 15:00 |" in listing
 
 
+def test_rutina_with_a_condition_is_watched_not_scheduled(tmp_path, monkeypatch):
+    routines_clock(tmp_path, monkeypatch)
+
+    created = say("/rutina disco>90 | avisar poco espacio").text
+    listing = say("/rutinas").text
+
+    assert created == "Listo, rutina 1: cuando el disco pase del 90 % → avisar: poco espacio. La vigilo: avisa al pasar el umbral y no más de una vez por hora."
+    assert "| 1 | cuando el disco pase del 90 % → avisar: poco espacio | vigilando |" in listing
+    assert say("/rutina ram>85 | avisar x").text.startswith("Listo, rutina 2: cuando la memoria pase del 85 %")
+    assert say("/rutina disco>100 | avisar x").text == "El umbral va de 1 a 99 %."
+    say("/rutina pausar 1"), say("/rutina seguir 1")
+    assert "vigilando" in say("/rutinas").text
+
+
 def test_rutina_manages_by_number(tmp_path, monkeypatch):
     routines_clock(tmp_path, monkeypatch)
     say("/rutina 23:00 | volumen 20")

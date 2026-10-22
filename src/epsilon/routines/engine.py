@@ -4,7 +4,7 @@ import threading
 from epsilon.data import notes
 from epsilon.routines import notify, rules, store
 from epsilon.settings import config
-from epsilon.utils import clock, multimedia
+from epsilon.utils import clock, multimedia, sistema
 
 # El motor de las rutinas: un hilo que cada TICK segundos mira el reloj y cumple lo que toca. Sin modelo: costo cero.
 # `tick(now)` es una pasada completa y no depende del hilo (los tests la llaman con la hora que quieran). Primero
@@ -31,23 +31,37 @@ def _log(rule_id: object, what: str, result: str) -> None:
         pass
 
 
+def _read(metric: str) -> float | None:
+    """El valor actual (0-100) de lo que vigila una condición. Aparte para que los tests lo reemplacen."""
+    return sistema.disk_percent(notes.DATA_DIR) if metric == "disco" else sistema.ram_percent()
+
+
+def _readings() -> dict[str, float | None]:
+    """Lo que hay que medir esta pasada: solo las cosas que alguna rutina de condición activa vigila (sin condiciones, nada)."""
+    wanted = {r["when"]["metric"] for r in store.rules() if r.get("enabled", True) and isinstance(r.get("when"), dict) and r["when"].get("kind") == "cond"
+              and r["when"].get("metric") in rules.METRICS}
+    return {metric: _read(metric) for metric in wanted}
+
+
 def _tell(text: str, rule_id: object) -> None:
     failed = notify.send(text)
     if failed:
         _log(rule_id, "aviso falló", "; ".join(failed))
 
 
-def _run(rule: dict) -> None:
-    """Cumple UNA rutina con las funciones de siempre (heredan sus topes) y avisa lo que hizo."""
+def _run(rule: dict, reading: float | None = None) -> None:
+    """Cumple UNA rutina con las funciones de siempre (heredan sus topes) y avisa lo que hizo. `reading` es el valor que
+    hizo saltar una condición: va en el aviso para que se vea por qué."""
     do = rule["do"]
+    why = f" ({rules.METRICS[rule['when']['metric']]} al {reading:.0f} %)" if reading is not None else ""
     try:
         if do["kind"] == "avisar":
             result = do["arg"]
-            _tell(f"⏰ {result}", rule["id"])
+            _tell(f"{'⚠' if reading is not None else '⏰'} {result}{why}", rule["id"])
         else:
             result = multimedia.volume(do["arg"]) if do["kind"] == "volumen" else multimedia.music(do["arg"])
-            _tell(f"Rutina {rule['id']}: {result}", rule["id"])
-        _log(rule["id"], "ejecutada", result)
+            _tell(f"Rutina {rule['id']}: {result}{why}", rule["id"])
+        _log(rule["id"], "ejecutada", result + why)
     except (ValueError, multimedia.MultimediaError) as e:
         _log(rule["id"], "falló", str(e))
         _tell(f"No pude cumplir la rutina {rule['id']} ({rules.describe(rule)}): {e}", rule["id"])
@@ -57,7 +71,8 @@ def tick(now: datetime) -> None:
     """Una pasada: ¿qué rutinas tocan a esta hora (local, sin zona)?"""
     if not config.enabled("ROUTINES_ENABLED"):
         return
-    fired: list[dict] = []
+    readings = _readings()
+    fired: list[tuple[dict, float | None]] = []
     missed: list[tuple[dict, datetime]] = []
 
     def advance(all_rules: list[dict]) -> None:
@@ -65,11 +80,16 @@ def tick(now: datetime) -> None:
             if not rule.get("enabled", True):
                 continue
             try:
+                if rule["when"]["kind"] == "cond":  # se mira en cada pasada, no tiene hora
+                    reading = readings.get(rule["when"]["metric"])
+                    if rules.check_condition(rule, reading, now):
+                        fired.append((dict(rule), reading))
+                    continue
                 due = datetime.fromisoformat(rule["next_run"])
                 if due > now:
                     continue
                 if now - due <= rules.GRACE:
-                    fired.append(dict(rule))
+                    fired.append((dict(rule), None))
                 else:
                     missed.append((dict(rule), due))
                 following = rules.next_after(rule["when"], now)
@@ -87,9 +107,9 @@ def tick(now: datetime) -> None:
     except store.StoreError as e:
         _log("-", "no se pudo guardar", str(e))
         return  # sin guardar el avance repetiría todo en la pasada siguiente
-    for rule in fired:
+    for rule, reading in fired:
         try:
-            _run(rule)
+            _run(rule, reading)
         except Exception as e:  # una rutina con problemas no frena a las otras
             _log(rule.get("id", "?"), "error", repr(e))
     if missed:

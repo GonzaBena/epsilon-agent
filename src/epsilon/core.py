@@ -520,12 +520,19 @@ def _when_text(moment: str) -> str:
 ROUTINE_VERBS = {"borrar": "Borré", "pausar": "Pausé", "seguir": "Reanudé"}
 
 
+def _next_text(rule: dict) -> str:
+    """Cuándo le toca a una rutina: la fecha, o «vigilando» si es de condición."""
+    return _when_text(rule["next_run"]) if "next_run" in rule else "vigilando"
+
+
 def _routine_create(text: str) -> Reply:
     """Crea una rutina desde «cuándo | qué». Nunca pausa ni borra: es lo único que hace la herramienta de crear de la IA."""
     try:
         rule = routine_store.add(routine_rules.build(text.strip(), _local_now()))
     except (ValueError, routine_store.StoreError) as e:
         return Reply(str(e))
+    if "next_run" not in rule:
+        return Reply(f"Listo, rutina {rule['id']}: {routine_rules.describe(rule)}. La vigilo: avisa al pasar el umbral y no más de una vez por hora.")
     return Reply(f"Listo, rutina {rule['id']}: {routine_rules.describe(rule)}. Próxima: {_when_text(rule['next_run'])}.")
 
 
@@ -575,7 +582,7 @@ def _routines_cmd(args: str, session: "Session") -> Reply:
     if not found:
         return Reply("No tenés rutinas. Creá una, por ejemplo: /rutina 23:00 | volumen 20")
     rows = [
-        f"| {r['id']} | {routine_rules.describe(r).replace('|', '/')} | {_when_text(r['next_run']) if r.get('enabled', True) else 'en pausa'} |"
+        f"| {r['id']} | {routine_rules.describe(r).replace('|', '/')} | {_next_text(r) if r.get('enabled', True) else 'en pausa'} |"
         for r in found
     ]
     warning = "" if config.enabled("ROUTINES_ENABLED") else "⚠ Las rutinas están apagadas (ajuste ROUTINES_ENABLED): ninguna se cumple.\n\n"

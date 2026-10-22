@@ -12,9 +12,12 @@ from epsilon.utils import multimedia
 ACTIONS = ("avisar", "volumen", "musica")
 MAX_TEXT = 200  # largo de un aviso
 MAX_IN_MINUTES = 7 * 24 * 60  # «en 30m» como mucho una semana adelante
+COOLDOWN = timedelta(hours=1)  # una condición no se cumple dos veces dentro de esta hora, aunque el valor suba y baje
+METRICS = {"disco": "el disco", "ram": "la memoria"}  # lo que se puede vigilar -> cómo se nombra en un aviso
 GRACE = timedelta(minutes=2)  # pasado esto de la hora, la rutina se considera perdida (la PC estaba apagada)
 USAGE = (
-    "Se escribe «cuándo | qué». Cuándo: `23:00` (todos los días), `lun-vie 09:00`, `sab,dom 10:30` o `en 30m` / `en 2h` (una sola vez). "
+    "Se escribe «cuándo | qué». Cuándo: `23:00` (todos los días), `lun-vie 09:00`, `sab,dom 10:30`, `en 30m` / `en 2h` (una sola vez) "
+    "o `disco>90` / `ram>85` (cuando el uso pasa de ese %). "
     "Qué: `avisar texto`, `volumen 20` o `musica pausa`. Ejemplo: /rutina 23:00 | volumen 20"
 )
 
@@ -28,6 +31,7 @@ def _plain(text: str) -> str:
 
 
 DAY_INDEX = {_plain(name): i for names in (DAY_SHORT, DAY_LONG) for i, name in enumerate(names)}
+CONDITION = re.compile(r"(disco|ram)\s*>\s*(\d{1,3})\s*%?")
 TIME = re.compile(r"([01]?\d|2[0-3]):([0-5]\d)")
 IN = re.compile(r"en\s+(?:(\d{1,3})\s*h)?\s*(?:(\d{1,4})\s*m)?")
 
@@ -49,8 +53,15 @@ def _days(spec: str) -> list[int]:
 
 
 def parse_when(text: str, now: datetime) -> dict:
-    """«23:00», «lun-vie 09:00» o «en 30m» -> {"kind": "daily", "time": "23:00", "days": [...]} o {"kind": "once", "at": iso}."""
+    """«23:00», «lun-vie 09:00», «en 30m» o «disco>90» -> {"kind": "daily", "time": "23:00", "days": [...]},
+    {"kind": "once", "at": iso} o {"kind": "cond", "metric": "disco", "value": 90}."""
     text = " ".join(text.split())
+    condition = CONDITION.fullmatch(text.lower())
+    if condition:
+        value = int(condition.group(2))
+        if not 1 <= value <= 99:
+            raise ValueError("El umbral va de 1 a 99 %.")
+        return {"kind": "cond", "metric": condition.group(1), "value": value}
     inside = IN.fullmatch(text.lower())
     if inside and (inside.group(1) or inside.group(2)):
         minutes = int(inside.group(1) or 0) * 60 + int(inside.group(2) or 0)
@@ -83,7 +94,10 @@ def parse_do(text: str) -> dict:
 
 
 def next_after(when: dict, after: datetime) -> datetime | None:
-    """La primera vez que le toca estrictamente después de `after`; None si ya no le toca (una sola vez, vencida)."""
+    """La primera vez que le toca estrictamente después de `after`; None si ya no le toca (una sola vez, vencida) o si no
+    es de horario (una condición se mira en cada pasada: no tiene «próxima vez»)."""
+    if when["kind"] == "cond":
+        return None
     if when["kind"] == "once":
         at = datetime.fromisoformat(when["at"])
         return at if at > after else None
@@ -101,10 +115,32 @@ def build(text: str, now: datetime) -> dict:
     if not bar or not when_text.strip() or not do_text.strip():
         raise ValueError(USAGE)
     when, do = parse_when(when_text.strip(), now), parse_do(do_text.strip())
+    if when["kind"] == "cond":
+        return {"when": when, "do": do, "enabled": True, "tripped": False, "last_run": None}
     return {"when": when, "do": do, "enabled": True, "next_run": next_after(when, now).isoformat()}
 
 
+def check_condition(rule: dict, reading: float | None, now: datetime) -> bool:
+    """¿Hay que cumplir esta rutina de condición ahora? Se cumple al CRUZAR el umbral (no en cada pasada): `tripped`
+    queda en la regla hasta que el valor vuelve a estar por debajo, y entre dos cumplimientos pasa al menos COOLDOWN.
+    Cambia la regla en el lugar (`tripped`, `last_run`); sin lectura no hace nada."""
+    if reading is None:
+        return False
+    if reading <= rule["when"]["value"]:
+        rule["tripped"] = False  # volvió a la normalidad: se rearma
+        return False
+    if rule.get("tripped"):
+        return False
+    last = rule.get("last_run")
+    if last and now - datetime.fromisoformat(last) < COOLDOWN:
+        return False  # sigue alto, pero se avisó hace poco: se mira de nuevo en la pasada siguiente
+    rule["tripped"], rule["last_run"] = True, now.isoformat()
+    return True
+
+
 def describe_when(when: dict) -> str:
+    if when["kind"] == "cond":
+        return f"cuando {METRICS[when['metric']]} pase del {when['value']} %"
     if when["kind"] == "once":
         return f"una vez, {datetime.fromisoformat(when['at']):%d/%m a las %H:%M}"
     days = when["days"]

@@ -81,3 +81,11 @@ def test_resuming_a_single_run_that_already_passed_deletes_it():
     with pytest.raises(store.StoreError, match="ya pasó"):
         store.set_enabled(1, True, datetime(2026, 10, 23, 9, 0))
     assert store.rules() == []
+
+
+def test_pausing_and_resuming_a_condition_never_deletes_it():
+    store.add(make("disco>90 | avisar x"))
+
+    assert store.set_enabled(1, False, NOW)["enabled"] is False
+    assert store.set_enabled(1, True, NOW)["enabled"] is True
+    assert len(store.rules()) == 1

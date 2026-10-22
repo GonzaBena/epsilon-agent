@@ -111,3 +111,62 @@ def test_descriptions_read_like_people_talk():
     assert rules.describe(rules.build("finde 10:00 | musica play", NOW)) == "sábado y domingo a las 10:00 → musica play"
     assert rules.describe(rules.build("lun,mié 10:00 | musica", NOW)) == "lunes, miércoles a las 10:00 → musica"
     assert rules.describe(rules.build("en 30m | avisar pizza", NOW)) == "una vez, 22/10 a las 15:00 → avisar: pizza"
+
+
+# --- condiciones ------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text, metric, value", [("disco>90", "disco", 90), ("Disco > 85 %", "disco", 85), ("ram>1", "ram", 1), ("RAM>99%", "ram", 99)])
+def test_conditions(text, metric, value):
+    assert rules.parse_when(text, NOW) == {"kind": "cond", "metric": metric, "value": value}
+
+
+@pytest.mark.parametrize("text", ["disco>0", "disco>100", "ram>150", "disco<10", "cpu>90", "disco>", "disco>9x", "disco>90; reboot", "disco ram>90"])
+def test_conditions_refuse_what_is_not_a_known_metric_with_a_threshold(text):
+    with pytest.raises(ValueError):
+        rules.parse_when(text, NOW)
+
+
+def test_a_condition_rule_has_no_schedule_but_keeps_its_state():
+    rule = rules.build("disco>90 | avisar poco espacio", NOW)
+
+    assert rule == {"when": {"kind": "cond", "metric": "disco", "value": 90}, "do": {"kind": "avisar", "arg": "poco espacio"},
+                    "enabled": True, "tripped": False, "last_run": None}
+    assert rules.next_after(rule["when"], NOW) is None
+    assert rules.describe(rule) == "cuando el disco pase del 90 % → avisar: poco espacio"
+    assert rules.describe_when({"kind": "cond", "metric": "ram", "value": 85}) == "cuando la memoria pase del 85 %"
+
+
+def cond(value=90):
+    return rules.build(f"disco>{value} | avisar x", NOW)
+
+
+def test_it_fires_when_it_crosses_the_threshold_and_not_again_while_it_stays_above():
+    rule = cond()
+
+    assert rules.check_condition(rule, 80.0, NOW) is False
+    assert rules.check_condition(rule, 91.0, NOW) is True
+    assert rules.check_condition(rule, 95.0, NOW + timedelta(minutes=1)) is False  # sigue arriba: ya avisó
+    assert rule["tripped"] is True and rule["last_run"] == NOW.isoformat()
+
+
+def test_equal_to_the_threshold_is_not_above_it():
+    assert rules.check_condition(cond(), 90.0, NOW) is False
+
+
+def test_it_rearms_when_the_value_comes_back_down_but_waits_out_the_cooldown():
+    rule = cond()
+    rules.check_condition(rule, 91.0, NOW)
+
+    assert rules.check_condition(rule, 70.0, NOW + timedelta(minutes=5)) is False and rule["tripped"] is False
+    assert rules.check_condition(rule, 92.0, NOW + timedelta(minutes=10)) is False  # sube otra vez, pero hace 10 min que avisó
+    assert rules.check_condition(rule, 92.0, NOW + timedelta(minutes=59)) is False
+    assert rules.check_condition(rule, 92.0, NOW + timedelta(hours=1)) is True  # terminó el reposo y sigue alto
+
+
+def test_without_a_reading_nothing_happens_and_the_state_is_kept():
+    rule = cond()
+    rules.check_condition(rule, 91.0, NOW)
+
+    assert rules.check_condition(rule, None, NOW + timedelta(hours=3)) is False
+    assert rule["tripped"] is True

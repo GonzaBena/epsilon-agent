@@ -145,3 +145,33 @@ def test_systemctl_runs_with_fixed_arguments_no_shell_and_a_minimal_environment(
 
 
 REAL_SYSTEMCTL = sistema._systemctl  # el conftest lo bloquea en cada test; esta es la verdadera
+
+
+# --- lecturas numéricas (para las rutinas de condición) --------------------------------------
+
+
+def test_ram_percent_is_the_memory_that_is_not_available(proc):
+    assert sistema.ram_percent() == 50.0  # 8 de 16 GB disponibles
+
+
+def test_ram_percent_without_a_readable_meminfo_is_none(proc):
+    (proc / "meminfo").write_text("basura", encoding="utf-8")
+
+    assert sistema.ram_percent() is None
+    (proc / "meminfo").write_text("MemTotal: 0 kB\nMemAvailable: 0 kB\n", encoding="utf-8")
+    assert sistema.ram_percent() is None
+
+
+def test_disk_percent_reads_the_used_share(monkeypatch, tmp_path):
+    monkeypatch.setattr(sistema.shutil, "disk_usage", lambda path: SimpleNamespace(total=200, used=150, free=50))
+
+    assert sistema.disk_percent(tmp_path) == 75.0
+
+
+def test_disk_percent_is_none_when_it_cannot_be_read(monkeypatch, tmp_path):
+    def broken(path):
+        raise OSError
+
+    monkeypatch.setattr(sistema.shutil, "disk_usage", broken)
+
+    assert sistema.disk_percent(tmp_path) is None

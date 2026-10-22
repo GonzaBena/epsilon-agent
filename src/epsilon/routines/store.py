@@ -86,7 +86,7 @@ def set_enabled(rule_id: int, enabled: bool, now: datetime) -> dict | None:
         if rule is None:
             return None, False
         rule["enabled"] = enabled
-        if enabled:
+        if enabled and rule["when"]["kind"] != "cond":
             following = rules_mod.next_after(rule["when"], now)
             if following is None:
                 all_rules.remove(rule)  # se guarda el borrado: por eso el error se lanza DESPUÉS de `update`
