@@ -63,7 +63,7 @@ def _check_env(env: object) -> dict[str, str]:
     if not isinstance(env, dict):
         raise StoreError("Las variables de entorno tienen que ser pares CLAVE=valor.")
     for key, value in env.items():
-        if not isinstance(key, str) or not ENV_KEY.match(key):
+        if not isinstance(key, str) or not ENV_KEY.fullmatch(key):
             raise StoreError("Los nombres de variable llevan letras, números y guion bajo, y no empiezan con número.")
         if not _one_line(value):
             raise StoreError(f"El valor de {key} tiene que ser un texto de una sola línea.")
@@ -81,7 +81,7 @@ def get(name: str) -> dict | None:
 
 def add(name: str, argv: list[str], env: dict[str, str]) -> dict:
     """Guarda un conector nuevo (activo, sin arrancar solo y sin herramientas todavía). StoreError si algo no vale."""
-    if not isinstance(name, str) or not NAME.match(name):
+    if not isinstance(name, str) or not NAME.fullmatch(name):
         raise StoreError("El nombre va en minúsculas, de 2 a 20 caracteres: letras, números y guion bajo (empieza con letra).")
     if name in _reserved():
         raise StoreError(f"«{name}» está reservado: ya es un grupo o una herramienta de Epsilon.")

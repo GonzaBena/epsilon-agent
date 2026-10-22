@@ -21,7 +21,7 @@ def test_add_and_get_roundtrip():
     assert store.get("otro") is None
 
 
-@pytest.mark.parametrize("name", ["Luces", "a", "x" * 21, "1luces", "mi-luz", ""])
+@pytest.mark.parametrize("name", ["Luces", "a", "x" * 21, "1luces", "mi-luz", "", "luces\n"])
 def test_name_must_match_pattern(name):
     with pytest.raises(store.StoreError):
         store.add(name, ["x"], {})
@@ -54,7 +54,7 @@ def test_argv_must_be_nonempty_single_line_strings(argv):
         store.add("luces", argv, {})
 
 
-@pytest.mark.parametrize("env", [{"mi-clave": "x"}, {"1A": "x"}, {"TOKEN": "a\nb"}, {"TOKEN": 5}, {"TOKEN": "a\rb"}])
+@pytest.mark.parametrize("env", [{"mi-clave": "x"}, {"1A": "x"}, {"TOKEN": "a\nb"}, {"TOKEN": 5}, {"TOKEN": "a\rb"}, {"TOKEN\n": "x"}])
 def test_env_keys_must_look_like_variables_and_values_single_line(env):
     with pytest.raises(store.StoreError):
         store.add("luces", ["x"], env)
