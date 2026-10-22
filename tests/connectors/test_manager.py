@@ -305,7 +305,8 @@ def test_result_limit_matches_core():
 
 
 def test_concurrent_calls_both_complete(monkeypatch):
-    link = FakeLink(delay=0.1, result=lambda name, args: f"hola {args['n']}")
+    # open_delay: las dos llamadas esperan juntas a que abra; la segunda usa el enlace que abrió la primera
+    link = FakeLink(delay=0.1, open_delay=0.1, result=lambda name, args: f"hola {args['n']}")
     install(monkeypatch, {"luces": link})
     add("luces")
 
@@ -382,3 +383,88 @@ def test_text_of_joins_text_blocks_and_warns_about_the_rest():
     assert text.startswith("uno\ndos")
     assert "no es texto" in text
     assert manager._text_of([mcp_types.TextContent(type="text", text="solo")]) == "solo"
+
+
+def test_max_running_holds_with_concurrent_opens_of_different_connectors(monkeypatch):
+    names = ("aa", "bb", "cc", "dd", "ee")
+    links = {name: FakeLink(open_delay=0.1) for name in names}
+    stats = install(monkeypatch, links)
+    for name in names:
+        add(name)
+
+    runs = [in_thread(manager.call, name, "saludar", {}) for name in names]
+    for thread, _ in runs:
+        thread.join()
+
+    outs = [out for _, out in runs]
+    assert stats["peak"] <= manager.MAX_RUNNING
+    assert sum(1 for out in outs if out.get("result") == "ok") == manager.MAX_RUNNING  # los otros, todos abriéndose
+    assert all("trabajando" in str(out["error"]) for out in outs if "error" in out)
+    assert sum(1 for name in names if manager.status(name) == "activo") <= manager.MAX_RUNNING
+
+
+def test_full_and_idle_concurrent_opens_evict_without_going_over(monkeypatch):
+    names = ("aa", "bb", "cc", "dd", "ee")
+    links = {name: FakeLink(open_delay=0.05) for name in names}
+    stats = install(monkeypatch, links)
+    for name in names:
+        add(name)
+    for name in ("aa", "bb", "cc"):
+        manager.call(name, "saludar", {})
+
+    runs = [in_thread(manager.call, name, "saludar", {}) for name in ("dd", "ee")]
+    for thread, _ in runs:
+        thread.join()
+
+    assert [out for _, out in runs] == [{"result": "ok"}, {"result": "ok"}]
+    assert stats["peak"] <= manager.MAX_RUNNING
+    assert sum(1 for name in names if manager.status(name) == "activo") == manager.MAX_RUNNING
+
+
+def test_hook_that_calls_back_into_the_manager_does_not_freeze_it(monkeypatch):
+    install(monkeypatch, {"luces": FakeLink()})
+    add("luces")
+    manager.set_changed_hook(lambda name, changed: manager.stop(name))
+
+    began = time.monotonic()
+    assert manager.start("luces") == ["saludar"]
+
+    assert time.monotonic() - began < 2
+    assert manager.status("luces") == "dormido"
+
+
+def test_manager_cannot_be_used_from_its_own_thread():
+    import asyncio
+
+    async def inside():
+        manager.tick(0)
+
+    future = asyncio.run_coroutine_threadsafe(inside(), manager._loop())
+
+    with pytest.raises(RuntimeError, match="propio hilo"):
+        future.result(2)
+
+
+def test_stop_all_keeps_going_when_one_stop_fails(monkeypatch):
+    links = {"aa": FakeLink(), "bb": FakeLink(), "cc": FakeLink()}
+    install(monkeypatch, links)
+    for name in links:
+        add(name)
+        manager.call(name, "saludar", {})
+    real_stop = manager._stop
+
+    async def stop(name):
+        if name == "aa":
+            raise ConnectionError("no se deja cerrar")
+        await real_stop(name)
+
+    monkeypatch.setattr(manager, "_stop", stop)
+    ticker = manager._ticker_future
+
+    manager.stop_all()
+
+    assert not links["aa"].closed
+    assert links["bb"].closed and links["cc"].closed
+    wait_for(ticker.done)  # el reloj de inactividad también se frenó
+    manager.call("bb", "saludar", {})
+    assert not manager._ticker_future.done()  # y vuelve con el próximo uso

@@ -53,12 +53,16 @@ class _Slot:
         self.link: Link | None = None
         self.lock = asyncio.Lock()  # abrir y cerrar, de a uno (las llamadas en sí pueden ir a la vez)
         self.busy = 0
+        self.opening = 0  # aperturas en curso: cuentan para MAX_RUNNING aunque todavía no haya enlace
         self.last_used = 0.0
 
 
 _slots: dict[str, _Slot] = {}
 _changed_hook: Callable[[str, list[str]], None] | None = None
 _loop_ref: asyncio.AbstractEventLoop | None = None
+_loop_thread: threading.Thread | None = None
+_ticker_future = None  # el reloj de inactividad (stop_all lo frena; `_loop` lo vuelve a poner)
+_ticker_task: asyncio.Task | None = None
 _loop_lock = threading.Lock()
 
 
@@ -66,18 +70,22 @@ _loop_lock = threading.Lock()
 
 
 def _loop() -> asyncio.AbstractEventLoop:
-    """El ciclo compartido; lo crea (con su hilo y el reloj de inactividad) la primera vez."""
-    global _loop_ref
+    """El ciclo compartido; lo crea (con su hilo) la primera vez, y pone el reloj de inactividad si no corre."""
+    global _loop_ref, _loop_thread, _ticker_future
     with _loop_lock:
         if _loop_ref is None:
             loop = asyncio.new_event_loop()
-            threading.Thread(target=loop.run_forever, name="connectors", daemon=True).start()
-            asyncio.run_coroutine_threadsafe(_ticker(), loop)
+            _loop_thread = threading.Thread(target=loop.run_forever, name="connectors", daemon=True)
+            _loop_thread.start()
             _loop_ref = loop
+        if _ticker_future is None or _ticker_future.done():
+            _ticker_future = asyncio.run_coroutine_threadsafe(_ticker(), _loop_ref)
         return _loop_ref
 
 
 async def _ticker() -> None:
+    global _ticker_task
+    _ticker_task = asyncio.current_task()
     while True:
         await asyncio.sleep(TICK_EVERY)
         try:
@@ -87,7 +95,11 @@ async def _ticker() -> None:
 
 
 def _run(coro, timeout: float):
-    """Corre `coro` en el hilo de los conectores y espera su resultado (con un tope por si algo se cuelga)."""
+    """Corre `coro` en el hilo de los conectores y espera su resultado (con un tope por si algo se cuelga).
+    Desde el propio hilo no se puede: esperaría a un ciclo que está esperándolo a él (se congelaría todo)."""
+    if threading.current_thread() is _loop_thread:
+        coro.close()
+        raise RuntimeError("No se puede usar el manager de conectores desde su propio hilo.")
     future = asyncio.run_coroutine_threadsafe(coro, _loop())
     try:
         return future.result(timeout)
@@ -318,20 +330,23 @@ async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> 
     except store.StoreError as error:
         raise ConnectorError(str(error)) from None
     if _changed_hook is not None:
-        try:
-            _changed_hook(name, changed)
+        try:  # fuera del ciclo: el gancho puede tardar o volver a usar el manager sin congelar a nadie
+            await asyncio.get_running_loop().run_in_executor(None, _changed_hook, name, changed)
         except Exception:  # noqa: BLE001 - el gancho es de otro módulo: no rompe el arranque
             log.exception("Falló el aviso de herramientas cambiadas")
     return changed
 
 
-async def _make_room(name: str) -> None:
-    """Si ya hay MAX_RUNNING abiertos, cierra el que hace más que no se usa (y no está trabajando)."""
+async def _reserve(name: str, slot: _Slot) -> None:
+    """Reserva un lugar para abrir `name` (sube `slot.opening`). Si ya hay MAX_RUNNING abiertos o abriéndose,
+    cierra el que hace más que no se usa (y no está trabajando). Entre contar y reservar no hay ningún `await`:
+    así dos aperturas a la vez no ven las dos el mismo lugar libre."""
     while True:
-        running = [(n, s) for n, s in _slots.items() if n != name and s.link is not None]
+        running = [(n, s) for n, s in _slots.items() if n != name and (s.link is not None or s.opening)]
         if len(running) < MAX_RUNNING:
+            slot.opening += 1
             return
-        idle = [(s.last_used, n, s) for n, s in running if s.busy == 0]
+        idle = [(s.last_used, n, s) for n, s in running if s.link is not None and s.busy == 0 and not s.opening]
         if not idle:
             raise ConnectorError(f"Ya hay {MAX_RUNNING} conectores trabajando; probá de nuevo en un rato.")
         _, _, victim = min(idle, key=lambda item: item[0])
@@ -345,23 +360,26 @@ async def _ensure(name: str, slot: _Slot, entry: dict) -> tuple[Link, list[str] 
     env = entry.get("env", {})
     if slot.link is not None and slot.link.alive:
         return slot.link, None
-    await _make_room(name)
-    async with slot.lock:
-        if slot.link is not None and slot.link.alive:  # otra llamada lo abrió mientras esperábamos
-            return slot.link, None
-        await _close(slot)  # uno que se murió solo
-        try:
-            link = await asyncio.wait_for(_open(list(entry["argv"]), minimal_env(env)), OPEN_TIMEOUT)
-        except BaseException as error:  # noqa: BLE001
-            if isinstance(error, asyncio.CancelledError):
-                raise
-            reason = "tardó demasiado en arrancar" if isinstance(error, TimeoutError) else _reason(error)
-            message = _clean(f"No pude arrancar el conector «{name}»: {reason}", env, MAX_ERROR)
-            _mark_error(name, message)
-            log.warning("%s", message)
-            raise ConnectorError(message) from None
-        slot.link = link
-        slot.last_used = time.monotonic()
+    await _reserve(name, slot)
+    try:
+        async with slot.lock:
+            if slot.link is not None and slot.link.alive:  # otra llamada lo abrió mientras esperábamos
+                return slot.link, None
+            await _close(slot)  # uno que se murió solo
+            try:
+                link = await asyncio.wait_for(_open(list(entry["argv"]), minimal_env(env)), OPEN_TIMEOUT)
+            except BaseException as error:  # noqa: BLE001
+                if isinstance(error, asyncio.CancelledError):
+                    raise
+                reason = "tardó demasiado en arrancar" if isinstance(error, TimeoutError) else _reason(error)
+                message = _clean(f"No pude arrancar el conector «{name}»: {reason}", env, MAX_ERROR)
+                _mark_error(name, message)
+                log.warning("%s", message)
+                raise ConnectorError(message) from None
+            slot.link = link
+            slot.last_used = time.monotonic()
+    finally:
+        slot.opening -= 1
     return link, await _discover(name, slot, link, env)
 
 
@@ -448,8 +466,18 @@ def stop(name: str) -> None:
 
 
 def stop_all() -> None:
+    """Cierra todos (uno que no se deja cerrar no frena a los demás) y frena el reloj de inactividad."""
+    global _ticker_future
+    with _loop_lock:
+        if _ticker_future is not None and _loop_ref is not None:
+            # El futuro ya está «corriendo» y no se deja cancelar desde afuera: se cancela la tarea, en su ciclo.
+            _loop_ref.call_soon_threadsafe(lambda: _ticker_task is not None and _ticker_task.cancel())
+        _ticker_future = None
     for name in list(_slots):
-        stop(name)
+        try:
+            stop(name)
+        except Exception as error:  # noqa: BLE001
+            log.warning("No pude cerrar el conector «%s»: %s", name, config.redact(_reason(error)))
 
 
 def tick(now: float) -> None:
@@ -479,9 +507,6 @@ def set_changed_hook(fn: Callable[[str, list[str]], None] | None) -> None:
 
 def _reset() -> None:
     """Para los tests: cierra todo y olvida el estado en memoria (el hilo sigue, es uno solo)."""
-    try:
-        stop_all()
-    except ConnectorError:
-        pass
+    stop_all()
     _slots.clear()
     set_changed_hook(None)
