@@ -689,10 +689,10 @@ window.addEventListener("paste", (event) => {
 
 // --- Enviar ------------------------------------------------------------------
 // --- Aviso al cambiar de modelo en medio de una conversación ----------------------------------------
-// Otro modelo no tiene la charla en caché: recibe todo el historial de nuevo (puede costar más), y los archivos
+// Otro modelo no tiene la charla en caché: recibe de nuevo la charla que entra en el contexto (puede costar más), y los archivos
 // mencionados antes no se reenvían. El aviso es un modal; el servidor no bloquea nada.
 const MODEL_CHANGE_WARNING =
-  "El modelo nuevo no tiene esta conversación en caché: se le reenvía todo el historial y puede costar más. " +
+  "El modelo nuevo no tiene esta conversación en caché: se le reenvían los últimos mensajes de la charla (los que entran en el contexto) y puede costar más. " +
   "Los archivos mencionados antes no se reenvían.";
 
 // La paleta de modelos (palette.js) pregunta esto antes de cambiar el modelo: texto del aviso, o null si no hace falta.

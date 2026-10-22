@@ -291,7 +291,7 @@
   async function pick(id) {
     if (id === state.current) return dialog.close();
     status.textContent = "";
-    // Si cambiar el modelo hace que una conversación empezada reenvíe todo su historial, se avisa antes.
+    // Si cambiar el modelo hace que una conversación empezada reenvíe su charla (la que entra en el contexto), se avisa antes.
     const warning = window.epsilonModelGuard ? await window.epsilonModelGuard() : null;
     if (warning) {
       const proceed = await modal({
