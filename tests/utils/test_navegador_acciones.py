@@ -347,3 +347,44 @@ def test_read_pasar_refuses_when_the_page_changed(monkeypatch):
         navegador.read("AAAA11 pasar 1")
 
     assert fake.sent("Input.dispatchMouseEvent") == []
+
+
+def link_page(monkeypatch, href, location):
+    """Una pestaña con un enlace; `location` es lo que contesta location.href (lista: una respuesta por pregunta)."""
+    fake = Page(monkeypatch, [el("Nivel 10", "link", href=href)], url="https://music.youtube.com/")
+    answers = iter(location)
+    original = fake.cdp
+
+    def cdp(ws_url, method, params=None):
+        if method == "Runtime.evaluate" and params["expression"] == "location.href":
+            return {"result": {"type": "string", "value": next(answers)}}
+        return original(ws_url, method, params)
+
+    monkeypatch.setattr(navegador, "_cdp", cdp)
+    navegador.read("AAAA11")
+    return fake
+
+
+def test_click_on_a_link_that_did_not_navigate_opens_its_destination(monkeypatch):
+    href = "https://music.youtube.com/curso?id=7"
+    fake = link_page(monkeypatch, href, ["https://music.youtube.com/", "https://music.youtube.com/"])
+
+    result = navegador.click("AAAA11", 1)
+
+    assert fake.sent("Page.navigate") == [{"url": href}] and "directamente" in result
+
+
+def test_click_on_a_link_that_navigated_does_not_navigate_again(monkeypatch):
+    fake = link_page(monkeypatch, "https://music.youtube.com/curso?id=7", ["https://music.youtube.com/", "https://music.youtube.com/curso?id=7"])
+
+    result = navegador.click("AAAA11", 1)
+
+    assert fake.sent("Page.navigate") == [] and "directamente" not in result
+
+
+def test_the_fallback_never_goes_to_a_blocked_destination(monkeypatch):
+    fake = link_page(monkeypatch, "http://192.168.1.1/admin", ["https://music.youtube.com/", "https://music.youtube.com/"])
+
+    result = navegador.click("AAAA11", 1)
+
+    assert fake.sent("Page.navigate") == [] and "Hice clic" in result

@@ -487,11 +487,27 @@ def _settle(tab: Tab) -> None:
         time.sleep(0.5)
 
 
+def _location(tab: Tab) -> str:
+    """La dirección actual de la pestaña (script fijo); vacía si no se pudo saber."""
+    try:
+        state = _cdp(tab.ws, "Runtime.evaluate", {"expression": "location.href", "returnByValue": True})
+    except NavegadorError:
+        return ""
+    value = state.get("result", {}).get("value")
+    return value if isinstance(value, str) else ""
+
+
+def _same_page(a: str, b: str) -> bool:
+    return a.split("#", 1)[0].rstrip("/") == b.split("#", 1)[0].rstrip("/")
+
+
 def click(tab_ref: str, n: int) -> str:
     """Hace clic en el elemento `n` de la última lectura. Es un clic real: la reproducción lo necesita.
-    Espera a que cargue lo que abrió el clic; si abrió una pestaña nueva (enlace «target=_blank»), la suma a las que Epsilon puede usar."""
+    Espera a que cargue lo que abrió el clic; si abrió una pestaña nueva (enlace «target=_blank»), la suma a las que Epsilon puede usar.
+    Si era un enlace y la página no cambió (un cajón animado desplazó el elemento y el clic cayó en otro lado), abre el destino del enlace."""
     tab, saved = resolve_tab(tab_ref), element(tab_ref, n)
     before = {item.get("id") for item in _raw_tabs()}
+    url_before = _location(tab)
     now = _press(tab, n, saved)
     message = f"Hice clic en «{now.label}»."
     try:
@@ -502,6 +518,14 @@ def click(tab_ref: str, n: int) -> str:
         for t in fresh:
             if t.id in shown:
                 message += f" Se abrió una pestaña nueva: {t.short} ({t.host})."
+        href = saved.href
+        url_after = _location(tab)
+        if (not fresh and url_before and href.startswith(("http://", "https://")) and _same_page(url_after, url_before)
+                and not _same_page(href, url_after)):
+            _check_destination(href)  # las mismas reglas que al abrir una dirección
+            _cdp(tab.ws, "Page.navigate", {"url": href})
+            _settle(tab)
+            message += " El clic no cambió la página, así que abrí el destino del enlace directamente."
     except NavegadorError:
         pass  # el clic ya se hizo: avisar de esto no puede tirarlo abajo
     return message
