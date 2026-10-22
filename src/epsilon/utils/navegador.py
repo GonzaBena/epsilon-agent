@@ -25,11 +25,50 @@ LOAD_TRIES = 20  # al abrir: cuántas veces se mira si la pestaña cargó (de a 
 LAUNCH_WAIT = 15.0  # segundos que se espera a que un Chromium recién lanzado abra el puerto
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
+MAX_TEXT = 3000  # caracteres de texto que devuelve `read`
+MAX_ELEMENTS = 40  # elementos que lista `read`
+MAX_TYPED = 500  # caracteres que acepta `type_text`
+KINDS = {"button": "botón", "link": "enlace", "input": "campo"}
+
 _opened: set[str] = set()  # ids de las pestañas que abrió Epsilon en esta ejecución
+_elements: dict[str, list["Element"]] = {}  # pestaña -> elementos de su última lectura
+
+# El ÚNICO código que corre dentro de una pestaña: fijo, sin nada que venga del modelo. Devuelve el título, el texto
+# visible y los elementos tocables a la vista (jamás el valor de un campo). Marca como sensibles los de contraseña, tarjeta o CVV.
+READ_JS = """(() => {
+  const clean = (s, n) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, n);
+  const out = [];
+  const sel = 'a[href], button, [role=button], input:not([type=hidden]), textarea, select';
+  for (const el of document.querySelectorAll(sel)) {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) continue;
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    const ac = (el.getAttribute('autocomplete') || '').toLowerCase();
+    const hint = [el.name, el.id, ac].join(' ').toLowerCase();
+    const sensitive = type === 'password' || /^cc-/.test(ac) || /(card|cvv|cvc|security.?code)/.test(hint);
+    const field = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const kind = type === 'password' ? 'password' : tag === 'a' ? 'link' : field ? 'input' : 'button';
+    const label = clean(el.getAttribute('aria-label') || (field ? (el.placeholder || el.title || el.name) : (el.innerText || el.textContent)) || el.title || el.alt, 80);
+    out.push({label, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive});
+    if (out.length >= 200) break;
+  }
+  return {title: document.title, text: clean(document.body ? document.body.innerText : '', 3000), elements: out};
+})()"""
 
 
 class NavegadorError(ValueError):
     """Algo no salió: el mensaje es para la persona (y para el modelo), en español."""
+
+
+@dataclass(frozen=True)
+class Element:
+    n: int  # número con que lo nombra `read` (desde 1)
+    label: str
+    kind: str  # button, link, input
+    x: float
+    y: float
+    sensitive: bool  # contraseña, tarjeta o CVV: no se escribe
 
 
 @dataclass(frozen=True)
@@ -38,6 +77,7 @@ class Tab:
     title: str
     url: str
     host: str
+    ws: str = ""  # dirección de control de la pestaña (solo se usa si empieza por WS_PREFIX; ver _cdp)
 
     @property
     def short(self) -> str:
@@ -149,7 +189,7 @@ def _raw_tabs() -> list[dict]:
 
 def _tab(item: dict) -> Tab:
     url = str(item.get("url", ""))
-    return Tab(str(item.get("id", "")), str(item.get("title", "")), url, reglas.host_of(url))
+    return Tab(str(item.get("id", "")), str(item.get("title", "")), url, reglas.host_of(url), str(item.get("webSocketDebuggerUrl", "")))
 
 
 def tabs() -> tuple[list[Tab], int]:
@@ -215,3 +255,85 @@ def _check_destination(url: str) -> None:
     problem = reglas.url_problem(url, _resolve(host) if host else [])
     if problem:
         raise NavegadorError(problem)
+
+
+# --- Leer, tocar y escribir ----------------------------------------------------------------------
+
+
+def parse_ref(args: str) -> tuple[str, int]:
+    """«a1b2c3 4» -> («a1b2c3», 4): el id de la pestaña y el número de elemento (entero, desde 1)."""
+    parts = args.split()
+    if len(parts) != 2 or not (parts[1].isascii() and parts[1].isdigit()) or int(parts[1]) < 1:
+        raise NavegadorError("Falta el id de la pestaña y el número del elemento, por ejemplo: a1b2c3 4")
+    return parts[0], int(parts[1])
+
+
+def _collect(tab: Tab) -> tuple[dict, list[Element]]:
+    """Corre el script fijo de lectura en la pestaña: la página y sus elementos numerados (sin los de contraseña)."""
+    result = _cdp(tab.ws, "Runtime.evaluate", {"expression": READ_JS, "returnByValue": True})
+    data = result.get("result", {}).get("value")
+    if not isinstance(data, dict) or not isinstance(data.get("elements"), list):
+        raise NavegadorError("No pude leer la página.")
+    found = [e for e in data["elements"] if isinstance(e, dict) and e.get("kind") != "password"][:MAX_ELEMENTS]
+    elements = [
+        Element(n, str(e.get("label", "")), str(e.get("kind", "button")), float(e.get("x", 0)), float(e.get("y", 0)), bool(e.get("sensitive", True)))
+        for n, e in enumerate(found, 1)
+    ]
+    return data, elements
+
+
+def read(tab_ref: str) -> str:
+    """El título, el texto principal (acotado) y los elementos tocables numerados de la pestaña."""
+    tab = resolve_tab(tab_ref)
+    data, elements = _collect(tab)
+    _elements[tab.id] = elements
+    lines = [f"Título: {data.get('title', '')}", f"Sitio: {tab.host}", "Texto:", str(data.get("text", ""))[:MAX_TEXT], "Elementos:"]
+    lines += [f"{e.n}: {KINDS.get(e.kind, 'elemento')} «{e.label}»" for e in elements]
+    return "\n".join(lines)
+
+
+def element(tab_ref: str, n: int) -> Element:
+    """El elemento `n` de la última lectura de esa pestaña."""
+    tab = resolve_tab(tab_ref)
+    elements = _elements.get(tab.id)
+    if not elements:
+        raise NavegadorError("Leé la pestaña primero (acción leer) para ver los números de los elementos.")
+    if not 1 <= n <= len(elements):
+        raise NavegadorError(f"No hay un elemento {n}: leé la pestaña de nuevo.")
+    return elements[n - 1]
+
+
+def _press(tab: Tab, n: int, saved: Element) -> Element:
+    """Hace clic de verdad en el elemento `n`, después de comprobar que la página sigue siendo la que se leyó."""
+    _, fresh = _collect(tab)
+    now = next((e for e in fresh if e.n == n), None)
+    if now is None or now.label != saved.label:
+        raise NavegadorError("La página cambió: leé la pestaña de nuevo.")
+    _elements[tab.id] = fresh
+    for kind in ("mousePressed", "mouseReleased"):
+        _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": kind, "x": now.x, "y": now.y, "button": "left", "clickCount": 1})
+    return now
+
+
+def click(tab_ref: str, n: int) -> str:
+    """Hace clic en el elemento `n` de la última lectura. Es un clic real: la reproducción lo necesita."""
+    tab, saved = resolve_tab(tab_ref), element(tab_ref, n)
+    now = _press(tab, n, saved)
+    return f"Hice clic en «{now.label}»."
+
+
+def type_text(tab_ref: str, n: int, text: str) -> str:
+    """Escribe en el campo `n` de la última lectura. Nunca en contraseñas ni datos de tarjeta."""
+    tab, saved = resolve_tab(tab_ref), element(tab_ref, n)
+    if saved.sensitive:
+        raise NavegadorError("Ese campo es de contraseña o de tarjeta: no escribo ahí.")
+    if len(text) > MAX_TYPED:
+        raise NavegadorError(f"Ese texto es muy largo (máximo {MAX_TYPED} caracteres).")
+    now = _press(tab, n, saved)
+    _cdp(tab.ws, "Input.insertText", {"text": text})
+    return f"Escribí en «{now.label}»."
+
+
+def tab_host(tab_ref: str) -> str:
+    """El sitio actual de la pestaña (para decidir permisos por el sitio real)."""
+    return resolve_tab(tab_ref).host
