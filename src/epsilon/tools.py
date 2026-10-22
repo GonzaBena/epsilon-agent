@@ -94,8 +94,8 @@ TOOLS = (
         ai="read",
         ai_group="notas",
         ai_action="leer",
-        ai_help="leer una nota (por defecto inbox); cada línea viene con su número, el que usa editar",
-        ai_arg="nombre de la nota; vacío para inbox",
+        ai_help="leer una nota por su nombre; cada línea viene con su número, el que usa editar. Sin nombre te dice qué notas hay",
+        ai_arg="el nombre de la nota, siempre (las tareas están en «todo», lo anotado al vuelo en «inbox»)",
     ),
     Tool(
         "/buscar",

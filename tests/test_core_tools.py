@@ -960,3 +960,30 @@ def test_a_refused_edit_tells_the_model_what_it_received(script):
     say("editá algo")
 
     assert "Recibí: 'no se entiende'" in results(script.seen[1][0])[0]
+
+
+def test_reading_without_a_name_does_not_open_inbox_for_the_model_but_lists_the_notes(script):
+    notes.save_note("inbox", "- algo viejo")
+    notes.save_note("todo", "- [ ] pagar")
+    memory.remember("vivo en Rosario")
+    script.steps = [step(calls=[("notas.leer", "")]), step("ok")]
+
+    say("leé mis notas")
+
+    text = results(script.seen[1][0])[0]
+    assert "inbox, todo" in text and "memory" not in text and "algo viejo" not in text and "«todo»" in text
+
+
+def test_the_user_still_reads_inbox_by_default_with_ver(script):
+    notes.save_note("inbox", "- algo viejo")
+
+    assert "algo viejo" in core.handle(core.Message(text="/ver", session_id="web:y")).text
+
+
+def test_reading_a_named_note_still_numbers_it(script):
+    notes.save_note("inbox", "- algo viejo")
+    script.steps = [step(calls=[("notas.leer", "inbox")]), step("ok")]
+
+    say("leé inbox")
+
+    assert results(script.seen[1][0])[0].endswith("1: - algo viejo")

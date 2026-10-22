@@ -231,9 +231,13 @@ def _edit_note(args: str) -> Reply:
 
 
 def _watch_numbered(args: str) -> Reply:
-    """`ver` para la IA: las líneas de la nota con su número, el que después usa `editar`."""
+    """`ver` para la IA: las líneas de la nota con su número, el que después usa `editar`. Sin nombre no abre `inbox`
+    a escondidas (un modelo chico terminaba editando la nota equivocada): contesta con las notas que hay."""
+    if not args.split():
+        names = sorted(p.stem for p in notes.DATA_DIR.glob("*.md") if p.stem != memory.NAME and not p.name.startswith("."))
+        return Reply("Decime el nombre de la nota que querés leer. Notas que hay: " + (", ".join(names[:40]) or "(ninguna)") + ". Las tareas están en «todo».")
     reply = _watch(args)
-    name = args.split()[0] if args.split() else "inbox"
+    name = args.split()[0]
     if reply.text.startswith(("No existe la nota", "Nombre de nota no válido")) or not notes.safe_path(f"{name}.md").exists():
         return reply
     lines = notes.read_note(name).splitlines()
