@@ -289,6 +289,18 @@ def test_the_server_refuses_to_write_into_a_telegram_conversation(client, tmp_pa
     assert (tmp_path / "conversations" / f"{telegram_id}.jsonl").read_text(encoding="utf-8") == before
 
 
+def test_the_server_refuses_to_write_into_a_telegram_ai_chat_too(client, tmp_path):
+    telegram_id = conversations.start_channel("telegram", "ai", 1)
+    conversations.add_message(telegram_id, "user", "hola")
+
+    for reply in (
+        post_message(client, text="seguimos", conversation_id=telegram_id),
+        post_message(client, action="perm:si", conversation_id=telegram_id),
+    ):
+        assert reply.status_code == 409 and "Telegram" in reply.json()["detail"]
+    assert [m["text"] for m in conversations.messages(telegram_id)] == ["hola"]
+
+
 def test_a_new_or_web_conversation_can_still_be_written(client):
     fresh = client.post("/api/conversations").json()["id"]  # sin archivo todavía
 

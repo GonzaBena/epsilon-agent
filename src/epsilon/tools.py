@@ -313,6 +313,12 @@ TOOLS = (
         channel="telegram",
     ),
     Tool(
+        "/chat",
+        name="chat",
+        menu="Charlar con la IA (los comandos siguen sin usarla)",
+        channel="telegram",
+    ),
+    Tool(
         "/ayuda",
         name="ayuda",
         menu="Cómo se usa el bot",

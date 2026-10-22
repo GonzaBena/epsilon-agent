@@ -746,6 +746,201 @@ def test_the_telegram_conversation_never_stores_the_bot_token(core_says, monkeyp
     assert "AAH-ejemplo" not in " ".join(m["text"] for m in telegram_conversation()[1])
 
 
+# --- Charla con IA en Telegram (/chat) ----------------------------------------------------------
+# Con una conversación de modo IA abierta, todo lo que Telegram le manda al núcleo lleva su id; sin ella, no.
+
+
+@pytest.fixture
+def seen_by_core(monkeypatch):
+    """Los mensajes que llegan al núcleo (el núcleo de mentira contesta «ok»)."""
+    messages = []
+
+    def fake_handle(msg):
+        messages.append(msg)
+        return core.Reply("ok")
+
+    monkeypatch.setattr(core, "handle", fake_handle)
+    telegram.LOGGED.clear()
+    return messages
+
+
+def open_ai_chat():
+    update = FakeUpdate()
+    asyncio.run(telegram.on_chat(update, FakeContext()))
+    return update
+
+
+def test_chat_opens_an_ai_conversation_and_says_how_it_works(monkeypatch):
+    monkeypatch.setenv("AI_MODEL", "gemini:modelo-a")
+    monkeypatch.setenv("CHAT_LIMIT_USD", "0.75")
+    monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", "4")
+
+    update = open_ai_chat()
+
+    cid = conversations.current("telegram")
+    assert conversations.mode(cid) == "ai" and conversations.limit(cid) == 0.75
+    text = update.replies[0]
+    assert "gemini:modelo-a" in text and "0.75" in text and "4" in text
+    assert "/nuevo" in text
+
+
+def test_chat_twice_does_not_open_a_second_conversation():
+    open_ai_chat()
+    first = conversations.current("telegram")
+
+    update = open_ai_chat()
+
+    assert conversations.current("telegram") == first
+    assert "Ya estás" in update.replies[0]
+
+
+def test_chat_leaves_the_previous_conversation_saved_and_closed(seen_by_core):
+    say_text("viejo")
+    old, _ = telegram_conversation()
+
+    open_ai_chat()
+
+    assert conversations.current("telegram") != old
+    assert conversations.messages(old)[0]["text"] == "viejo"
+
+
+def test_chat_warns_when_the_cost_cannot_be_measured(monkeypatch):
+    monkeypatch.setenv("AI_MODEL", "gemini:modelo-sin-precio")
+
+    update = open_ai_chat()
+
+    assert "precio" in update.replies[0]
+
+
+def test_text_carries_the_ai_conversation_only_while_it_is_open(seen_by_core):
+    say_text("hola")
+    open_ai_chat()
+    cid = conversations.current("telegram")
+    say_text("seguimos")
+    asyncio.run(telegram.on_new(FakeUpdate(), FakeContext()))
+    say_text("de nuevo")
+
+    assert [m.conversation_id for m in seen_by_core] == [None, cid, None]
+
+
+def test_a_button_carries_the_ai_conversation(seen_by_core):
+    open_ai_chat()
+    cid = conversations.current("telegram")
+    query = FakeQuery("perm:si")
+    query.message.message_id = 1
+
+    asyncio.run(telegram.make_on_button(42)(SimpleNamespace(callback_query=query), FakeContext()))
+
+    assert seen_by_core[0].conversation_id == cid
+
+
+def test_a_file_carries_the_ai_conversation(seen_by_core):
+    open_ai_chat()
+    cid = conversations.current("telegram")
+    update = FakeUpdate()
+    update.message.document = SimpleNamespace(
+        file_size=10, mime_type="application/pdf", file_name="factura.pdf", get_file=FakeMedia().get_file
+    )
+
+    asyncio.run(telegram.on_file(update, FakeContext()))
+
+    assert seen_by_core[0].conversation_id == cid
+
+
+def test_a_voice_note_carries_the_ai_conversation(heard):
+    open_ai_chat()
+    cid = conversations.current("telegram")
+
+    hear(FakeUpdate(voice=FakeMedia()))
+
+    assert heard.messages[0].conversation_id == cid
+
+
+def test_the_answer_of_the_ai_is_saved_marked_as_ai(monkeypatch):
+    monkeypatch.setattr(core, "handle", lambda msg: core.Reply("Buenas", ai=True))
+    open_ai_chat()
+
+    say_text("hola")
+
+    assert [m["ai"] for m in telegram_conversation()[1] if m["role"] == "bot"][-1] is True
+
+
+def test_a_disk_problem_looking_for_the_chat_falls_back_to_a_normal_message(seen_by_core, monkeypatch):
+    def broken(name):
+        raise OSError("disco roto")
+
+    monkeypatch.setattr(conversations, "current", broken)
+
+    say_text("hola")
+
+    assert seen_by_core[0].conversation_id is None
+
+
+@pytest.fixture
+def ai_model(monkeypatch):
+    """Un modelo de mentira con precio, para ver qué le llega a la IA de verdad (sin red)."""
+    from epsilon.ai import llm, usage
+
+    monkeypatch.setenv("AI_MODEL", "gemini:modelo-a")
+    monkeypatch.setenv("CHAT_LIMIT_USD", "")
+    monkeypatch.setattr(usage, "PRICES", {"modelo-a": (1.0, 4.0)})
+    calls = []
+
+    def fake_chat(history, system, tools, max_tokens=1500, allow_calls=True):
+        calls.append([(turn.role, turn.parts[0]) for turn in history])
+        usage.record("modelo-a", 10, 10)
+        return llm.Step("la IA contesta", [], llm.text_turn("model", "la IA contesta"))
+
+    monkeypatch.setattr(llm, "chat_tools", fake_chat)
+    return calls
+
+
+def test_free_text_in_the_chat_goes_to_the_ai_with_the_talk_so_far(ai_model):
+    open_ai_chat()
+
+    update = say_text("hola")
+    say_text("corregí lo anterior")
+
+    assert update.replies == ["la IA contesta"]
+    assert ai_model[1] == [
+        ("user", "hola"), ("model", "la IA contesta"), ("user", "corregí lo anterior"),
+    ]
+
+
+def test_commands_in_the_chat_never_call_the_model(ai_model):
+    open_ai_chat()
+
+    update = say_text("+ comprar pan")
+
+    assert ai_model == []  # y conftest.py bloquearía cualquier llamada que se escape
+    assert "inbox" in update.replies[0]
+
+
+def test_telegram_context_is_cut_to_the_telegram_limit(ai_model, monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", "2")
+    open_ai_chat()
+    for n in range(4):
+        say_text(f"pregunta {n}")
+
+    assert [text for role, text in ai_model[-1] if role == "user"] == ["pregunta 1", "pregunta 2", "pregunta 3"]
+
+
+def test_chat_is_wired_before_the_generic_text_handler_and_only_for_me():
+    app = telegram.build_app("123:abc", 42)
+    handlers = list(app.handlers[0])
+    commands = [h for h in handlers if type(h).__name__ == "CommandHandler"]
+
+    assert {"chat"} in [h.commands for h in commands]
+    last_command = max(handlers.index(h) for h in commands)
+    first_text = min(i for i, h in enumerate(handlers) if type(h).__name__ == "MessageHandler")
+    assert last_command < first_text
+
+
+def test_chat_is_in_the_telegram_menu_and_is_not_a_core_command():
+    assert "chat" in [c.command for c in telegram.COMMANDS]
+    assert "chat" not in core.COMMANDS and "chat" not in tools.command_names()
+
+
 # --- Apagar el bot desde la página Canales -----------------------------------
 
 

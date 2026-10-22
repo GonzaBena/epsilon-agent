@@ -103,6 +103,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |
+| `/chat`                | Telegram: abre una charla con la IA (lo que escribís sin `/` va a la IA; los comandos siguen sin usarla). `/nuevo` la cierra. |
 | `/ayuda`               | Muestra la ayuda.                                                         |
 
 **Páginas de la web:** arriba están **Chat**, **Canales**, **Uso** y **Permisos**; en el menú de la izquierda, **Biblioteca** y, abajo de todo,

@@ -23,6 +23,7 @@ from telegram.ext import (
 )
 
 from epsilon import core, state, tools
+from epsilon.ai import chat, llm
 from epsilon.data import conversations, library
 from epsilon.settings import config
 from epsilon.voice import transcribe
@@ -145,6 +146,24 @@ def session_id(chat_id: int) -> str:
     return f"telegram:{chat_id}"
 
 
+def ai_conversation() -> str | None:
+    """La conversación de Telegram abierta si es de modo IA (/chat), o None. Es la que el núcleo necesita para
+    hablar con la IA: sin ella, un texto que no es comando muestra la ayuda. Si el disco falla, el mensaje
+    sigue como uno normal en vez de romper el bot."""
+    try:
+        found = conversations.current("telegram")
+        return found if found and conversations.mode(found) == "ai" else None
+    except Exception as e:
+        print(f"No pude buscar la charla con IA de Telegram: {config.redact(repr(e))}")
+        return None
+
+
+def new_message(chat_id: int, **fields) -> core.Message:
+    """Todo lo que Telegram le manda al núcleo sale de acá, así la charla con IA abierta viaja siempre
+    (texto, archivos, voz y botones: una pregunta de permiso sin ella queda «vencida»)."""
+    return core.Message(session_id=session_id(chat_id), conversation_id=ai_conversation(), **fields)
+
+
 # --- Lo que se habla por acá queda en la conversación de Telegram (la ve la web) ----------------
 # Una sola conversación abierta (conversations.for_channel); /nuevo la cierra y arranca otra.
 # Anotarla nunca puede romper el bot: si el disco falla, se avisa en la terminal y sigue.
@@ -167,6 +186,7 @@ def log_turn(chat_id: int, said: str | None, reply: core.Reply, sent_message_id:
             reply.text,
             actions=[asdict(a) for a in reply.actions],
             artifacts=[asdict(a) for a in reply.artifacts],
+            ai=reply.ai,
         )
         if sent_message_id is not None:
             LOGGED[(chat_id, sent_message_id)] = (conversation_id, message_id)
@@ -214,10 +234,33 @@ async def on_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Listo: la conversación de Telegram empieza de cero. Lo anterior queda guardado.")
 
 
+async def on_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/chat: abre una charla con la IA. Lo que escribas sin «/» va a la IA con lo que hablaron; los comandos
+    siguen sin usar modelo. /nuevo la cierra. Lo anterior queda guardado."""
+    model = llm.model_for("chat")
+    if cid := ai_conversation():
+        text = f"Ya estás en una charla con IA (modelo {model}). /nuevo para empezar de cero."
+    else:
+        cid = conversations.start_channel("telegram", "ai", chat.default_limit())
+        status = chat.status(cid)
+        text = (
+            f"🤖 Charla con IA abierta.\nModelo: {model}\n"
+            f"Límite: US$ {status['limit']:.2f} · la IA ve los últimos {chat.max_turns(cid)} intercambios.\n"
+            "Lo que escribas sin «/» va a la IA; los comandos siguen sin usarla. /nuevo para terminar."
+        )
+        if status["reason"]:
+            text += f"\n\n⚠️ {status['reason']}"
+        try:
+            conversations.add_message(cid, "bot", text)  # así la charla no queda vacía en la web
+        except Exception as e:
+            print(f"No pude anotar la conversación de Telegram: {config.redact(repr(e))}")
+    await update.message.reply_text(trim(text))
+
+
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Texto y comandos: el núcleo decide qué son."""
     chat_id = update.effective_chat.id
-    msg = core.Message(text=update.message.text, session_id=session_id(chat_id))
+    msg = new_message(chat_id, text=update.message.text)
     await respond(update.message, context, chat_id, msg, said=update.message.text)
 
 
@@ -243,10 +286,10 @@ async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = doc.file_name or "archivo"
 
     data = bytes(await file.download_as_bytearray())
-    msg = core.Message(
+    msg = new_message(
+        chat_id,
         text=update.message.caption or "",
         attachment=core.Attachment(data=data, name=name, mime=mime),
-        session_id=session_id(chat_id),
     )
     caption = update.message.caption or ""
     await respond(update.message, context, chat_id, msg, said=f"{name}\n{caption}" if caption.strip() else name)
@@ -338,7 +381,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def run_voice_text(message, context, chat_id: int, text: str):
     """El texto de una nota de voz entra al núcleo como si lo hubieras escrito."""
-    msg = core.Message(text=text, session_id=session_id(chat_id))
+    msg = new_message(chat_id, text=text)
     await respond(message, context, chat_id, msg, said=f"🎙 {text}")
 
 
@@ -376,7 +419,7 @@ def make_on_button(allowed_user_id: int):
         if query.data.startswith(VOICE_PREFIX):
             await on_voice_answer(query, context, chat_id)
             return
-        msg = core.Message(action=query.data, session_id=session_id(chat_id))
+        msg = new_message(chat_id, action=query.data)
         reply = await ask_core(chat_id, context, msg)
         log_action(chat_id, query.message.message_id, query.data)
         await query.edit_message_text(
@@ -421,6 +464,7 @@ def build_app(token: str, allowed_user_id: int) -> Application:
     only_me = filters.User(user_id=allowed_user_id)
 
     app.add_handler(CommandHandler("nuevo", on_new, filters=only_me))  # antes que el texto en general
+    app.add_handler(CommandHandler("chat", on_chat, filters=only_me))
     app.add_handler(MessageHandler(filters.TEXT & only_me, on_text))
     app.add_handler(
         MessageHandler(
