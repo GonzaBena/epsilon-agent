@@ -240,14 +240,16 @@ class FakeUpdate:
         self.voice, self.audio, self.document = voice, audio, document
         self.replies = []
         self.markups = []
+        self.modes = []  # el parse_mode de cada mensaje (HTML, o None si se mandó como texto plano)
         self.message = SimpleNamespace(
             voice=voice, audio=audio, document=document, photo=None, caption=None, reply_text=self.reply_text
         )
         self.effective_chat = SimpleNamespace(id=chat_id)
 
-    async def reply_text(self, text, reply_markup=None):
+    async def reply_text(self, text, reply_markup=None, parse_mode=None):
         self.replies.append(text)
         self.markups.append(reply_markup)
+        self.modes.append(parse_mode)
         return SimpleNamespace(message_id=1000 + len(self.replies))
 
 
@@ -507,15 +509,15 @@ class FakeQuery:
         self.from_user = SimpleNamespace(id=user_id)
         self.edits = []
         self.replies = []
-        self.message = SimpleNamespace(chat=SimpleNamespace(id=chat_id), reply_text=self.reply_text)
+        self.message = SimpleNamespace(chat=SimpleNamespace(id=chat_id), message_id=50, reply_text=self.reply_text)
 
     async def answer(self):
         pass
 
-    async def edit_message_text(self, text, reply_markup=None):
+    async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
         self.edits.append((text, reply_markup))
 
-    async def reply_text(self, text, reply_markup=None):
+    async def reply_text(self, text, reply_markup=None, parse_mode=None):
         self.replies.append(text)
 
 
@@ -1339,3 +1341,133 @@ def test_the_notifier_fails_clearly_when_the_bot_is_not_connected(monkeypatch):
 
     with pytest.raises(RuntimeError, match="no está conectado"):
         telegram.make_notifier(123)("hola")
+
+
+# --- Tablas y datos bien dibujados (telegram_format) ------------------------------------------------------------
+
+DOLAR_TABLE = "**Dólar hoy**\n\n| Casa | Compra | Venta |\n|---|---:|---:|\n| Oficial | 1.380 | 1.430 |"
+
+
+def test_a_reply_with_markdown_is_sent_as_html_with_its_table_drawn(core_says):
+    core_says.append(core.Reply(DOLAR_TABLE))
+
+    update = say_text("/dolar")
+
+    assert update.modes == ["HTML"]
+    assert update.replies == ["<b>Dólar hoy</b>\n\n<pre>Casa     Compra  Venta\n──────────────────────\nOficial   1.380  1.430</pre>"]
+    assert "**" not in update.replies[0] and "|---" not in update.replies[0]
+
+
+def test_what_is_saved_in_the_conversation_is_the_original_markdown_not_the_telegram_html(core_says):
+    core_says.append(core.Reply(DOLAR_TABLE))
+
+    say_text("/dolar")
+
+    assert [m["text"] for m in telegram_conversation()[1] if m["role"] == "bot"] == [DOLAR_TABLE]  # la web lo dibuja con markdown-it
+
+
+def test_text_from_the_core_cannot_inject_html_into_telegram(core_says):
+    core_says.append(core.Reply("<a href='http://evil'>clic</a> <script>x</script> & más"))
+
+    update = say_text("hola")
+
+    assert update.replies == ["&lt;a href='http://evil'&gt;clic&lt;/a&gt; &lt;script&gt;x&lt;/script&gt; &amp; más"]
+
+
+def test_a_long_reply_goes_in_several_messages_with_the_buttons_only_on_the_last_one(core_says):
+    core_says.append(core.Reply("\n".join(f"- línea {n} con texto de relleno para hacerla larga" for n in range(300)), actions=[core.Action("si", "Sí")]))
+
+    update = say_text("/archivos")
+
+    assert len(update.replies) > 1 and all(len(text) <= 4096 for text in update.replies)
+    assert update.markups[:-1] == [None] * (len(update.replies) - 1) and update.markups[-1] is not None
+    assert "".join(update.replies).count("• línea") == 300  # no se pierde nada (antes se cortaba en 4000)
+
+
+def test_the_conversation_remembers_the_message_that_carries_the_buttons(core_says):
+    core_says.append(core.Reply("\n".join(f"- línea {n} con texto de relleno para hacerla larga" for n in range(300)), actions=[core.Action("si", "Sí")]))
+
+    update = say_text("/archivos")
+
+    assert (7, 1000 + len(update.replies)) in telegram.LOGGED  # el último mensaje, el de los botones
+
+
+class RejectingHtml:
+    """Un `reply_text` que rechaza el HTML como Telegram («can't parse entities») y acepta el texto plano."""
+
+    def __init__(self, error=None):
+        self.calls, self.error = [], error
+
+    async def reply_text(self, text, reply_markup=None, parse_mode=None):
+        self.calls.append((text, parse_mode))
+        if parse_mode:
+            raise self.error or telegram.BadRequest("Can't parse entities: unsupported start tag")
+        return SimpleNamespace(message_id=5)
+
+
+def test_if_telegram_rejects_the_html_the_same_message_goes_as_plain_text(core_says, capsys):
+    core_says.append(core.Reply(DOLAR_TABLE))
+    update = FakeUpdate()
+    update.message.text = "/dolar"
+    fake = RejectingHtml()
+    update.message.reply_text = fake.reply_text
+
+    asyncio.run(telegram.on_text(update, FakeContext()))
+
+    assert [mode for _, mode in fake.calls] == ["HTML", None]
+    assert fake.calls[1][0] == "Dólar hoy\n\nCasa     Compra  Venta\n──────────────────────\nOficial   1.380  1.430"  # legible, sin etiquetas
+    assert "texto plano" in capsys.readouterr().out
+
+
+def test_any_other_telegram_error_is_not_hidden_by_the_fallback(core_says):
+    core_says.append(core.Reply("hola"))
+    update = FakeUpdate()
+    update.message.text = "hola"
+    fake = RejectingHtml(error=telegram.BadRequest("Chat not found"))
+    update.message.reply_text = fake.reply_text
+
+    with pytest.raises(telegram.BadRequest, match="Chat not found"):
+        asyncio.run(telegram.on_text(update, FakeContext()))
+    assert len(fake.calls) == 1  # no reintentó en texto plano
+
+
+def test_a_tapped_button_edits_the_message_with_the_first_part_and_sends_the_rest_as_new_ones(monkeypatch):
+    long = "\n".join(f"- línea {n} con texto de relleno para hacerla larga" for n in range(300))
+    monkeypatch.setattr(core, "handle", lambda msg, on_event=None: core.Reply(long, actions=[core.Action("otra", "Otra")]))
+    telegram.LOGGED.clear()
+
+    query = tap("perm:si")
+
+    assert len(query.edits) == 1 and query.edits[0][1] is None  # el primero edita, sin botones
+    assert len(query.replies) >= 1  # el resto, como mensajes nuevos
+
+
+def test_a_short_tapped_answer_is_edited_in_place_with_its_buttons(monkeypatch):
+    monkeypatch.setattr(core, "handle", lambda msg, on_event=None: core.Reply("**Listo**", actions=[core.Action("otra", "Otra")]))
+
+    query = tap("perm:si")
+
+    assert [text for text, _ in query.edits] == ["<b>Listo</b>"] and query.edits[0][1] is not None and query.replies == []
+
+
+def test_the_progress_message_and_the_notices_stay_plain_text():
+    assert telegram.progress_text({"type": "model", "step": 2}) is not None
+    import inspect
+
+    source = inspect.getsource(telegram.watch) + inspect.getsource(telegram.make_notifier)
+    assert "parse_mode" not in source and "telegram_format" not in source
+
+
+def test_the_formatter_is_independent_of_the_rest_of_the_program():
+    # Es de este canal: no importa nada de Epsilon (otro canal puede traducir el markdown a su manera) y ni el núcleo ni
+    # las demás capas lo conocen.
+    from pathlib import Path
+
+    import epsilon
+
+    root = Path(epsilon.__file__).parent
+    source = (root / "channels" / "telegram_format.py").read_text(encoding="utf-8")
+    assert "from epsilon" not in source and "import epsilon" not in source
+    for path in root.rglob("*.py"):
+        if path.name not in ("telegram.py", "telegram_format.py"):
+            assert "telegram_format" not in path.read_text(encoding="utf-8"), path

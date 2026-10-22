@@ -12,8 +12,8 @@ import time
 
 from telegram import Bot, BotCommand, BotCommandScopeChat
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatAction
-from telegram.error import InvalidToken, NetworkError
+from telegram.constants import ChatAction, ParseMode
+from telegram.error import BadRequest, InvalidToken, NetworkError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -25,6 +25,7 @@ from telegram.ext import (
 
 from epsilon import core, state, tools
 from epsilon.ai import chat, llm
+from epsilon.channels import telegram_format
 from epsilon.data import conversations, library
 from epsilon.routines import notify
 from epsilon.settings import config
@@ -130,6 +131,29 @@ def keyboard(actions: list[core.Action], stacked: bool = False) -> InlineKeyboar
         return None
     buttons = [InlineKeyboardButton(a.label, callback_data=a.id) for a in actions]
     return InlineKeyboardMarkup([[b] for b in buttons] if stacked else [buttons])
+
+
+async def send_one(send, chunk: str, markup):
+    """Manda UN mensaje ya armado (HTML). Si Telegram rechaza el formato («can't parse entities») se reenvía el mismo
+    mensaje en texto plano: una respuesta nunca se pierde por un error de formato. Cualquier otro error sigue de largo."""
+    try:
+        return await send(chunk, parse_mode=ParseMode.HTML, reply_markup=markup)
+    except BadRequest as e:
+        if "parse" not in str(e).lower() and "entities" not in str(e).lower():
+            raise
+        print(f"Telegram no aceptó el formato; lo mando como texto plano: {config.redact(str(e))}")
+        return await send(trim(telegram_format.plain_of(chunk)), reply_markup=markup)
+
+
+async def deliver(text: str, first, rest, markup):
+    """Muestra la respuesta del núcleo (markdown) como uno o más mensajes: tablas, negritas y listas bien dibujadas, y lo
+    largo repartido sin cortar nada. El primero sale por `first` (responder o editar), los demás por `rest`; los botones
+    van en el último, que es el que se devuelve (su id sirve para anotar el siguiente toque)."""
+    chunks = telegram_format.to_html(text)
+    sent = None
+    for index, chunk in enumerate(chunks):
+        sent = await send_one(first if index == 0 else rest, chunk, markup if index == len(chunks) - 1 else None)
+    return sent
 
 
 # Mientras el núcleo trabaja: Telegram apaga el «escribiendo…» a los 5 segundos, así que se renueva; y si la
@@ -295,7 +319,7 @@ async def send_files(context: ContextTypes.DEFAULT_TYPE, chat_id: int, files: li
 async def respond(message, context, chat_id: int, msg: core.Message, said: str | None) -> None:
     """Le pasa el mensaje al núcleo, muestra la respuesta y la anota (con lo que dijiste)."""
     reply = await ask_core(chat_id, context, msg)
-    sent = await message.reply_text(trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked))
+    sent = await deliver(reply.text, message.reply_text, message.reply_text, keyboard(reply.actions, reply.stacked))
     log_turn(chat_id, said, reply, getattr(sent, "message_id", None))
     await send_files(context, chat_id, reply.files)
 
@@ -495,11 +519,10 @@ def make_on_button(allowed_user_id: int):
         msg = new_message(chat_id, action=query.data)
         reply = await ask_core(chat_id, context, msg)
         log_action(chat_id, query.message.message_id, query.data)
-        await query.edit_message_text(
-            trim(reply.text), reply_markup=keyboard(reply.actions, reply.stacked)
-        )
-        # El mensaje se editó en el lugar: la respuesta nueva queda anotada para el siguiente toque.
-        log_turn(chat_id, None, reply, query.message.message_id)
+        # El primer trozo edita el mensaje del botón; si la respuesta es larga, el resto va como mensajes nuevos.
+        sent = await deliver(reply.text, query.edit_message_text, query.message.reply_text, keyboard(reply.actions, reply.stacked))
+        # La respuesta nueva queda anotada, en el mensaje que lleva los botones, para el siguiente toque.
+        log_turn(chat_id, None, reply, getattr(sent, "message_id", None) or query.message.message_id)
         await send_files(context, chat_id, reply.files)
 
     return on_button
