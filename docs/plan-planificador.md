@@ -12,7 +12,8 @@ actuar **sin que se lo pidas en ese momento**: «a las 23:00 bajá el volumen»,
 
 ## Estado
 - Fase 1 (núcleo de tiempo, `/rutina`, `/rutinas`, avisos por escritorio y Telegram, `ROUTINES_ENABLED`): **hecha**.
-- Fases 2 (IA), 3 (condiciones: `disco`, `ram`) y 4 (página web): pendientes.
+- Fase 2 (IA: grupo `rutinas` con `crear`, `ver` y `borrar`; la pregunta muestra la regla ya traducida): **hecha**.
+- Fases 3 (condiciones: `disco`, `ram`) y 4 (página web): pendientes.
 
 ## Idea central
 Una **rutina** es una regla corta y estructurada: *cuándo* + *qué*. La IA no corre sola nunca.

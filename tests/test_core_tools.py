@@ -1060,3 +1060,110 @@ def test_a_cancelled_turn_does_not_cancel_the_next_one(script, monkeypatch):
     cancel_now[0] = False
     script.steps = [step("sí se usa")]
     assert say("dos").text == "sí se usa"
+
+
+# --- Rutinas (la IA programa cosas que Epsilon hace solo) -------------------------------------
+
+
+@pytest.fixture
+def at_1430(monkeypatch):
+    from datetime import datetime
+
+    monkeypatch.setattr(core.clock, "now", lambda: datetime(2026, 10, 22, 14, 30).astimezone())  # jueves
+
+
+def test_the_question_shows_how_the_code_understood_the_routine_and_nothing_is_saved_yet(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "23:00 | volumen 20")])]
+
+    reply = say("bajá el volumen a las 11 de la noche")
+
+    assert "Se guardaría como:" in reply.text and "todos los días a las 23:00 → volumen 20" in reply.text
+    assert core.routine_store.rules() == []
+
+
+def test_a_confirmed_routine_is_saved_and_the_model_hears_how(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "23:00 | volumen 20")]), step("Listo")]
+    say("bajá el volumen a las 11 de la noche")
+
+    press("perm:si")
+
+    assert [r["do"] for r in core.routine_store.rules()] == [{"kind": "volumen", "arg": "20"}]
+    assert "Listo, rutina 1: todos los días a las 23:00 → volumen 20" in results(script.seen[1][0])[0]
+
+
+def test_a_refused_routine_is_not_saved(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "23:00 | volumen 20")])]
+    say("programá algo")
+
+    reply = press("perm:no")
+
+    assert "Dijiste que no" in reply.text and core.routine_store.rules() == []
+
+
+def test_the_question_says_when_the_routine_makes_no_sense(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "mañana | apagar la pc")])]
+
+    reply = say("apagá la pc mañana")
+
+    assert "No se entiende" in reply.text and "no se guardaría nada" in reply.text
+
+
+def test_the_create_tool_cannot_pause_or_delete_other_routines(script, at_1430):
+    allow("rutina_crear")
+    core.routine_store.add(core.routine_rules.build("23:00 | volumen 20", core._local_now()))
+    script.steps = [step(calls=[("rutinas.crear", "borrar 1")]), step("no pude")]
+
+    say("borrá la rutina 1")
+
+    assert len(core.routine_store.rules()) == 1  # sigue ahí: crear solo crea
+
+
+def test_the_notice_text_is_shown_inside_a_code_block(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "en 5m | avisar [clic aquí](http://x.com) ```")])]
+
+    reply = say("avisame")
+
+    assert "Se guardaría como:\n````\n" in reply.text  # la valla es más larga que las comillas del texto
+
+
+def test_a_copied_command_prefix_is_removed(script, at_1430):
+    allow("rutina_crear")
+    script.steps = [step(calls=[("rutinas.crear", "/rutina 23:00 | volumen 20")]), step("ok")]
+
+    say("programá")
+
+    assert len(core.routine_store.rules()) == 1
+
+
+def test_seeing_routines_runs_without_asking(script, at_1430):
+    core.routine_store.add(core.routine_rules.build("23:00 | volumen 20", core._local_now()))
+    script.steps = [step(calls=[("rutinas.ver", "")]), step("Tenés una")]
+
+    reply = say("¿qué rutinas tengo?")
+
+    assert reply.text == "Tenés una" and "todos los días a las 23:00 → volumen 20" in results(script.seen[1][0])[0]
+
+
+def test_deleting_asks_showing_which_routine_it_is(script, at_1430):
+    core.routine_store.add(core.routine_rules.build("23:00 | volumen 20", core._local_now()))
+    script.steps = [step(calls=[("rutinas.borrar", "1")]), step("Borrada")]
+
+    reply = say("borrá la rutina 1")
+    assert "Es la rutina:" in reply.text and "volumen 20" in reply.text and core.routine_store.rules()
+
+    press("perm:si")
+    assert core.routine_store.rules() == []
+
+
+def test_deleting_a_routine_that_does_not_exist_says_so_in_the_question(script, at_1430):
+    script.steps = [step(calls=[("rutinas.borrar", "7")])]
+
+    assert "No hay una rutina con ese número" in say("borrá la 7").text
+
+
+def test_the_routine_group_is_offered_with_its_three_actions(script, at_1430):
+    script.steps = [step("hola")]
+
+    say("hola")
+
+    assert "rutinas" in script.seen[0][1]

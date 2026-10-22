@@ -301,10 +301,10 @@ def test_step_offers_the_groups_without_the_denied_actions(captured):
     chat.step(chat.begin(CID, "hola"))
 
     specs = {spec.name: spec for spec in captured[0]["tools"]}
-    assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "navegador"]
+    assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "rutinas", "navegador"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
-    assert sum(len(spec.actions) for spec in specs.values()) == 23
+    assert sum(len(spec.actions) for spec in specs.values()) == 26
     assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
 
 

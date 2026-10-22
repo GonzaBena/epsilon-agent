@@ -517,28 +517,56 @@ def _when_text(moment: str) -> str:
     return f"{clock.DAYS[when.weekday()][:3]} {when:%d/%m %H:%M}"
 
 
+ROUTINE_VERBS = {"borrar": "Borré", "pausar": "Pausé", "seguir": "Reanudé"}
+
+
+def _routine_create(text: str) -> Reply:
+    """Crea una rutina desde «cuándo | qué». Nunca pausa ni borra: es lo único que hace la herramienta de crear de la IA."""
+    try:
+        rule = routine_store.add(routine_rules.build(text.strip(), _local_now()))
+    except (ValueError, routine_store.StoreError) as e:
+        return Reply(str(e))
+    return Reply(f"Listo, rutina {rule['id']}: {routine_rules.describe(rule)}. Próxima: {_when_text(rule['next_run'])}.")
+
+
+def _routine_manage(verb: str, number: str) -> Reply:
+    """borrar, pausar o seguir la rutina N."""
+    if not number.strip().isdigit():
+        return Reply(f"Decime el número: /rutina {verb} N (los números salen de /rutinas).")
+    try:
+        if verb == "borrar":
+            found = routine_store.remove(int(number))
+        else:
+            found = routine_store.set_enabled(int(number), verb == "seguir", _local_now())
+    except routine_store.StoreError as e:
+        return Reply(str(e))
+    return Reply(f"{ROUTINE_VERBS[verb]} la rutina {int(number)}." if found else f"No hay una rutina {int(number)}.")
+
+
 def _routine_cmd(args: str, session: "Session") -> Reply:
     """/rutina cuándo | qué: crea una rutina. /rutina borrar|pausar|seguir N las gestiona. Sin modelo."""
     args = args.strip()
     if not args:
         return Reply(routine_rules.USAGE + "\nGestionar: /rutina borrar N · /rutina pausar N · /rutina seguir N. Ver todas: /rutinas")
-    head, _, rest = args.partition(" ")
-    verb = head.lower()
-    try:
-        if verb in ("borrar", "pausar", "seguir"):
-            if not rest.strip().isdigit():
-                return Reply(f"Decime el número: /rutina {verb} N (los números salen de /rutinas).")
-            number = int(rest)
-            if verb == "borrar":
-                found = routine_store.remove(number)
-            else:
-                found = routine_store.set_enabled(number, verb == "seguir", _local_now())
-            done = {"borrar": "Borré", "pausar": "Pausé", "seguir": "Reanudé"}[verb]
-            return Reply(f"{done} la rutina {number}." if found else f"No hay una rutina {number}.")
-        rule = routine_store.add(routine_rules.build(args, _local_now()))
-    except (ValueError, routine_store.StoreError) as e:
-        return Reply(str(e))
-    return Reply(f"Listo, rutina {rule['id']}: {routine_rules.describe(rule)}. Próxima: {_when_text(rule['next_run'])}.")
+    verb, _, rest = args.partition(" ")
+    if verb.lower() in ROUTINE_VERBS:
+        return _routine_manage(verb.lower(), rest)
+    return _routine_create(args)
+
+
+def _routine_preview(tool_id: str, args: str) -> str:
+    """Para la pregunta de permiso: cómo ENTIENDE el código lo que pidió la IA. La persona confirma eso, no lo que dijo
+    el modelo. Va en un bloque de código: el texto de un aviso lo escribió el modelo."""
+    if tool_id == "rutina_crear":
+        try:
+            return f"\nSe guardaría como:\n{_fenced(routine_rules.describe(routine_rules.build(_bare(args), _local_now())))}"
+        except ValueError as e:
+            return f"\nNo se entiende ({str(e)[:100]}): no se guardaría nada."
+    if tool_id == "rutina_borrar":
+        number = _bare(args).strip()
+        rule = next((r for r in routine_store.rules() if str(r["id"]) == number), None)
+        return f"\nEs la rutina:\n{_fenced(routine_rules.describe(rule))}" if rule else "\nNo hay una rutina con ese número."
+    return ""
 
 
 def _routines_cmd(args: str, session: "Session") -> Reply:
@@ -1000,7 +1028,8 @@ def _question(tool: tools.Tool, args: str, shown: str = "") -> Reply:
     else:
         cut = full[:MAX_QUESTION_ARG]
         more = f"\n… (y {len(full) - len(cut)} caracteres más)" if len(full) > len(cut) else ""
-    preview = _edit_preview(args) if tools.ai_id(tool) == "nota_editar" else ""
+    tool_id = tools.ai_id(tool)
+    preview = _edit_preview(args) if tool_id == "nota_editar" else _routine_preview(tool_id, args)
     return Reply(
         f"La IA quiere usar {tool.label} con:\n{_fenced(cut)}{more}{preview}",
         actions=[
@@ -1097,7 +1126,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv|sistema|volumen|sonando|musica|ventanas)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv|sistema|volumen|sonando|musica|ventanas|rutinas|rutina)\b:?)\s*", "", args)
 
 
 # El navegador de la IA (ver utils/navegador.py). Un NavegadorError vuelve como texto: el modelo lo lee y decide.
@@ -1162,6 +1191,9 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "sonando": lambda args: _playing_cmd(""),
     "musica": lambda args: _music_cmd(_bare(args)),
     "ventanas": lambda args: _windows_cmd(_bare(args)),
+    "rutina_crear": lambda args: _routine_create(_bare(args)),
+    "rutina_ver": lambda args: _routines_cmd("", Session()),
+    "rutina_borrar": lambda args: _routine_manage("borrar", _bare(args).strip()),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),

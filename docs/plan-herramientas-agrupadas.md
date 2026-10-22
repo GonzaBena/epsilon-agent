@@ -23,6 +23,8 @@ Con 17-19 herramientas el prompt crecía y el modelo (sobre todo uno chico) eleg
 | archivos | listar (archivos), enviar, resumir, csv |
 | memoria | agregar (recordar), ver (memoria), editar, borrar (olvidar) |
 | consultar | fecha, dolar, clima, sistema |
+| pc | volumen, sonando, musica, ventanas |
+| rutinas | crear (rutina_crear), ver (rutina_ver), borrar (rutina_borrar) |
 
 ## Las tareas son una nota
 Primero hubo un grupo `tareas`, pero el modelo lo confundía con una lista con nombre («la lista de la compra» iba a
