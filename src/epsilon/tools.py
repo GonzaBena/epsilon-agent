@@ -66,8 +66,9 @@ TOOLS = (
             "Primero leé la nota: leer muestra cada línea con su número"
         ),
         ai_arg=(
-            "tres líneas: el nombre de la nota; el número de la línea (el que muestra leer); y el texto nuevo COMPLETO de esa línea "
-            "(vacío para borrarla). Ej. para tachar la línea 2 de todo: «todo», «2», «- [x] pagar internet»"
+            "tres líneas SEPARADAS (un salto de línea entre cada una): el nombre de la nota; el número de la línea (el que muestra leer); "
+            "y el texto nuevo COMPLETO de esa línea (vacío para borrarla). Para tachar la línea 2 de la nota todo, el argumento es:\n"
+            "todo\n2\n- [x] pagar internet"
         ),
         writes=True,
         ai="write",

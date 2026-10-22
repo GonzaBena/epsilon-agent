@@ -173,24 +173,56 @@ def _save(text: str) -> Reply:
 CHECKBOX = re.compile(r"- \[[ x]\] \S")
 
 
+QUOTES = "\"'`«»"
+_SEP = r"(?:[ \t]*[,;:]?[ \t]*\n[ \t]*|[ \t]*[,;:][ \t]*|[ \t]+)"  # salto de línea (con coma o sin), coma, punto y coma, dos puntos o espacio
 EDIT_LINE_ARGS = (
-    re.compile(r"\s*(?P<name>[^\n]+?)\s*\n\s*(?P<n>\d{1,6})[ \t]*(?:\n(?P<text>.*))?", re.S),  # nombre, número y texto en líneas
-    re.compile(r"\s*(?P<name>\S+)[ \t]+(?P<n>\d{1,6})(?:[ \t]+(?P<text>.*))?", re.S),  # todo en una línea: «todo 2 texto»
+    re.compile(r"\s*(?P<name>[^\n]+?)\s*\n\s*[" + QUOTES + r"]?(?P<n>\d{1,6})[" + QUOTES + r"]?[ \t]*(?:\n(?P<text>.*))?", re.S),  # el nombre puede llevar espacios
+    re.compile(
+        r"\s*[" + QUOTES + r"]?(?P<name>[^\s,;:" + QUOTES + r"]+)[" + QUOTES + r"]?" + _SEP
+        + r"[" + QUOTES + r"]?(?P<n>\d{1,6})[" + QUOTES + r"]?(?:" + _SEP + r"(?P<text>.*))?",
+        re.S,
+    ),  # todo en una línea, como lo escribe un modelo chico: «todo, 3, texto» o «todo 3 texto»
 )
+
+
+def _parse_edit(args: str) -> tuple[str, int, str] | None:
+    """(nota, número de línea, texto nuevo) de lo que mandó la IA a `editar`, o None si no se entiende."""
+    match = next((m for rx in EDIT_LINE_ARGS if (m := rx.fullmatch(args))), None)
+    name = notes.clean_note_name(match["name"]) if match else ""
+    if not name:
+        return None
+    text = (match["text"] or "").strip()
+    if len(text) > 1 and text[0] in "«\"'" and text[-1] in "»\"'":  # el texto entre comillas: se quitan
+        text = text[1:-1]
+    return name, int(match["n"]), text
+
+
+def _edit_preview(args: str) -> str:
+    """Para la pregunta de permiso: qué dice hoy la línea que se va a cambiar (vacío si no se puede saber)."""
+    parsed = _parse_edit(args)
+    if not parsed:
+        return ""
+    name, n, _ = parsed
+    try:
+        lines = notes.read_note(name).splitlines() if notes.safe_path(f"{name}.md").exists() else []
+    except ValueError:
+        return ""
+    return f"\nHoy la línea {n} de {name} dice:\n{_fenced(lines[n - 1])}" if 1 <= n <= len(lines) else ""
 
 
 def _edit_note(args: str) -> Reply:
     """Herramienta de la IA: nombre de la nota, número de línea (el que muestra `ver`) y el texto nuevo de esa línea
-    (vacío para borrarla). Acepta que lo mande en líneas o todo en una."""
-    match = next((m for rx in EDIT_LINE_ARGS if (m := rx.fullmatch(args))), None)
-    name = notes.clean_note_name(match["name"]) if match else ""
-    if not name:
-        return Reply("Formato: el nombre de la nota, el número de línea y el texto nuevo de esa línea. No se cambió nada.")
+    (vacío para borrarla). Acepta que lo mande en líneas o todo en una, con comas o espacios."""
+    parsed = _parse_edit(args)
+    if not parsed:
+        return Reply("Formato: el nombre de la nota, el número de línea y el texto nuevo de esa línea, cada uno en su línea. No se cambió nada.")
+    name, n, text = parsed
     try:
-        notes.edit_line(name, int(match["n"]), match["text"] or "")
+        before = notes.edit_line(name, n, text)
     except ValueError as e:
         return Reply(str(e))
-    return Reply(f"Editada la línea {int(match['n'])} de {name}.md", artifacts=[_artifact("note", notes.safe_path(f"{name}.md"))])
+    after = f"«{text}»" if text else "(borrada)"
+    return Reply(f"Editada la línea {n} de {name}.md. Decía «{before}» y ahora dice {after}.", artifacts=[_artifact("note", notes.safe_path(f"{name}.md"))])
 
 
 def _watch_numbered(args: str) -> Reply:
@@ -870,8 +902,9 @@ def _question(tool: tools.Tool, args: str) -> Reply:
     full = config.redact(args)
     shown = full[:MAX_QUESTION_ARG]
     more = f"\n… (y {len(full) - len(shown)} caracteres más)" if len(full) > len(shown) else ""
+    preview = _edit_preview(args) if tools.ai_id(tool) == "nota_editar" else ""
     return Reply(
-        f"La IA quiere usar {tool.label} con:\n{_fenced(shown)}{more}",
+        f"La IA quiere usar {tool.label} con:\n{_fenced(shown)}{more}{preview}",
         actions=[
             Action("perm:si", "Sí"),
             Action("perm:siempre", "Sí, por el resto de la conversación"),

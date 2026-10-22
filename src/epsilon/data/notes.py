@@ -53,7 +53,7 @@ def save_note(name: str, texto: str) -> str:
 def edit_line(name: str, n: int, new: str) -> str:
     """Cambia la línea `n` (desde 1) de una nota que ya existe por `new`; con `new` vacío la borra. Es la única forma
     de pisar una nota: nunca la reescribe entera ni la crea. Deja la versión anterior en «<nota>.md.bak» (una sola,
-    la de antes de la última edición) y escribe por un archivo temporal."""
+    la de antes de la última edición) y escribe por un archivo temporal. Devuelve la línea que tenía antes."""
     path = safe_path(f"{name}.md")
     if not path.exists():
         raise ValueError(f"No existe la nota '{name}'.")
@@ -62,12 +62,13 @@ def edit_line(name: str, n: int, new: str) -> str:
     if not 1 <= n <= len(lines):
         raise ValueError(f"La nota '{name}' tiene {len(lines)} líneas: no existe la {n}.")
     new = new.strip("\n")
+    before = lines[n - 1].rstrip("\n")
     lines[n - 1 : n] = [new + "\n"] if new else []
     path.with_name(path.name + ".bak").write_text(text, encoding="utf-8")
     temp = path.with_name(path.name + ".tmp")
     temp.write_text("".join(lines), encoding="utf-8")
     os.replace(temp, path)  # la nota nunca queda a medias
-    return f"Editado {path.name}"
+    return before
 
 
 def clean_note_name(name: str) -> str:

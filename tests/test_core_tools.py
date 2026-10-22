@@ -851,7 +851,16 @@ def test_a_task_can_be_marked_done_by_editing_its_line_after_asking(script):
 
 @pytest.mark.parametrize(
     "args",
-    ["todo\n1\n- [x] pagar", "todo 1 - [x] pagar", "todo\n1\n\n- [x] pagar".replace("\n\n", "\n"), "  todo  \n 1 \n- [x] pagar"],
+    [
+        "todo\n1\n- [x] pagar",
+        "todo 1 - [x] pagar",
+        "  todo  \n 1 \n- [x] pagar",
+        "todo, 1, - [x] pagar",  # lo que mandó qwen3.5:4b al copiar el ejemplo
+        "«todo», «1», «- [x] pagar»",
+        '"todo": 1: "- [x] pagar"',
+        "todo;1;- [x] pagar",
+        "todo,\n1,\n- [x] pagar",
+    ],
 )
 def test_edit_accepts_the_line_format_and_the_one_line_format(script, args):
     allow("nota_editar")
@@ -902,3 +911,32 @@ def test_the_task_tools_are_gone_for_the_model(script, call_id):
     say("hacé algo")
 
     assert results(script.seen[1][0]) == [core.UNAVAILABLE] and todo_text() == ""
+
+
+def test_the_question_shows_what_the_line_says_today_so_a_wrong_number_is_noticed(script):
+    notes.save_note("todo", "- [ ] comprar pan")
+    notes.save_note("todo", "- [ ] comprar café")
+    script.steps = [step(calls=[("notas.editar", "todo, 2, - [x] compré pan")])]  # el modelo se equivocó de línea
+
+    reply = say("marcá que compré pan")
+
+    assert "Hoy la línea 2 de todo dice" in reply.text and "- [ ] comprar café" in reply.text
+
+
+def test_the_question_has_no_preview_when_the_line_does_not_exist(script):
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.editar", "todo, 9, - [x] algo")])]
+
+    reply = say("marcá algo")
+
+    assert "Hoy la línea" not in reply.text and reply.actions
+
+
+def test_the_edit_tells_the_model_what_the_line_said_and_what_it_says_now(script):
+    allow("nota_editar")
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.editar", "todo, 1, - [x] comprar pan")]), step("ok")]
+
+    say("marcá pan")
+
+    assert "Decía «- [ ] comprar pan» y ahora dice «- [x] comprar pan»" in results(script.seen[1][0])[0]
