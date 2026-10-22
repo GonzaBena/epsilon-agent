@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from epsilon.ai.messages import ModelError, Call, File, Message, Step, ToolSpec
+from epsilon.ai.messages import ModelError, File, Message, Step, ToolSpec, call_arguments, parse_call
 from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
 
 # ÚNICO lugar que habla con Ollama (el servidor local de modelos), por HTTP directo. No hay clave: la
@@ -56,25 +56,17 @@ def _messages(history: list[Message], system: str | None = None) -> list[dict]:
             entry["images"] = images
         if message.calls:
             entry["tool_calls"] = [
-                {"function": {"name": c.name, "arguments": {"args": c.args}}} for c in message.calls
+                {"function": {"name": c.name, "arguments": call_arguments(c)}} for c in message.calls
             ]
         out.append(entry)
     return out
 
 
 def _tool(tool: ToolSpec) -> dict:
-    # Cada herramienta recibe un único parámetro de texto, "args".
+    # Cada herramienta recibe un parámetro de texto, "args" (y, un grupo, la "accion" a elegir).
     return {
         "type": "function",
-        "function": {
-            "name": tool.name,
-            "description": tool.description,
-            "parameters": {
-                "type": "object",
-                "properties": {"args": {"type": "string", "description": tool.arg_description}},
-                "required": ["args"],
-            },
-        },
+        "function": {"name": tool.name, "description": tool.description, "parameters": tool.parameters()},
     }
 
 
@@ -117,11 +109,9 @@ class OllamaProvider(Provider):
         calls = []
         for call in message.get("tool_calls") or []:
             function = call.get("function", {})
-            arguments = function.get("arguments")
-            arg = arguments.get("args") if isinstance(arguments, dict) else None
-            calls.append((function.get("name", ""), arg if isinstance(arg, str) else ""))
-        turn = Message("model", [text] if text else [], [Call(name, args) for name, args in calls])
-        return ChatResult(Step(text, calls, turn), *_tokens(data))
+            calls.append(parse_call(function.get("name", ""), function.get("arguments")))
+        turn = Message("model", [text] if text else [], calls)
+        return ChatResult(Step(text, [(c.id, c.args) for c in calls], turn), *_tokens(data))
 
     def list_models(self):
         return [m["name"] for m in _request("GET", "/api/tags", timeout=3).get("models", [])]

@@ -236,3 +236,30 @@ def test_request_without_a_configured_url_uses_the_local_server(monkeypatch):
 def test_conftest_blocks_real_requests(provider):
     with pytest.raises(RuntimeError):
         ollama._request("GET", "/api/tags")
+
+
+GROUP_SPECS = [ToolSpec("memoria", "Lo que recordás", "el dato", actions=("agregar", "ver"))]
+
+
+def test_chat_declares_the_action_enum_of_a_group(provider, server):
+    server.replies[("POST", "/api/chat")] = chat_reply()
+
+    provider.chat("qwen3", [Message("user", ["hola"])], "s", GROUP_SPECS, 100, True)
+
+    params = server.sent[0][2]["tools"][0]["function"]["parameters"]
+    assert params["required"] == ["accion", "args"] and params["properties"]["accion"]["enum"] == ["agregar", "ver"]
+
+
+def test_chat_reports_a_grouped_call_as_group_dot_action(provider, server):
+    server.replies[("POST", "/api/chat")] = chat_reply("", calls=[("memoria", {"accion": "agregar", "args": "pan"})])
+
+    result = provider.chat("qwen3", [Message("user", ["hola"])], "s", GROUP_SPECS, 100, True)
+
+    assert result.step.calls == [("memoria.agregar", "pan")]
+    assert [(c.name, c.action) for c in result.step.turn.calls] == [("memoria", "agregar")]
+
+
+def test_a_grouped_call_in_the_history_is_resent_with_its_action():
+    [entry] = ollama._messages([Message("model", calls=[Call("memoria", "pan", "agregar")])])
+
+    assert entry["tool_calls"] == [{"function": {"name": "memoria", "arguments": {"accion": "agregar", "args": "pan"}}}]

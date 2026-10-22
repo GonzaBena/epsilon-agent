@@ -3,7 +3,7 @@ import os
 from google import genai
 from google.genai import errors, types
 
-from epsilon.ai.messages import ModelError, Call, File, Message, Step, ToolSpec
+from epsilon.ai.messages import ModelError, File, Message, Step, ToolSpec, call_arguments, parse_call
 from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
 
 # ÚNICO lugar que habla con Gemini. El cliente se guarda en una variable antes de usarlo:
@@ -37,22 +37,14 @@ def _content(message: Message):
     if isinstance(message.raw, types.Content):
         return message.raw
     parts = [_part(p) for p in message.parts]
-    parts += [types.Part(function_call=types.FunctionCall(name=c.name, args={"args": c.args})) for c in message.calls]
+    parts += [types.Part(function_call=types.FunctionCall(name=c.name, args=call_arguments(c))) for c in message.calls]
     parts += [types.Part.from_function_response(name=r.name, response={"result": r.result}) for r in message.results]
     return types.Content(role=message.role, parts=parts)
 
 
 def _declaration(tool: ToolSpec) -> types.FunctionDeclaration:
-    # Cada herramienta recibe un único parámetro de texto, "args".
-    return types.FunctionDeclaration(
-        name=tool.name,
-        description=tool.description,
-        parameters_json_schema={
-            "type": "object",
-            "properties": {"args": {"type": "string", "description": tool.arg_description}},
-            "required": ["args"],
-        },
-    )
+    # Cada herramienta recibe un parámetro de texto, "args" (y, un grupo, la "accion" a elegir).
+    return types.FunctionDeclaration(name=tool.name, description=tool.description, parameters_json_schema=tool.parameters())
 
 
 class GeminiProvider(Provider):
@@ -87,10 +79,7 @@ class GeminiProvider(Provider):
                 else types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE")),
             ),
         )
-        calls = []
-        for call in response.function_calls or []:
-            arg = (call.args or {}).get("args")
-            calls.append((call.name, arg if isinstance(arg, str) else ""))
+        calls = [parse_call(call.name, call.args) for call in response.function_calls or []]
         # Con llamadas, .text puede fallar o venir vacío: lo tratamos como "".
         try:
             text = response.text or ""
@@ -99,10 +88,10 @@ class GeminiProvider(Provider):
         turn = Message(
             "model",
             [text] if text else [],
-            [Call(name, args) for name, args in calls],
+            calls,
             raw=response.candidates[0].content,
         )
-        return ChatResult(Step(text, calls, turn), *_tokens(response))
+        return ChatResult(Step(text, [(c.id, c.args) for c in calls], turn), *_tokens(response))
 
     def check(self, model):
         # Pide los metadatos del modelo: si la clave o el nombre están mal, falla. No gasta tokens.

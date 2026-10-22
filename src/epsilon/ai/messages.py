@@ -18,10 +18,30 @@ class File:
 
 @dataclass
 class Call:
-    """Una herramienta que el modelo pidió: su nombre y el único argumento de texto."""
+    """Una herramienta que el modelo pidió: su nombre y el único argumento de texto.
+    Si es un grupo de herramientas, `action` dice cuál de sus acciones pidió."""
 
     name: str
     args: str
+    action: str = ""
+
+    @property
+    def id(self) -> str:
+        """Cómo la ve el núcleo: «nombre», o «grupo.acción» si pidió una acción de un grupo."""
+        return f"{self.name}.{self.action}" if self.action else self.name
+
+
+def parse_call(name: str, arguments: object) -> Call:
+    """La llamada que mandó un proveedor: sus argumentos tienen «args» y, en un grupo, «accion».
+    Lo que no sea texto se ignora."""
+    data = arguments if isinstance(arguments, dict) else {}
+    args, action = data.get("args"), data.get("accion")
+    return Call(name, args if isinstance(args, str) else "", action if isinstance(action, str) else "")
+
+
+def call_arguments(call: Call) -> dict:
+    """Los argumentos de una llamada tal como los declara `ToolSpec.parameters` (el inverso de parse_call)."""
+    return {"accion": call.action, "args": call.args} if call.action else {"args": call.args}
 
 
 @dataclass
@@ -52,16 +72,26 @@ class Message:
 
 @dataclass
 class ToolSpec:
-    """Una herramienta que el modelo puede pedir: nombre, para qué sirve y qué va en su argumento."""
+    """Una herramienta que el modelo puede pedir: nombre, para qué sirve y qué va en su argumento.
+    Un grupo de herramientas lleva además `actions`: el modelo elige una con el parámetro «accion»."""
 
     name: str
     description: str
     arg_description: str
+    actions: tuple[str, ...] = ()
+
+    def parameters(self) -> dict:
+        """El esquema JSON de sus parámetros, igual para todos los proveedores."""
+        properties = {"args": {"type": "string", "description": self.arg_description}}
+        if not self.actions:
+            return {"type": "object", "properties": properties, "required": ["args"]}
+        action = {"type": "string", "enum": list(self.actions)}
+        return {"type": "object", "properties": {"accion": action, **properties}, "required": ["accion", "args"]}
 
 
 @dataclass
 class Step:
-    """Lo que contestó el modelo: texto y/o llamadas pedidas [(nombre, argumento)].
+    """Lo que contestó el modelo: texto y/o llamadas pedidas [(id, argumento)], con `Call.id` como id.
 
     `turn` es el turno del modelo: hay que volver a mandarlo en el historial."""
 

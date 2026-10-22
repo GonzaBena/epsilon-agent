@@ -216,3 +216,30 @@ def test_capabilities_are_all_true(provider):
     caps = provider.capabilities("m")
 
     assert (caps.tools, caps.images, caps.pdf) == (True, True, True)
+
+
+GROUP_SPECS = [ToolSpec("memoria", "Lo que recordás", "el dato", actions=("agregar", "ver"))]
+
+
+def test_chat_declares_the_action_enum_of_a_group(provider, client):
+    client.reply, _ = chat_reply()
+
+    provider.chat("m", [Message("user", ["hola"])], "s", GROUP_SPECS, 100, True)
+
+    schema = client.seen["config"].tools[0].function_declarations[0].parameters_json_schema
+    assert schema["required"] == ["accion", "args"] and schema["properties"]["accion"]["enum"] == ["agregar", "ver"]
+
+
+def test_chat_reports_a_grouped_call_as_group_dot_action(provider, client):
+    client.reply, _ = chat_reply(calls=[("memoria", {"accion": "agregar", "args": "pan"}), ("ver", {"args": "x"})])
+
+    result = provider.chat("m", [Message("user", ["hola"])], "s", GROUP_SPECS, 100, True)
+
+    assert result.step.calls == [("memoria.agregar", "pan"), ("ver", "x")]
+    assert [(c.name, c.action, c.args) for c in result.step.turn.calls] == [("memoria", "agregar", "pan"), ("ver", "", "x")]
+
+
+def test_a_grouped_call_in_the_history_is_resent_with_its_action():
+    content = gemini._content(Message("model", calls=[Call("memoria", "pan", "agregar")]))
+
+    assert content.parts[0].function_call.args == {"accion": "agregar", "args": "pan"}
