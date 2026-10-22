@@ -102,253 +102,318 @@
 
         <form id="form" novalidate autocomplete="off">
 
-          <section aria-labelledby="h-gemini">
-            <h3 id="h-gemini">Gemini</h3>
-            <p class="help">Lee imágenes y resume. La clave se obtiene en Google AI Studio.</p>
+        <div class="settings-layout">
+          <nav class="settings-nav" id="settings-nav" aria-label="Secciones de configuración">
+            <a href="#general" data-nav="general">General</a>
+            <a href="#comandos" data-nav="comandos">Comandos</a>
+            <a href="#modelos" data-nav="modelos">Modelos</a>
+            <a href="#voz" data-nav="voz">Voz</a>
+            <a href="#canales" data-nav="canales">Canales</a>
+            <a href="#rutinas" data-nav="rutinas">Rutinas</a>
+            <a href="#automatizaciones" data-nav="automatizaciones">Automatizaciones</a>
+            <span class="soon" aria-disabled="true">Skills y MCP<small>Próximamente</small></span>
+          </nav>
+          <div class="settings-panels">
 
-            <div class="field">
-              <label for="f-GEMINI_API_KEY">Clave de Gemini</label>
-              <div class="secret-row">
-                <input id="f-GEMINI_API_KEY" data-key="GEMINI_API_KEY" type="password"
-                       autocomplete="new-password" spellcheck="false"
-                       aria-describedby="hint-GEMINI_API_KEY err-GEMINI_API_KEY">
-                <button type="button" class="ghost danger" data-clear="GEMINI_API_KEY" hidden>Borrar</button>
+          <section class="panel" data-panel="general" aria-labelledby="h-general">
+            <h3 id="h-general">General</h3>
+            <p class="help">Dónde viven tus datos y cuánto puede usar la IA en cada chat.</p>
+            <div class="sub" aria-labelledby="s-datos">
+              <h4 id="s-datos">Datos</h4>
+              <p class="help">Acá se guardan tus notas y archivos. Se cambia en el <code>.env</code> (DATA_DIR) y hace falta reiniciar.</p>
+              <p><code id="data-dir" class="path"></code></p>
+            </div>
+            <div class="sub" aria-labelledby="s-chat">
+              <h4 id="s-chat">Chat con IA</h4>
+              <p class="help">Topes de cada conversación en modo IA.</p>
+              <div class="field">
+                <label for="f-CHAT_LIMIT_USD">Límite de costo por chat con IA (US$)</label>
+                <input id="f-CHAT_LIMIT_USD" data-key="CHAT_LIMIT_USD" type="text" inputmode="decimal"
+                       autocomplete="off" spellcheck="false" placeholder="0.50"
+                       aria-describedby="hint-CHAT_LIMIT_USD err-CHAT_LIMIT_USD">
+                <p class="hint" id="hint-CHAT_LIMIT_USD"></p>
+                <p class="error" id="err-CHAT_LIMIT_USD" role="alert"></p>
               </div>
-              <p class="hint" id="hint-GEMINI_API_KEY"></p>
-              <p class="error" id="err-GEMINI_API_KEY" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-GEMINI_MODEL">Modelo</label>
-              <input id="f-GEMINI_MODEL" data-key="GEMINI_MODEL" type="text"
-                     autocomplete="off" spellcheck="false"
-                     aria-describedby="hint-GEMINI_MODEL err-GEMINI_MODEL">
-              <p class="hint" id="hint-GEMINI_MODEL"></p>
-              <p class="error" id="err-GEMINI_MODEL" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-USD_ARS">Pesos por dólar (opcional)</label>
-              <input id="f-USD_ARS" data-key="USD_ARS" type="text" inputmode="decimal"
-                     autocomplete="off" spellcheck="false" placeholder="1500"
-                     aria-describedby="hint-USD_ARS err-USD_ARS">
-              <p class="hint" id="hint-USD_ARS"></p>
-              <p class="error" id="err-USD_ARS" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-CHAT_LIMIT_USD">Límite de costo por chat con IA (US$)</label>
-              <input id="f-CHAT_LIMIT_USD" data-key="CHAT_LIMIT_USD" type="text" inputmode="decimal"
-                     autocomplete="off" spellcheck="false" placeholder="0.50"
-                     aria-describedby="hint-CHAT_LIMIT_USD err-CHAT_LIMIT_USD">
-              <p class="hint" id="hint-CHAT_LIMIT_USD"></p>
-              <p class="error" id="err-CHAT_LIMIT_USD" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-WEATHER_CITY">Ciudad del clima (opcional)</label>
-              <input id="f-WEATHER_CITY" data-key="WEATHER_CITY" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="Buenos Aires"
-                     aria-describedby="hint-WEATHER_CITY err-WEATHER_CITY">
-              <p class="hint" id="hint-WEATHER_CITY"></p>
-              <p class="error" id="err-WEATHER_CITY" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-CHAT_MAX_FILES">Archivos por mensaje en el chat con IA</label>
-              <input id="f-CHAT_MAX_FILES" data-key="CHAT_MAX_FILES" type="text" inputmode="numeric"
-                     autocomplete="off" spellcheck="false" placeholder="5"
-                     aria-describedby="hint-CHAT_MAX_FILES err-CHAT_MAX_FILES">
-              <p class="hint" id="hint-CHAT_MAX_FILES"></p>
-              <p class="error" id="err-CHAT_MAX_FILES" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-CHAT_MAX_TURNS">Mensajes anteriores que ve la IA en el chat (pares)</label>
-              <input id="f-CHAT_MAX_TURNS" data-key="CHAT_MAX_TURNS" type="text" inputmode="numeric"
-                     autocomplete="off" spellcheck="false" placeholder="10"
-                     aria-describedby="hint-CHAT_MAX_TURNS err-CHAT_MAX_TURNS">
-              <p class="hint" id="hint-CHAT_MAX_TURNS"></p>
-              <p class="error" id="err-CHAT_MAX_TURNS" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-CHAT_MAX_TURNS_TELEGRAM">Mensajes anteriores que ve la IA en Telegram (pares)</label>
-              <input id="f-CHAT_MAX_TURNS_TELEGRAM" data-key="CHAT_MAX_TURNS_TELEGRAM" type="text" inputmode="numeric"
-                     autocomplete="off" spellcheck="false" placeholder="5"
-                     aria-describedby="hint-CHAT_MAX_TURNS_TELEGRAM err-CHAT_MAX_TURNS_TELEGRAM">
-              <p class="hint" id="hint-CHAT_MAX_TURNS_TELEGRAM"></p>
-              <p class="error" id="err-CHAT_MAX_TURNS_TELEGRAM" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-CHAT_MAX_MB">Tamaño máximo de los archivos por mensaje (MB)</label>
-              <input id="f-CHAT_MAX_MB" data-key="CHAT_MAX_MB" type="text" inputmode="numeric"
-                     autocomplete="off" spellcheck="false" placeholder="15"
-                     aria-describedby="hint-CHAT_MAX_MB err-CHAT_MAX_MB">
-              <p class="hint" id="hint-CHAT_MAX_MB"></p>
-              <p class="error" id="err-CHAT_MAX_MB" role="alert"></p>
-            </div>
-
-            <div class="test-row">
-              <button type="button" class="secondary" data-test="gemini">Probar conexión</button>
-              <p class="result" id="result-gemini" role="status"></p>
+              <div class="field">
+                <label for="f-CHAT_MAX_TURNS">Mensajes anteriores que ve la IA en el chat (pares)</label>
+                <input id="f-CHAT_MAX_TURNS" data-key="CHAT_MAX_TURNS" type="text" inputmode="numeric"
+                       autocomplete="off" spellcheck="false" placeholder="10"
+                       aria-describedby="hint-CHAT_MAX_TURNS err-CHAT_MAX_TURNS">
+                <p class="hint" id="hint-CHAT_MAX_TURNS"></p>
+                <p class="error" id="err-CHAT_MAX_TURNS" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-CHAT_MAX_TURNS_TELEGRAM">Mensajes anteriores que ve la IA en Telegram (pares)</label>
+                <input id="f-CHAT_MAX_TURNS_TELEGRAM" data-key="CHAT_MAX_TURNS_TELEGRAM" type="text" inputmode="numeric"
+                       autocomplete="off" spellcheck="false" placeholder="5"
+                       aria-describedby="hint-CHAT_MAX_TURNS_TELEGRAM err-CHAT_MAX_TURNS_TELEGRAM">
+                <p class="hint" id="hint-CHAT_MAX_TURNS_TELEGRAM"></p>
+                <p class="error" id="err-CHAT_MAX_TURNS_TELEGRAM" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-CHAT_MAX_FILES">Archivos por mensaje en el chat con IA</label>
+                <input id="f-CHAT_MAX_FILES" data-key="CHAT_MAX_FILES" type="text" inputmode="numeric"
+                       autocomplete="off" spellcheck="false" placeholder="5"
+                       aria-describedby="hint-CHAT_MAX_FILES err-CHAT_MAX_FILES">
+                <p class="hint" id="hint-CHAT_MAX_FILES"></p>
+                <p class="error" id="err-CHAT_MAX_FILES" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-CHAT_MAX_MB">Tamaño máximo de los archivos por mensaje (MB)</label>
+                <input id="f-CHAT_MAX_MB" data-key="CHAT_MAX_MB" type="text" inputmode="numeric"
+                       autocomplete="off" spellcheck="false" placeholder="15"
+                       aria-describedby="hint-CHAT_MAX_MB err-CHAT_MAX_MB">
+                <p class="hint" id="hint-CHAT_MAX_MB"></p>
+                <p class="error" id="err-CHAT_MAX_MB" role="alert"></p>
+              </div>
             </div>
           </section>
 
-          <section aria-labelledby="h-models">
-            <h3 id="h-models">Modelos de IA</h3>
+          <section class="panel" data-panel="comandos" aria-labelledby="h-comandos" hidden>
+            <h3 id="h-comandos">Comandos</h3>
+            <p class="help">Datos que usan los comandos que no necesitan IA.</p>
+            <div class="sub" aria-labelledby="s-clima">
+              <h4 id="s-clima">Clima</h4>
+              <p class="help">Para <code>/clima</code> y para cuando la IA te cuenta el clima.</p>
+              <div class="field">
+                <label for="f-WEATHER_CITY">Ciudad del clima (opcional)</label>
+                <input id="f-WEATHER_CITY" data-key="WEATHER_CITY" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="Buenos Aires"
+                       aria-describedby="hint-WEATHER_CITY err-WEATHER_CITY">
+                <p class="hint" id="hint-WEATHER_CITY"></p>
+                <p class="error" id="err-WEATHER_CITY" role="alert"></p>
+              </div>
+            </div>
+            <div class="sub" aria-labelledby="s-dolar">
+              <h4 id="s-dolar">Dólar</h4>
+              <p class="help">Para <code>/dolar</code> y para mostrar los gastos en pesos.</p>
+              <div class="field">
+                <label for="f-USD_ARS">Pesos por dólar (opcional)</label>
+                <input id="f-USD_ARS" data-key="USD_ARS" type="text" inputmode="decimal"
+                       autocomplete="off" spellcheck="false" placeholder="1500"
+                       aria-describedby="hint-USD_ARS err-USD_ARS">
+                <p class="hint" id="hint-USD_ARS"></p>
+                <p class="error" id="err-USD_ARS" role="alert"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="modelos" aria-labelledby="h-modelos" hidden>
+            <h3 id="h-modelos">Modelos</h3>
             <p class="help">Cada modelo se escribe como <code>proveedor:modelo</code> (por ejemplo
               <code>gemini:gemini-3.1-flash-lite</code> u <code>ollama:llama3.1:8b</code>). El predeterminado también se
               cambia con el botón del modelo, arriba a la derecha. Las tareas que dejes vacías usan el predeterminado.</p>
-
-            <div class="field">
-              <label for="f-AI_MODEL">Modelo predeterminado</label>
-              <input id="f-AI_MODEL" data-key="AI_MODEL" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="gemini:gemini-3.1-flash-lite"
-                     aria-describedby="hint-AI_MODEL err-AI_MODEL">
-              <p class="hint" id="hint-AI_MODEL"></p>
-              <p class="error" id="err-AI_MODEL" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-AI_MODEL_CHAT">Chat con IA</label>
-              <input id="f-AI_MODEL_CHAT" data-key="AI_MODEL_CHAT" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
-                     aria-describedby="hint-AI_MODEL_CHAT err-AI_MODEL_CHAT">
-              <p class="hint" id="hint-AI_MODEL_CHAT"></p>
-              <p class="error" id="err-AI_MODEL_CHAT" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-AI_MODEL_ASK">/ia, una pregunta suelta</label>
-              <input id="f-AI_MODEL_ASK" data-key="AI_MODEL_ASK" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
-                     aria-describedby="hint-AI_MODEL_ASK err-AI_MODEL_ASK">
-              <p class="hint" id="hint-AI_MODEL_ASK"></p>
-              <p class="error" id="err-AI_MODEL_ASK" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-AI_MODEL_SUMMARY">Resumir archivos</label>
-              <input id="f-AI_MODEL_SUMMARY" data-key="AI_MODEL_SUMMARY" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
-                     aria-describedby="hint-AI_MODEL_SUMMARY err-AI_MODEL_SUMMARY">
-              <p class="hint" id="hint-AI_MODEL_SUMMARY"></p>
-              <p class="error" id="err-AI_MODEL_SUMMARY" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-AI_MODEL_CSV">Imagen a CSV</label>
-              <input id="f-AI_MODEL_CSV" data-key="AI_MODEL_CSV" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
-                     aria-describedby="hint-AI_MODEL_CSV err-AI_MODEL_CSV">
-              <p class="hint" id="hint-AI_MODEL_CSV"></p>
-              <p class="error" id="err-AI_MODEL_CSV" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-OLLAMA_URL">Dirección de Ollama</label>
-              <input id="f-OLLAMA_URL" data-key="OLLAMA_URL" type="text"
-                     autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434"
-                     aria-describedby="hint-OLLAMA_URL err-OLLAMA_URL">
-              <p class="hint" id="hint-OLLAMA_URL"></p>
-              <p class="error" id="err-OLLAMA_URL" role="alert"></p>
-            </div>
-
-            <div class="test-row">
-              <button type="button" class="secondary" data-test="ollama">Probar conexión con Ollama</button>
-              <p class="result" id="result-ollama" role="status"></p>
-            </div>
-
-          </section>
-
-          <section aria-labelledby="h-telegram">
-            <h3 id="h-telegram">Telegram</h3>
-            <p class="help">Opcional. Sirve para usar Epsilon desde el celular. El token lo da @BotFather al crear el bot.</p>
-
-            <div class="field">
-              <label for="f-TELEGRAM_TOKEN">Token del bot</label>
-              <div class="secret-row">
-                <input id="f-TELEGRAM_TOKEN" data-key="TELEGRAM_TOKEN" type="password"
-                       autocomplete="new-password" spellcheck="false"
-                       aria-describedby="hint-TELEGRAM_TOKEN err-TELEGRAM_TOKEN">
-                <button type="button" class="ghost danger" data-clear="TELEGRAM_TOKEN" hidden>Borrar</button>
+            <div class="sub" aria-labelledby="s-tareas">
+              <h4 id="s-tareas">Modelo por tarea</h4>
+              <div class="field">
+                <label for="f-AI_MODEL">Modelo predeterminado</label>
+                <input id="f-AI_MODEL" data-key="AI_MODEL" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="gemini:gemini-3.1-flash-lite"
+                       aria-describedby="hint-AI_MODEL err-AI_MODEL">
+                <p class="hint" id="hint-AI_MODEL"></p>
+                <p class="error" id="err-AI_MODEL" role="alert"></p>
               </div>
-              <p class="hint" id="hint-TELEGRAM_TOKEN"></p>
-              <p class="error" id="err-TELEGRAM_TOKEN" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-ALLOWED_USER_ID">Tu ID de usuario</label>
-              <input id="f-ALLOWED_USER_ID" data-key="ALLOWED_USER_ID" type="text"
-                     inputmode="numeric" autocomplete="off" spellcheck="false"
-                     aria-describedby="hint-ALLOWED_USER_ID err-ALLOWED_USER_ID">
-              <p class="hint" id="hint-ALLOWED_USER_ID"></p>
-              <p class="error" id="err-ALLOWED_USER_ID" role="alert"></p>
-            </div>
-
-            <div class="test-row">
-              <button type="button" class="secondary" data-test="telegram">Probar el token guardado</button>
-              <p class="result" id="result-telegram" role="status"></p>
-            </div>
-          </section>
-
-          <!-- Canales de terceros: config.js dibuja acá los ajustes que declara cada plugin. -->
-          <section id="plugin-settings" aria-labelledby="h-plugins" hidden>
-            <h3 id="h-plugins">Canales de terceros</h3>
-            <p class="help">Ajustes de los plugins de canal instalados. Prender o apagar cada canal se hace en la página Canales.</p>
-          </section>
-
-          <section aria-labelledby="h-browser">
-            <h3 id="h-browser">Navegador</h3>
-            <p class="help">Deja que la IA use tu Chromium (el de todos los días) para abrir páginas, leerlas y tocar botones. Hace falta abrir Chromium con <code>--remote-debugging-port=9222</code>. En los sitios de confianza actúa sin preguntar; en cualquier otro pregunta siempre, y los bloqueados no los ve ni los toca.</p>
-
-            <div class="field switch-field">
-              <div class="switch-row">
-                <span class="switch-label" id="label-BROWSER_ENABLED">Navegador (la IA puede usar tu Chromium)</span>
-                <button type="button" class="switch" role="switch" id="f-BROWSER_ENABLED" data-key="BROWSER_ENABLED"
-                        value="si" aria-checked="true"
-                        aria-labelledby="label-BROWSER_ENABLED" aria-describedby="hint-BROWSER_ENABLED err-BROWSER_ENABLED"><span class="knob"></span></button>
+              <div class="field">
+                <label for="f-AI_MODEL_CHAT">Chat con IA</label>
+                <input id="f-AI_MODEL_CHAT" data-key="AI_MODEL_CHAT" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                       aria-describedby="hint-AI_MODEL_CHAT err-AI_MODEL_CHAT">
+                <p class="hint" id="hint-AI_MODEL_CHAT"></p>
+                <p class="error" id="err-AI_MODEL_CHAT" role="alert"></p>
               </div>
-              <p class="hint" id="hint-BROWSER_ENABLED"></p>
-              <p class="error" id="err-BROWSER_ENABLED" role="alert"></p>
-            </div>
-
-            <div class="field switch-field">
-              <div class="switch-row">
-                <span class="switch-label" id="label-BROWSER_GUARD">Guardia del navegador (preguntar en sitios que no son de confianza)</span>
-                <button type="button" class="switch" role="switch" id="f-BROWSER_GUARD" data-key="BROWSER_GUARD"
-                        value="si" aria-checked="true"
-                        aria-labelledby="label-BROWSER_GUARD" aria-describedby="hint-BROWSER_GUARD err-BROWSER_GUARD"><span class="knob"></span></button>
+              <div class="field">
+                <label for="f-AI_MODEL_ASK">/ia, una pregunta suelta</label>
+                <input id="f-AI_MODEL_ASK" data-key="AI_MODEL_ASK" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                       aria-describedby="hint-AI_MODEL_ASK err-AI_MODEL_ASK">
+                <p class="hint" id="hint-AI_MODEL_ASK"></p>
+                <p class="error" id="err-AI_MODEL_ASK" role="alert"></p>
               </div>
-              <p class="hint" id="hint-BROWSER_GUARD"></p>
-              <p class="error" id="err-BROWSER_GUARD" role="alert"></p>
+              <div class="field">
+                <label for="f-AI_MODEL_SUMMARY">Resumir archivos</label>
+                <input id="f-AI_MODEL_SUMMARY" data-key="AI_MODEL_SUMMARY" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                       aria-describedby="hint-AI_MODEL_SUMMARY err-AI_MODEL_SUMMARY">
+                <p class="hint" id="hint-AI_MODEL_SUMMARY"></p>
+                <p class="error" id="err-AI_MODEL_SUMMARY" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-AI_MODEL_CSV">Imagen a CSV</label>
+                <input id="f-AI_MODEL_CSV" data-key="AI_MODEL_CSV" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="(el predeterminado)"
+                       aria-describedby="hint-AI_MODEL_CSV err-AI_MODEL_CSV">
+                <p class="hint" id="hint-AI_MODEL_CSV"></p>
+                <p class="error" id="err-AI_MODEL_CSV" role="alert"></p>
+              </div>
             </div>
-
-            <div class="field">
-              <label for="f-BROWSER_TRUSTED_SITES">Sitios de confianza (separados por coma)</label>
-              <input id="f-BROWSER_TRUSTED_SITES" data-key="BROWSER_TRUSTED_SITES" type="text" placeholder="music.youtube.com,youtube.com"
-                     autocomplete="off" spellcheck="false" maxlength="500"
-                     aria-describedby="hint-BROWSER_TRUSTED_SITES err-BROWSER_TRUSTED_SITES">
-              <p class="hint" id="hint-BROWSER_TRUSTED_SITES"></p>
-              <p class="error" id="err-BROWSER_TRUSTED_SITES" role="alert"></p>
+            <div class="sub" aria-labelledby="s-gemini">
+              <h4 id="s-gemini">Gemini</h4>
+              <p class="help">Lee imágenes y resume. La clave se obtiene en Google AI Studio.</p>
+              <div class="field">
+                <label for="f-GEMINI_API_KEY">Clave de Gemini</label>
+                <div class="secret-row">
+                  <input id="f-GEMINI_API_KEY" data-key="GEMINI_API_KEY" type="password"
+                         autocomplete="new-password" spellcheck="false"
+                         aria-describedby="hint-GEMINI_API_KEY err-GEMINI_API_KEY">
+                  <button type="button" class="ghost danger" data-clear="GEMINI_API_KEY" hidden>Borrar</button>
+                </div>
+                <p class="hint" id="hint-GEMINI_API_KEY"></p>
+                <p class="error" id="err-GEMINI_API_KEY" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-GEMINI_MODEL">Modelo</label>
+                <input id="f-GEMINI_MODEL" data-key="GEMINI_MODEL" type="text"
+                       autocomplete="off" spellcheck="false"
+                       aria-describedby="hint-GEMINI_MODEL err-GEMINI_MODEL">
+                <p class="hint" id="hint-GEMINI_MODEL"></p>
+                <p class="error" id="err-GEMINI_MODEL" role="alert"></p>
+              </div>
+              <div class="test-row">
+                <button type="button" class="secondary" data-test="gemini">Probar conexión</button>
+                <p class="result" id="result-gemini" role="status"></p>
+              </div>
             </div>
-
-            <div class="field">
-              <label for="f-BROWSER_BLOCKED_SITES">Sitios bloqueados (separados por coma)</label>
-              <input id="f-BROWSER_BLOCKED_SITES" data-key="BROWSER_BLOCKED_SITES" type="text" placeholder="accounts.google.com,mail.google.com"
-                     autocomplete="off" spellcheck="false" maxlength="500"
-                     aria-describedby="hint-BROWSER_BLOCKED_SITES err-BROWSER_BLOCKED_SITES">
-              <p class="hint" id="hint-BROWSER_BLOCKED_SITES"></p>
-              <p class="error" id="err-BROWSER_BLOCKED_SITES" role="alert"></p>
+            <div class="sub" aria-labelledby="s-ollama">
+              <h4 id="s-ollama">Ollama</h4>
+              <p class="help">Modelos que corren en tu PC, sin clave y sin costo.</p>
+              <div class="field">
+                <label for="f-OLLAMA_URL">Dirección de Ollama</label>
+                <input id="f-OLLAMA_URL" data-key="OLLAMA_URL" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11434"
+                       aria-describedby="hint-OLLAMA_URL err-OLLAMA_URL">
+                <p class="hint" id="hint-OLLAMA_URL"></p>
+                <p class="error" id="err-OLLAMA_URL" role="alert"></p>
+              </div>
+              <div class="test-row">
+                <button type="button" class="secondary" data-test="ollama">Probar conexión con Ollama</button>
+                <p class="result" id="result-ollama" role="status"></p>
+              </div>
             </div>
           </section>
 
-          <section aria-labelledby="h-routines">
-            <h3 id="h-routines">Rutinas</h3>
+          <section class="panel" data-panel="voz" aria-labelledby="h-voz" hidden>
+            <h3 id="h-voz">Voz</h3>
+            <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Apagada, no se descarga ni se usa el modelo. Los dos primeros ajustes también se cambian desde el bot con <code>/menu</code>; confirmar vale solo para Telegram.</p>
+            <p class="result" id="voice-status" role="status"></p>
+            <div class="sub" aria-labelledby="s-voz-on">
+              <h4 id="s-voz-on">Activación</h4>
+              <div class="field switch-field">
+                <div class="switch-row">
+                  <span class="switch-label" id="label-VOICE_ENABLED">Voz (micrófono de la web y notas de voz de Telegram)</span>
+                  <button type="button" class="switch" role="switch" id="f-VOICE_ENABLED" data-key="VOICE_ENABLED"
+                          value="si" aria-checked="true"
+                          aria-labelledby="label-VOICE_ENABLED" aria-describedby="hint-VOICE_ENABLED err-VOICE_ENABLED"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-VOICE_ENABLED"></p>
+                <p class="error" id="err-VOICE_ENABLED" role="alert"></p>
+              </div>
+              <div class="field switch-field">
+                <div class="switch-row">
+                  <span class="switch-label" id="label-VOICE_CONFIRM">Confirmar las notas de voz antes de ejecutarlas (solo Telegram)</span>
+                  <button type="button" class="switch" role="switch" id="f-VOICE_CONFIRM" data-key="VOICE_CONFIRM"
+                          value="no" aria-checked="false"
+                          aria-labelledby="label-VOICE_CONFIRM" aria-describedby="hint-VOICE_CONFIRM err-VOICE_CONFIRM"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-VOICE_CONFIRM"></p>
+                <p class="error" id="err-VOICE_CONFIRM" role="alert"></p>
+              </div>
+            </div>
+            <div class="sub" aria-labelledby="s-whisper">
+              <h4 id="s-whisper">Reconocimiento</h4>
+              <div class="field" id="voice-model" hidden>
+                <p class="help" id="voice-model-text"></p>
+                <div class="test-row">
+                  <button type="button" class="ghost danger" id="voice-model-delete">Borrar el modelo de voz</button>
+                  <p class="result" id="voice-model-result" role="status"></p>
+                </div>
+              </div>
+              <div class="field">
+                <label for="f-WHISPER_LANGUAGE">Idioma (es, en, pt… o «auto» para detectarlo)</label>
+                <input id="f-WHISPER_LANGUAGE" data-key="WHISPER_LANGUAGE" type="text" placeholder="es"
+                       autocomplete="off" spellcheck="false" maxlength="4"
+                       aria-describedby="hint-WHISPER_LANGUAGE err-WHISPER_LANGUAGE">
+                <p class="hint" id="hint-WHISPER_LANGUAGE"></p>
+                <p class="error" id="err-WHISPER_LANGUAGE" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-ASSISTANT_NAME">Nombre para hablarle por voz (minúsculas y sin tilde; varios, separados por coma)</label>
+                <input id="f-ASSISTANT_NAME" data-key="ASSISTANT_NAME" type="text" placeholder="ia, ai"
+                       autocomplete="off" spellcheck="false" maxlength="200"
+                       aria-describedby="hint-ASSISTANT_NAME err-ASSISTANT_NAME">
+                <p class="hint" id="hint-ASSISTANT_NAME"></p>
+                <p class="error" id="err-ASSISTANT_NAME" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-WHISPER_IDLE_MINUTES">Minutos sin usar antes de soltar el modelo</label>
+                <input id="f-WHISPER_IDLE_MINUTES" data-key="WHISPER_IDLE_MINUTES" type="text" placeholder="10"
+                       inputmode="numeric" autocomplete="off" spellcheck="false"
+                       aria-describedby="hint-WHISPER_IDLE_MINUTES err-WHISPER_IDLE_MINUTES">
+                <p class="hint" id="hint-WHISPER_IDLE_MINUTES"></p>
+                <p class="error" id="err-WHISPER_IDLE_MINUTES" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-WHISPER_DEVICE">Dispositivo</label>
+                <select id="f-WHISPER_DEVICE" data-key="WHISPER_DEVICE"
+                        aria-describedby="hint-WHISPER_DEVICE err-WHISPER_DEVICE">
+                  <option value="cpu">cpu (procesador)</option>
+                  <option value="cuda">cuda (placa NVIDIA; necesita sus librerías)</option>
+                </select>
+                <p class="hint" id="hint-WHISPER_DEVICE"></p>
+                <p class="error" id="err-WHISPER_DEVICE" role="alert"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="canales" aria-labelledby="h-canales" hidden>
+            <h3 id="h-canales">Canales</h3>
+            <p class="help">Por dónde se habla con Epsilon.</p>
+            <div class="sub" aria-labelledby="s-telegram">
+              <h4 id="s-telegram">Telegram</h4>
+              <p class="help">Opcional. Sirve para usar Epsilon desde el celular. El token lo da @BotFather al crear el bot.</p>
+              <div class="field">
+                <label for="f-TELEGRAM_TOKEN">Token del bot</label>
+                <div class="secret-row">
+                  <input id="f-TELEGRAM_TOKEN" data-key="TELEGRAM_TOKEN" type="password"
+                         autocomplete="new-password" spellcheck="false"
+                         aria-describedby="hint-TELEGRAM_TOKEN err-TELEGRAM_TOKEN">
+                  <button type="button" class="ghost danger" data-clear="TELEGRAM_TOKEN" hidden>Borrar</button>
+                </div>
+                <p class="hint" id="hint-TELEGRAM_TOKEN"></p>
+                <p class="error" id="err-TELEGRAM_TOKEN" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-ALLOWED_USER_ID">Tu ID de usuario</label>
+                <input id="f-ALLOWED_USER_ID" data-key="ALLOWED_USER_ID" type="text"
+                       inputmode="numeric" autocomplete="off" spellcheck="false"
+                       aria-describedby="hint-ALLOWED_USER_ID err-ALLOWED_USER_ID">
+                <p class="hint" id="hint-ALLOWED_USER_ID"></p>
+                <p class="error" id="err-ALLOWED_USER_ID" role="alert"></p>
+              </div>
+              <div class="test-row">
+                <button type="button" class="secondary" data-test="telegram">Probar el token guardado</button>
+                <p class="result" id="result-telegram" role="status"></p>
+              </div>
+            </div>
+            <div class="sub" aria-labelledby="s-web">
+              <h4 id="s-web">Web</h4>
+              <div class="field">
+                <label for="f-WEB_PORT">Puerto</label>
+                <input id="f-WEB_PORT" data-key="WEB_PORT" type="text" placeholder="8765"
+                       inputmode="numeric" autocomplete="off" spellcheck="false"
+                       aria-describedby="hint-WEB_PORT err-WEB_PORT">
+                <p class="hint" id="hint-WEB_PORT"></p>
+                <p class="error" id="err-WEB_PORT" role="alert"></p>
+              </div>
+            </div>
+            <div class="sub" id="plugin-settings" aria-labelledby="s-plugins" hidden>
+              <h4 id="s-plugins">Canales de terceros</h4>
+              <p class="help">Ajustes de los plugins de canal instalados. Prender o apagar cada canal se hace en la página Canales.</p>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="rutinas" aria-labelledby="h-rutinas" hidden>
+            <h3 id="h-rutinas">Rutinas</h3>
             <p class="help">Reglas que Epsilon cumple solo a una hora (bajar el volumen, avisarte algo). Se crean con <code>/rutina</code> y se ven con <code>/rutinas</code>. Apagarlo las frena todas sin borrarlas.</p>
-
             <div class="field switch-field">
               <div class="switch-row">
                 <span class="switch-label" id="label-ROUTINES_ENABLED">Rutinas (Epsilon cumple solo lo que programaste)</span>
@@ -361,104 +426,58 @@
             </div>
           </section>
 
-          <section aria-labelledby="h-voice">
-            <h3 id="h-voice">Voz</h3>
-            <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Apagada, no se descarga ni se usa el modelo. Los dos primeros ajustes también se cambian desde el bot con <code>/menu</code>; confirmar vale solo para Telegram.</p>
-            <p class="result" id="voice-status" role="status"></p>
-
-            <div class="field switch-field">
-              <div class="switch-row">
-                <span class="switch-label" id="label-VOICE_ENABLED">Voz (micrófono de la web y notas de voz de Telegram)</span>
-                <button type="button" class="switch" role="switch" id="f-VOICE_ENABLED" data-key="VOICE_ENABLED"
-                        value="si" aria-checked="true"
-                        aria-labelledby="label-VOICE_ENABLED" aria-describedby="hint-VOICE_ENABLED err-VOICE_ENABLED"><span class="knob"></span></button>
+          <section class="panel" data-panel="automatizaciones" aria-labelledby="h-automatizaciones" hidden>
+            <h3 id="h-automatizaciones">Automatizaciones</h3>
+            <p class="help">Programas de tu PC que Epsilon puede manejar por vos.</p>
+            <div class="sub" aria-labelledby="s-navegador">
+              <h4 id="s-navegador">Navegador</h4>
+              <p class="help">Deja que la IA use tu Chromium (el de todos los días) para abrir páginas, leerlas y tocar botones. Hace falta abrir Chromium con <code>--remote-debugging-port=9222</code>. En los sitios de confianza actúa sin preguntar; en cualquier otro pregunta siempre, y los bloqueados no los ve ni los toca.</p>
+              <div class="field switch-field">
+                <div class="switch-row">
+                  <span class="switch-label" id="label-BROWSER_ENABLED">Navegador (la IA puede usar tu Chromium)</span>
+                  <button type="button" class="switch" role="switch" id="f-BROWSER_ENABLED" data-key="BROWSER_ENABLED"
+                          value="si" aria-checked="true"
+                          aria-labelledby="label-BROWSER_ENABLED" aria-describedby="hint-BROWSER_ENABLED err-BROWSER_ENABLED"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-BROWSER_ENABLED"></p>
+                <p class="error" id="err-BROWSER_ENABLED" role="alert"></p>
               </div>
-              <p class="hint" id="hint-VOICE_ENABLED"></p>
-              <p class="error" id="err-VOICE_ENABLED" role="alert"></p>
-            </div>
-
-            <div class="field switch-field">
-              <div class="switch-row">
-                <span class="switch-label" id="label-VOICE_CONFIRM">Confirmar las notas de voz antes de ejecutarlas (solo Telegram)</span>
-                <button type="button" class="switch" role="switch" id="f-VOICE_CONFIRM" data-key="VOICE_CONFIRM"
-                        value="no" aria-checked="false"
-                        aria-labelledby="label-VOICE_CONFIRM" aria-describedby="hint-VOICE_CONFIRM err-VOICE_CONFIRM"><span class="knob"></span></button>
+              <div class="field switch-field">
+                <div class="switch-row">
+                  <span class="switch-label" id="label-BROWSER_GUARD">Guardia del navegador (preguntar en sitios que no son de confianza)</span>
+                  <button type="button" class="switch" role="switch" id="f-BROWSER_GUARD" data-key="BROWSER_GUARD"
+                          value="si" aria-checked="true"
+                          aria-labelledby="label-BROWSER_GUARD" aria-describedby="hint-BROWSER_GUARD err-BROWSER_GUARD"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-BROWSER_GUARD"></p>
+                <p class="error" id="err-BROWSER_GUARD" role="alert"></p>
               </div>
-              <p class="hint" id="hint-VOICE_CONFIRM"></p>
-              <p class="error" id="err-VOICE_CONFIRM" role="alert"></p>
-            </div>
-
-            <!-- Solo si la voz está apagada y Epsilon bajó el modelo (lo decide config.js). -->
-            <div class="field" id="voice-model" hidden>
-              <p class="help" id="voice-model-text"></p>
-              <div class="test-row">
-                <button type="button" class="ghost danger" id="voice-model-delete">Borrar el modelo de voz</button>
-                <p class="result" id="voice-model-result" role="status"></p>
+              <div class="field">
+                <label for="f-BROWSER_TRUSTED_SITES">Sitios de confianza (separados por coma)</label>
+                <input id="f-BROWSER_TRUSTED_SITES" data-key="BROWSER_TRUSTED_SITES" type="text" placeholder="music.youtube.com,youtube.com"
+                       autocomplete="off" spellcheck="false" maxlength="500"
+                       aria-describedby="hint-BROWSER_TRUSTED_SITES err-BROWSER_TRUSTED_SITES">
+                <p class="hint" id="hint-BROWSER_TRUSTED_SITES"></p>
+                <p class="error" id="err-BROWSER_TRUSTED_SITES" role="alert"></p>
               </div>
-            </div>
-
-            <div class="field">
-              <label for="f-WHISPER_LANGUAGE">Idioma (es, en, pt… o «auto» para detectarlo)</label>
-              <input id="f-WHISPER_LANGUAGE" data-key="WHISPER_LANGUAGE" type="text" placeholder="es"
-                     autocomplete="off" spellcheck="false" maxlength="4"
-                     aria-describedby="hint-WHISPER_LANGUAGE err-WHISPER_LANGUAGE">
-              <p class="hint" id="hint-WHISPER_LANGUAGE"></p>
-              <p class="error" id="err-WHISPER_LANGUAGE" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-ASSISTANT_NAME">Nombre para hablarle por voz (minúsculas y sin tilde; varios, separados por coma)</label>
-              <input id="f-ASSISTANT_NAME" data-key="ASSISTANT_NAME" type="text" placeholder="ia, ai"
-                     autocomplete="off" spellcheck="false" maxlength="200"
-                     aria-describedby="hint-ASSISTANT_NAME err-ASSISTANT_NAME">
-              <p class="hint" id="hint-ASSISTANT_NAME"></p>
-              <p class="error" id="err-ASSISTANT_NAME" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-WHISPER_IDLE_MINUTES">Minutos sin usar antes de soltar el modelo</label>
-              <input id="f-WHISPER_IDLE_MINUTES" data-key="WHISPER_IDLE_MINUTES" type="text" placeholder="10"
-                     inputmode="numeric" autocomplete="off" spellcheck="false"
-                     aria-describedby="hint-WHISPER_IDLE_MINUTES err-WHISPER_IDLE_MINUTES">
-              <p class="hint" id="hint-WHISPER_IDLE_MINUTES"></p>
-              <p class="error" id="err-WHISPER_IDLE_MINUTES" role="alert"></p>
-            </div>
-
-            <div class="field">
-              <label for="f-WHISPER_DEVICE">Dispositivo</label>
-              <select id="f-WHISPER_DEVICE" data-key="WHISPER_DEVICE"
-                      aria-describedby="hint-WHISPER_DEVICE err-WHISPER_DEVICE">
-                <option value="cpu">cpu (procesador)</option>
-                <option value="cuda">cuda (placa NVIDIA; necesita sus librerías)</option>
-              </select>
-              <p class="hint" id="hint-WHISPER_DEVICE"></p>
-              <p class="error" id="err-WHISPER_DEVICE" role="alert"></p>
+              <div class="field">
+                <label for="f-BROWSER_BLOCKED_SITES">Sitios bloqueados (separados por coma)</label>
+                <input id="f-BROWSER_BLOCKED_SITES" data-key="BROWSER_BLOCKED_SITES" type="text" placeholder="accounts.google.com,mail.google.com"
+                       autocomplete="off" spellcheck="false" maxlength="500"
+                       aria-describedby="hint-BROWSER_BLOCKED_SITES err-BROWSER_BLOCKED_SITES">
+                <p class="hint" id="hint-BROWSER_BLOCKED_SITES"></p>
+                <p class="error" id="err-BROWSER_BLOCKED_SITES" role="alert"></p>
+              </div>
             </div>
           </section>
 
-          <section aria-labelledby="h-web">
-            <h3 id="h-web">Web</h3>
-
-            <div class="field">
-              <label for="f-WEB_PORT">Puerto</label>
-              <input id="f-WEB_PORT" data-key="WEB_PORT" type="text" placeholder="8765"
-                     inputmode="numeric" autocomplete="off" spellcheck="false"
-                     aria-describedby="hint-WEB_PORT err-WEB_PORT">
-              <p class="hint" id="hint-WEB_PORT"></p>
-              <p class="error" id="err-WEB_PORT" role="alert"></p>
+            <div class="save-row">
+              <button type="submit" id="save" class="send">Guardar cambios</button>
+              <p class="result" id="save-result" role="status"></p>
             </div>
-          </section>
-
-          <section aria-labelledby="h-data">
-            <h3 id="h-data">Datos</h3>
-            <p class="help">Acá se guardan tus notas y archivos. Se cambia en el <code>.env</code> (DATA_DIR) y hace falta reiniciar.</p>
-            <p><code id="data-dir" class="path"></code></p>
-          </section>
-
-          <div class="save-row">
-            <button type="submit" id="save" class="send">Guardar cambios</button>
-            <p class="result" id="save-result" role="status"></p>
           </div>
+        </div>
+
         </form>
       </main>
     </div>

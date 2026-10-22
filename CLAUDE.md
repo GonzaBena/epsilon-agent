@@ -63,7 +63,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso · Permisos; en el menú de la izquierda, Chat · Biblioteca · Permisos · Rutinas y
   Configuración abajo de todo. `/permisos` edita qué herramientas puede usar la IA (permitir / preguntar / bloquear; `GET/PUT /api/permissions`). `/biblioteca` muestra notas, archivos y tickets en una cuadrícula con buscador y
   filtros, **solo lectura** (no crea conversaciones): al tocar uno se abre ahí mismo y se puede abrir su carpeta
-  en el gestor de archivos (`xdg-open`, solo con pantalla). Sin miniaturas de fotos por ahora: todo lleva ícono. `/config` edita ajustes (el reinicio es siempre manual: la página
+  en el gestor de archivos (`xdg-open`, solo con pantalla). Sin miniaturas de fotos por ahora: todo lleva ícono. `/config` edita ajustes en secciones con un índice a la izquierda (General · Comandos · Modelos · Voz · Canales · Rutinas · Automatizaciones; una a la vez, elegida por el `#` de la dirección, y un solo formulario para guardar todo; Skills y MCP aparece deshabilitada) (el reinicio es siempre manual: la página
   avisa por qué y con qué comando); los de sí/no son interruptores. `/canales` muestra cada canal y
   prende/apaga Telegram de verdad. `/uso` muestra el gasto de IA (períodos, peticiones de hoy,
   pesos si cargaste `USD_ARS`). `shell.js` maneja los paneles que se contraen y los datos del

@@ -278,7 +278,11 @@ async function save(changes, clear) {
         }
       }
       show(saveResult, "No se guardó nada. Revisá los campos marcados.", false);
-      if (first) first.focus();
+      if (first) {
+        revealField(first); // el campo puede estar en otra sección
+        openPanel(location.hash.slice(1));
+        first.focus();
+      }
       return;
     }
     if (!response.ok) {
@@ -374,5 +378,33 @@ for (const button of document.querySelectorAll("[data-test]")) {
   });
 }
 
+// --- Secciones ----------------------------------------------------------------------------------
+// Una sección a la vez: la dirección dice cuál (/config#modelos). Todos los campos siguen dentro
+// del mismo formulario, así «Guardar» guarda lo de todas las secciones aunque no se vean.
+const DEFAULT_PANEL = "general";
+const panels = [...document.querySelectorAll("[data-panel]")];
+const navLinks = [...document.querySelectorAll("[data-nav]")];
+
+function openPanel(name) {
+  const wanted = panels.some((panel) => panel.dataset.panel === name) ? name : DEFAULT_PANEL;
+  for (const panel of panels) panel.hidden = panel.dataset.panel !== wanted;
+  for (const link of navLinks) {
+    if (link.dataset.nav === wanted) link.setAttribute("aria-current", "true");
+    else link.removeAttribute("aria-current");
+  }
+}
+
+// Muestra la sección que contiene un campo (para llevar al foco a un error escondido).
+function revealField(input) {
+  const panel = input.closest("[data-panel]");
+  if (panel && panel.hidden) location.hash = panel.dataset.panel;
+}
+
+window.addEventListener("hashchange", () => {
+  openPanel(location.hash.slice(1));
+  document.querySelector(".stage").scrollTop = 0;
+});
+
 // --- Arranque ---------------------------------------------------------------------------------
+openPanel(location.hash.slice(1));
 load();

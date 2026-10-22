@@ -1541,6 +1541,103 @@ a.ghost {
   max-width: 60ch;
 }
 
+/* --- Configuración por secciones --------------------------------------------
+   Un índice a la izquierda y una sola sección a la vez (config.js muestra la que
+   dice el # de la dirección). Las subsecciones se separan con una línea fina,
+   como antes se separaban los bloques. */
+.settings-page .settings {
+  max-width: 62rem;
+}
+.settings-layout {
+  display: grid;
+  grid-template-columns: 12.5rem minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+.settings-nav {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.settings-nav a,
+.settings-nav .soon {
+  padding: 0.45rem 0.75rem;
+  border-left: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+}
+.settings-nav a:hover {
+  color: var(--text);
+}
+.settings-nav a[aria-current="true"] {
+  border-left-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+.settings-nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.settings-nav .soon {
+  display: flex;
+  flex-direction: column;
+  opacity: 0.6;
+}
+.settings-nav .soon small {
+  font-size: 0.8rem;
+}
+.settings .panel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.settings .panel > h3 {
+  font-size: 1.25rem;
+  margin-bottom: 0.4rem;
+}
+.sub {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+.sub:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+.sub > h4 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.sub[hidden] {
+  display: none;
+}
+@media (max-width: 48rem) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  /* En pantallas angostas el índice pasa arriba, en una fila que se desliza. */
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .settings-nav a,
+  .settings-nav .soon {
+    flex: none;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+  }
+  .settings-nav a[aria-current="true"] {
+    border-bottom-color: var(--accent);
+  }
+}
+
 .field {
   margin-bottom: 1.1rem;
 }
