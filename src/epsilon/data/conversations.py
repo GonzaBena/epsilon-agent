@@ -21,8 +21,8 @@ from epsilon.settings import config
 #   {"type": "title", "text": "Compras", "ts": ...}                          <- se renombró (gana la última)
 #   {"type": "pin", "value": true, "ts": ...}                                <- se ancló / desancló (gana la última)
 #
-# Modo IA (solo web): una conversación que se creó para hablar con la IA lleva, al principio,
-#   {"type": "meta", "channel": "web", "mode": "ai"}
+# Modo IA (web y Telegram): una conversación que se creó para hablar con la IA lleva, al principio,
+#   {"type": "meta", "channel": "web", "mode": "ai"}      (en Telegram: "channel": "telegram")
 #   {"type": "limit", "usd": 0.5}                    <- tope de costo en dólares (gana la última)
 # El modo se decide al crear y no cambia. Sin línea meta (todas las anteriores) es «normal».
 #
@@ -66,6 +66,7 @@ def fixed_title(name) -> str | None:
         return None
     return CHANNEL_TITLES.get(name) or name.capitalize()
 MODES = ("normal", "ai")
+AI_CHANNELS = ("web", "telegram")  # los canales que pueden tener una conversación de modo IA
 LIMIT_MIN, LIMIT_MAX = 0.01, 1000  # tope de costo (US$) que se acepta
 MAX_BYTES = 1024 * 1024  # una conversación de canal más grande se cierra sola y arranca otra
 
@@ -268,8 +269,8 @@ def start(conversation_id: str, mode: str, limit: float | None = None) -> None:
 
 
 def mode(conversation_id: str) -> str:
-    """«ai» o «normal». Solo es «ai» si la primera línea es la meta de una conversación web en modo IA;
-    una que no existe, de Telegram o anterior a esto es «normal»."""
+    """«ai» o «normal». Solo es «ai» si la primera línea es la meta de una conversación de la web o de
+    Telegram en modo IA; una que no existe, de un plugin o anterior a esto es «normal»."""
     path = _path(conversation_id)
     if not path.exists():
         return "normal"
@@ -281,7 +282,7 @@ def mode(conversation_id: str) -> str:
     is_ai = (
         isinstance(first, dict)
         and first.get("type") == "meta"
-        and first.get("channel") == "web"
+        and first.get("channel") in AI_CHANNELS
         and first.get("mode") == "ai"
     )
     return "ai" if is_ai else "normal"
@@ -393,6 +394,31 @@ def close_channel(name: str) -> bool:
         if found:
             _append(found, {"type": "closed"}, keep_mtime=True)
         return bool(found)
+
+
+def start_channel(name: str, mode: str, limit: float | None = None) -> str:
+    """Abre una conversación nueva de un canal (cerrando la que estuviera abierta) con el modo elegido y,
+    si hay, su límite de costo. Devuelve el id. «ai» solo existe en los canales de AI_CHANNELS. Lo anterior
+    queda guardado. Un límite inválido se rechaza antes de cerrar nada."""
+    if name == "web" or not is_channel(name):
+        raise ValueError("Canal no válido")
+    if mode not in MODES:
+        raise ValueError("Modo no válido")
+    if mode == "ai" and name not in AI_CHANNELS:
+        raise ValueError("Ese canal no tiene modo IA")
+    value = None if limit is None else _check_limit(limit)  # antes de escribir nada
+    with _channel_lock:
+        found = _open_one(name)
+        if found:
+            _append(found, {"type": "closed"}, keep_mtime=True)
+        conversation_id = new_id()
+        meta = {"type": "meta", "channel": name}
+        if mode == "ai":
+            meta["mode"] = "ai"
+        _append(conversation_id, meta)
+        if value is not None:
+            _append(conversation_id, {"type": "limit", "usd": value})
+        return conversation_id
 
 
 # --- Leer --------------------------------------------------------------------

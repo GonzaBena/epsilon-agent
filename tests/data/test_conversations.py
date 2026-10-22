@@ -861,12 +861,69 @@ def test_mode_defaults_to_normal_for_old_telegram_and_missing():
     assert conversations.mode(VALID) == "normal"  # no existe
 
 
-def test_mode_ai_needs_web_channel(data_dir):
+def test_mode_ai_only_for_web_and_telegram(data_dir):
     path = folder(data_dir) / f"{VALID}.jsonl"
     path.parent.mkdir(parents=True)
     path.write_text('{"type": "meta", "channel": "telegram", "mode": "ai"}\n', encoding="utf-8")
+    assert conversations.mode(VALID) == "ai"
 
-    assert conversations.mode(VALID) == "normal"
+    path.write_text('{"type": "meta", "channel": "matrix", "mode": "ai"}\n', encoding="utf-8")
+    assert conversations.mode(VALID) == "normal"  # un plugin no puede ser de modo IA
+
+
+def test_start_channel_opens_an_ai_conversation_for_telegram():
+    cid = conversations.start_channel("telegram", "ai", 0.5)
+
+    assert conversations.mode(cid) == "ai"
+    assert conversations.channel(cid) == "telegram"
+    assert conversations.limit(cid) == 0.5
+    assert conversations.current("telegram") == cid
+
+
+def test_start_channel_closes_the_one_that_was_open():
+    old = conversations.for_channel("telegram")
+    conversations.add_message(old, "user", "hola")
+
+    new = conversations.start_channel("telegram", "ai")
+
+    assert new != old
+    assert conversations.current("telegram") == new
+    assert conversations.mode(old) == "normal"  # lo anterior queda guardado, intacto
+    assert conversations.messages(old)[0]["text"] == "hola"
+
+
+def test_start_channel_without_limit_writes_no_limit_line():
+    cid = conversations.start_channel("telegram", "ai")
+
+    assert conversations.limit(cid) is None
+
+
+def test_start_channel_normal_mode_is_a_plain_channel_conversation():
+    cid = conversations.start_channel("telegram", "normal")
+
+    assert conversations.mode(cid) == "normal"
+    assert conversations.current("telegram") == cid
+
+
+def test_start_channel_rejects_web_unknown_names_modes_and_plugin_ai():
+    with pytest.raises(ValueError):
+        conversations.start_channel("web", "ai")
+    with pytest.raises(ValueError):
+        conversations.start_channel("Mal Nombre", "ai")
+    with pytest.raises(ValueError):
+        conversations.start_channel("telegram", "magico")
+    with pytest.raises(ValueError):
+        conversations.start_channel("matrix", "ai")  # solo Telegram y la web
+
+
+def test_start_channel_rejects_a_bad_limit_before_closing_anything():
+    old = conversations.for_channel("telegram")
+    conversations.add_message(old, "user", "hola")
+
+    with pytest.raises(ValueError):
+        conversations.start_channel("telegram", "ai", 0)
+
+    assert conversations.current("telegram") == old
 
 
 def test_limit_last_wins_and_none_without_line():
