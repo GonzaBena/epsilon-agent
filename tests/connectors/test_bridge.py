@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from epsilon.connectors import bridge
+from epsilon.connectors import bridge, store
 
 SCHEMA = {
     "type": "object",
@@ -37,8 +37,30 @@ def test_action_name_collisions_get_suffix():
 
 
 def test_action_name_never_empty():
-    assert bridge.action_name("...", set()) == "___"
-    assert bridge.action_name("", set()) != ""
+    assert bridge.action_name("...", set()) == "accion"
+    assert bridge.action_name("", set()) == "accion"
+    taken = {"accion"}
+    assert bridge.action_name("---", taken) == "accion_2"
+
+
+def test_action_name_never_starts_with_underscore():
+    assert bridge.action_name("-b", set()) == "b"
+    assert bridge.action_name("__x", set()) == "x"
+
+
+def test_ids_stay_unique_with_edge_underscores():
+    assert bridge.tool_id("a", bridge.action_name("-b", set())) != bridge.tool_id("a_b", "c")
+    with pytest.raises(store.StoreError, match="terminar"):
+        store.add("a_", ["x"], {})  # sin esto, «a_»+«b» y «a»+«_b» darían el mismo id
+
+
+def test_real_name_round_trips_for_odd_names():
+    e = entry([{"name": "-b", "description": "", "schema": {}, "hash": "h"},
+               {"name": "---", "description": "", "schema": {}, "hash": "h"},
+               {"name": "...", "description": "", "schema": {}, "hash": "h"}])
+    acts = [t.ai_action for t in bridge.build_tools(e)]
+    assert acts == ["b", "accion", "accion_2"]
+    assert [bridge.real_name(e, a) for a in acts] == ["-b", "---", "..."]
 
 
 def test_tool_id():
@@ -157,6 +179,14 @@ def test_parse_cli_errors():
         with pytest.raises(bridge.ArgsError) as e:
             bridge.parse_cli(SCHEMA, bad)
         assert len(str(e.value)) <= 200
+
+
+def test_parse_args_recursion_error_branch(monkeypatch):
+    def boom(_):
+        raise RecursionError
+    monkeypatch.setattr(bridge.json, "loads", boom)
+    with pytest.raises(bridge.ArgsError, match="objeto JSON"):
+        bridge.parse_args(SCHEMA, '{"habitacion": "a"}')
 
 
 def test_parse_args_deep_nesting_is_a_normal_error():

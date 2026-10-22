@@ -34,7 +34,7 @@ def _short(text: object, limit: int = SHOWN) -> str:
 
 def action_name(tool_name: str, taken: set[str]) -> str:
     """Nombre de acción válido (minúsculas, [a-z0-9_]) y único frente a `taken`."""
-    base = re.sub(r"[^a-z0-9_]", "_", str(tool_name).lower()) or "_"
+    base = re.sub(r"[^a-z0-9_]", "_", str(tool_name).lower()).lstrip("_") or "accion"  # sin «_» al inicio: el id lleva «__» antes
     name, n = base, 2
     while name in taken:
         name = f"{base}_{n}"
