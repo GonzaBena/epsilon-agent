@@ -101,7 +101,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/csv nombre [filtros]` | Consulta un CSV guardado: filtros y, tras una barra vertical, suma, promedio, agrupar… (sin IA). |
 | `/sistema [qué]`       | Estado de la máquina: disco, ram, uptime, servicio (sin IA).              |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
-| `/menu`                | Ajustes del bot con botones (hoy, la voz).                                |
+| `/menu`                | Ajustes del bot con botones: la voz y el modelo de IA (entre tus favoritos). |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |
 | `/chat`                | Telegram: abre una charla con la IA (lo que escribís sin `/` va a la IA; los comandos siguen sin usarla). `/nuevo` la cierra. |
 | `/ayuda`               | Muestra la ayuda.                                                         |
