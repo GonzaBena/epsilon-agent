@@ -551,7 +551,7 @@ def test_the_list_has_three_collapsible_sections_and_a_three_dots_menu():
 
 
 def test_the_static_recents_title_is_gone_from_every_page_because_shell_js_draws_the_sections():
-    for name in ("index.html", "config.html", "canales.html", "uso.html", "biblioteca.html", "permisos.html"):
+    for name in ("index.html", "config.html", "canales.html", "uso.html", "biblioteca.html", "permisos.html", "rutinas.html"):
         assert "h-recents" not in page(name), name
 
 

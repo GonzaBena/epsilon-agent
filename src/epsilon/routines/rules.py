@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import re
 import unicodedata
 
-from epsilon.utils import multimedia
+from epsilon.utils import clock, multimedia
 
 # Las rutinas: reglas «cuándo | qué» que Epsilon cumple solo. Este módulo es PURO: entiende el texto, lo valida y calcula
 # la próxima ejecución; no tiene hilos, reloj propio, archivos ni procesos. Todo lo que ejecuta una rutina sale de una
@@ -162,3 +162,26 @@ def describe_do(do: dict) -> str:
 def describe(rule: dict) -> str:
     """«todos los días a las 23:00 → volumen 20»."""
     return f"{describe_when(rule['when'])} → {describe_do(rule['do'])}"
+
+
+def next_text(rule: dict) -> str:
+    """Cuándo le toca a una rutina: «jue 22/10 23:00», o «vigilando» si es de condición (no tiene hora)."""
+    if "next_run" not in rule:
+        return "vigilando"
+    when = datetime.fromisoformat(rule["next_run"])
+    return f"{clock.DAYS[when.weekday()][:3]} {when:%d/%m %H:%M}"
+
+
+def view(rule: dict) -> dict:
+    """Una regla como la dibuja la página: frase de cuándo, qué hace, si está activa y su próxima vez. KeyError, ValueError
+    o TypeError si la regla está rota (alguien editó routines.json a mano)."""
+    when = describe_when(rule["when"])
+    return {
+        "id": rule["id"],
+        "kind": rule["when"]["kind"],
+        "when": when[:1].upper() + when[1:],
+        "do": {"kind": rule["do"]["kind"], "arg": rule["do"]["arg"]},
+        "active": bool(rule.get("enabled", True)),
+        "next": rule.get("next_run"),  # ISO sin zona (hora de la pared), para que la página cuente cuánto falta
+        "next_text": next_text(rule),
+    }

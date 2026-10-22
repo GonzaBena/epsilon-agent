@@ -19,7 +19,9 @@ from pydantic import BaseModel, Field, model_validator
 from epsilon import core, state, tools
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.data import conversations, library, notes
+from epsilon.routines import rules as routine_rules, store as routine_store
 from epsilon.settings import checks, config
+from epsilon.utils import clock
 from epsilon.voice import transcribe
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
@@ -169,6 +171,31 @@ def permissions_view() -> dict:
             for tool in tools.ai_tools()
         ],
     }
+
+
+class RoutineIn(BaseModel):
+    text: str = Field(max_length=300)  # «cuándo | qué», la misma sintaxis que /rutina
+
+
+class RoutineEnabledIn(BaseModel):
+    enabled: bool
+
+
+def routines_view() -> dict:
+    """Lo que la página de rutinas dibuja: si el interruptor general está prendido y cada regla. Una regla rota
+    (alguien editó routines.json a mano) no tira la página: se omite."""
+    shown = []
+    for rule in routine_store.rules():
+        try:
+            shown.append(routine_rules.view(rule))
+        except (KeyError, ValueError, TypeError):
+            continue
+    return {"enabled": config.enabled("ROUTINES_ENABLED"), "rules": shown}
+
+
+def routines_now():
+    """La hora de la pared, sin zona: así se guardan y comparan las rutinas."""
+    return clock.now().replace(tzinfo=None)
 
 
 class TitleIn(BaseModel):
@@ -465,6 +492,35 @@ def create_app() -> FastAPI:
             raise HTTPException(422, str(e)) from None
         return permissions_view()
 
+    @app.get("/api/routines")
+    def get_routines():
+        return routines_view()
+
+    @app.post("/api/routines")
+    def create_routine(body: RoutineIn):
+        """Crea una rutina con la misma sintaxis y validación que /rutina; si no se entiende, 422 con el motivo."""
+        try:
+            routine_store.add(routine_rules.build(body.text.strip(), routines_now()))
+        except (ValueError, routine_store.StoreError) as e:
+            raise HTTPException(422, str(e)) from None
+        return routines_view()
+
+    @app.put("/api/routines/{rule_id}")
+    def pause_or_resume_routine(rule_id: int, body: RoutineEnabledIn):
+        try:
+            found = routine_store.set_enabled(rule_id, body.enabled, routines_now())
+        except routine_store.StoreError as e:  # una «sola vez» que ya pasó se borra al reanudarla
+            raise HTTPException(422, str(e)) from None
+        if found is None:
+            raise HTTPException(404, "No existe esa rutina")
+        return routines_view()
+
+    @app.delete("/api/routines/{rule_id}")
+    def delete_routine(rule_id: int):
+        if not routine_store.remove(rule_id):
+            raise HTTPException(404, "No existe esa rutina")
+        return routines_view()
+
     @app.put("/api/conversations/{conversation_id}/title")
     def rename_conversation(conversation_id: str, body: TitleIn):
         if not conversations.is_valid_id(conversation_id):
@@ -759,6 +815,10 @@ def create_app() -> FastAPI:
     @app.get("/permisos", include_in_schema=False)
     def permissions_page():
         return FileResponse(STATIC_DIR / "permisos.html")
+
+    @app.get("/rutinas", include_in_schema=False)
+    def routines_page():
+        return FileResponse(STATIC_DIR / "rutinas.html")
 
     @app.get("/biblioteca", include_in_schema=False)
     def library_page():

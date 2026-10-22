@@ -2636,6 +2636,116 @@ a.ghost {
 .perm-dialog h3 {
   margin: 0 0 0.5rem;
 }
+/* Página Rutinas: cada fila se lee como una frase («Todos los días a las 23:00»), con lo que hace y cuándo toca.
+   Reusa el interruptor, el botón secundario y la etiqueta (.perm-kind) del resto de la app. */
+.routines-page {
+  max-width: 56rem;
+}
+.routine-banner {
+  margin: 0 0 1.25rem;
+  padding: 0.8rem 1rem;
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+}
+.routine-banner[hidden] {
+  display: none;
+}
+.routine-banner a {
+  color: inherit;
+  text-decoration: underline;
+}
+.routine-new {
+  margin: 0 0 1.25rem;
+}
+.routine-new label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+.routine-new-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.routine-new-row input {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.routine-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.routine-example {
+  text-align: left;
+}
+.routine-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.routine-list:empty {
+  display: none; /* sin filas no hay una caja vacía */
+}
+.routine-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.1rem;
+}
+.routine-row + .routine-row {
+  border-top: 1px solid var(--line);
+}
+.routine-info {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.routine-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.routine-when {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.routine-what {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere; /* el texto de un aviso puede ser largo */
+}
+.routine-next {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+/* En pausa se dice con palabras («En pausa») y además se apaga el texto. */
+.routine-row.is-paused .routine-when,
+.routine-row.is-paused .routine-what {
+  color: var(--muted);
+}
+.routine-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.routine-empty {
+  margin: 0;
+  color: var(--muted);
+}
+.routine-empty[hidden] {
+  display: none;
+}
+
 /* La paleta de modelos: un cuadro de búsqueda y la lista, como la paleta de comandos de un editor. */
 .palette {
   width: min(32rem, calc(100vw - 2rem));
