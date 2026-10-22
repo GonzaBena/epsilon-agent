@@ -55,6 +55,10 @@ class _Slot:
         self.busy = 0
         self.opening = 0  # aperturas en curso: cuentan para MAX_RUNNING aunque todavía no haya enlace
         self.last_used = 0.0
+        self.hashes: dict[str, str] = {}  # herramienta (nombre MCP) -> hash, tal como las contó ESTE enlace
+        # Apagado mientras se miran sus herramientas y se avisa al gancho: nadie usa el enlace hasta que termine.
+        self.ready = asyncio.Event()
+        self.ready.set()
 
 
 _slots: dict[str, _Slot] = {}
@@ -312,7 +316,9 @@ def _normalize(found: object) -> list[dict]:
 
 
 async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> list[str]:
-    """Pide la lista de herramientas, la guarda y devuelve las nuevas o cambiadas (y avisa al gancho)."""
+    """Pide la lista de herramientas, la guarda (en el store y en `slot.hashes`) y devuelve las nuevas o cambiadas.
+    Se llama con `slot.lock` tomado y `slot.ready` apagado. Si falla, cierra acá mismo (sin `_fail`, que vuelve a
+    tomar el candado). El gancho NO va acá: lo corre `_settle`, ya sin el candado."""
     try:
         found = await asyncio.wait_for(link.list_tools(), CALL_TIMEOUT)
     except ConnectorError as error:
@@ -320,8 +326,12 @@ async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> 
     except BaseException as error:  # noqa: BLE001
         if isinstance(error, asyncio.CancelledError):
             raise
-        raise await _fail(name, slot, link, _clean(
-            f"El conector «{name}» no pudo decir qué herramientas tiene: {_reason(error)}", env, MAX_ERROR)) from None
+        message = _clean(f"El conector «{name}» no pudo decir qué herramientas tiene: {_reason(error)}", env, MAX_ERROR)
+        if slot.link is link:
+            await _close(slot)
+        _mark_error(name, message)
+        log.warning("%s", message)
+        raise ConnectorError(message) from None
     tools = _normalize(found)
     before = {t.get("name"): t.get("hash") for t in (store.get(name) or {}).get("tools", []) if isinstance(t, dict)}
     changed = [t["name"] for t in tools if before.get(t["name"]) != t["hash"]]
@@ -329,12 +339,31 @@ async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> 
         store.update(name, tools=tools, error="")
     except store.StoreError as error:
         raise ConnectorError(str(error)) from None
-    if _changed_hook is not None:
-        try:  # fuera del ciclo: el gancho puede tardar o volver a usar el manager sin congelar a nadie
-            await asyncio.get_running_loop().run_in_executor(None, _changed_hook, name, changed)
-        except Exception:  # noqa: BLE001 - el gancho es de otro módulo: no rompe el arranque
-            log.exception("Falló el aviso de herramientas cambiadas")
+    slot.hashes = {t["name"]: t["hash"] for t in tools}
     return changed
+
+
+async def _settle(name: str, slot: _Slot, changed: list[str]) -> None:
+    """Avisa al gancho (fuera del ciclo y sin el candado: puede volver a usar el manager) y, cuando terminó,
+    deja usar el enlace. Así, al volver una llamada, lo cambiado ya está otra vez en «preguntar»."""
+    try:
+        if _changed_hook is not None:
+            await asyncio.get_running_loop().run_in_executor(None, _changed_hook, name, changed)
+    except Exception:  # noqa: BLE001 - el gancho es de otro módulo: no rompe el arranque
+        log.exception("Falló el aviso de herramientas cambiadas")
+    finally:
+        slot.ready.set()
+
+
+async def _discover_locked(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> list[str]:
+    """`_discover` con `slot.ready` apagado (con `slot.lock` ya tomado). Si falla, lo vuelve a prender; si no,
+    queda apagado hasta `_settle`. El hilo del ciclo es uno solo: entre el candado y apagarlo no se cuela nadie."""
+    slot.ready.clear()
+    try:
+        return await _discover(name, slot, link, env)
+    except BaseException:
+        slot.ready.set()
+        raise
 
 
 async def _reserve(name: str, slot: _Slot) -> None:
@@ -356,57 +385,67 @@ async def _reserve(name: str, slot: _Slot) -> None:
 
 
 async def _ensure(name: str, slot: _Slot, entry: dict) -> tuple[Link, list[str] | None]:
-    """Devuelve el enlace abierto (lo abre si hace falta; si lo abre, descubre las herramientas)."""
+    """Devuelve el enlace abierto. Si hace falta lo abre y mira sus herramientas ANTES de dejar que alguien lo use
+    (`slot.ready`); si lo está mirando otro, espera a que termine. `changed` es None si no lo abrió esta llamada."""
     env = entry.get("env", {})
-    if slot.link is not None and slot.link.alive:
-        return slot.link, None
-    await _reserve(name, slot)
-    try:
-        async with slot.lock:
-            if slot.link is not None and slot.link.alive:  # otra llamada lo abrió mientras esperábamos
+    while True:
+        if slot.link is not None and slot.link.alive:
+            if slot.ready.is_set():
                 return slot.link, None
-            await _close(slot)  # uno que se murió solo
-            try:
-                link = await asyncio.wait_for(_open(list(entry["argv"]), minimal_env(env)), OPEN_TIMEOUT)
-            except BaseException as error:  # noqa: BLE001
-                if isinstance(error, asyncio.CancelledError):
-                    raise
-                reason = "tardó demasiado en arrancar" if isinstance(error, TimeoutError) else _reason(error)
-                message = _clean(f"No pude arrancar el conector «{name}»: {reason}", env, MAX_ERROR)
-                _mark_error(name, message)
-                log.warning("%s", message)
-                raise ConnectorError(message) from None
-            slot.link = link
-            slot.last_used = time.monotonic()
-    finally:
-        slot.opening -= 1
-    return link, await _discover(name, slot, link, env)
+            await slot.ready.wait()  # otro lo está mirando: después, a volver a fijarse (pudo cerrarse)
+            continue
+        await _reserve(name, slot)
+        opened = None
+        try:
+            async with slot.lock:
+                if slot.link is None or not slot.link.alive:  # si no, lo abrió otro mientras esperábamos
+                    await _close(slot)  # uno que se murió solo
+                    try:
+                        link = await asyncio.wait_for(_open(list(entry["argv"]), minimal_env(env)), OPEN_TIMEOUT)
+                    except BaseException as error:  # noqa: BLE001
+                        if isinstance(error, asyncio.CancelledError):
+                            raise
+                        reason = "tardó demasiado en arrancar" if isinstance(error, TimeoutError) else _reason(error)
+                        message = _clean(f"No pude arrancar el conector «{name}»: {reason}", env, MAX_ERROR)
+                        _mark_error(name, message)
+                        log.warning("%s", message)
+                        raise ConnectorError(message) from None
+                    slot.link, slot.hashes = link, {}
+                    opened = (link, await _discover_locked(name, slot, link, env))
+                    slot.last_used = time.monotonic()
+        finally:
+            slot.opening -= 1
+        if opened is not None:
+            await _settle(name, slot, opened[1])
+            return opened
 
 
 CHANGED_TOOL = "La herramienta «{tool}» del conector «{name}» cambió desde la última vez; volvé a autorizarla antes de usarla."
 GONE_TOOL = "El conector «{name}» ya no tiene la herramienta «{tool}»."
 
 
-async def _use(name: str, work, tool: str | None = None):
+def _check_tool(name: str, slot: _Slot, tool: str, expected_hash: str) -> None:
+    """La herramienta que se autorizó (su hash, leído al decidir) tiene que ser la que cuenta el enlace vivo."""
+    current = slot.hashes.get(tool)
+    if current is None:
+        raise ConnectorError(GONE_TOOL.format(name=name, tool=tool[:100]))
+    if current != expected_hash:
+        raise ConnectorError(CHANGED_TOOL.format(name=name, tool=tool[:100]))
+
+
+async def _use(name: str, work, tool: str | None = None, expected_hash: str | None = None):
     """Abre el conector si hace falta y corre `work(link)` con su tope; se encarga de los errores y del uso.
-    Con `tool`: si al abrirlo esa herramienta resultó nueva, cambiada o ya no está, NO se la llama. El permiso
-    y los argumentos se decidieron con lo que había antes; el gancho ya la volvió a «preguntar» (`_discover`
-    lo espera antes de volver), así que el próximo intento pregunta con el esquema nuevo."""
+    Con `expected_hash` (solo la IA lo pasa: es el hash de la herramienta cuando se decidió el permiso), si el
+    enlace vivo ya no la tiene o la cuenta distinta, NO se la llama: el permiso y los argumentos eran para la de
+    antes. El gancho ya la volvió a «preguntar» (`_discover` lo espera), así que el próximo intento pregunta."""
     entry = _entry(name)
     env = entry.get("env", {})
     slot = _slot(name)
     slot.busy += 1  # antes de esperar nada: así un `tick` que llega ahora no lo cierra
     try:
-        link, changed = await _ensure(name, slot, entry)
-        if tool is not None and changed is not None:  # recién abierto: lo descubierto puede no ser lo autorizado
-            listed = {t.get("name") for t in (store.get(name) or {}).get("tools", []) if isinstance(t, dict)}
-            known = {t.get("name") for t in entry.get("tools", []) if isinstance(t, dict)}  # lo de antes de abrirlo
-            if tool not in listed:
-                raise ConnectorError(GONE_TOOL.format(name=name, tool=tool[:100]))
-            # Una que ya se conocía y cambió. Una que nadie conocía todavía (primer arranque) no tenía nada
-            # autorizado: la IA ni la pudo pedir (sale del store), así que no hay permiso viejo que frenar.
-            if tool in changed and tool in known:
-                raise ConnectorError(CHANGED_TOOL.format(name=name, tool=tool[:100]))
+        link, _ = await _ensure(name, slot, entry)
+        if tool is not None and expected_hash is not None:
+            _check_tool(name, slot, tool, expected_hash)
         slot.last_used = time.monotonic()
         try:
             return await asyncio.wait_for(work(link), CALL_TIMEOUT)
@@ -429,10 +468,20 @@ async def _start(name: str) -> list[str]:
     slot = _slot(name)
     slot.busy += 1
     try:
-        link, changed = await _ensure(name, slot, entry)
-        if changed is None:  # ya estaba abierto: igual vuelve a mirar las herramientas
-            changed = await _discover(name, slot, link, entry.get("env", {}))
-        return changed
+        for _ in range(3):
+            link, changed = await _ensure(name, slot, entry)
+            if changed is not None:
+                return changed
+            # Ya estaba abierto: igual vuelve a mirar las herramientas; mientras, nadie lo usa (`slot.ready`).
+            changed = None
+            async with slot.lock:
+                if slot.link is link and link.alive and slot.ready.is_set():
+                    changed = await _discover_locked(name, slot, link, entry.get("env", {}))
+            if changed is not None:
+                await _settle(name, slot, changed)
+                return changed
+            # lo cerraron, o lo estaba mirando otro, mientras esperábamos el candado: de nuevo
+        raise ConnectorError(f"El conector «{name}» se cerró mientras lo arrancaba; probá de nuevo.")
     finally:
         slot.busy -= 1
         slot.last_used = time.monotonic()
@@ -462,10 +511,12 @@ def start(name: str) -> list[str]:
     return _run(_start(name), _wait())
 
 
-def call(name: str, tool: str, args: dict) -> str:
-    """Llama a una herramienta del conector y devuelve su texto (redactado y recortado). ConnectorError si no se pudo."""
+def call(name: str, tool: str, args: dict, expected_hash: str | None = None) -> str:
+    """Llama a una herramienta del conector y devuelve su texto (redactado y recortado). ConnectorError si no se pudo.
+    `expected_hash` lo pasa SOLO la IA (core): el hash de la herramienta que se autorizó; si el conector vivo la cuenta
+    distinta o ya no la tiene, no se la llama. None (la persona con /c o un botón: no hay permiso guardado) = sin control."""
     env = _entry(name).get("env", {})
-    text = _run(_use(name, lambda link: link.call(tool, args), tool), _wait())
+    text = _run(_use(name, lambda link: link.call(tool, args), tool, expected_hash), _wait())
     return _clean(text if isinstance(text, str) else "", env, MAX_RESULT_CHARS)
 
 

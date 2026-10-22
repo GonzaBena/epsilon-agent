@@ -82,9 +82,10 @@ def reset_changed(name: str, changed: list[str]) -> None:
             permissions.reset(bridge.tool_id(name, actions[real]))
 
 
-def resolve(tool_id: str) -> tuple[str, str, dict] | None:
-    """(conector, nombre MCP real, esquema) de un id «mcp_<conector>__<acción>», o None si ya no está (apagado,
-    borrado o sin esa herramienta)."""
+def resolve(tool_id: str) -> tuple[str, str, dict, str] | None:
+    """(conector, nombre MCP real, esquema, hash) de un id «mcp_<conector>__<acción>», o None si ya no está
+    (apagado, borrado o sin esa herramienta). El hash es el de lo guardado ahora ("" si falta): la IA se lo
+    pasa a manager.call para que no corra una herramienta distinta de la que se autorizó."""
     if not tool_id.startswith("mcp_") or "__" not in tool_id[4:]:
         return None
     name, action = tool_id[4:].split("__", 1)
@@ -97,4 +98,5 @@ def resolve(tool_id: str) -> tuple[str, str, dict] | None:
         return None
     item = next(t for t in listed if t["name"] == real)
     schema = item.get("schema") if isinstance(item.get("schema"), dict) else {}
-    return name, real, schema
+    found_hash = item.get("hash") if isinstance(item.get("hash"), str) else ""
+    return name, real, schema, found_hash

@@ -1020,10 +1020,10 @@ def test_cancelling_between_two_tools_skips_the_rest(script):
     seen = []
     real_execute = core._execute
 
-    def execute_then_cancel(tool_id, args, artifacts):
+    def execute_then_cancel(tool_id, args, artifacts, *rest):
         seen.append(tool_id)
         core.cancel(CID)  # se cancela después de la primera herramienta
-        return real_execute(tool_id, args, artifacts)
+        return real_execute(tool_id, args, artifacts, *rest)
 
     core._execute = execute_then_cancel
     try:
