@@ -4,6 +4,7 @@ import threading
 
 from epsilon import tools
 from epsilon.data import notes
+from epsilon.settings import config
 
 # Permisos de las herramientas que la IA puede usar: por herramienta, «allow» (corre sola), «ask»
 # (pide confirmar) o «deny» (la IA ni la ve). Se guardan en DATA_DIR/permissions.json (nombre fijo).
@@ -61,8 +62,15 @@ def save(states: dict[str, str]) -> dict[str, str]:
     return clean
 
 
+def _browser_off(tool: tools.Tool) -> bool:
+    """¿Es una herramienta del navegador y el navegador está apagado (BROWSER_ENABLED=no)?"""
+    return tool.ai_group == "navegador" and not config.enabled("BROWSER_ENABLED")
+
+
 def decide(conversation_id: str, tool_id: str) -> str:
     """«run», «ask» o «block» para esta herramienta en esta conversación."""
+    if any(tools.ai_id(tool) == tool_id and _browser_off(tool) for tool in tools.ai_tools()):
+        return "block"
     state = load().get(tool_id)
     if state == "allow":
         return "run"
@@ -81,4 +89,4 @@ def grant(conversation_id: str, tool_id: str) -> None:
 def offered() -> list[tools.Tool]:
     """Las herramientas que la IA puede ver: todas menos las bloqueadas."""
     states = load()
-    return [tool for tool in tools.ai_tools() if states[tools.ai_id(tool)] != "deny"]
+    return [tool for tool in tools.ai_tools() if states[tools.ai_id(tool)] != "deny" and not _browser_off(tool)]

@@ -6,11 +6,11 @@ def current(client):
     return {t["id"]: t["state"] for t in client.get("/api/permissions").json()["tools"]}
 
 
-def test_get_lists_the_seventeen_tools_with_defaults(client):
+def test_get_lists_every_tool_with_defaults(client):
     data = client.get("/api/permissions").json()
     assert data["states"] == ["allow", "ask", "deny"]
     assert [t["id"] for t in data["tools"]] == [tools.ai_id(t) for t in tools.ai_tools()]
-    assert len(data["tools"]) == 17
+    assert len(data["tools"]) == 22
     for item, tool in zip(data["tools"], tools.ai_tools()):
         assert item["label"] == tool.label
         assert item["kind"] == tool.ai

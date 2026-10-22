@@ -74,7 +74,7 @@ def test_the_readme_lists_every_setting_a_person_can_edit():
             assert f"`{setting.key}`" in readme or setting.key in readme, setting.key
 
 
-def test_ai_tools_are_the_seventeen_of_the_spec():
+def test_ai_tools_are_the_ones_of_the_spec():
     assert [(tools.ai_id(t), t.ai) for t in tools.ai_tools()] == [
         ("nota", "write"),
         ("nota_nombrada", "write"),
@@ -93,6 +93,11 @@ def test_ai_tools_are_the_seventeen_of_the_spec():
         ("enviar", "read"),
         ("csv", "read"),
         ("sistema", "read"),
+        ("nav_pestanas", "read"),
+        ("nav_leer", "read"),
+        ("nav_abrir", "write"),
+        ("nav_clic", "write"),
+        ("nav_escribir", "write"),
     ]
 
 
@@ -102,9 +107,9 @@ def test_ai_ids_are_unique_and_kinds_valid():
     assert all(t.ai in {"read", "write", "delete"} for t in tools.ai_tools())
 
 
-def test_only_resumir_and_sistema_override_their_default():
+def test_only_a_few_tools_override_their_default():
     overrides = {tools.ai_id(t): t.ai_default for t in tools.ai_tools() if t.ai_default}
-    assert overrides == {"resumir": "deny", "sistema": "ask"}
+    assert overrides == {"resumir": "deny", "sistema": "ask", "nav_abrir": "allow", "nav_clic": "allow", "nav_escribir": "allow"}
 
 
 def test_ai_read_tools_never_write_or_use_ai():
@@ -184,3 +189,31 @@ def test_notas_tells_the_model_that_tasks_are_the_todo_note_and_how_to_use_it():
     assert "todo" in group and "- [ ]" in group and "- [x]" in group
     assert "tareas" not in tools.AI_GROUPS
     assert not [t for t in tools.ai_tools() if tools.ai_id(t) in {"todo", "tareas", "hecho"}]
+
+
+# --- el grupo «navegador» ---------------------------------------------------------------------------
+
+NAV_IDS = ["nav_pestanas", "nav_leer", "nav_abrir", "nav_clic", "nav_escribir"]
+
+
+def test_the_navegador_group_has_its_five_actions():
+    ids = {tools.ai_id(t): t for t in tools.ai_tools() if t.ai_group == "navegador"}
+
+    assert sorted(ids) == sorted(NAV_IDS)
+    assert {t.ai_action for t in ids.values()} == {"pestanas", "leer", "abrir", "clic", "escribir"}
+    assert ids["nav_leer"].ai == "read" and ids["nav_pestanas"].ai == "read"
+    assert all(ids[i].ai == "write" and ids[i].ai_default == "allow" for i in ("nav_abrir", "nav_clic", "nav_escribir"))
+
+
+def test_navegador_routes_by_group_dot_action_and_not_by_internal_name():
+    assert tools.ai_id(tools.route("navegador.clic")) == "nav_clic"
+    assert tools.route("nav_clic") is None
+
+
+def test_every_navegador_tool_tells_the_model_what_it_is_for():
+    group = tools.AI_GROUPS["navegador"]
+
+    assert "pestanas" in group and "leer" in group and "datos" in group
+    for tool in tools.ai_tools():
+        if tool.ai_group == "navegador":
+            assert tool.ai_help and tool.ai_arg is not None

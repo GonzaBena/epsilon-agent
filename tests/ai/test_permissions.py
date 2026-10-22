@@ -25,6 +25,7 @@ def test_defaults_follow_the_kind_and_resumir_is_denied():
         "ver": "allow", "buscar": "allow", "archivos": "allow", "memoria": "allow", "fecha": "allow", "dolar": "allow", "clima": "allow", "enviar": "allow", "csv": "allow", "sistema": "ask",
         "nota": "ask", "nota_nombrada": "ask", "nota_editar": "ask", "recordar": "ask", "editar": "ask",
         "olvidar": "deny", "resumir": "deny",
+        "nav_pestanas": "allow", "nav_leer": "allow", "nav_abrir": "allow", "nav_clic": "allow", "nav_escribir": "allow",
     }
 
 
@@ -62,7 +63,7 @@ def test_broken_file_falls_back_to_defaults(content):
 
     assert loaded["ver"] == "allow"
     assert "xyz" not in loaded
-    assert len(loaded) == 17
+    assert len(loaded) == 22
     if "nota" in content:
         assert loaded["nota"] == "allow"
     else:
@@ -105,5 +106,32 @@ def test_invalid_ai_default_falls_back_to_kind(monkeypatch):
 def test_offered_excludes_denied():
     ids = [tools.ai_id(t) for t in permissions.offered()]
 
-    assert len(ids) == 15
+    assert len(ids) == 20
     assert "olvidar" not in ids and "resumir" not in ids
+
+
+# --- el navegador de la IA ----------------------------------------------------------------------
+
+NAV_IDS = ["nav_pestanas", "nav_leer", "nav_abrir", "nav_clic", "nav_escribir"]
+
+
+def test_browser_tools_are_allowed_by_default():
+    states = permissions.load()
+
+    assert all(states[tool_id] == "allow" for tool_id in NAV_IDS)
+
+
+def test_turning_the_browser_off_hides_and_blocks_its_tools(monkeypatch):
+    monkeypatch.setenv("BROWSER_ENABLED", "no")
+
+    offered = {tools.ai_id(t) for t in permissions.offered()}
+
+    assert not offered & set(NAV_IDS)
+    assert permissions.decide("c1", "nav_leer") == "block"
+    assert permissions.decide("c1", "fecha") == "run"  # lo demás no cambia
+
+
+def test_with_the_browser_on_its_tools_are_offered(monkeypatch):
+    monkeypatch.setenv("BROWSER_ENABLED", "si")
+
+    assert set(NAV_IDS) <= {tools.ai_id(t) for t in permissions.offered()}

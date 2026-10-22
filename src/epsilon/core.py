@@ -16,7 +16,7 @@ from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
-from epsilon.utils import clima, clock, dolar, sistema
+from epsilon.utils import clima, clock, dolar, navegador, sistema
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -1010,7 +1010,47 @@ def _bare(args: str) -> str:
     return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv|sistema)\b:?)\s*", "", args)
 
 
+# El navegador de la IA (ver utils/navegador.py). Un NavegadorError vuelve como texto: el modelo lo lee y decide.
+def _nav(action: Callable[[str], str]) -> Callable[[str], Reply]:
+    def run(args: str) -> Reply:
+        try:
+            return Reply(action(args))
+        except navegador.NavegadorError as e:
+            return Reply(str(e))
+
+    return run
+
+
+def _nav_tabs(args: str) -> str:
+    visible, hidden = navegador.tabs()
+    lines = [f"{tab.short}: {tab.title or tab.url} ({tab.host})" for tab in visible]
+    if hidden:
+        lines.append(f"({hidden} pestañas más que no puedo ver)")
+    return "\n".join(lines) or "No hay pestañas abiertas."
+
+
+def _nav_open(args: str) -> str:
+    tab = navegador.open_url(args.strip())
+    return f"Abrí la pestaña {tab.short}: {tab.title or tab.url}"
+
+
+def _nav_click(args: str) -> str:
+    ref, n = navegador.parse_ref(args)
+    return navegador.click(ref, n)
+
+
+def _nav_type(args: str) -> str:
+    head, _, text = args.partition("\n")
+    ref, n = navegador.parse_ref(head)
+    return navegador.type_text(ref, n, text)
+
+
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
+    "nav_pestanas": _nav(_nav_tabs),
+    "nav_leer": _nav(lambda args: navegador.read(args.strip())),
+    "nav_abrir": _nav(_nav_open),
+    "nav_clic": _nav(_nav_click),
+    "nav_escribir": _nav(_nav_type),
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "nota_editar": lambda args: _edit_note(config.redact(args)),
