@@ -129,6 +129,9 @@ class Turn:
     steps: int = 0
     label: str = "Chat"  # cómo se anota el gasto en la página Uso
     task: str = "chat"  # qué modelo la atiende (ver llm.TASKS)
+    tainted: bool = False  # leyó una página de un sitio de afuera: desde ahí toda acción pregunta (ai/browser_guard.py)
+    browser_actions: int = 0  # acciones del navegador en este mensaje (tope en browser_guard)
+    browser_tabs: int = 0  # pestañas nuevas abiertas en este mensaje (tope en browser_guard)
 
 
 def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
