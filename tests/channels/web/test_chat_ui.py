@@ -593,3 +593,19 @@ def test_the_cancelled_text_matches_the_one_the_server_saves():
     match = re.search(r'const CANCELLED_TEXT = "([^"]+)"', js("app.js"))
 
     assert match and match.group(1) == core.CANCELLED
+
+
+# --- El cajón en ventanas medianas ---------------------------------------------------------------
+
+
+def test_tapping_the_conversation_menu_does_not_close_the_drawer():
+    # El menú de tres puntitos vive en el <body>, fuera de .side-left: sin esta excepción, tocar «Borrar» o «Editar»
+    # contaba como «tocar afuera», cerraba el cajón y la confirmación quedaba dibujada en una barra cerrada.
+    source = js("shell.js")
+    handler = source[source.index('document.addEventListener("click"'):]
+    handler = handler[: handler.index("});")]
+
+    assert ".recent-menu" in handler
+    # Y no se decide con closest() sobre el DOM vivo: «Cancelar» y los ítems del menú vuelven a dibujar la lista dentro de su
+    # propio clic, el botón queda desconectado y ya no parece estar en la barra. composedPath() se fija al empezar el evento.
+    assert "composedPath()" in handler and "closest(" not in handler

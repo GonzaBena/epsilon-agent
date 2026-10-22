@@ -107,9 +107,14 @@
   // Tocar afuera del cajón (o Escape) lo cierra; elegir una conversación también.
   document.addEventListener("click", (event) => {
     if (!shell.classList.contains("drawer-open")) return;
-    const target = event.target;
-    if (target.closest("[data-toggle='left']")) return;
-    if (!target.closest(".side-left") || target.closest("a.recent, .nav-item, .new-chat")) setDrawer(false);
+    // Se mira el camino que tenía el clic al empezar (composedPath) y no el DOM de ahora: «Cancelar» y los ítems del
+    // menú vuelven a dibujar la lista dentro de su propio clic, el botón queda desconectado y ya no parecería estar en la barra.
+    const path = event.composedPath().filter((node) => node instanceof Element);
+    const inside = (selector) => path.some((node) => node.matches(selector));
+    if (inside("[data-toggle='left']")) return;
+    // El menú de tres puntitos está en el <body>, fuera del cajón: tocarlo no es «tocar afuera».
+    if (inside(".recent-menu")) return;
+    if (!inside(".side-left") || inside("a.recent, .nav-item, .new-chat")) setDrawer(false);
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && shell.classList.contains("drawer-open")) setDrawer(false);
