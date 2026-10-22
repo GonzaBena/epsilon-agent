@@ -58,6 +58,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `OLLAMA_URL`                                                | Opcional: dirección de Ollama. Por defecto `http://127.0.0.1:11434`. |
 | `BROWSER_ENABLED`                                             | Navegador: deja que la IA use tu Chromium (por defecto, `si`; `no` la deja sin esa herramienta).                         |
 | `BROWSER_GUARD`                                               | Guardia del navegador: con `no` la IA no pregunta por sitios que no son de confianza (siguen los bloqueos y los topes; por defecto, `si`). |
+| `ROUTINES_ENABLED`                                            | Rutinas: con `no` Epsilon no cumple ninguna de las programadas con `/rutina` (siguen guardadas; por defecto, `si`). |
 | `BROWSER_TRUSTED_SITES`                                       | Sitios donde la IA actúa sin preguntar, separados por coma (por defecto, `music.youtube.com,youtube.com`).              |
 | `BROWSER_BLOCKED_SITES`                                       | Sitios que la IA nunca ve ni toca (por defecto, `accounts.google.com,myaccount.google.com,mail.google.com`).           |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
@@ -108,6 +109,8 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/sonando`             | Qué se está reproduciendo en la PC: título, artista y app (sin IA, por MPRIS). |
 | `/musica [acción]` | Controla la música o el video de la PC: `pausa`, `play`, `siguiente`, `anterior`; sin acción alterna play/pausa (sin IA). |
 | `/ventanas [activa]` | Ventanas abiertas de la PC con su espacio y la que tiene el foco; con `activa`, solo esa (sin IA, usa `hyprctl`). |
+| `/rutina [regla]` | Programa algo que Epsilon hace solo, sin IA: `/rutina 23:00 \| volumen 20`, `lun-vie 09:00 \| avisar Standup`, `en 30m \| avisar la pizza`. También `borrar N`, `pausar N`, `seguir N`. Avisa por escritorio y por Telegram. |
+| `/rutinas` | Tus rutinas programadas, numeradas, con su próxima vez. |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones: la voz y el modelo de IA (entre tus favoritos). |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

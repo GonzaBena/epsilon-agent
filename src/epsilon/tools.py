@@ -394,6 +394,22 @@ TOOLS = (
         ai_arg="activa para ver solo la ventana que tiene el foco; vacío para ver todas",
     ),
     Tool(
+        "/rutina",
+        name="rutina",
+        usage="/rutina [regla]",
+        help="programar algo que Epsilon hace solo: «/rutina 23:00 | volumen 20», «/rutina lun-vie 09:00 | avisar Standup», «/rutina en 30m | avisar la pizza»; también borrar, pausar o seguir N (sin IA)",
+        menu="Crear una rutina (algo que Epsilon hace solo)",
+        insert="/rutina ",
+        writes=True,
+    ),
+    Tool(
+        "/rutinas",
+        name="rutinas",
+        help="ver tus rutinas programadas, numeradas, con su próxima vez",
+        menu="Ver mis rutinas programadas",
+        insert="/rutinas",
+    ),
+    Tool(
         "Navegador: ver pestañas",
         ai="read",
         ai_group="navegador",

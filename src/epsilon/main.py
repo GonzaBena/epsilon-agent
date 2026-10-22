@@ -5,6 +5,7 @@ import threading
 
 from epsilon import state
 from epsilon.plugins import channels as plugin_channels
+from epsilon.routines import engine
 from epsilon.settings import config
 
 # Canales disponibles: nombre -> módulo. Para sumar uno incluido se agrega una línea acá; los de
@@ -236,6 +237,11 @@ def main():
     install_log_redaction()
     refresh_plugins()
     enabled = enabled_channels(os.environ)
+
+    try:
+        engine.start()  # las rutinas; si no arrancan, la web y los canales siguen igual
+    except Exception as e:
+        print(f"No pude prender el motor de rutinas: {config.redact(repr(e))}")
 
     for name in CHANNELS:
         if name not in enabled:

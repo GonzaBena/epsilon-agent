@@ -3,7 +3,7 @@ import csv
 from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 import os
 from pathlib import Path
 import re
@@ -16,6 +16,7 @@ from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
+from epsilon.routines import rules as routine_rules, store as routine_store
 from epsilon.utils import clima, clock, dolar, multimedia, navegador, sistema, ventanas
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
@@ -505,6 +506,53 @@ _volume_cmd = _pc(lambda args: multimedia.volume(args))
 _playing_cmd = _pc(lambda args: multimedia.now_playing())
 _music_cmd = _pc(lambda args: multimedia.music(args))
 _windows_cmd = _pc(lambda args: ventanas.report(args))
+
+def _local_now() -> datetime:
+    """La hora de la pared, sin zona: así se guardan y comparan las rutinas."""
+    return clock.now().replace(tzinfo=None)
+
+
+def _when_text(moment: str) -> str:
+    when = datetime.fromisoformat(moment)
+    return f"{clock.DAYS[when.weekday()][:3]} {when:%d/%m %H:%M}"
+
+
+def _routine_cmd(args: str, session: "Session") -> Reply:
+    """/rutina cuándo | qué: crea una rutina. /rutina borrar|pausar|seguir N las gestiona. Sin modelo."""
+    args = args.strip()
+    if not args:
+        return Reply(routine_rules.USAGE + "\nGestionar: /rutina borrar N · /rutina pausar N · /rutina seguir N. Ver todas: /rutinas")
+    head, _, rest = args.partition(" ")
+    verb = head.lower()
+    try:
+        if verb in ("borrar", "pausar", "seguir"):
+            if not rest.strip().isdigit():
+                return Reply(f"Decime el número: /rutina {verb} N (los números salen de /rutinas).")
+            number = int(rest)
+            if verb == "borrar":
+                found = routine_store.remove(number)
+            else:
+                found = routine_store.set_enabled(number, verb == "seguir", _local_now())
+            done = {"borrar": "Borré", "pausar": "Pausé", "seguir": "Reanudé"}[verb]
+            return Reply(f"{done} la rutina {number}." if found else f"No hay una rutina {number}.")
+        rule = routine_store.add(routine_rules.build(args, _local_now()))
+    except (ValueError, routine_store.StoreError) as e:
+        return Reply(str(e))
+    return Reply(f"Listo, rutina {rule['id']}: {routine_rules.describe(rule)}. Próxima: {_when_text(rule['next_run'])}.")
+
+
+def _routines_cmd(args: str, session: "Session") -> Reply:
+    """/rutinas: las rutinas guardadas, numeradas."""
+    found = routine_store.rules()
+    if not found:
+        return Reply("No tenés rutinas. Creá una, por ejemplo: /rutina 23:00 | volumen 20")
+    rows = [
+        f"| {r['id']} | {routine_rules.describe(r).replace('|', '/')} | {_when_text(r['next_run']) if r.get('enabled', True) else 'en pausa'} |"
+        for r in found
+    ]
+    warning = "" if config.enabled("ROUTINES_ENABLED") else "⚠ Las rutinas están apagadas (ajuste ROUTINES_ENABLED): ninguna se cumple.\n\n"
+    return Reply(warning + "**Rutinas**\n\n| N | Qué | Próxima |\n|---|---|---|\n" + "\n".join(rows))
+
 
 SEND_MAX_BYTES = 50 * 1024 * 1024  # lo máximo que Telegram deja subir a un bot
 SEND_MAX_MATCHES = 20
@@ -1027,6 +1075,8 @@ COMMANDS = {
     "sonando": lambda args, s: _playing_cmd(args),
     "musica": lambda args, s: _music_cmd(args),
     "ventanas": lambda args, s: _windows_cmd(args),
+    "rutina": _routine_cmd,
+    "rutinas": _routines_cmd,
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,

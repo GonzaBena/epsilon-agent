@@ -26,6 +26,7 @@ from telegram.ext import (
 from epsilon import core, state, tools
 from epsilon.ai import chat, llm
 from epsilon.data import conversations, library
+from epsilon.routines import notify
 from epsilon.settings import config
 from epsilon.voice import transcribe
 
@@ -514,6 +515,7 @@ def build_app(token: str, allowed_user_id: int) -> Application:
         # así que acá sí podemos decir que está activo.
         state.set("telegram", "running", "Conectado.")
         _runtime["app"], _runtime["loop"] = app, asyncio.get_running_loop()
+        notify.set_sink("telegram", make_notifier(allowed_user_id))  # los avisos de las rutinas también llegan acá
         if _runtime["stop_requested"]:  # lo apagaron mientras conectaba
             app.stop_running()
             return
@@ -552,6 +554,18 @@ def build_app(token: str, allowed_user_id: int) -> Application:
     )
     app.add_handler(CallbackQueryHandler(make_on_button(allowed_user_id)))
     return app
+
+
+def make_notifier(chat_id: int):
+    """Lo que las rutinas usan para avisarte por Telegram: se llama desde otro hilo, así que el mensaje se manda
+    dentro del bucle del bot y se espera el resultado (si falla, `notify.send` lo anota y sigue con los demás medios)."""
+    def deliver(text: str) -> None:
+        loop, app = _runtime["loop"], _runtime["app"]
+        if loop is None or app is None:
+            raise RuntimeError("Telegram no está conectado")
+        asyncio.run_coroutine_threadsafe(app.bot.send_message(chat_id, trim(config.redact(text))), loop).result(timeout=15)
+
+    return deliver
 
 
 # Para poder apagar el bot sin cortar el proceso (la página Canales): el hilo que corre el bot
@@ -600,6 +614,7 @@ def run():
         app.run_polling(**polling_options(in_main))
     finally:
         _runtime.update(app=None, loop=None)  # listo para volver a prenderlo
+        notify.remove_sink("telegram")
 
 
 if __name__ == "__main__":

@@ -1306,3 +1306,36 @@ def test_send_files_does_not_trust_a_path_that_is_not_in_the_library(stored):
 
 def test_enviar_is_in_the_telegram_menu():
     assert "enviar" in {c.command for c in telegram.COMMANDS}
+
+
+# --- Avisos de las rutinas -------------------------------------------------------
+
+
+def test_the_notifier_sends_inside_the_bots_loop_and_waits(monkeypatch):
+    import asyncio
+    import threading
+
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_forever, daemon=True).start()
+    sent = []
+
+    async def send_message(chat_id, text):
+        sent.append((chat_id, text, threading.current_thread()))
+
+    monkeypatch.setitem(telegram._runtime, "loop", loop)
+    monkeypatch.setitem(telegram._runtime, "app", SimpleNamespace(bot=SimpleNamespace(send_message=send_message)))
+    monkeypatch.setenv("GEMINI_API_KEY", "k" * 30)
+
+    telegram.make_notifier(123)("hola " + "k" * 30)
+    loop.call_soon_threadsafe(loop.stop)
+
+    assert sent[0][0] == 123 and sent[0][1].startswith("hola ") and "k" * 30 not in sent[0][1]  # la clave sale redactada
+    assert sent[0][2] is not threading.current_thread()  # corrió en el hilo del bucle del bot
+
+
+def test_the_notifier_fails_clearly_when_the_bot_is_not_connected(monkeypatch):
+    monkeypatch.setitem(telegram._runtime, "loop", None)
+    monkeypatch.setitem(telegram._runtime, "app", None)
+
+    with pytest.raises(RuntimeError, match="no está conectado"):
+        telegram.make_notifier(123)("hola")

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from epsilon import core
 from epsilon.ai import usage
@@ -232,6 +232,54 @@ def test_windows_command_passes_its_argument_and_errors_come_back_as_text(monkey
     assert say("/ventanas activa").text == "tabla" and seen == ["activa"]
     monkeypatch.undo()
     assert "Opciones: activa" in say("/ventanas cerrar todo").text
+
+
+def routines_clock(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+    monkeypatch.setattr(core.clock, "now", lambda: datetime(2026, 10, 22, 14, 30).astimezone())  # jueves
+
+
+def test_rutina_creates_and_rutinas_lists(tmp_path, monkeypatch):
+    routines_clock(tmp_path, monkeypatch)
+
+    assert say("/rutinas").text.startswith("No tenés rutinas")
+    created = say("/rutina 23:00 | volumen 20").text
+    say("/rutina en 30m | avisar sacar la pizza")
+    listing = say("/rutinas").text
+
+    assert created == "Listo, rutina 1: todos los días a las 23:00 → volumen 20. Próxima: jue 22/10 23:00."
+    assert "| 1 | todos los días a las 23:00 → volumen 20 | jue 22/10 23:00 |" in listing
+    assert "| 2 | una vez, 22/10 a las 15:00 → avisar: sacar la pizza | jue 22/10 15:00 |" in listing
+
+
+def test_rutina_manages_by_number(tmp_path, monkeypatch):
+    routines_clock(tmp_path, monkeypatch)
+    say("/rutina 23:00 | volumen 20")
+
+    assert say("/rutina pausar 1").text == "Pausé la rutina 1."
+    assert "en pausa" in say("/rutinas").text
+    assert say("/rutina seguir 1").text == "Reanudé la rutina 1."
+    assert say("/rutina borrar 1").text == "Borré la rutina 1."
+    assert say("/rutina borrar 1").text == "No hay una rutina 1."
+    assert "Decime el número" in say("/rutina borrar").text and "Decime el número" in say("/rutina borrar todas").text
+
+
+def test_rutina_explains_itself_and_refuses_what_it_does_not_understand(tmp_path, monkeypatch):
+    routines_clock(tmp_path, monkeypatch)
+
+    assert "cuándo | qué" in say("/rutina").text
+    for bad in ("23:00 | apagar", "23:00 | volumen 40; reboot", "mañana | volumen 20", "volumen 20", "23:00 | sistema ram"):
+        reply = say("/rutina " + bad).text
+        assert reply and "Listo" not in reply, bad
+    assert say("/rutinas").text.startswith("No tenés rutinas")
+
+
+def test_rutinas_warns_when_the_switch_is_off(tmp_path, monkeypatch):
+    routines_clock(tmp_path, monkeypatch)
+    say("/rutina 23:00 | volumen 20")
+    monkeypatch.setenv("ROUTINES_ENABLED", "no")
+
+    assert say("/rutinas").text.startswith("⚠ Las rutinas están apagadas")
 
 
 def test_sistema_refuses_anything_else_without_running_it():

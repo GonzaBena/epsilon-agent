@@ -70,6 +70,25 @@ def test_web_comes_first_and_is_always_enabled():
 # --- Arranque: la web manda, el resto son hilos opcionales -------------------
 
 
+def test_main_turns_on_the_routines_engine_and_survives_if_it_fails(monkeypatch):
+    web_channel, started = FakeChannel(), []
+    use_channels(monkeypatch, web=web_channel)
+    monkeypatch.setattr(main.engine, "start", lambda: started.append(True))
+
+    main.main()
+    assert started == [True] and web_channel.threads
+
+    def broken():
+        raise RuntimeError("sin hilos")
+
+    monkeypatch.setattr(main.engine, "start", broken)
+    web_two = FakeChannel()
+    use_channels(monkeypatch, web=web_two)
+
+    main.main()  # la web arranca igual
+    assert web_two.threads
+
+
 def test_first_channel_runs_in_the_main_thread(monkeypatch):
     web_channel = FakeChannel()
     use_channels(monkeypatch, web=web_channel)

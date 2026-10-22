@@ -370,6 +370,14 @@ SETTINGS = (
         default="accounts.google.com,myaccount.google.com,mail.google.com",
         validate=_sites,
     ),
+    # Las rutinas (routines/engine.py lo lee en cada pasada): con «no» el motor sigue vivo pero no cumple ninguna.
+    Setting(
+        "ROUTINES_ENABLED",
+        "Rutinas (Epsilon cumple solo lo que programaste)",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )

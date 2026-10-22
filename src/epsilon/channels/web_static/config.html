@@ -341,6 +341,22 @@
             </div>
           </section>
 
+          <section aria-labelledby="h-routines">
+            <h3 id="h-routines">Rutinas</h3>
+            <p class="help">Reglas que Epsilon cumple solo a una hora (bajar el volumen, avisarte algo). Se crean con <code>/rutina</code> y se ven con <code>/rutinas</code>. Apagarlo las frena todas sin borrarlas.</p>
+
+            <div class="field switch-field">
+              <div class="switch-row">
+                <span class="switch-label" id="label-ROUTINES_ENABLED">Rutinas (Epsilon cumple solo lo que programaste)</span>
+                <button type="button" class="switch" role="switch" id="f-ROUTINES_ENABLED" data-key="ROUTINES_ENABLED"
+                        value="si" aria-checked="true"
+                        aria-labelledby="label-ROUTINES_ENABLED" aria-describedby="hint-ROUTINES_ENABLED err-ROUTINES_ENABLED"><span class="knob"></span></button>
+              </div>
+              <p class="hint" id="hint-ROUTINES_ENABLED"></p>
+              <p class="error" id="err-ROUTINES_ENABLED" role="alert"></p>
+            </div>
+          </section>
+
           <section aria-labelledby="h-voice">
             <h3 id="h-voice">Voz</h3>
             <p class="help">Dictar con el micrófono de la web y mandar notas de voz por Telegram. Se transcribe en tu PC, sin gastar tokens. Se instala con <code>uv sync --extra voz</code>. Apagada, no se descarga ni se usa el modelo. Los dos primeros ajustes también se cambian desde el bot con <code>/menu</code>; confirmar vale solo para Telegram.</p>

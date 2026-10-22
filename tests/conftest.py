@@ -102,6 +102,19 @@ def block_real_hyprctl(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_routines(monkeypatch):
+    """Ningún test avisa de verdad (notify-send) ni deja el motor de rutinas corriendo con un hilo."""
+    from epsilon.routines import engine, notify
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó mandar un aviso de verdad (notify-send)")
+
+    monkeypatch.setattr(notify, "_notify_send", forbidden)
+    monkeypatch.setattr(engine, "start", lambda: None)
+    monkeypatch.setattr(notify, "_sinks", {})
+
+
+@pytest.fixture(autouse=True)
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()
