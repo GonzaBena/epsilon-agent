@@ -41,8 +41,10 @@ TOOLS = (
         insert="+ ",
         writes=True,
         ai="write",
+        ai_group="notas",
+        ai_action="guardar",
         ai_name="nota",
-        ai_help="guardar una nota rápida en inbox, SIN nombre. Si el usuario dice cómo se llama la nota, usá nota_nombrada",
+        ai_help="guardar una nota rápida en inbox, SIN nombre. Si el usuario dice cómo se llama la nota, usá la acción guardar_con_nombre",
         ai_arg="solo el texto de la nota, sin prefijos",
     ),
     Tool(
@@ -52,6 +54,8 @@ TOOLS = (
         ai_arg="primera línea: el nombre de la nota; desde la segunda línea: el texto",
         writes=True,
         ai="write",
+        ai_group="notas",
+        ai_action="guardar_con_nombre",
         ai_name="nota_nombrada",
     ),
     Tool(
@@ -70,6 +74,8 @@ TOOLS = (
         insert="/ver ",
         links=("/ver",),
         ai="read",
+        ai_group="notas",
+        ai_action="leer",
         ai_arg="nombre de la nota; vacío para inbox",
     ),
     Tool(
@@ -81,6 +87,8 @@ TOOLS = (
         menu="Buscar texto en todas las notas",
         insert="/buscar ",
         ai="read",
+        ai_group="notas",
+        ai_action="buscar",
         ai_arg="la palabra a buscar",
     ),
     Tool(
@@ -92,6 +100,8 @@ TOOLS = (
         insert="/archivos ",
         links=("/archivos", "/archivos tickets"),
         ai="read",
+        ai_group="archivos",
+        ai_action="listar",
         ai_arg="texto para filtrar por nombre; puede ir vacío",
     ),
     Tool(
@@ -105,6 +115,8 @@ TOOLS = (
         uses_ai=True,
         writes=True,
         ai="write",
+        ai_group="archivos",
+        ai_action="resumir",
         ai_arg="nombre de la nota o archivo",
         ai_default="deny",
     ),
@@ -149,6 +161,8 @@ TOOLS = (
         insert="/recordar ",
         writes=True,
         ai="write",
+        ai_group="memoria",
+        ai_action="agregar",
         ai_arg="solo el dato a recordar, sin prefijos",
     ),
     Tool(
@@ -158,6 +172,8 @@ TOOLS = (
         menu="Ver lo que anotaste en la memoria",
         insert="/memoria",
         ai="read",
+        ai_group="memoria",
+        ai_action="ver",
         ai_arg="no lleva argumento: mandalo vacío",
     ),
     Tool(
@@ -170,6 +186,8 @@ TOOLS = (
         insert="/olvidar ",
         writes=True,
         ai="delete",
+        ai_group="memoria",
+        ai_action="borrar",
         ai_arg="el número de la línea",
     ),
     Tool(
@@ -182,6 +200,8 @@ TOOLS = (
         insert="/editar ",
         writes=True,
         ai="write",
+        ai_group="memoria",
+        ai_action="editar",
         ai_arg="el número de la línea y después el texto nuevo, p. ej. «3 mi gato se llama Tom»",
     ),
     Tool(
@@ -193,6 +213,8 @@ TOOLS = (
         aliases=("hora",),
         links=("/fecha",),
         ai="read",
+        ai_group="consultar",
+        ai_action="fecha",
         ai_arg="no lleva argumento: mandalo vacío",
     ),
     Tool(
@@ -203,6 +225,8 @@ TOOLS = (
         insert="/dolar",
         links=("/dolar",),
         ai="read",
+        ai_group="consultar",
+        ai_action="dolar",
         ai_arg="no lleva argumento: mandalo vacío",
     ),
     Tool(
@@ -214,6 +238,8 @@ TOOLS = (
         insert="/clima ",
         links=("/clima",),
         ai="read",
+        ai_group="consultar",
+        ai_action="clima",
         ai_arg="el nombre de la ciudad, sin prefijos; vacío para la ciudad configurada",
     ),
     Tool(
@@ -225,6 +251,8 @@ TOOLS = (
         insert="/tareas",
         links=("/tareas",),
         ai="read",
+        ai_group="tareas",
+        ai_action="ver",
         ai_arg="vacío para las pendientes, o «todas» para incluir las hechas",
     ),
     Tool(
@@ -237,6 +265,8 @@ TOOLS = (
         insert="/todo ",
         writes=True,
         ai="write",
+        ai_group="tareas",
+        ai_action="agregar",
         ai_arg="solo el texto de la tarea, sin prefijos",
     ),
     Tool(
@@ -249,6 +279,8 @@ TOOLS = (
         insert="/hecho ",
         writes=True,
         ai="write",
+        ai_group="tareas",
+        ai_action="completar",
         ai_arg="el número de la tarea pendiente, como aparece en tareas",
     ),
     Tool(
@@ -259,6 +291,8 @@ TOOLS = (
         menu="Mandarme una nota o archivo guardado",
         insert="/enviar ",
         ai="read",
+        ai_group="archivos",
+        ai_action="enviar",
         ai_arg="el nombre del archivo o parte de él, como aparece en archivos (puede incluir la carpeta)",
     ),
     Tool(
@@ -270,6 +304,8 @@ TOOLS = (
         menu="Consultar un CSV guardado (filtrar, sumar…)",
         insert="/csv ",
         ai="read",
+        ai_group="archivos",
+        ai_action="csv",
         ai_help=(
             "consultar un CSV guardado SIN leerlo entero: filtra filas y calcula. Primero llamala solo con el nombre "
             "para ver las columnas. Ejemplos: «gastos fecha>=2026-10-01 comercio~coto | suma total», "
@@ -289,6 +325,8 @@ TOOLS = (
         menu="Estado de la máquina (disco, memoria…)",
         insert="/sistema",
         ai="read",
+        ai_group="consultar",
+        ai_action="sistema",
         ai_default="ask",
         ai_arg="disco, ram, uptime o servicio; vacío para ver todo",
     ),
@@ -332,7 +370,13 @@ TOOLS = (
 # Los grupos de herramientas de IA: el modelo ve UNA herramienta por grupo, con un parámetro `accion` que elige
 # cuál de las suyas usar (menos declaraciones, y entre las que quedan se elige mejor). Por dentro nada cambia: cada
 # acción es una herramienta de TOOLS, con su permiso, y `route` traduce la llamada a ella. Grupo -> para qué sirve.
-AI_GROUPS: dict[str, str] = {}
+AI_GROUPS: dict[str, str] = {
+    "notas": "Tus notas guardadas: guardar, leer y buscar",
+    "archivos": "Lo guardado en la biblioteca (notas, tickets, CSV): listar, mandar, resumir y consultar CSV",
+    "memoria": "Lo que Epsilon recuerda de la persona (datos y preferencias)",
+    "tareas": "La lista de tareas pendientes",
+    "consultar": "Datos de afuera, sin guardar nada: fecha y hora, dólar, clima y estado de la máquina",
+}
 
 
 def help_lines() -> list[str]:

@@ -75,7 +75,7 @@ def allow(tool_id):
 
 def test_read_tool_runs_alone_and_answer_is_ai(script):
     notes.save_note("compras", "- un switch nuevo")
-    script.steps = [step(calls=[("buscar", "switch")]), step("Lo encontré")]
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
 
     reply = say("¿qué anoté del switch?")
 
@@ -88,7 +88,7 @@ def test_read_tool_runs_alone_and_answer_is_ai(script):
 def test_tool_result_is_wrapped_redacted_and_truncated(script, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     (notes.DATA_DIR / "inbox.md").write_text(f"mi clave {KEY}\n" + "x" * 10_000, encoding="utf-8")
-    script.steps = [step(calls=[("ver", "inbox")]), step("ok")]
+    script.steps = [step(calls=[("notas.leer", "inbox")]), step("ok")]
 
     say("mostrame inbox")
 
@@ -103,7 +103,7 @@ def test_tool_exception_becomes_a_short_result(script, monkeypatch):
         raise RuntimeError("se rompió")
 
     monkeypatch.setitem(core.AI_RUNNERS, "buscar", boom)
-    script.steps = [step(calls=[("buscar", "x")]), step("ok")]
+    script.steps = [step(calls=[("notas.buscar", "x")]), step("ok")]
 
     assert say("buscá x").text == "ok"
     assert results(script.seen[1][0]) == ["No pude ejecutar buscar."]
@@ -128,7 +128,7 @@ def test_runners_cover_every_ai_tool():
 
 
 def test_write_tool_asks_with_three_buttons_and_runs_nothing(script):
-    script.steps = [step(calls=[("nota", "comprar pan")])]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")])]
 
     reply = say("anotá que tengo que comprar pan")
 
@@ -145,7 +145,7 @@ def test_write_tool_asks_with_three_buttons_and_runs_nothing(script):
 def test_question_redacts_and_trims_the_argument_and_says_how_much_is_left(script, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     arg = f"{KEY} " + "y" * 1000  # redactada queda «*** » + 1000 = 1004 caracteres
-    script.steps = [step(calls=[("nota", arg)])]
+    script.steps = [step(calls=[("notas.guardar", arg)])]
 
     reply = say("anotá")
 
@@ -166,7 +166,7 @@ def test_question_redacts_and_trims_the_argument_and_says_how_much_is_left(scrip
     ],
 )
 def test_question_shows_the_argument_inside_a_fence_it_cannot_close(script, arg):
-    script.steps = [step(calls=[("nota", arg)])]
+    script.steps = [step(calls=[("notas.guardar", arg)])]
 
     reply = say("anotá")
 
@@ -180,7 +180,7 @@ def test_question_shows_the_argument_inside_a_fence_it_cannot_close(script, arg)
 
 
 def test_yes_runs_the_tool_and_resumes_the_turn(script):
-    script.steps = [step(calls=[("nota", "comprar pan")]), step("Anotado")]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
     say("anotá pan")
 
     reply = press("perm:si")
@@ -192,7 +192,7 @@ def test_yes_runs_the_tool_and_resumes_the_turn(script):
 
 
 def test_yes_once_asks_again_next_time(script):
-    script.steps = [step(calls=[("nota", "uno")]), step("ok"), step(calls=[("nota", "dos")])]
+    script.steps = [step(calls=[("notas.guardar", "uno")]), step("ok"), step(calls=[("notas.guardar", "dos")])]
     say("anotá uno")
     press("perm:si")
 
@@ -200,7 +200,7 @@ def test_yes_once_asks_again_next_time(script):
 
 
 def test_artifacts_of_tools_reach_the_final_reply(script):
-    script.steps = [step(calls=[("nota", "comprar pan")]), step("Anotado")]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
     say("anotá pan")
 
     reply = press("perm:si")
@@ -210,7 +210,7 @@ def test_artifacts_of_tools_reach_the_final_reply(script):
 
 def test_remaining_calls_run_after_yes(script):
     notes.save_note("compras", "- un switch")
-    script.steps = [step(calls=[("nota", "pan"), ("buscar", "switch")]), step("listo")]
+    script.steps = [step(calls=[("notas.guardar", "pan"), ("notas.buscar", "switch")]), step("listo")]
     say("anotá y buscá")
 
     reply = press("perm:si")
@@ -221,28 +221,28 @@ def test_remaining_calls_run_after_yes(script):
 
 
 def test_yes_for_the_conversation_stops_asking_in_that_conversation_only(script):
-    script.steps = [step(calls=[("nota", "uno")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar", "uno")]), step("ok")]
     say("anotá uno")
     press("perm:siempre")
 
-    script.steps = [step(calls=[("nota", "dos")]), step("ok otra vez")]
+    script.steps = [step(calls=[("notas.guardar", "dos")]), step("ok otra vez")]
     assert say("anotá dos").text == "ok otra vez"
     assert "dos" in inbox()
 
-    script.steps = [step(calls=[("nota", "tres")])]
+    script.steps = [step(calls=[("notas.guardar", "tres")])]
     assert say("anotá tres", cid=OTHER).actions
     assert "tres" not in inbox()
 
 
 def test_yes_for_the_conversation_never_overrides_deny(script):
-    script.steps = [step(calls=[("nota", "uno")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar", "uno")]), step("ok")]
     say("anotá uno")
     press("perm:siempre")
     states = permissions.load()
     states["nota"] = "deny"
     permissions.save(states)
 
-    script.steps = [step(calls=[("nota", "dos")]), step("no pude")]
+    script.steps = [step(calls=[("notas.guardar", "dos")]), step("no pude")]
     say("anotá dos")
 
     assert "dos" not in inbox()
@@ -250,7 +250,7 @@ def test_yes_for_the_conversation_never_overrides_deny(script):
 
 
 def test_yes_after_the_tool_was_denied_while_waiting_does_not_run_it(script):
-    script.steps = [step(calls=[("nota", "pan")]), step("no pude")]
+    script.steps = [step(calls=[("notas.guardar", "pan")]), step("no pude")]
     say("anotá pan")
     states = permissions.load()
     states["nota"] = "deny"
@@ -263,7 +263,7 @@ def test_yes_after_the_tool_was_denied_while_waiting_does_not_run_it(script):
 
 
 def test_no_cuts_the_turn_and_never_calls_the_model_again(script):
-    script.steps = [step(calls=[("nota", "comprar pan")]), step("nunca")]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("nunca")]
     say("anotá pan")
 
     reply = press("perm:no")
@@ -278,7 +278,7 @@ def test_stale_or_double_press_does_nothing(script):
     stale = "Esa pregunta ya no está vigente. Escribí de nuevo lo que querías."
     assert press("perm:si").text == stale
 
-    script.steps = [step(calls=[("nota", "pan")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar", "pan")]), step("ok")]
     say("anotá pan")
     press("perm:si")
 
@@ -288,7 +288,7 @@ def test_stale_or_double_press_does_nothing(script):
 
 
 def test_pending_belongs_to_its_session(script):
-    script.steps = [step(calls=[("nota", "pan")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar", "pan")]), step("ok")]
     say("anotá pan")
 
     assert "ya no está vigente" in press("perm:si", cid=OTHER).text
@@ -297,7 +297,7 @@ def test_pending_belongs_to_its_session(script):
 
 
 def test_a_new_message_drops_the_pending_question(script):
-    script.steps = [step(calls=[("nota", "pan")]), step("otra cosa")]
+    script.steps = [step(calls=[("notas.guardar", "pan")]), step("otra cosa")]
     say("anotá pan")
     say("mejor no, contame algo")
 
@@ -307,7 +307,7 @@ def test_a_new_message_drops_the_pending_question(script):
 
 def test_question_carries_what_earlier_tools_saved_and_the_end_does_not_repeat_it(script):
     allow("nota")
-    script.steps = [step(calls=[("nota", "pan"), ("recordar", "me gusta el pan")]), step("listo")]
+    script.steps = [step(calls=[("notas.guardar", "pan"), ("memoria.agregar", "me gusta el pan")]), step("listo")]
 
     question = say("anotá y recordá")
 
@@ -320,7 +320,7 @@ def test_question_carries_what_earlier_tools_saved_and_the_end_does_not_repeat_i
 def test_ai_note_argument_is_redacted(script, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     allow("nota")
-    script.steps = [step(calls=[("nota", f"mi clave {KEY}")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar", f"mi clave {KEY}")]), step("ok")]
 
     say("anotá mi clave")
 
@@ -328,7 +328,7 @@ def test_ai_note_argument_is_redacted(script, monkeypatch):
 
 
 def test_every_permission_answer_takes_the_conversation_lock(script, monkeypatch):
-    script.steps = [step(calls=[("nota", "pan")])]
+    script.steps = [step(calls=[("notas.guardar", "pan")])]
     say("anotá pan")
     taken = []
     real = core._ai_lock
@@ -345,7 +345,7 @@ def test_every_permission_answer_takes_the_conversation_lock(script, monkeypatch
 
 
 def test_no_is_answered_even_when_the_conversation_reached_its_limit(script):
-    script.steps = [step(calls=[("nota", "pan")])]
+    script.steps = [step(calls=[("notas.guardar", "pan")])]
     say("anotá pan")
     conversations.set_limit(CID, 0.01)
     usage_tokens = 1_000_000
@@ -364,14 +364,14 @@ def test_uses_ai_for_perm_yes_but_not_no():
 # --- Bloquear ----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["olvidar", "borrar_todo"])
+@pytest.mark.parametrize("name", ["memoria.borrar", "olvidar", "borrar_todo"])
 def test_denied_tool_is_not_offered_and_a_forced_call_is_not_run(script, name):
     memory.remember("vivo en Rosario")
     script.steps = [step(calls=[(name, "1")]), step("no pude")]
 
     reply = say("olvidá lo de Rosario")
 
-    assert "olvidar" not in script.seen[0][1] and "ver" in script.seen[0][1]
+    assert "olvidar" not in script.seen[0][1] and "memoria" in script.seen[0][1]  # el grupo se ofrece, sin la acción borrar
     assert len(memory.lines()) == 1
     assert results(script.seen[1][0]) == ["Herramienta no disponible."]
     assert reply.text == "no pude" and not reply.actions
@@ -381,7 +381,7 @@ def test_forget_runs_directly_when_allowed(script):
     allow("olvidar")
     memory.remember("uno")
     memory.remember("dos")
-    script.steps = [step(calls=[("olvidar", "1")]), step("Olvidé el uno")]
+    script.steps = [step(calls=[("memoria.borrar", "1")]), step("Olvidé el uno")]
 
     reply = say("olvidá el uno")
 
@@ -392,7 +392,7 @@ def test_forget_runs_directly_when_allowed(script):
 def test_forget_with_a_bad_number_does_nothing(script):
     allow("olvidar")
     memory.remember("uno")
-    script.steps = [step(calls=[("olvidar", "abc")]), step("ok")]
+    script.steps = [step(calls=[("memoria.borrar", "abc")]), step("ok")]
 
     say("olvidá")
 
@@ -404,12 +404,12 @@ def test_tool_cannot_read_or_write_permissions_file(script):
     allow("nota")
     before = (notes.DATA_DIR / permissions.FILE).read_text(encoding="utf-8")
     calls = [
-        ("ver", "permissions.json"),
-        ("ver", "permissions"),
-        ("ver", "../permissions.json"),
-        ("archivos", "permissions"),
-        ("buscar", "allow"),
-        ("nota", "texto"),
+        ("notas.leer", "permissions.json"),
+        ("notas.leer", "permissions"),
+        ("notas.leer", "../permissions.json"),
+        ("archivos.listar", "permissions"),
+        ("notas.buscar", "allow"),
+        ("notas.guardar", "texto"),
     ]
     script.steps = [step(calls=calls), step("ok")]
 
@@ -427,7 +427,7 @@ def test_tool_cannot_read_or_write_permissions_file(script):
 def test_limit_reached_mid_turn_stops_with_the_reason(script):
     conversations.set_limit(CID, 1.0)
     script.tokens = 1_000_000  # cada llamada cuesta US$ 1: la primera ya llega al límite
-    script.steps = [step(calls=[("buscar", "x")]), step("nunca")]
+    script.steps = [step(calls=[("notas.buscar", "x")]), step("nunca")]
 
     reply = say("buscá x")
 
@@ -446,7 +446,7 @@ def test_a_tool_that_uses_ai_does_not_run_once_the_limit_is_reached(script, monk
     )
     conversations.set_limit(CID, 1.0)
     script.tokens = 1_000_000  # la primera llamada ya llega al límite
-    script.steps = [step(calls=[("nota", "pan"), ("resumir", "viejo")]), step("nunca")]
+    script.steps = [step(calls=[("notas.guardar", "pan"), ("archivos.resumir", "viejo")]), step("nunca")]
 
     reply = say("anotá y resumí")
 
@@ -459,7 +459,7 @@ def test_a_tool_that_uses_ai_does_not_run_once_the_limit_is_reached(script, monk
 def test_too_many_calls_in_one_step_are_not_run(script, monkeypatch):
     ran = []
     monkeypatch.setitem(core.AI_RUNNERS, "buscar", lambda args: ran.append(args) or core.Reply("nada"))
-    script.steps = [step(calls=[("buscar", str(n)) for n in range(10)]), step("ok")]
+    script.steps = [step(calls=[("notas.buscar", str(n)) for n in range(10)]), step("ok")]
 
     say("buscá mucho")
 
@@ -471,7 +471,7 @@ def test_too_many_calls_in_one_step_are_not_run(script, monkeypatch):
 
 def test_calls_after_the_step_cap_are_ignored(script, monkeypatch):
     monkeypatch.setattr(core.chat, "MAX_TOOL_STEPS", 1)
-    script.steps = [step(calls=[("buscar", "x")]), step("cierro", calls=[("buscar", "y")])]
+    script.steps = [step(calls=[("notas.buscar", "x")]), step("cierro", calls=[("notas.buscar", "y")])]
 
     reply = say("buscá")
 
@@ -504,7 +504,7 @@ def test_ia_sends_only_the_question_and_offers_the_tools(script):
     assert reply.text == "1260" and reply.ai
     (history, offered), = script.seen
     assert len(history) == 1 and history[0].role == "user"  # sin charla anterior
-    assert "buscar" in offered and "olvidar" not in offered  # las del chat, con sus permisos
+    assert "notas" in offered and "buscar" not in offered  # los grupos del chat, con sus permisos
 
 
 def test_ia_rejects_a_long_question_without_calling_the_model(script):
@@ -515,7 +515,7 @@ def test_ia_rejects_a_long_question_without_calling_the_model(script):
 
 def test_ia_runs_a_read_tool_by_itself(script):
     notes.save_note("compras", "- un switch nuevo")
-    script.steps = [step(calls=[("buscar", "switch")]), step("Lo encontré")]
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
 
     reply = ia("/ia ¿qué anoté del switch?")
 
@@ -531,7 +531,7 @@ def test_ia_hides_a_model_failure(script, monkeypatch):
 
 
 def test_ia_asks_before_writing_and_runs_it_after_yes(script):
-    script.steps = [step(calls=[("nota", "comprar pan")]), step("Anotado")]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
 
     question = ia("/ia anotá que tengo que comprar pan")
 
@@ -542,7 +542,7 @@ def test_ia_asks_before_writing_and_runs_it_after_yes(script):
 
 
 def test_ia_no_to_the_question_runs_nothing(script):
-    script.steps = [step(calls=[("nota", "comprar pan")])]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")])]
     ia("/ia anotá comprar pan")
 
     assert tap("perm:no").text.startswith("Dijiste que no a:")
@@ -550,7 +550,7 @@ def test_ia_no_to_the_question_runs_nothing(script):
 
 
 def test_the_yes_of_another_session_does_not_run_it(script):
-    script.steps = [step(calls=[("nota", "comprar pan")])]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")])]
     ia("/ia anotá comprar pan")
 
     assert tap("perm:si", session_id="telegram:2").text == core.STALE
@@ -558,7 +558,7 @@ def test_the_yes_of_another_session_does_not_run_it(script):
 
 
 def test_a_second_tap_does_not_run_it_twice(script):
-    script.steps = [step(calls=[("nota", "comprar pan")]), step("Anotado")]
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
     ia("/ia anotá comprar pan")
 
     tap("perm:si")
@@ -568,7 +568,7 @@ def test_a_second_tap_does_not_run_it_twice(script):
 
 
 def test_always_only_lasts_for_that_question(script):
-    script.steps = [step(calls=[("nota", "uno")]), step("ok"), step(calls=[("nota", "dos")])]
+    script.steps = [step(calls=[("notas.guardar", "uno")]), step("ok"), step(calls=[("notas.guardar", "dos")])]
     ia("/ia anotá uno")
     tap("perm:siempre")
 
@@ -579,7 +579,7 @@ def test_always_only_lasts_for_that_question(script):
 
 
 def test_ia_does_not_run_a_blocked_tool_and_never_offers_it(script):
-    script.steps = [step(calls=[("olvidar", "1")]), step("No pude")]
+    script.steps = [step(calls=[("memoria.borrar", "1")]), step("No pude")]
 
     ia("/ia borrá la línea 1 de la memoria")
 
@@ -588,7 +588,7 @@ def test_ia_does_not_run_a_blocked_tool_and_never_offers_it(script):
 
 
 def test_a_new_ia_question_drops_the_one_waiting_for_permission(script):
-    script.steps = [step(calls=[("nota", "uno")]), step("hola")]
+    script.steps = [step(calls=[("notas.guardar", "uno")]), step("hola")]
     ia("/ia anotá uno")
     ia("/ia hola")
 
@@ -611,9 +611,9 @@ def test_ia_inside_an_ai_conversation_respects_that_conversations_limit(script):
 
 def test_named_note_is_created_then_appended_never_overwritten(script):
     allow("nota_nombrada")
-    script.steps = [step(calls=[("nota_nombrada", "Compras Casa\nleche")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar_con_nombre", "Compras Casa\nleche")]), step("ok")]
     say("guardá la lista de compras")
-    script.steps = [step(calls=[("nota_nombrada", "compras casa\npan")]), step("ok")]
+    script.steps = [step(calls=[("notas.guardar_con_nombre", "compras casa\npan")]), step("ok")]
     say("agregá pan")
 
     lines = (notes.DATA_DIR / "compras_casa.md").read_text(encoding="utf-8").splitlines()
@@ -645,18 +645,18 @@ def test_named_note_cannot_escape_data_dir(script):
 @pytest.mark.parametrize(
     "tool_id, arg, expected",
     [
-        ("nota", "+ comprar leche", "comprar leche"),
-        ("nota", "comprar leche", "comprar leche"),
-        ("recordar", "/recordar mi gato es Tom", "mi gato es Tom"),
-        ("recordar", "/memoria: mi gato es Tom", "mi gato es Tom"),
+        ("notas.guardar", "+ comprar leche", "comprar leche"),
+        ("notas.guardar", "comprar leche", "comprar leche"),
+        ("memoria.agregar", "/recordar mi gato es Tom", "mi gato es Tom"),
+        ("memoria.agregar", "/memoria: mi gato es Tom", "mi gato es Tom"),
     ],
 )
 def test_ai_tools_drop_command_syntax_the_model_copied(script, tool_id, arg, expected):
-    allow(tool_id)
+    allow(tools.ai_id(tools.route(tool_id)))
     script.steps = [step(calls=[(tool_id, arg)]), step("ok")]
     say("anotá algo")
 
-    saved = inbox() if tool_id == "nota" else (notes.DATA_DIR / "memory.md").read_text(encoding="utf-8")
+    saved = inbox() if tool_id == "notas.guardar" else (notes.DATA_DIR / "memory.md").read_text(encoding="utf-8")
     assert saved.strip().endswith(expected) and "+ +" not in saved and "/memoria" not in saved and "/recordar" not in saved
 
 
@@ -685,7 +685,7 @@ def say_listening(text, cid=CID):
 
 def test_progress_events_follow_the_turn_in_order(script):
     notes.save_note("compras", "- un switch nuevo")
-    script.steps = [step(calls=[("buscar", "switch")]), step("Lo encontré")]
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
 
     reply, events = say_listening("¿qué anoté del switch?")
 
@@ -703,7 +703,7 @@ def test_blocked_tool_is_reported_and_ask_stops_before_running(script):
     states["buscar"] = "deny"
     states["nota"] = "ask"
     permissions.save(states)
-    script.steps = [step(calls=[("buscar", "x"), ("nota", "algo")])]
+    script.steps = [step(calls=[("notas.buscar", "x"), ("notas.guardar", "algo")])]
 
     reply, events = say_listening("hacé cosas")
 
@@ -714,7 +714,7 @@ def test_blocked_tool_is_reported_and_ask_stops_before_running(script):
 
 def test_event_args_are_redacted_short_and_one_line(script, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
-    script.steps = [step(calls=[("buscar", f"clave {KEY}\n" + "x" * 500)]), step("ok")]
+    script.steps = [step(calls=[("notas.buscar", f"clave {KEY}\n" + "x" * 500)]), step("ok")]
 
     _, events = say_listening("buscá")
 
@@ -741,72 +741,56 @@ def test_without_a_listener_nothing_changes(script):
     assert core._on_event.get() is None  # y no queda un oyente colgado de la llamada anterior
 
 
-# --- Grupos de herramientas ----------------------------------------------------------------
-
-
-@pytest.fixture
-def grouped(script, monkeypatch):
-    """nota y buscar, vistas por el modelo como las acciones «guardar» y «buscar» del grupo «notas»."""
-    actions = {"nota": "guardar", "buscar": "buscar"}
-    monkeypatch.setattr(
-        tools,
-        "TOOLS",
-        tuple(
-            dataclasses.replace(t, ai_group="notas", ai_action=actions[tools.ai_id(t)]) if tools.ai_id(t) in actions else t
-            for t in tools.TOOLS
-        ),
-    )
-    monkeypatch.setattr(tools, "AI_GROUPS", {"notas": "Tus notas"})
-    return script
+# --- Grupos de herramientas (los de verdad: ver tools.AI_GROUPS) -------------------------------
 
 
 def sent_names(history) -> list[str]:
     return [result.name for turn in history for result in turn.results]
 
 
-def test_a_grouped_call_asks_and_runs_the_internal_tool_and_answers_under_the_group_name(grouped):
-    grouped.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
+def test_a_grouped_call_asks_and_runs_the_internal_tool_and_answers_under_the_group_name(script):
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Anotado")]
 
     reply = say("anotá pan")
     assert reply.text == "La IA quiere usar + texto con:\n```\ncomprar pan\n```"  # el permiso es el de «nota»
     press("perm:si")
 
     assert "comprar pan" in inbox()
-    assert sent_names(grouped.seen[1][0]) == ["notas"]  # el modelo recibe el resultado con el nombre que usó
+    assert sent_names(script.seen[1][0]) == ["notas"]  # el modelo recibe el resultado con el nombre que usó
 
 
-def test_a_read_action_of_a_group_runs_alone(grouped):
+def test_a_read_action_of_a_group_runs_alone(script):
     notes.save_note("compras", "- un switch")
-    grouped.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
 
     reply = say("buscá switch")
 
-    assert reply.text == "Lo encontré" and "switch" in results(grouped.seen[1][0])[0]
+    assert reply.text == "Lo encontré" and "switch" in results(script.seen[1][0])[0]
 
 
 @pytest.mark.parametrize("call_id", ["notas.borrar", "notas", "nota", "buscar", "notas.", "nota.guardar"])
-def test_what_the_model_was_not_offered_is_unavailable_and_runs_nothing(grouped, call_id):
-    grouped.steps = [step(calls=[(call_id, "pan")]), step("no pude")]
+def test_what_the_model_was_not_offered_is_unavailable_and_runs_nothing(script, call_id):
+    script.steps = [step(calls=[(call_id, "pan")]), step("no pude")]
 
     say("anotá pan")
 
-    assert results(grouped.seen[1][0]) == [core.UNAVAILABLE] and inbox() == ""
+    assert results(script.seen[1][0]) == [core.UNAVAILABLE] and inbox() == ""
 
 
-def test_a_blocked_action_does_not_run_even_if_the_model_forces_it(grouped):
+def test_a_blocked_action_does_not_run_even_if_the_model_forces_it(script):
     states = permissions.load()
     states["nota"] = "deny"
     permissions.save(states)
-    grouped.steps = [step(calls=[("notas.guardar", "pan")]), step("no pude")]
+    script.steps = [step(calls=[("notas.guardar", "pan")]), step("no pude")]
 
     say("anotá pan")
 
-    assert results(grouped.seen[1][0]) == [core.UNAVAILABLE] and inbox() == ""
-    assert "notas" in grouped.seen[0][1]  # el grupo se ofrece igual: le queda buscar
+    assert results(script.seen[1][0]) == [core.UNAVAILABLE] and inbox() == ""
+    assert "notas" in script.seen[0][1]  # el grupo se ofrece igual: le queda buscar
 
 
-def test_yes_for_the_conversation_is_per_internal_tool(grouped):
-    grouped.steps = [step(calls=[("notas.guardar", "uno")]), step("ok"), step(calls=[("notas.guardar", "dos")]), step("ok")]
+def test_yes_for_the_conversation_is_per_internal_tool(script):
+    script.steps = [step(calls=[("notas.guardar", "uno")]), step("ok"), step(calls=[("notas.guardar", "dos")]), step("ok")]
     say("uno")
     press("perm:siempre")
 

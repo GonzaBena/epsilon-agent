@@ -118,10 +118,10 @@ def test_ai_read_tools_never_write_or_use_ai():
 
 
 def test_the_two_note_tools_tell_the_model_when_to_use_each():
-    # Un modelo chico elige la más simple: «nota» tiene que mandar a «nota_nombrada» cuando hay un nombre.
+    # Un modelo chico elige la más simple: «guardar» tiene que mandar a «guardar_con_nombre» cuando hay un nombre.
     by_id = {tools.ai_id(t): t for t in tools.ai_tools()}
 
-    assert "nota_nombrada" in by_id["nota"].ai_help and "SIN nombre" in by_id["nota"].ai_help
+    assert "guardar_con_nombre" in by_id["nota"].ai_help and "SIN nombre" in by_id["nota"].ai_help
     assert "CON nombre" in by_id["nota_nombrada"].ai_help
     assert "primera línea" in by_id["nota_nombrada"].ai_arg
 
