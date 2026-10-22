@@ -176,3 +176,82 @@ def test_open_url_returns_the_tab_and_remembers_it(monkeypatch):
     tab = navegador.open_url("https://music.youtube.com/")
 
     assert tab.host == "music.youtube.com" and tab.id in navegador._opened
+
+
+# --- abrir Chromium si está cerrado ------------------------------------------------------------
+
+
+class Launcher:
+    """Reloj, procesos y puerto de mentira: el puerto responde recién después de `up_after` intentos (None = nunca)."""
+
+    def __init__(self, monkeypatch, chromium_running=False, up_after=None, systemd_code=0):
+        self.commands, self.attempts, self.now = [], 0, [0.0]
+        self.chromium_running, self.up_after, self.systemd_code = chromium_running, up_after, systemd_code
+        monkeypatch.setattr(navegador, "_http", self.http)
+        monkeypatch.setattr(navegador, "_run", self.run)
+        monkeypatch.setattr(navegador.time, "monotonic", lambda: self.now[0])
+        monkeypatch.setattr(navegador.time, "sleep", lambda seconds: self.now.__setitem__(0, self.now[0] + seconds))
+
+    def http(self, method, path):
+        if path != "/json/version":
+            raise AssertionError(path)
+        self.attempts += 1
+        if self.up_after is None or self.attempts <= self.up_after:
+            raise navegador.NavegadorError("No pude hablar con Chromium en el puerto 9222.")
+        return {"Browser": "Chrome/154.0.0.0", "webSocketDebuggerUrl": "ws://127.0.0.1:9222/x"}
+
+    def run(self, cmd):
+        self.commands.append(cmd)
+        code = 0 if (cmd[0] == "pgrep") == self.chromium_running else 1
+        if cmd[0] == "systemd-run":
+            code = self.systemd_code
+        return type("Done", (), {"returncode": code})()
+
+
+def test_ensure_running_does_nothing_when_the_port_answers(monkeypatch):
+    launcher = Launcher(monkeypatch, up_after=0)
+
+    navegador.ensure_running()
+
+    assert launcher.commands == []
+
+
+def test_ensure_running_never_touches_a_chromium_that_runs_without_the_port(monkeypatch):
+    launcher = Launcher(monkeypatch, chromium_running=True)
+
+    with pytest.raises(navegador.NavegadorError, match="reiniciar"):
+        navegador.ensure_running()
+
+    assert not any(cmd[0] == "systemd-run" for cmd in launcher.commands)
+
+
+def test_ensure_running_launches_chromium_outside_the_service_and_waits_for_the_port(monkeypatch):
+    launcher = Launcher(monkeypatch, up_after=3)
+
+    navegador.ensure_running()
+
+    assert ["systemd-run", "--user", "--collect", "chromium"] in launcher.commands
+
+
+def test_ensure_running_gives_up_if_the_port_never_answers(monkeypatch):
+    Launcher(monkeypatch, up_after=None)
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.ensure_running()
+
+
+def test_ensure_running_reports_a_failed_launch(monkeypatch):
+    Launcher(monkeypatch, systemd_code=1)
+
+    with pytest.raises(navegador.NavegadorError, match="lanzar"):
+        navegador.ensure_running()
+
+
+def test_open_url_makes_sure_chromium_is_running_first(monkeypatch):
+    FakeChromium(monkeypatch)
+    called = []
+    monkeypatch.setattr(navegador, "ensure_running", lambda: called.append(1))
+
+    navegador.open_url("https://music.youtube.com/")
+
+    assert called == [1]

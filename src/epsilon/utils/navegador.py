@@ -22,6 +22,7 @@ WS_PREFIX = f"ws://127.0.0.1:{PORT}/"
 BROWSERS = ("Chrome/", "Chromium/", "HeadlessChrome/")
 TIMEOUT = 5.0
 LOAD_TRIES = 20  # al abrir: cuántas veces se mira si la pestaña cargó (de a medio segundo)
+LAUNCH_WAIT = 15.0  # segundos que se espera a que un Chromium recién lanzado abra el puerto
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
 _opened: set[str] = set()  # ids de las pestañas que abrió Epsilon en esta ejecución
@@ -112,6 +113,32 @@ def check_browser() -> None:
         )
 
 
+def ensure_running() -> None:
+    """Deja Chromium listo con el puerto abierto. Si está cerrado, lo abre (en su propia unidad de systemd, para que
+    reiniciar el servicio de Epsilon no lo cierre). Si ya está abierto SIN el puerto, no lo toca: lo explica."""
+    try:
+        check_browser()
+        return
+    except NavegadorError:
+        pass
+    if _run(["pgrep", "-x", "chromium"]).returncode == 0:
+        raise NavegadorError(
+            "Chromium está abierto pero sin el puerto de depuración. Hay que reiniciarlo: cerralo del todo y abrilo de "
+            f"nuevo, con la línea --remote-debugging-port={PORT} en ~/.config/chromium-flags.conf."
+        )
+    if _run(["systemd-run", "--user", "--collect", "chromium"]).returncode != 0:
+        raise NavegadorError("No pude lanzar Chromium.")
+    deadline = time.monotonic() + LAUNCH_WAIT
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        try:
+            check_browser()
+            return
+        except NavegadorError:
+            continue
+    raise NavegadorError("Abrí Chromium pero el puerto de depuración no respondió a tiempo.")
+
+
 def _raw_tabs() -> list[dict]:
     """Las pestañas (tipo página) tal como las da Chromium; una respuesta rara es un error, no una lista vacía."""
     raw = _http("GET", "/json/list")
@@ -153,7 +180,7 @@ def resolve_tab(ref: str) -> Tab:
 
 def open_url(url: str) -> Tab:
     """Abre la dirección en una pestaña nueva. Revisa la dirección antes y la dirección final después."""
-    check_browser()
+    ensure_running()
     url = url.strip()
     _check_destination(url)
     item = _http("PUT", "/json/new?" + quote(url, safe=":/?&=#%+,;~!$'()*@"))
