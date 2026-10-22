@@ -29,12 +29,12 @@ programa»; cada carpeta, una capa):
 
 ```
 core.py main.py tools.py menu.py state.py   el centro: lógica, arranque, registro, /menu, estado de canales
-ai/        llm.py messages.py providers/ chat.py permissions.py extract.py summarize.py usage.py   todo lo que habla con el modelo, sus permisos y su gasto
+ai/        llm.py messages.py providers/ chat.py permissions.py browser_guard.py extract.py summarize.py usage.py   todo lo que habla con el modelo, sus permisos y su gasto
 data/      notes.py todo.py tabular.py conversations.py library.py         lo que se guarda en DATA_DIR (library: vista de solo lectura)
 voice/     transcribe.py                                Whisper (voz → texto)
 memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
 settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
-utils/     clock.py dolar.py clima.py sistema.py        utilidades locales sin modelo (fecha, dólar, clima, estado de la máquina); un solo punto de red por módulo, bloqueado en los tests
+utils/     clock.py dolar.py clima.py sistema.py navegador.py navegador_reglas.py        utilidades locales sin modelo (fecha, dólar, clima, estado de la máquina, Chromium); un solo punto de red por módulo, bloqueado en los tests
 plugins/   channels.py                                  canales de terceros (manifiesto, descubrimiento, carga)
 channels/  telegram.py web.py web_static/               por dónde se habla con Epsilon
 ```
@@ -123,6 +123,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   el modelo se baja solo y se descarga de memoria tras un rato). Ver `docs/plan-voz.md`.
 - `ai/attachments.py`: archivos en el chat de modo IA. `mentions(text)` saca las rutas escritas con `@` (al inicio o tras un espacio, así los mails no cuentan; entre comillas si tienen espacios) y `load(paths)` las valida con `library.resolve` y arma las partes del modelo, rotuladas como dato y redactadas. El contenido viaja **solo en ese mensaje** (`chat.begin(..., parts)`, gasto «Chat con archivos»); si una mención no existe o se pasa de los topes (`CHAT_MAX_FILES`, por defecto 5, y `CHAT_MAX_MB`, por defecto 15: el tope de una petición a Gemini es ~20 MB), `core._chat` contesta el error sin llamar al modelo. En la web, `@` abre el autocompletado de la biblioteca y el clip, en modo IA, sube con `POST /api/files` (no llama al modelo) y deja la mención en el cuadro. Ver `docs/plan-chat-ia.md`.
 - `ai/ask.py`: `/ia pregunta`, una pregunta suelta a la IA (web y Telegram). Es un turno de modo IA de un solo mensaje: sin la charla de antes, con la memoria y con las herramientas, que pasan por los mismos permisos (`core._run_calls`). No tiene conversación guardada sino un «ámbito» en memoria (`ia:<n>`, único por pregunta): los permisos y el «siempre» valen solo para esa pregunta y el pendiente es de la sesión. Sin límite de costo por conversación: lo acotan los topes de pasos, de salida y de resultados (máx. 1.000 caracteres de pregunta); dentro de un chat de modo IA, el costo suma a ese chat. Gasto anotado como «Pregunta» en /uso.
+- **Navegador** (`utils/navegador.py`, `utils/navegador_reglas.py`, `ai/browser_guard.py`): la IA maneja el Chromium de la persona por su puerto de depuración (`127.0.0.1:9222`). Grupo de IA `navegador` con las acciones `pestanas`, `leer`, `abrir`, `clic`, `escribir` (herramientas `nav_*`, permisos por herramienta, ajustes `BROWSER_ENABLED|TRUSTED_SITES|BLOCKED_SITES`). `navegador.py` tiene cuatro puntos únicos que los tests bloquean (`_http`, `_cdp`, `_resolve`, `_run`) y es el único que habla con Chromium; el único JavaScript que corre en una pestaña es `READ_JS`, fijo. `browser_guard.review` lo llama `core._run_calls` DESPUÉS de `permissions.decide` y solo puede endurecerlo (preguntar o bloquear): sitios fuera de los de confianza, rótulos de envío/borrado, turno «contaminado» tras leer un sitio de afuera (`Turn.tainted`), topes por mensaje. Cada acción queda en `DATA_DIR/browser.log`. Ver `docs/plan-navegador.md`.
 - `ai/extract.py`, `ai/summarize.py`: lógica de imagen→CSV y resúmenes. `ai/usage.py`: el registro del gasto.
 
 ## Reglas del proyecto
@@ -136,6 +137,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Lo que la web muestra va siempre como texto (`textContent`), nunca como HTML. Única excepción: las respuestas del bot pasan por markdown-it (`js/vendor/`, `js/markdown.js`) con `html: false` e imágenes apagadas, y fórmulas `$…$`/`$$…$$` con KaTeX (`js/math.js`, `js/vendor/katex.min.js`) en salida **MathML** (la CSP no deja estilos en línea, así que no hay HTML de KaTeX, CSS ni fuentes), y su salida se parsea con `DOMParser` (nada de `innerHTML`); un test vigila esas opciones.
 - El patrón del id de conversación está en `conversations.py` Y en `app.js`; un test
   vigila que coincidan (si se cambia uno, cambiar el otro).
+- El navegador de la IA nunca ejecuta JavaScript que venga del modelo, nunca abre `file:`/`chrome:`/la red local ni los sitios de `BROWSER_BLOCKED_SITES`, y lo que lee de una página es dato. Los guardrails de `browser_guard` solo endurecen los permisos.
 - Los permisos de las herramientas de la IA se aplican en código (`core._run_calls`): una herramienta bloqueada no se le ofrece al modelo y nunca corre, diga lo que diga el modelo.
 - Un enlace `/?cmd=...` solo ejecuta solo los comandos con `links` en `tools.py` (llegan por
   `/api/tools`): lecturas, nunca los que escriben o llaman al modelo; un test lo vigila.
