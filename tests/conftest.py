@@ -80,6 +80,17 @@ def block_real_systemctl(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_multimedia(monkeypatch):
+    """Ningún test toca el volumen ni la música de la máquina de verdad."""
+    from epsilon.utils import multimedia
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar wpctl o busctl de verdad")
+
+    monkeypatch.setattr(multimedia, "_run", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()

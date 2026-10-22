@@ -16,7 +16,7 @@ from epsilon.ai.messages import ModelError
 from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
-from epsilon.utils import clima, clock, dolar, navegador, sistema
+from epsilon.utils import clima, clock, dolar, multimedia, navegador, sistema
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -489,6 +489,21 @@ def _system_cmd(args: str) -> Reply:
     except ValueError as e:
         return Reply(str(e))
 
+
+def _media(action: Callable[[str], str]) -> Callable[[str], Reply]:
+    """/volumen, /sonando y /musica: lo que sale mal (opción rara, falta el programa) vuelve como texto."""
+    def run(args: str) -> Reply:
+        try:
+            return Reply(config.redact(action(args)))
+        except (ValueError, multimedia.MultimediaError) as e:
+            return Reply(str(e))
+
+    return run
+
+
+_volume_cmd = _media(lambda args: multimedia.volume(args))
+_playing_cmd = _media(lambda args: multimedia.now_playing())
+_music_cmd = _media(lambda args: multimedia.music(args))
 
 SEND_MAX_BYTES = 50 * 1024 * 1024  # lo máximo que Telegram deja subir a un bot
 SEND_MAX_MATCHES = 20
@@ -1007,6 +1022,9 @@ COMMANDS = {
     "enviar": lambda args, s: _send(args),
     "csv": lambda args, s: _csv_cmd(args),
     "sistema": lambda args, s: _system_cmd(args),
+    "volumen": lambda args, s: _volume_cmd(args),
+    "sonando": lambda args, s: _playing_cmd(args),
+    "musica": lambda args, s: _music_cmd(args),
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
     "olvidar": _forget_cmd,
@@ -1027,7 +1045,7 @@ COMMANDS = {
 def _bare(args: str) -> str:
     """El argumento sin la sintaxis del comando: un modelo chico a veces copia el «+ » o el «/recordar» y lo manda
     adentro del texto. Solo se quita al principio y solo si es un comando nuestro."""
-    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv|sistema)\b:?)\s*", "", args)
+    return re.sub(r"^\s*(?:\+(?=\s)|/(?:nota|recordar|memoria|editar|olvidar|resumir|ver|buscar|archivos|clima|todo|tareas|hecho|enviar|csv|sistema|volumen|sonando|musica)\b:?)\s*", "", args)
 
 
 # El navegador de la IA (ver utils/navegador.py). Un NavegadorError vuelve como texto: el modelo lo lee y decide.
@@ -1088,6 +1106,9 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "enviar": lambda args: _send(_bare(args)),
     "csv": lambda args: _csv_cmd(_bare(args)),
     "sistema": lambda args: _system_cmd(_bare(args)),
+    "volumen": lambda args: _volume_cmd(_bare(args)),
+    "sonando": lambda args: _playing_cmd(""),
+    "musica": lambda args: _music_cmd(_bare(args)),
     "memoria": lambda args: _memory_cmd(args, Session()),
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),

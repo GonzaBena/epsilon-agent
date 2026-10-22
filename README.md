@@ -104,6 +104,9 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/enviar nombre`       | Te manda por Telegram una nota o archivo guardado (en la web ya está en la biblioteca). |
 | `/csv nombre [filtros]` | Consulta un CSV guardado: filtros y, tras una barra vertical, suma, promedio, agrupar… (sin IA). |
 | `/sistema [qué]`       | Estado de la máquina: disco, ram, uptime, servicio (sin IA).              |
+| `/volumen [valor]` | Volumen de la PC: sin valor dice cómo está; con un número (`40`), `+5`/`-5`, `silenciar` o `activar` lo cambia. Nunca pasa de 100 % (sin IA, usa `wpctl`). |
+| `/sonando`             | Qué se está reproduciendo en la PC: título, artista y app (sin IA, por MPRIS). |
+| `/musica [acción]` | Controla la música o el video de la PC: `pausa`, `play`, `siguiente`, `anterior`; sin acción alterna play/pausa (sin IA). |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones: la voz y el modelo de IA (entre tus favoritos). |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

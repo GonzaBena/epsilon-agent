@@ -201,6 +201,30 @@ def test_sistema_answers_from_fixed_options_only(monkeypatch):
     assert seen == ["", "ram"]
 
 
+def test_volume_and_music_commands_pass_their_argument_and_answer_as_text(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.multimedia, "volume", lambda arg: seen.append(("volumen", arg)) or "Volumen: 40 %")
+    monkeypatch.setattr(core.multimedia, "now_playing", lambda: "Sonando: A — B (chromium)")
+    monkeypatch.setattr(core.multimedia, "music", lambda arg: seen.append(("musica", arg)) or "Pausé. (chromium)")
+
+    assert say("/volumen 40").text == "Volumen: 40 %"
+    assert say("/sonando").text == "Sonando: A — B (chromium)"
+    assert say("/musica pausa").text == "Pausé. (chromium)"
+    assert seen == [("volumen", "40"), ("musica", "pausa")]
+
+
+def test_volume_and_music_errors_come_back_as_text_not_exceptions():
+    assert "Escribí un número" in say("/volumen mucho; rm -rf /").text
+    assert "Opciones: pausa" in say("/musica apagar").text
+
+
+def test_the_ai_can_run_the_pc_tools_with_a_copied_command_prefix(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.multimedia, "volume", lambda arg: seen.append(arg) or "ok")
+
+    assert core.AI_RUNNERS["volumen"]("/volumen +5").text == "ok" and seen == ["+5"]
+
+
 def test_sistema_refuses_anything_else_without_running_it():
     text = say("/sistema ls -la; rm -rf /").text
 
