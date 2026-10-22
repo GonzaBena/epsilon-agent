@@ -33,6 +33,7 @@ const aiCost = document.getElementById("ai-cost");
 const aiLimit = document.getElementById("ai-limit");
 const aiLimitSave = document.getElementById("ai-limit-save");
 const aiBlocked = document.getElementById("ai-blocked");
+const aiTrimmed = document.getElementById("ai-trimmed");
 
 // --- Estado -----------------------------------------------------------------
 const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
@@ -127,6 +128,10 @@ function showChatBar(chat) {
   if (document.activeElement !== aiLimit) aiLimit.value = String(chat.limit);
   aiBlocked.textContent = chat.blocked ? chat.reason : "";
   aiBlocked.hidden = !chat.blocked;
+  // Con el tope de contexto, los pares más viejos siguen en pantalla pero ya no viajan al modelo.
+  const trimmed = Number(chat.trimmed) || 0;
+  aiTrimmed.textContent = trimmed ? `La IA ya no ve los primeros ${trimmed * 2} mensajes de esta charla.` : "";
+  aiTrimmed.hidden = !trimmed;
 }
 
 // Qué se ve según la conversación: el selector solo antes del primer mensaje, la barra solo en modo IA.

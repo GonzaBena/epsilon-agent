@@ -160,6 +160,15 @@
             </div>
 
             <div class="field">
+              <label for="f-CHAT_MAX_TURNS">Mensajes anteriores que ve la IA en el chat (pares)</label>
+              <input id="f-CHAT_MAX_TURNS" data-key="CHAT_MAX_TURNS" type="text" inputmode="numeric"
+                     autocomplete="off" spellcheck="false" placeholder="10"
+                     aria-describedby="hint-CHAT_MAX_TURNS err-CHAT_MAX_TURNS">
+              <p class="hint" id="hint-CHAT_MAX_TURNS"></p>
+              <p class="error" id="err-CHAT_MAX_TURNS" role="alert"></p>
+            </div>
+
+            <div class="field">
               <label for="f-CHAT_MAX_MB">Tamaño máximo de los archivos por mensaje (MB)</label>
               <input id="f-CHAT_MAX_MB" data-key="CHAT_MAX_MB" type="text" inputmode="numeric"
                      autocomplete="off" spellcheck="false" placeholder="15"

@@ -163,6 +163,60 @@ def test_turns_after_a_refused_permission_does_not_pair_anything():
     assert chat.turns(CID, "otra cosa") == [("user", "otra cosa")]
 
 
+def _talk(pairs):
+    """Una conversación de modo IA con `pairs` pares ya contestados: «pregunta 0» / «respuesta 0», …"""
+    conversations.start(CID, "ai", 1)
+    for n in range(pairs):
+        conversations.add_message(CID, "user", f"pregunta {n}")
+        conversations.add_message(CID, "bot", f"respuesta {n}", ai=True)
+
+
+def test_turns_keep_only_the_last_pairs(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "3")
+    _talk(25)
+
+    result = chat.turns(CID, "nueva")
+
+    assert result == [
+        ("user", "pregunta 22"), ("model", "respuesta 22"),
+        ("user", "pregunta 23"), ("model", "respuesta 23"),
+        ("user", "pregunta 24"), ("model", "respuesta 24"),
+        ("user", "nueva"),
+    ]
+
+
+def test_turns_default_is_ten_pairs(monkeypatch):
+    monkeypatch.delenv("CHAT_MAX_TURNS", raising=False)
+    _talk(25)
+
+    result = chat.turns(CID, "nueva")
+
+    assert len(result) == 21 and result[0] == ("user", "pregunta 15")
+
+
+def test_turns_do_not_trim_a_short_talk(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "10")
+    _talk(4)
+
+    assert len(chat.turns(CID, "nueva")) == 9
+
+
+@pytest.mark.parametrize("bad", ["0", "-2", "101", "abc", "2.5"])
+def test_max_turns_falls_back_when_invalid(bad, monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", bad)
+
+    assert chat.max_turns() == chat.DEFAULT_TURNS
+
+
+def test_status_reports_how_many_pairs_are_trimmed(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "3")
+    _talk(5)
+    assert chat.status(CID)["trimmed"] == 2
+
+    monkeypatch.setenv("CHAT_MAX_TURNS", "10")
+    assert chat.status(CID)["trimmed"] == 0
+
+
 @pytest.fixture
 def captured(monkeypatch):
     calls = []

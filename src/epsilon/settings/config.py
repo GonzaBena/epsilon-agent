@@ -238,6 +238,14 @@ SETTINGS = (
         default="5",
         validate=_whole(1, 20, "La cantidad de archivos"),
     ),
+    # Cuántos pares (tu mensaje y la respuesta de la IA) se reenvían al modelo (chat.py lo lee en cada mensaje).
+    Setting(
+        "CHAT_MAX_TURNS",
+        "Mensajes anteriores que ve la IA en el chat (pares)",
+        live=True,
+        default="10",
+        validate=_whole(1, 100, "La cantidad de pares"),
+    ),
     Setting(
         "CHAT_MAX_MB",
         "Tamaño máximo de los archivos por mensaje (MB)",

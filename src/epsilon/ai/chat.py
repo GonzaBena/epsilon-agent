@@ -17,6 +17,7 @@ MAX_TOKENS = 1500  # tope de salida de cada respuesta
 # Llamadas al modelo por mensaje que pueden pedir herramientas; pasado el tope hay una última que ya no
 # puede pedir ninguna y cierra con texto (hasta MAX_TOOL_STEPS + 1 = 7 llamadas por mensaje).
 MAX_TOOL_STEPS = 6
+DEFAULT_TURNS = 10  # pares (tu mensaje y la respuesta) que se reenvían, si CHAT_MAX_TURNS no está
 
 SYSTEM = (
     "Sos Epsilon, el asistente personal del usuario. Respondé en español, claro y breve. "
@@ -38,12 +39,22 @@ def default_limit() -> float:
     return value if conversations.LIMIT_MIN <= value <= conversations.LIMIT_MAX else DEFAULT_LIMIT
 
 
+def max_turns() -> int:
+    """Cuántos pares de la charla se reenvían al modelo (CHAT_MAX_TURNS); inválido o fuera de rango, el de siempre."""
+    try:
+        value = int(os.environ.get("CHAT_MAX_TURNS") or DEFAULT_TURNS)
+    except ValueError:
+        return DEFAULT_TURNS
+    return value if 1 <= value <= 100 else DEFAULT_TURNS
+
+
 def status(conversation_id: str) -> dict:
-    """Lo que la barra muestra: {cost, context, limit, blocked, reason, model_change}.
+    """Lo que la barra muestra: {cost, context, limit, blocked, reason, model_change, trimmed}.
 
     Bloqueada si ya gastó el límite, o si el modelo no tiene precio (sin precio no se puede medir).
     `model_change` es {from, to} si el modelo del chat no es el de la última llamada de esta conversación
-    (cambiar de modelo hace que la charla se reenvíe entera): el navegador avisa antes de enviar."""
+    (cambiar de modelo hace que la charla se reenvíe entera): el navegador avisa antes de enviar.
+    `trimmed` es cuántos pares viejos ya no le llegan al modelo por el tope CHAT_MAX_TURNS (0 si entran todos)."""
     spent = usage.for_conversation(conversation_id)
     limit = conversations.limit(conversation_id) or default_limit()
     reason = None
@@ -68,21 +79,30 @@ def status(conversation_id: str) -> dict:
         "blocked": reason is not None,
         "reason": reason,
         "model_change": change,
+        "trimmed": max(0, len(_pairs(conversation_id)) - max_turns()),
     }
 
 
-def turns(conversation_id: str, text: str) -> list[tuple[str, str]]:
-    """La charla para el modelo: cada respuesta de la IA con el mensaje tuyo que la precede, y al
-    final el mensaje nuevo. El tuyo que ya está guardado y aún no tiene respuesta no se repite."""
+def _pairs(conversation_id: str) -> list[tuple[str, str]]:
+    """Los pares guardados (tu mensaje, respuesta de la IA), sin recortar y con el texto redactado."""
     result: list[tuple[str, str]] = []
     previous = None
     for message in conversations.messages(conversation_id) or []:
         if message["role"] == "bot" and any(a["id"].startswith("perm:") for a in message["actions"]):
             continue  # la pregunta de permiso no cuenta: la respuesta de la IA sigue ligada a tu mensaje
         if message["role"] == "bot" and message["ai"] and previous and previous["role"] == "user":
-            result.append(("user", config.redact(previous["text"])))
-            result.append(("model", config.redact(message["text"])))
+            result.append((config.redact(previous["text"]), config.redact(message["text"])))
         previous = message
+    return result
+
+
+def turns(conversation_id: str, text: str) -> list[tuple[str, str]]:
+    """La charla para el modelo: los últimos CHAT_MAX_TURNS pares (cada respuesta de la IA con el mensaje
+    tuyo que la precede) y al final el mensaje nuevo. Lo anterior sigue guardado, pero no viaja. El tuyo
+    que ya está guardado y aún no tiene respuesta no se repite."""
+    result: list[tuple[str, str]] = []
+    for question, answer in _pairs(conversation_id)[-max_turns():]:
+        result += [("user", question), ("model", answer)]
     result.append(("user", config.redact(text)))
     return result
 
