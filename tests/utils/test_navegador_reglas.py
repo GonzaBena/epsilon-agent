@@ -112,7 +112,7 @@ HISTORY = [
 @pytest.mark.parametrize(
     "query, site",
     [
-        ("yt", "youtube.com"),  # letras en orden dentro del nombre
+        ("yt", "youtube.com"),  # letras en orden dentro del nombre (gana el sitio más usado: www.youtube.com)
         ("you", "youtube.com"),  # el nombre empieza igual; gana el más usado
         ("gh", "github.com"),
         ("mercado", "mercadolibre.com.ar"),  # sitio de tres partes
@@ -149,3 +149,36 @@ def test_pick_site_ignores_ip_addresses():
 )
 def test_site_of_keeps_the_registrable_part(host, site):
     assert reglas.site_of(host) == site
+
+
+UNI = [
+    ("https://aulasvirtuales.frba.utn.edu.ar/my/", "Aulas Virtuales UTN.BA", 80, 6),
+    ("https://auth.frba.utn.edu.ar/realms/FRBA/x", "Acceder a tu cuenta", 40, 2),
+    ("https://www.utnianos.com.ar/", "UTNianos", 30, 1),
+    ("https://bambulab.com/", "Aula de impresión", 60, 3),
+]
+
+
+@pytest.mark.parametrize(
+    "query, host",
+    [
+        ("aula virtual utn", "aulasvirtuales.frba.utn.edu.ar"),  # una frase: cada palabra tiene que aparecer
+        ("aula", "aulasvirtuales.frba.utn.edu.ar"),  # el nombre del sitio gana a una palabra de otro título
+        ("aulas virtuales", "aulasvirtuales.frba.utn.edu.ar"),
+        ("utn", "aulasvirtuales.frba.utn.edu.ar"),  # entre los que coinciden, el más usado
+        ("entrá al aula virtual de la utn", "aulasvirtuales.frba.utn.edu.ar"),  # las palabras cortas no cuentan
+    ],
+)
+def test_pick_site_keeps_the_subdomain_and_accepts_phrases(query, host):
+    assert reglas.pick_site(query, UNI, []) == host
+
+
+def test_pick_site_phrase_needs_its_words():
+    assert reglas.pick_site("banco galicia tarjeta", UNI, []) is None
+    assert reglas.pick_site("aula banco", UNI, []) is None  # con dos palabras, las dos
+
+
+def test_known_site_accepts_the_host_or_a_parent_in_the_history():
+    assert reglas.known_site("aulasvirtuales.frba.utn.edu.ar", UNI)
+    assert reglas.known_site("frba.utn.edu.ar", UNI)  # un padre de un sitio visitado
+    assert not reglas.known_site("aulavirtualutn.com", UNI)

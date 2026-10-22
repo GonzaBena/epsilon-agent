@@ -285,20 +285,27 @@ def read_history(source: Path) -> list[tuple[str, str, int, int]]:
 
 
 def resolve_target(text: str) -> str:
-    """De lo que pidió la IA a una dirección: una con «://» se deja tal cual (después la revisan las reglas), un dominio
-    («youtube.com/watch») recibe https://, y un nombre suelto («yt», «banco») se busca en el historial. Si no se
+    """De lo que pidió la IA a una dirección: una con «://» se deja tal cual (después la revisan las reglas); un nombre
+    o una frase («yt», «aula virtual utn») se busca en el historial; un dominio suelto («youtube.com») recibe https://
+    SOLO si la persona ya lo visitó o es de confianza (así no se abre un dominio que el modelo inventó). Si no se
     reconoce, NavegadorError con un mensaje claro (nunca una búsqueda en Google)."""
     text = text.strip()
     if "://" in text or not text:
         return text
     if reglas.DOMAIN_LIKE.fullmatch(text):
-        return "https://" + text
-    if not reglas.NAME_ONLY.fullmatch(text):
-        return text  # algo raro («javascript:…», con espacios): lo rechaza la revisión de la dirección
-    site = reglas.pick_site(text, _history(), config.site_list("BROWSER_BLOCKED_SITES"))
-    if not site:
+        host = reglas.host_of("https://" + text)
+        if trusted(host) or reglas.known_site(host, _history()):
+            return "https://" + text
+        raise NavegadorError(
+            f"«{host}» no está en tu historial ni en los sitios de confianza: no la invento. "
+            "Pasame el nombre del sitio como lo dijo la persona o la dirección completa con https://."
+        )
+    if ":" in text or "/" in text:
+        return text  # algo raro («javascript:…», una ruta): lo rechaza la revisión de la dirección
+    host = reglas.pick_site(text, _history(), config.site_list("BROWSER_BLOCKED_SITES"))
+    if not host:
         raise NavegadorError(f"No encontré «{text}» en el historial de Chromium: pasame la dirección completa.")
-    return f"https://{site}/"
+    return f"https://{host}/"
 
 
 def open_url(url: str) -> Tab:

@@ -368,6 +368,8 @@ def test_open_url_waits_past_the_initial_blank_document(monkeypatch):
 
 def history(monkeypatch, rows):
     monkeypatch.setattr(navegador, "_history", lambda: rows)
+    # La lista de bloqueados no sale del .env de quien corre los tests.
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["mail.google.com"] if key == "BROWSER_BLOCKED_SITES" else [])
 
 
 def test_resolve_target_leaves_full_addresses_alone():
@@ -375,8 +377,20 @@ def test_resolve_target_leaves_full_addresses_alone():
     assert navegador.resolve_target("file:///etc/passwd") == "file:///etc/passwd"  # lo rechaza la revisión de la dirección
 
 
-def test_resolve_target_adds_https_to_a_bare_domain():
+def test_resolve_target_adds_https_to_a_bare_domain_the_person_has_visited(monkeypatch):
+    history(monkeypatch, [("https://www.youtube.com/", "YouTube", 10, 3)])
     assert navegador.resolve_target("youtube.com/watch?v=1") == "https://youtube.com/watch?v=1"
+
+
+def test_resolve_target_refuses_a_domain_the_model_made_up(monkeypatch):
+    history(monkeypatch, [("https://www.youtube.com/", "YouTube", 10, 3)])
+    with pytest.raises(navegador.NavegadorError, match="no está en tu historial"):
+        navegador.resolve_target("aulavirtualutn.com")
+
+
+def test_resolve_target_resolves_a_phrase(monkeypatch):
+    history(monkeypatch, [("https://aulasvirtuales.frba.utn.edu.ar/my/", "Aulas Virtuales UTN.BA", 80, 6)])
+    assert navegador.resolve_target("aula virtual utn") == "https://aulasvirtuales.frba.utn.edu.ar/"
 
 
 def test_resolve_target_looks_a_name_up_in_the_history(monkeypatch):
@@ -396,13 +410,12 @@ def test_resolve_target_explains_instead_of_searching(monkeypatch):
         navegador.resolve_target("zzz")
 
 
-def test_resolve_target_does_not_read_the_history_for_addresses(monkeypatch):
+def test_resolve_target_does_not_read_the_history_for_full_addresses(monkeypatch):
     def boom():
         raise AssertionError("no debía leer el historial")
 
     monkeypatch.setattr(navegador, "_history", boom)
     navegador.resolve_target("https://x.com/")
-    navegador.resolve_target("x.com")
 
 
 def test_history_reads_a_copy_in_read_only_mode(tmp_path):

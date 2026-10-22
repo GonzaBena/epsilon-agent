@@ -113,33 +113,64 @@ def _subsequence(small: str, big: str) -> bool:
     return all(letter in letters for letter in small)  # cada letra aparece, en orden, después de la anterior
 
 
-def pick_site(query: str, rows: list[tuple[str, str, int, int]], blocked: list[str]) -> str | None:
-    """El sitio del historial que mejor responde a un nombre corto (`rows`: url, título, visitas, veces escrita).
-    Se prefiere, en orden: el nombre del sitio empieza igual («you» → youtube.com), una palabra de su título empieza
-    igual, y las letras aparecen en orden dentro del nombre («yt»). Dentro de cada grupo gana el más usado, con más
-    peso lo que la persona escribió a mano. Los sitios bloqueados nunca salen. None si nada coincide."""
-    q = query.strip().lower()
-    if not NAME_ONLY.fullmatch(q):
-        return None
-    sites: dict[str, dict] = {}
+def _labels(host: str) -> list[str]:
+    """Las partes con nombre de un host, sin el final «.com» / «.com.ar» / «.edu.ar»: aulasvirtuales.frba.utn.edu.ar → aulasvirtuales, frba, utn."""
+    parts = host.split(".")
+    drop = 2 if len(parts) >= 3 and len(parts[-1]) == 2 and parts[-2] in SECOND_LEVEL else 1
+    return [label for part in parts[: len(parts) - drop] for label in re.split(r"[-_]", part) if label] or parts[:1]
+
+
+def _hosts(rows: list[tuple[str, str, int, int]], blocked: list[str]) -> dict[str, dict]:
+    """El historial agrupado por host (sin «www.»): su uso total y las palabras de sus títulos. Sin IP ni bloqueados."""
+    hosts: dict[str, dict] = {}
     for url, title, visits, typed in rows:
-        host = host_of(url)
+        host = host_of(url).removeprefix("www.")
         if not host or _is_ip(host) or matches(host, blocked):
             continue
-        entry = sites.setdefault(site_of(host.removeprefix("www.")), {"score": 0, "words": set()})
+        entry = hosts.setdefault(host, {"score": 0, "words": set()})
         entry["score"] += visits + 10 * typed
         entry["words"].update(re.findall(r"\w+", (title or "").lower()))
+    return hosts
+
+
+def known_site(host: str, rows: list[tuple[str, str, int, int]]) -> bool:
+    """¿La persona ya visitó este sitio (o uno de sus subdominios)? Sirve para no abrir un dominio que el modelo inventó."""
+    host = host.removeprefix("www.")
+    return any(seen == host or seen.endswith("." + host) for seen in _hosts(rows, []))
+
+
+def pick_site(query: str, rows: list[tuple[str, str, int, int]], blocked: list[str]) -> str | None:
+    """El host del historial que mejor responde a un nombre o una frase corta (`rows`: url, título, visitas, veces
+    escrita). Una palabra: se prefiere que alguna parte del nombre del sitio empiece igual («aula» → aulasvirtuales…),
+    luego una palabra de su título, y al final que las letras aparezcan en orden («yt» → youtube). Una frase: cada
+    palabra (las de menos de 3 letras no cuentan; con más de dos se tolera una que no coincida) tiene que empezar igual
+    que una parte del sitio o una palabra de su título. Entre los que coinciden gana el más usado, con más peso lo que la persona escribió a mano. Los sitios
+    bloqueados nunca salen. None si nada coincide."""
+    words = re.findall(r"[\w-]+", query.lower())
+    if len(words) > 1:
+        words = [word for word in words if len(word) >= 3]
+    if not words or not all(NAME_ONLY.fullmatch(word) for word in words):
+        return None
     best: tuple[int, int, str] | None = None
-    for site, entry in sites.items():
-        name = site.split(".")[0]
-        if name.startswith(q):
-            tier = 0
-        elif any(word.startswith(q) for word in entry["words"]):
-            tier = 1
-        elif _subsequence(q, name):
-            tier = 2
+    for host, entry in _hosts(rows, blocked).items():
+        labels = _labels(host)
+        if len(words) == 1:
+            q = words[0]
+            if any(label.startswith(q) for label in labels):
+                tier = 0
+            elif any(word.startswith(q) for word in entry["words"]):
+                tier = 1
+            elif len(q) >= 2 and _subsequence(q, labels[-1] if len(labels) == 1 else "".join(labels[-1:])):
+                tier = 2
+            else:
+                continue
         else:
-            continue
-        candidate = (tier, -entry["score"], site)
+            matched = sum(
+                any(label.startswith(w) for label in labels) or any(t.startswith(w) for t in entry["words"]) for w in words
+            )
+            if matched < (len(words) if len(words) <= 2 else len(words) - 1):  # con una frase larga se tolera una palabra de relleno
+                continue
+            tier = len(words) - matched
+        candidate = (tier, -entry["score"], host)
         best = candidate if best is None or candidate < best else best
     return best[2] if best else None

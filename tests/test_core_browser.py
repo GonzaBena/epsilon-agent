@@ -304,6 +304,7 @@ def test_a_blocked_link_destination_never_runs(script, monkeypatch):
 
 
 def test_a_short_name_is_resolved_before_the_guard_and_the_question_shows_the_real_site(script, monkeypatch):
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["mail.google.com"] if key == "BROWSER_BLOCKED_SITES" else [])
     opened = []
     monkeypatch.setattr(navegador, "_history", lambda: [("https://www.ejemplo.com/", "Ejemplo", 400, 30)])
     monkeypatch.setattr(navegador, "open_url", lambda url: opened.append(url) or tab("QWERTY999"))
