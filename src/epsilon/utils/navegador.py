@@ -54,8 +54,21 @@ READ_JS = """(() => {
     const field = tag === 'input' || tag === 'textarea' || tag === 'select';
     const kind = type === 'password' ? 'password' : tag === 'a' ? 'link' : field ? 'input' : 'button';
     const label = clean(el.getAttribute('aria-label') || (field ? (el.placeholder || el.title || el.name) : (el.innerText || el.textContent)) || el.title || el.alt, 80);
-    out.push({label, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive});
+    out.push({label, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive, el});
     if (out.length >= 200) break;
+  }
+  // Varios botones con el mismo rótulo («Reproducir» en cada tarjeta): se les suma el texto de su tarjeta para distinguirlos.
+  const seen = {};
+  for (const o of out) seen[o.label] = (seen[o.label] || 0) + 1;
+  for (const o of out) {
+    if (seen[o.label] > 1) {
+      let p = o.el.parentElement;
+      for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
+        const t = clean(p.innerText, 200);
+        if (t.length > o.label.length + 3 && t.length <= 120) { o.label = clean(o.label + ' — ' + t, 80); break; }
+      }
+    }
+    delete o.el;
   }
   return {title: document.title, text: clean(document.body ? document.body.innerText : '', 3000), elements: out};
 })()"""
