@@ -300,3 +300,50 @@ def test_click_reports_and_adopts_a_tab_the_click_opened(monkeypatch):
     result = navegador.click("AAAA11", 1)
 
     assert "BBBB22" in result and "BBBB2222" in navegador._opened
+
+
+def test_read_marks_the_dropdowns_as_open_or_closed(monkeypatch):
+    Page(monkeypatch, [{**el("Menú"), "state": "cerrado"}, {**el("Cursos"), "state": "abierto"}, {**el("Otro"), "state": "raro"}, el("Inicio")])
+
+    text = navegador.read("AAAA11")
+
+    assert "1: botón «Menú» (cerrado)" in text and "2: botón «Cursos» (abierto)" in text
+    assert "3: botón «Otro»\n" in text and "4: botón «Inicio»\n" in text  # un estado inventado por la página no se muestra
+
+
+def test_the_script_names_icon_only_buttons():
+    assert "sin nombre (" in navegador.READ_JS and "aria-expanded" in navegador.READ_JS
+
+
+def test_read_pasar_moves_the_mouse_over_the_element_without_clicking(monkeypatch):
+    fake = Page(monkeypatch, [el("Cursos", x=70.0, y=15.0)])
+    navegador.read("AAAA11")
+
+    navegador.read("AAAA11 pasar 1")
+
+    events = fake.sent("Input.dispatchMouseEvent")
+    assert [(e["type"], e["x"], e["y"]) for e in events] == [("mouseMoved", 70.0, 15.0)]
+    assert [p["expression"] for p in fake.sent("Runtime.evaluate")] == [navegador.READ_JS] * 3  # lectura, comprobación y lectura
+
+
+@pytest.mark.parametrize("args", ["AAAA11 pasar", "AAAA11 pasar x", "AAAA11 pasar 0", "AAAA11 pasar 1 2"])
+def test_read_pasar_needs_a_valid_element_number(monkeypatch, args):
+    fake = Page(monkeypatch, [el("Cursos")])
+    navegador.read("AAAA11")
+    before = len(fake.orders)
+
+    with pytest.raises(navegador.NavegadorError, match="pasar"):
+        navegador.read(args)
+
+    assert len(fake.orders) == before
+
+
+def test_read_pasar_refuses_when_the_page_changed(monkeypatch):
+    fake = Page(monkeypatch, [el("Cursos")])
+    navegador.read("AAAA11")
+    fake.data["elements"] = [el("Borrar todo")]
+
+    with pytest.raises(navegador.NavegadorError, match="cambió"):
+        navegador.read("AAAA11 pasar 1")
+
+    assert fake.sent("Input.dispatchMouseEvent") == []

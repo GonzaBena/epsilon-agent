@@ -66,8 +66,12 @@ READ_JS = """(() => {
     const sensitive = type === 'password' || /^cc-/.test(ac) || /(card|cvv|cvc|security.?code)/.test(hint);
     const field = tag === 'input' || tag === 'textarea' || tag === 'select';
     const kind = type === 'password' ? 'password' : tag === 'a' ? 'link' : field ? 'input' : 'button';
-    const label = clean(el.getAttribute('aria-label') || (field ? (el.placeholder || el.title || el.name) : (el.innerText || el.textContent)) || el.title || el.alt, 80);
-    out.push({label, kind, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive, href: tag === 'a' ? el.href : '', el});
+    let label = clean(el.getAttribute('aria-label') || (field ? (el.placeholder || el.title || el.name) : (el.innerText || el.textContent)) || el.title || el.alt, 80);
+    // Un botón de solo ícono (la hamburguesa de un menú) no tiene texto: se lo nombra por su id o su clase para que el modelo lo vea.
+    if (!label && !field) label = clean('sin nombre (' + (el.id || String(el.className || '').split(' ')[0] || el.tagName.toLowerCase()) + ')', 80);
+    const expanded = el.getAttribute('aria-expanded');
+    const state = expanded === 'true' ? 'abierto' : expanded === 'false' ? 'cerrado' : '';
+    out.push({label, kind, state, x: r.left + r.width / 2, y: r.top + r.height / 2, sensitive, href: tag === 'a' ? el.href : '', el});
     if (out.length >= 200) break;
   }
   // Varios botones con el mismo rótulo («Reproducir» en cada tarjeta): se les suma el texto de su tarjeta para distinguirlos.
@@ -101,6 +105,7 @@ class Element:
     y: float
     sensitive: bool  # contraseña, tarjeta o CVV: no se escribe
     href: str = ""  # a dónde lleva, si es un enlace
+    state: str = ""  # «abierto» o «cerrado» si es un desplegable (aria-expanded); vacío si no lo es
 
 
 @dataclass(frozen=True)
@@ -390,6 +395,7 @@ def _collect(tab: Tab) -> tuple[dict, list[Element]]:
             float(e.get("y", 0)),
             bool(e.get("sensitive", True)),
             str(e.get("href", ""))[:500],
+            state if (state := str(e.get("state", ""))) in ("abierto", "cerrado") else "",
         )
         for n, e in enumerate(found, 1)
     ]
@@ -398,13 +404,19 @@ def _collect(tab: Tab) -> tuple[dict, list[Element]]:
 
 def read(args: str) -> str:
     """El título, el texto principal (acotado) y los elementos tocables numerados de la pestaña.
-    «id abajo» o «id arriba» desplaza la página antes de leer (con la rueda del mouse, sin JavaScript)."""
+    «id abajo» o «id arriba» desplaza la página antes de leer y «id pasar N» pone el mouse sobre el elemento N (menús de hover);
+    ambos con eventos del mouse, sin JavaScript."""
     parts = args.split()
     direction = parts[1].lower() if len(parts) > 1 else ""
-    if len(parts) > 2 or direction not in ("", "abajo", "arriba"):
-        raise NavegadorError("Después del id de la pestaña solo puede ir «abajo» o «arriba».")
+    hover = direction == "pasar" and len(parts) == 3 and parts[2].isascii() and parts[2].isdigit() and int(parts[2]) >= 1
+    if not hover and (len(parts) > 2 or direction not in ("", "abajo", "arriba")):
+        raise NavegadorError("Después del id de la pestaña solo puede ir «abajo», «arriba» o «pasar N» (N: el número del elemento).")
     tab = resolve_tab(parts[0] if parts else "")
-    if direction:
+    if hover:  # abre los menús que solo se despliegan al pasar el mouse
+        now = _locate(tab, int(parts[2]), element(parts[0], int(parts[2])))
+        _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": "mouseMoved", "x": now.x, "y": now.y})
+        time.sleep(0.5)
+    elif direction:
         delta = SCROLL_PIXELS if direction == "abajo" else -SCROLL_PIXELS
         _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": "mouseWheel", "x": 300.0, "y": 300.0, "deltaX": 0, "deltaY": delta})
         time.sleep(0.4)
@@ -414,7 +426,7 @@ def read(args: str) -> str:
     _last.hosts = [tab.host, reglas.host_of(str(data.get("url", "")))]  # el de antes y el de después: la página pudo navegar
     title = " ".join(str(data.get("title", "")).split())[:MAX_TITLE]
     lines = [f"Título: {title}", f"Sitio: {tab.host}", "Elementos:"]
-    lines += [f"{e.n}: {KINDS.get(e.kind, 'elemento')} «{e.label}»" for e in elements]
+    lines += [f"{e.n}: {KINDS.get(e.kind, 'elemento')} «{e.label}»" + (f" ({e.state})" if e.state else "") for e in elements]
     if data.get("more") is True:
         lines.append(f"(Hay más abajo: leer con «{tab.short} abajo» para ver el resto.)")
     lines += ["Texto:", str(data.get("text", ""))[:MAX_TEXT]]  # al final: si el resultado se recorta, se pierde texto y no números
@@ -437,8 +449,8 @@ def element(tab_ref: str, n: int) -> Element:
     return elements[n - 1]
 
 
-def _press(tab: Tab, n: int, saved: Element, field: bool = False) -> Element:
-    """Hace clic de verdad en el elemento `n`, después de comprobar que la página sigue siendo la que se leyó
+def _locate(tab: Tab, n: int, saved: Element, field: bool = False) -> Element:
+    """El elemento `n` tal como está AHORA, después de comprobar que la página sigue siendo la que se leyó
     (mismo sitio y mismo rótulo). Con `field`, además tiene que seguir siendo un campo que no sea sensible."""
     if _sites.get(tab.id) != tab.host:
         raise NavegadorError("La página cambió de sitio: leé la pestaña de nuevo.")
@@ -449,6 +461,12 @@ def _press(tab: Tab, n: int, saved: Element, field: bool = False) -> Element:
     if field and (now.kind != "input" or now.sensitive):
         raise NavegadorError("Ese campo es de contraseña o de tarjeta, o ya no es un campo: no escribo ahí.")
     _elements[tab.id] = fresh
+    return now
+
+
+def _press(tab: Tab, n: int, saved: Element, field: bool = False) -> Element:
+    """Hace clic de verdad en el elemento `n`, después de comprobarlo con `_locate`."""
+    now = _locate(tab, n, saved, field)
     for kind in ("mousePressed", "mouseReleased"):
         _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": kind, "x": now.x, "y": now.y, "button": "left", "clickCount": 1})
     return now
