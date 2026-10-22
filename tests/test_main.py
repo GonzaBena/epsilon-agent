@@ -437,3 +437,49 @@ def test_an_unconfigured_and_switched_off_channel_still_says_unconfigured(monkey
     main.main()
 
     assert state.snapshot()["telegram"]["state"] == "skipped"
+
+
+# --- Conectores MCP ------------------------------------------------------------
+
+
+def test_autostart_connectors_start_with_epsilon_and_failures_do_not_stop_it(monkeypatch):
+    from epsilon import tools
+    from epsilon.connectors import manager, registry, store
+    from tests.connectors.fakes import FakeLink, install
+
+    good, broken, lazy = FakeLink(), FakeLink(open_error=OSError("no existe el programa")), FakeLink()
+    install(monkeypatch, {"bueno": good, "roto": broken, "perezoso": lazy})
+    for name in ("bueno", "roto", "perezoso"):
+        store.add(name, [name], {})
+    store.update("bueno", autostart=True)
+    store.update("roto", autostart=True)
+    stopped = []
+    real_stop_all = manager.stop_all
+    monkeypatch.setattr(manager, "stop_all", lambda: stopped.append(True) or real_stop_all())
+    web_channel = FakeChannel()
+    use_channels(monkeypatch, web=web_channel)
+
+    main.main()  # la web arranca igual
+
+    assert web_channel.threads
+    thread = next(t for t in threading.enumerate() if t.name == "conectores-arranque")
+    thread.join(timeout=5)
+    assert good.opens and broken.opens and not lazy.opens  # sin «arrancar con Epsilon», espera al primer uso
+    assert store.get("roto")["error"]  # quedó «detenido» con el motivo
+    assert manager.status("roto") == "detenido"
+    assert registry.provide in tools._providers  # sus herramientas llegan a la IA
+    assert stopped  # al cerrar la web, se cierran los conectores
+    manager._reset()
+
+
+def test_main_survives_if_connectors_cannot_be_set_up(monkeypatch):
+    def broken(*args):
+        raise RuntimeError("sin conectores")
+
+    monkeypatch.setattr(main.tools, "add_provider", broken)
+    web_channel = FakeChannel()
+    use_channels(monkeypatch, web=web_channel)
+
+    main.main()
+
+    assert web_channel.threads

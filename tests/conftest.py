@@ -191,13 +191,16 @@ def block_real_browser(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def block_real_connectors(monkeypatch):
-    """Ningún test lanza el proceso de un conector MCP de verdad, y cada uno arranca sin conectores abiertos."""
+    """Ningún test lanza el proceso de un conector MCP de verdad, y cada uno arranca sin conectores abiertos.
+    Tampoco queda registrado para el siguiente el proveedor de herramientas ni el gancho que puso main()."""
+    from epsilon import tools
     from epsilon.connectors import manager
 
     async def forbidden(*args, **kwargs):
         raise RuntimeError("Un test intentó lanzar un conector MCP de verdad")
 
     monkeypatch.setattr(manager, "_open", forbidden)
+    monkeypatch.setattr(tools, "_providers", [])
     manager._reset()
     yield
-    manager._reset()
+    manager._reset()  # también olvida el gancho que puso main()

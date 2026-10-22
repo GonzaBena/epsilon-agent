@@ -16,6 +16,7 @@ KIND_DEFAULTS = {"read": "allow", "write": "ask", "delete": "deny"}
 
 _granted: dict[str, set[str]] = {}  # conversación -> herramientas ya permitidas en esa sesión
 _lock = threading.Lock()
+_file_lock = threading.Lock()  # guardar y volver al inicial, de a uno (el gancho de los conectores corre en otro hilo)
 
 
 def default_state(tool: tools.Tool) -> str:
@@ -55,11 +56,32 @@ def save(states: dict[str, str]) -> dict[str, str]:
         if state not in STATES:
             raise ValueError(f"Estado inválido para «{tool_id}»: elegí permitir, preguntar o bloquear.")
     clean = {tool_id: states[tool_id] for tool_id in sorted(states)}
+    with _file_lock:
+        _write(clean)
+    return clean
+
+
+def _write(states: dict[str, str]) -> None:
     path = notes.safe_path(FILE)
     tmp = path.with_name(FILE + ".tmp")
-    tmp.write_text(json.dumps(clean, indent=2), encoding="utf-8")
+    tmp.write_text(json.dumps(states, indent=2), encoding="utf-8")
     os.replace(tmp, path)  # el archivo nunca queda a medias
-    return clean
+
+
+def reset(tool_id: str) -> None:
+    """Vuelve la herramienta a su estado inicial: borra lo guardado y el «sí por el resto de la conversación».
+    Lo usan los conectores cuando una herramienta aparece o cambia (la persona tiene que volver a decidir)."""
+    with _lock:
+        for granted in _granted.values():
+            granted.discard(tool_id)
+    with _file_lock:
+        try:
+            raw = json.loads(notes.safe_path(FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return  # sin archivo (o roto): ya está en el inicial
+        if isinstance(raw, dict) and tool_id in raw:
+            del raw[tool_id]
+            _write(raw)
 
 
 def _browser_off(tool: tools.Tool) -> bool:

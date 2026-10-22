@@ -17,6 +17,7 @@ ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 FIELDS = ("enabled", "autostart", "env", "tools", "error")  # lo único que `update` deja cambiar
 
 _lock = threading.Lock()
+_version = 0  # sube con cada cambio guardado: así connectors/registry.py sabe cuándo rehacer su caché
 
 
 class StoreError(Exception):
@@ -41,6 +42,7 @@ def _write(items: list[dict]) -> None:
 
 def _change(change) -> object:
     """Lee la lista, llama a `change(items)` (la modifica en el lugar y puede devolver algo) y guarda."""
+    global _version
     with _lock:
         items = _read()
         result = change(items)
@@ -48,7 +50,14 @@ def _change(change) -> object:
             _write(items)
         except OSError:
             raise StoreError("No pude guardar los conectores.") from None
+        finally:
+            _version += 1
         return result
+
+
+def version() -> int:
+    """Cuántos cambios se guardaron desde que arrancó Epsilon (para las cachés)."""
+    return _version
 
 
 def _reserved() -> set[str]:

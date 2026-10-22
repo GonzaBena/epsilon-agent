@@ -3,7 +3,8 @@ import logging
 import os
 import threading
 
-from epsilon import state
+from epsilon import state, tools
+from epsilon.connectors import manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.plugins import channels as plugin_channels
 from epsilon.routines import engine
 from epsilon.settings import config
@@ -228,6 +229,24 @@ def run_isolated(name: str, channel):
             state.set(name, "stopped", "El canal terminó.")
 
 
+def setup_connectors() -> None:
+    """Las herramientas de los conectores MCP llegan a la IA (proveedor de tools.py) y, si una cambia, vuelve a
+    «preguntar». No arranca ningún proceso: eso lo hace `autostart_connectors`, o el primer uso."""
+    tools.add_provider(connector_registry.provide)
+    connectors.set_changed_hook(connector_registry.reset_changed)
+
+
+def autostart_connectors() -> None:
+    """Arranca los conectores prendidos con «arrancar con Epsilon». Uno que falla queda «detenido» con el motivo
+    (lo anota el manager) y no frena a los demás ni a Epsilon."""
+    for entry in connector_store.list_all():
+        if entry.get("enabled") is True and entry.get("autostart") is True:
+            try:
+                connectors.start(entry["name"])
+            except Exception as e:  # noqa: BLE001 - un conector roto no tumba el arranque
+                print(f"No pude arrancar el conector {entry['name']}: {config.redact(str(e))}")
+
+
 def main():
     """Arranca la web (siempre) y los demás canales que estén configurados.
 
@@ -242,6 +261,13 @@ def main():
         engine.start()  # las rutinas; si no arrancan, la web y los canales siguen igual
     except Exception as e:
         print(f"No pude prender el motor de rutinas: {config.redact(repr(e))}")
+
+    try:
+        setup_connectors()
+        # En su hilo: arrancar uno puede tardar (uvx/npx bajan el paquete) y la web no tiene que esperarlo.
+        threading.Thread(target=autostart_connectors, name="conectores-arranque", daemon=True).start()
+    except Exception as e:
+        print(f"No pude preparar los conectores: {config.redact(repr(e))}")
 
     for name in CHANNELS:
         if name not in enabled:
@@ -269,6 +295,11 @@ def main():
         # a la vista y cortamos con código de error (systemd lo reinicia).
         state.set(primary, "stopped", describe(channel, e))
         raise SystemExit(1) from None
+    finally:
+        try:  # al cerrar, que ningún conector quede corriendo suelto
+            connectors.stop_all()
+        except Exception as e:  # noqa: BLE001
+            print(f"No pude cerrar los conectores: {config.redact(repr(e))}")
 
 
 if __name__ == "__main__":

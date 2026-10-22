@@ -1,10 +1,14 @@
+from collections.abc import Callable
 from dataclasses import dataclass
+import logging
 
 # Registro de herramientas: cada una se declara UNA vez, acá, y de acá salen la ayuda
 # (core.HELP), el menú de Telegram, el panel de la web (GET /api/tools) y la lista de
 # comandos que la web ejecuta sola desde un enlace. No importa nada del proyecto: lo
 # usan el núcleo y los canales, y no al revés. Las funciones que hacen el trabajo siguen
 # en core.COMMANDS; un test vigila que ambos lados coincidan.
+# Además de TOOLS (fija) puede haber herramientas dinámicas para la IA (los conectores MCP): llegan por un
+# «proveedor» (`add_provider`) que registra quien las conoce, así este módulo sigue sin importar nada del proyecto.
 
 
 @dataclass(frozen=True)
@@ -581,9 +585,51 @@ def ai_id(tool: Tool) -> str:
     return tool.ai_name or tool.name
 
 
+Provider = Callable[[], tuple[tuple[Tool, ...], dict[str, str]]]  # -> (herramientas, {grupo: para qué sirve})
+_providers: list[Provider] = []
+
+
+def add_provider(fn: Provider) -> None:
+    """Suma herramientas dinámicas para la IA (p. ej. las de los conectores). Registrar dos veces la misma no la duplica."""
+    if fn not in _providers:
+        _providers.append(fn)
+
+
+def _provided() -> tuple[list[Tool], dict[str, str]]:
+    """Lo que dan los proveedores, sin lo que pisaría a Epsilon: un id o un grupo que ya existen, o repetidos.
+    Un proveedor que falla no aporta nada (y la IA sigue con las demás)."""
+    taken = {ai_id(tool) for tool in TOOLS if tool.ai}
+    found: list[Tool] = []
+    groups: dict[str, str] = {}
+    for provider in list(_providers):
+        try:
+            extra, texts = provider()
+        except Exception:  # noqa: BLE001 - es de otro módulo: no rompe a la IA
+            logging.getLogger(__name__).exception("Falló un proveedor de herramientas")
+            continue
+        for tool in extra:
+            if not isinstance(tool, Tool) or not tool.ai or ai_id(tool) in taken or tool.ai_group in AI_GROUPS:
+                continue
+            if tool.ai_group and not tool.ai_action:
+                continue
+            taken.add(ai_id(tool))
+            found.append(tool)
+        for group, text in texts.items():
+            if group not in AI_GROUPS and isinstance(text, str):
+                groups.setdefault(group, text)
+    return found, groups
+
+
 def ai_tools() -> tuple[Tool, ...]:
-    """Las herramientas que la IA puede usar, en el orden de TOOLS."""
-    return tuple(tool for tool in TOOLS if tool.ai)
+    """Las herramientas que la IA puede usar: las de TOOLS en su orden y después las de los proveedores."""
+    return tuple(tool for tool in TOOLS if tool.ai) + tuple(_provided()[0])
+
+
+def group_text(group: str) -> str:
+    """Para qué sirve un grupo: el de AI_GROUPS o el que dio su proveedor ("" si no existe)."""
+    if group in AI_GROUPS:
+        return AI_GROUPS[group]
+    return _provided()[1].get(group, "")
 
 
 def route(call_id: str) -> Tool | None:

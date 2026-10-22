@@ -165,7 +165,7 @@ def permissions_view() -> dict:
                 "label": tool.label,
                 "desc": tool.ai_help or tool.help or tool.panel or "",
                 "kind": tool.ai,
-                "state": saved[tools.ai_id(tool)],
+                "state": saved.get(tools.ai_id(tool), permissions.default_state(tool)),  # un conector pudo sumar una recién
                 "default": permissions.default_state(tool),
             }
             for tool in tools.ai_tools()
