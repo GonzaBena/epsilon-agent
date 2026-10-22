@@ -187,6 +187,8 @@ EDIT_LINE_ARGS = (
 
 def _parse_edit(args: str) -> tuple[str, int, str] | None:
     """(nota, número de línea, texto nuevo) de lo que mandó la IA a `editar`, o None si no se entiende."""
+    # Un modelo chico a veces escribe los saltos de línea como los dos caracteres «\n» en vez de un salto de verdad.
+    args = args.replace("\\r\\n", "\n").replace("\\n", "\n")
     match = next((m for rx in EDIT_LINE_ARGS if (m := rx.fullmatch(args))), None)
     name = notes.clean_note_name(match["name"]) if match else ""
     if not name:
@@ -215,7 +217,10 @@ def _edit_note(args: str) -> Reply:
     (vacío para borrarla). Acepta que lo mande en líneas o todo en una, con comas o espacios."""
     parsed = _parse_edit(args)
     if not parsed:
-        return Reply("Formato: el nombre de la nota, el número de línea y el texto nuevo de esa línea, cada uno en su línea. No se cambió nada.")
+        return Reply(
+            "Formato: el nombre de la nota, el número de línea y el texto nuevo de esa línea, cada uno en su línea. "
+            f"No se cambió nada. Recibí: {args[:80]!r}"
+        )
     name, n, text = parsed
     try:
         before = notes.edit_line(name, n, text)

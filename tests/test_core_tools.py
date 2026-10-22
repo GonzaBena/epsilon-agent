@@ -860,6 +860,8 @@ def test_a_task_can_be_marked_done_by_editing_its_line_after_asking(script):
         '"todo": 1: "- [x] pagar"',
         "todo;1;- [x] pagar",
         "todo,\n1,\n- [x] pagar",
+        "todo\\n1\\n- [x] pagar",  # los dos caracteres «\n» escritos como texto (lo que mandó qwen3.5:4b)
+        "todo\\r\\n1\\r\\n- [x] pagar",
     ],
 )
 def test_edit_accepts_the_line_format_and_the_one_line_format(script, args):
@@ -940,3 +942,21 @@ def test_the_edit_tells_the_model_what_the_line_said_and_what_it_says_now(script
     say("marcá pan")
 
     assert "Decía «- [ ] comprar pan» y ahora dice «- [x] comprar pan»" in results(script.seen[1][0])[0]
+
+
+def test_the_question_previews_the_line_even_when_the_model_wrote_backslash_n_as_text(script):
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.editar", "todo\\n1\\n- [x] comprar pan")])]
+
+    reply = say("marcá pan")
+
+    assert "Hoy la línea 1 de todo dice" in reply.text and "- [ ] comprar pan" in reply.text
+
+
+def test_a_refused_edit_tells_the_model_what_it_received(script):
+    allow("nota_editar")
+    script.steps = [step(calls=[("notas.editar", "no se entiende")]), step("no pude")]
+
+    say("editá algo")
+
+    assert "Recibí: 'no se entiende'" in results(script.seen[1][0])[0]
