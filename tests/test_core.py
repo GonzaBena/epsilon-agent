@@ -225,6 +225,15 @@ def test_the_ai_can_run_the_pc_tools_with_a_copied_command_prefix(monkeypatch):
     assert core.AI_RUNNERS["volumen"]("/volumen +5").text == "ok" and seen == ["+5"]
 
 
+def test_windows_command_passes_its_argument_and_errors_come_back_as_text(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.ventanas, "report", lambda arg: seen.append(arg) or "tabla")
+
+    assert say("/ventanas activa").text == "tabla" and seen == ["activa"]
+    monkeypatch.undo()
+    assert "Opciones: activa" in say("/ventanas cerrar todo").text
+
+
 def test_sistema_refuses_anything_else_without_running_it():
     text = say("/sistema ls -la; rm -rf /").text
 

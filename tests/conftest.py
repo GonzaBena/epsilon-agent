@@ -91,6 +91,17 @@ def block_real_multimedia(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_hyprctl(monkeypatch):
+    """Ningún test le pregunta a Hyprland de verdad."""
+    from epsilon.utils import ventanas
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar hyprctl de verdad")
+
+    monkeypatch.setattr(ventanas, "_hyprctl", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def clean_channel_state():
     """El estado de los canales es global: cada test arranca sin el de otro."""
     state.reset()

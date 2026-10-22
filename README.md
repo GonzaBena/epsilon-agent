@@ -107,6 +107,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/volumen [valor]` | Volumen de la PC: sin valor dice cómo está; con un número (`40`), `+5`/`-5`, `silenciar` o `activar` lo cambia. Nunca pasa de 100 % (sin IA, usa `wpctl`). |
 | `/sonando`             | Qué se está reproduciendo en la PC: título, artista y app (sin IA, por MPRIS). |
 | `/musica [acción]` | Controla la música o el video de la PC: `pausa`, `play`, `siguiente`, `anterior`; sin acción alterna play/pausa (sin IA). |
+| `/ventanas [activa]` | Ventanas abiertas de la PC con su espacio y la que tiene el foco; con `activa`, solo esa (sin IA, usa `hyprctl`). |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones: la voz y el modelo de IA (entre tus favoritos). |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |
