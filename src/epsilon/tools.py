@@ -407,6 +407,15 @@ TOOLS = (
         writes=True,
     ),
     Tool(
+        "/c",
+        name="c",
+        usage="/c [conector herramienta args]",
+        help="usar un conector (sin args: lista lo que hay)",
+        menu="Usar un conector (sin args: lista)",
+        insert="/c ",
+        writes=True,
+    ),
+    Tool(
         "/rutinas",
         name="rutinas",
         help="ver tus rutinas programadas, numeradas, con su próxima vez",

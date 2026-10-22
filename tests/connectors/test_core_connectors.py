@@ -375,3 +375,75 @@ def test_a_failing_hook_fails_closed_and_is_retried(script, lights):  # noqa: F8
     assert manager.start("luces") == ["apagar"]
     assert permissions.load()[TOOL_ID] == "ask"
     assert core._connector_hash(TOOL_ID) not in ("", None)
+
+
+# --- /c: la persona usa un conector sin modelo ---------------------------------------------------------------
+
+
+def test_c_without_args_lists_connectors_and_tools(lights):
+    reply = say("/c")
+
+    assert "luces" in reply.text and "apagar" in reply.text
+
+
+def test_c_without_connectors_says_so(script, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(tools, "_providers", [])
+
+    assert "conector" in say("/c").text.lower()
+
+
+def test_c_runs_tool_with_key_value_args(lights):
+    reply = say("/c luces apagar habitacion=living")
+
+    assert lights.calls == [("apagar", {"habitacion": "living"})]
+    assert "apagué living" in reply.text
+    assert not reply.actions  # la persona lo escribió: no pregunta permiso
+
+
+def test_c_runs_with_json_args(lights):
+    reply = say('/c luces apagar {"habitacion": "cocina"}')
+
+    assert lights.calls == [("apagar", {"habitacion": "cocina"})]
+    assert "apagué cocina" in reply.text
+
+
+def test_c_unknown_connector_or_tool_says_so(lights):
+    assert "luces" in say("/c nada apagar").text
+    reply = say("/c luces prender")
+    assert "apagar" in reply.text
+    assert lights.calls == []
+
+
+def test_c_disabled_connector_says_it_is_off(lights):
+    store.update("luces", enabled=False)
+
+    reply = say("/c luces apagar habitacion=living")
+
+    assert "apagado" in reply.text
+    assert lights.calls == []
+
+
+def test_c_bad_args_explain_without_calling(lights):
+    reply = say("/c luces apagar color=rojo")
+
+    assert reply.text and "Traceback" not in reply.text
+    assert lights.calls == []
+
+
+def test_c_result_is_redacted_and_truncated(lights):
+    lights.result = lambda name, args: "x" * 9000
+    reply = say("/c luces apagar habitacion=a")
+
+    assert len(reply.text) < core.MAX_RESULT_CHARS + 200
+
+
+def test_c_connector_error_is_shown_as_text(lights):
+    lights.fail_next = "se rompió"
+
+    assert "se rompió" in say("/c luces apagar habitacion=a").text
+
+
+def test_c_is_not_a_link_command_nor_ai():
+    assert not any(c == "/c" or c.startswith("/c ") for c in tools.link_commands())
+    tool_c = next(t for t in tools.TOOLS if t.name == "c")
+    assert tool_c.writes and not tool_c.links and not tool_c.ai

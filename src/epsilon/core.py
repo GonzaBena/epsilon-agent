@@ -13,7 +13,7 @@ import weakref
 from epsilon import menu, tools
 from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, permissions, summarize, usage
 from epsilon.ai.messages import ModelError
-from epsilon.connectors import bridge, manager as connectors, registry as connector_registry
+from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
@@ -508,6 +508,59 @@ _volume_cmd = _pc(lambda args: multimedia.volume(args))
 _playing_cmd = _pc(lambda args: multimedia.now_playing())
 _music_cmd = _pc(lambda args: multimedia.music(args))
 _windows_cmd = _pc(lambda args: ventanas.report(args))
+
+def _connector_cmd(args: str) -> Reply:
+    """/c: la persona usa una herramienta de un conector, sin modelo. Lo escribió ella: no pasa por permisos ni por
+    el hash (eso es de la IA), pero los argumentos se validan contra el esquema guardado ANTES de llamar."""
+    parts = args.strip().split(None, 2)
+    entries = [e for e in connector_store.list_all() if isinstance(e, dict) and isinstance(e.get("name"), str)]
+
+    def actions(entry: dict) -> list[str]:
+        taken: set[str] = set()
+        found = []
+        for item in entry.get("tools", []):
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                action = bridge.action_name(item["name"], taken)
+                taken.add(action)
+                found.append(action)
+        return found
+
+    if not parts:
+        if not entries:
+            return Reply("No hay conectores. Agregá uno desde Configuración.")
+        lines = []
+        for entry in entries:
+            try:
+                state = connectors.status(entry["name"])
+            except connectors.ConnectorError:
+                state = "?"
+            lines.append(f"- {entry['name']} ({state}): {', '.join(actions(entry)) or 'sin herramientas conocidas'}")
+        return Reply(config.redact("Conectores:\n" + "\n".join(lines) + "\n\nUso: /c conector herramienta [clave=valor]"))
+    entry = next((e for e in entries if e["name"] == parts[0]), None)
+    if entry is None:
+        known = ", ".join(e["name"] for e in entries) or "ninguno"
+        return Reply(config.redact(f"No hay un conector llamado «{parts[0][:40]}». Hay: {known}."))
+    name = entry["name"]
+    if not entry.get("enabled"):
+        return Reply(f"El conector «{name}» está apagado.")
+    available = actions(entry)
+    if len(parts) < 2:
+        return Reply(config.redact(f"¿Qué herramienta de «{name}»? Hay: {', '.join(available) or 'ninguna'}."))
+    real = bridge.real_name(entry, parts[1])
+    if real is None:
+        return Reply(config.redact(f"«{name}» no tiene la herramienta «{parts[1][:40]}». Hay: {', '.join(available) or 'ninguna'}."))
+    item = next(t for t in entry["tools"] if isinstance(t, dict) and t.get("name") == real)
+    schema = item.get("schema") if isinstance(item.get("schema"), dict) else {}
+    try:
+        parsed = bridge.parse_cli(schema, parts[2] if len(parts) > 2 else "")
+    except bridge.ArgsError as error:
+        return Reply(config.redact(f"Argumentos inválidos: {error}"))
+    try:
+        text = connectors.call(name, real, parsed)  # sin expected_hash: la persona lo escribió
+    except connectors.ConnectorError as error:
+        return Reply(config.redact(str(error))[:MAX_RESULT_CHARS])
+    return Reply(config.redact(text)[:MAX_RESULT_CHARS])
+
 
 def _local_now() -> datetime:
     """La hora de la pared, sin zona: así se guardan y comparan las rutinas."""
@@ -1148,6 +1201,7 @@ COMMANDS = {
     "musica": lambda args, s: _music_cmd(args),
     "ventanas": lambda args, s: _windows_cmd(args),
     "rutina": _routine_cmd,
+    "c": lambda args, s: _connector_cmd(args),
     "rutinas": _routines_cmd,
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
