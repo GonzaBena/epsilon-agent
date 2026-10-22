@@ -27,6 +27,8 @@ class Tool:
     ai_help: str = ""  # lo que el modelo lee de la herramienta, si no hay `help` ni `panel` (solo para la IA)
     ai_arg: str = ""  # qué va en su argumento, dicho sin la sintaxis del comando («+», «/recordar»); si falta, `usage`
     ai_default: str = ""  # estado inicial del permiso, si no es el que sale del tipo (p. ej. «deny»)
+    ai_group: str = ""  # grupo de AI_GROUPS con el que el modelo la ve (vacío = suelta); los permisos siguen siendo por herramienta
+    ai_action: str = ""  # cómo se llama dentro de su grupo («agregar»); único en el grupo
 
 
 # El panel de la web muestra solo lo que no tiene otra puerta de entrada: lo que ya está en el
@@ -327,6 +329,12 @@ TOOLS = (
 )
 
 
+# Los grupos de herramientas de IA: el modelo ve UNA herramienta por grupo, con un parámetro `accion` que elige
+# cuál de las suyas usar (menos declaraciones, y entre las que quedan se elige mejor). Por dentro nada cambia: cada
+# acción es una herramienta de TOOLS, con su permiso, y `route` traduce la llamada a ella. Grupo -> para qué sirve.
+AI_GROUPS: dict[str, str] = {}
+
+
 def help_lines() -> list[str]:
     """Una línea «uso → qué hace» por cada herramienta que figura en la ayuda."""
     return [f"{tool.usage or tool.label} → {tool.help}" for tool in TOOLS if tool.help]
@@ -362,3 +370,17 @@ def ai_id(tool: Tool) -> str:
 def ai_tools() -> tuple[Tool, ...]:
     """Las herramientas que la IA puede usar, en el orden de TOOLS."""
     return tuple(tool for tool in TOOLS if tool.ai)
+
+
+def route(call_id: str) -> Tool | None:
+    """La herramienta que pidió el modelo, o None si no existe. `call_id` es «grupo.acción» para las de un
+    grupo y el nombre a secas para las sueltas; el nombre de una herramienta agrupada no vale solo."""
+    if "." in call_id:
+        group, action = call_id.split(".", 1)
+        return next((t for t in ai_tools() if t.ai_group and (t.ai_group, t.ai_action) == (group, action)), None)
+    return next((t for t in ai_tools() if not t.ai_group and ai_id(t) == call_id), None)
+
+
+def model_name(call_id: str) -> str:
+    """El nombre con que el modelo hizo la llamada (el grupo, sin la acción): el que espera al recibir el resultado."""
+    return call_id.split(".", 1)[0]

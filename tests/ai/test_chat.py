@@ -1,5 +1,6 @@
 import pytest
 
+from epsilon import tools
 from epsilon.ai import chat, llm, permissions, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store
@@ -453,3 +454,34 @@ def test_system_prompt_tells_the_model_not_to_claim_it_has_no_access():
     prompt = chat.system_prompt()
 
     assert "nunca digas que no tenés acceso" in prompt and "enviar" in prompt
+
+
+def test_step_offers_a_group_as_one_tool_with_its_allowed_actions(captured, monkeypatch):
+    monkeypatch.setattr(
+        tools,
+        "TOOLS",
+        (
+            tools.Tool("/ver", name="ver", ai="read"),
+            tools.Tool("/recordar", name="recordar", ai="write", ai_help="anotar", ai_arg="el dato", ai_group="mem", ai_action="agregar"),
+            tools.Tool("/olvidar", name="olvidar", ai="delete", ai_help="borrar", ai_arg="el número", ai_group="mem", ai_action="borrar"),
+            tools.Tool("/memoria", name="memoria", ai="read", ai_help="listar", ai_arg="vacío", ai_group="mem", ai_action="ver"),
+        ),
+    )
+    monkeypatch.setattr(tools, "AI_GROUPS", {"mem": "Lo que recordás de la persona"})
+
+    chat.step(chat.begin(CID, "hola"))  # olvidar viene bloqueada por defecto: la acción no se ofrece
+
+    ver, mem = captured[0]["tools"]
+    assert (ver.name, ver.actions) == ("ver", ())
+    assert (mem.name, mem.actions) == ("mem", ("agregar", "ver"))
+    assert mem.description.startswith("Lo que recordás de la persona") and "- agregar: anotar" in mem.description
+    assert "borrar" not in mem.description and "agregar: el dato" in mem.arg_description
+
+
+def test_step_does_not_offer_a_group_whose_actions_are_all_blocked(captured, monkeypatch):
+    monkeypatch.setattr(tools, "TOOLS", (tools.Tool("/olvidar", name="olvidar", ai="delete", ai_group="mem", ai_action="borrar"),))
+    monkeypatch.setattr(tools, "AI_GROUPS", {"mem": "Lo que recordás"})
+
+    chat.step(chat.begin(CID, "hola"))
+
+    assert captured[0]["tools"] == []

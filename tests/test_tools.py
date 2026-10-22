@@ -124,3 +124,56 @@ def test_the_two_note_tools_tell_the_model_when_to_use_each():
     assert "nota_nombrada" in by_id["nota"].ai_help and "SIN nombre" in by_id["nota"].ai_help
     assert "CON nombre" in by_id["nota_nombrada"].ai_help
     assert "primera línea" in by_id["nota_nombrada"].ai_arg
+
+
+# --- grupos de herramientas de IA -------------------------------------------------
+
+
+def fake_tools(monkeypatch):
+    monkeypatch.setattr(
+        tools,
+        "TOOLS",
+        (
+            tools.Tool("/ver", name="ver", ai="read"),
+            tools.Tool("/recordar", name="recordar", ai="write", ai_group="mem", ai_action="agregar"),
+            tools.Tool("/memoria", name="memoria", ai="read", ai_group="mem", ai_action="ver"),
+        ),
+    )
+
+
+def test_route_finds_a_loose_tool_by_name_and_a_grouped_one_by_group_dot_action(monkeypatch):
+    fake_tools(monkeypatch)
+
+    assert tools.route("ver").name == "ver"
+    assert tools.route("mem.agregar").name == "recordar"
+    assert tools.route("mem.ver").name == "memoria"
+
+
+def test_route_refuses_what_the_model_was_not_offered(monkeypatch):
+    fake_tools(monkeypatch)
+
+    # El nombre interno de una herramienta agrupada no vale solo (acá «memoria» es hasta el nombre de una acción),
+    # ni el grupo sin acción, ni una acción inventada, ni una suelta con acción.
+    for call_id in ("recordar", "memoria", "mem", "mem.borrar", "mem.", "ver.agregar", "", ".ver", "otra.cosa"):
+        assert tools.route(call_id) is None
+
+
+def test_model_name_is_the_group_without_the_action():
+    assert tools.model_name("mem.agregar") == "mem" and tools.model_name("ver") == "ver"
+
+
+def test_every_grouped_tool_has_a_declared_group_and_a_unique_action():
+    seen = set()
+    for t in tools.ai_tools():
+        if t.ai_group:
+            assert t.ai_group in tools.AI_GROUPS and t.ai_action and "." not in t.ai_action
+            assert (t.ai_group, t.ai_action) not in seen
+            seen.add((t.ai_group, t.ai_action))
+        else:
+            assert not t.ai_action
+    assert set(tools.AI_GROUPS) == {t.ai_group for t in tools.ai_tools() if t.ai_group}
+
+
+def test_a_group_name_never_collides_with_a_loose_tool():
+    loose = {tools.ai_id(t) for t in tools.ai_tools() if not t.ai_group}
+    assert not loose & set(tools.AI_GROUPS)

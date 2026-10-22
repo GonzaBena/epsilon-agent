@@ -144,12 +144,28 @@ def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
     return Turn(conversation_id, history)
 
 
+def _describe(tool: tools.Tool) -> str:
+    return tool.ai_help or tool.help or tool.panel or tool.label
+
+
 def _specs() -> list[llm.ToolSpec]:
-    """Las herramientas que se le ofrecen al modelo: las no bloqueadas, con su descripción."""
-    return [
-        llm.ToolSpec(tools.ai_id(tool), tool.ai_help or tool.help or tool.panel or tool.label, tool.ai_arg or tool.usage or tool.label)
-        for tool in permissions.offered()
-    ]
+    """Las herramientas que se le ofrecen al modelo: las no bloqueadas, con su descripción. Las de un grupo
+    (tools.AI_GROUPS) van juntas en una sola, con la lista de acciones; un grupo sin acciones permitidas no se ofrece."""
+    specs: dict[str, llm.ToolSpec] = {}
+    members: dict[str, list[tools.Tool]] = {}
+    for tool in permissions.offered():
+        if not tool.ai_group:
+            specs[tools.ai_id(tool)] = llm.ToolSpec(tools.ai_id(tool), _describe(tool), tool.ai_arg or tool.usage or tool.label)
+            continue
+        members.setdefault(tool.ai_group, []).append(tool)
+        specs.setdefault(tool.ai_group, None)  # reserva el lugar: el grupo sale donde aparece su primera acción
+    for group, tools_in in members.items():
+        lines = "\n".join(f"- {t.ai_action}: {_describe(t)}" for t in tools_in)
+        args = "; ".join(f"{t.ai_action}: {t.ai_arg or t.usage or t.label}" for t in tools_in)
+        specs[group] = llm.ToolSpec(
+            group, f"{tools.AI_GROUPS[group]}. Acciones:\n{lines}", f"según la acción — {args}", tuple(t.ai_action for t in tools_in)
+        )
+    return list(specs.values())
 
 
 def step(turn: Turn) -> llm.Step:
