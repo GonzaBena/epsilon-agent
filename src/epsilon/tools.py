@@ -50,7 +50,7 @@ TOOLS = (
     Tool(
         "Nota con nombre",
         usage="nombre de la nota en la primera línea y el texto en las siguientes",
-        ai_help="guardar una nota CON nombre propio, cuando el usuario dice cómo se llama o a qué nota va (se crea si no existe; si existe, agrega al final)",
+        ai_help="guardar una nota CON nombre propio, cuando el usuario dice cómo se llama o a qué nota va, o nombra una lista («la lista de la compra», «mis ideas»); se crea si no existe y, si existe, agrega al final",
         ai_arg="primera línea: el nombre de la nota; desde la segunda línea: el texto",
         writes=True,
         ai="write",
@@ -260,6 +260,7 @@ TOOLS = (
         name="todo",
         usage="/todo texto",
         help="agregar una tarea pendiente",
+        ai_help="agregar algo que hay que HACER y después se marca como hecho. Si el usuario habla de una lista o nota con nombre (la compra, ideas), no es esto: usá notas",
         panel="Agregar una tarea pendiente",
         menu="Agregar una tarea pendiente",
         insert="/todo ",
@@ -374,7 +375,7 @@ AI_GROUPS: dict[str, str] = {
     "notas": "Tus notas guardadas: guardar, leer y buscar",
     "archivos": "Lo guardado en la biblioteca (notas, tickets, CSV): listar, mandar, resumir y consultar CSV",
     "memoria": "Lo que Epsilon recuerda de la persona (datos y preferencias)",
-    "tareas": "La lista de tareas pendientes",
+    "tareas": "Cosas por hacer que se marcan como hechas (el /todo). NO sirve para listas ni apuntes (la compra, ideas, recetas): eso va en notas",
     "consultar": "Datos de afuera, sin guardar nada: fecha y hora, dólar, clima y estado de la máquina",
 }
 

@@ -177,3 +177,11 @@ def test_every_grouped_tool_has_a_declared_group_and_a_unique_action():
 def test_a_group_name_never_collides_with_a_loose_tool():
     loose = {tools.ai_id(t) for t in tools.ai_tools() if not t.ai_group}
     assert not loose & set(tools.AI_GROUPS)
+
+
+def test_tareas_and_notas_tell_the_model_which_one_a_named_list_goes_to():
+    # «agregá X a la lista de la compra» es una nota con nombre, no una tarea.
+    by_id = {tools.ai_id(t): t for t in tools.ai_tools()}
+
+    assert "lista" in by_id["nota_nombrada"].ai_help and "notas" in by_id["todo"].ai_help
+    assert "NO sirve para listas" in tools.AI_GROUPS["tareas"]
