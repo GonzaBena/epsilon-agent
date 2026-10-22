@@ -553,3 +553,43 @@ def test_the_list_has_three_collapsible_sections_and_a_three_dots_menu():
 def test_the_static_recents_title_is_gone_from_every_page_because_shell_js_draws_the_sections():
     for name in ("index.html", "config.html", "canales.html", "uso.html", "biblioteca.html", "permisos.html"):
         assert "h-recents" not in page(name), name
+
+
+# --- el botón de enviar es el cuadradito que cancela mientras se espera -----------------------
+
+
+def test_the_send_button_has_both_icons_and_toggles_between_them_with_css():
+    html = chat_html()
+    css = js("style.css")
+
+    assert 'class="icon-send"' in html and 'class="icon-stop"' in html and "<rect" in html  # el cuadradito
+    assert ".send-btn.stop .icon-send" in css and ".send-btn.stop .icon-stop" in css
+
+
+def test_while_busy_the_button_is_enabled_and_named_cancelar():
+    source = js("app.js")
+    set_busy = source[source.index("function setBusy"):source.index("function setBusy") + 900]
+
+    assert 'classList.toggle("stop", value)' in set_busy and '"Cancelar"' in set_busy and '"Enviar"' in set_busy
+    assert "sendButton.disabled" not in source  # si estuviera deshabilitado, no se podría tocar para cancelar
+
+
+def test_clicking_while_busy_cancels_and_clicking_when_idle_sends():
+    source = js("app.js")
+    handler = source[source.index('composer.addEventListener("submit"'):][:400]
+
+    assert "if (busy) cancelRequest()" in handler and "else submit()" in handler
+
+
+def test_cancelling_aborts_the_request_and_tells_the_server():
+    source = js("app.js")
+
+    assert "new AbortController()" in source and "controller.abort()" in source
+    assert '"/api/cancel"' in source and source.count("signal") >= 4  # al fetch de mensajes y de archivos
+    assert "if (current.cancelled)" in source  # cancelar no se muestra como un error
+
+
+def test_the_cancelled_text_matches_the_one_the_server_saves():
+    match = re.search(r'const CANCELLED_TEXT = "([^"]+)"', js("app.js"))
+
+    assert match and match.group(1) == core.CANCELLED

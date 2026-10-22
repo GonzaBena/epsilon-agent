@@ -825,6 +825,8 @@ def _chat(msg: Message, session: Session) -> Reply:
 def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_limit: bool) -> Reply:
     """Llama al modelo y ejecuta lo que pide hasta que conteste con texto (o haya que preguntar)."""
     while True:
+        if _cancelled():
+            return Reply(CANCELLED, artifacts=artifacts)
         # Cada vuelta gasta: si la conversación llegó al límite en el medio, se corta acá.
         if check_limit and (reason := _limit_reason(turn.conversation_id)):
             return Reply(reason, artifacts=artifacts)
@@ -837,6 +839,8 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         except Exception as e:
             print(f"Error en el chat: {config.redact(repr(e))}")  # el detalle, a la terminal
             return Reply("No pude responder.", artifacts=artifacts)
+        if _cancelled():  # cancelaron mientras el modelo pensaba: ni se usa lo que contestó ni se ejecutan sus herramientas
+            return Reply(CANCELLED, artifacts=artifacts)
         # Pasado el tope de pasos el modelo ya no podía pedir herramientas: si igual pide alguna, no se ejecuta.
         if not step.calls or turn.steps > chat.MAX_TOOL_STEPS:
             # Sin texto (por ejemplo, la IA bloqueó la respuesta): no se guarda como si fuera una respuesta.
@@ -855,6 +859,8 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
     límite de costo), devuelve esa respuesta."""
     cid = state.turn.conversation_id
     for index in range(state.index, len(state.step.calls)):
+        if _cancelled():
+            return Reply(CANCELLED, artifacts=state.artifacts)
         call_id, args = state.step.calls[index]
         name = tools.model_name(call_id)  # el resultado vuelve con el nombre con que el modelo hizo la llamada
         if index >= MAX_CALLS_PER_STEP:
@@ -1025,6 +1031,30 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
 }
 
 
+# Cancelar un turno de la IA (el cuadradito de la web). Es cooperativo: un pedido al modelo que ya salió no se puede
+# cortar, pero al volver no se usa lo que contestó ni se ejecuta ninguna herramienta más (lo que ya se guardó, se queda).
+# Cada handle() registra su propio evento por conversación: una cancelación vieja nunca frena el mensaje siguiente.
+CANCELLED = "Cancelé lo que estaba haciendo."
+_cancel_event: ContextVar[threading.Event | None] = ContextVar("cancel_event", default=None)
+_cancels: dict[str, threading.Event] = {}
+_cancels_guard = threading.Lock()
+
+
+def cancel(conversation_id: str) -> bool:
+    """Pide frenar el turno que está corriendo en esa conversación. False si no había ninguno."""
+    with _cancels_guard:
+        event = _cancels.get(conversation_id)
+    if event is None:
+        return False
+    event.set()
+    return True
+
+
+def _cancelled() -> bool:
+    event = _cancel_event.get()
+    return event is not None and event.is_set()
+
+
 # Quien quiera ver el progreso de un turno de IA (la web, para mostrarlo en vivo) pasa `on_event` a handle().
 # Va en una variable de contexto y no como parámetro por todas las funciones: lo emiten _loop y _run_calls.
 _on_event: ContextVar[Callable[[dict], None] | None] = ContextVar("on_event", default=None)
@@ -1052,6 +1082,11 @@ def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Repl
     {"type": "model", "step": n} al llamar al modelo y {"type": "tool", "name", "arg", "state"}
     (running | done | blocked) por cada herramienta."""
     token = _on_event.set(on_event)
+    event = threading.Event()
+    cancel_token = _cancel_event.set(event)
+    if msg.conversation_id:
+        with _cancels_guard:
+            _cancels[msg.conversation_id] = event
     # Solo Telegram puede enviar archivos (ver _send): en los demás canales la bandeja no existe.
     outbox: list[str] | None = [] if msg.session_id.startswith("telegram:") else None
     outbox_token = _outbox.set(outbox)
@@ -1062,6 +1097,11 @@ def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Repl
     finally:
         _outbox.reset(outbox_token)
         _on_event.reset(token)
+        _cancel_event.reset(cancel_token)
+        if msg.conversation_id:
+            with _cancels_guard:
+                if _cancels.get(msg.conversation_id) is event:  # si ya entró otro mensaje, su evento no se toca
+                    del _cancels[msg.conversation_id]
 
 
 def _handle(msg: Message) -> Reply:

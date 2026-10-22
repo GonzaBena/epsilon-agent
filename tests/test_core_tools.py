@@ -987,3 +987,76 @@ def test_reading_a_named_note_still_numbers_it(script):
     say("leé inbox")
 
     assert results(script.seen[1][0])[0].endswith("1: - algo viejo")
+
+
+# --- Cancelar un turno ---------------------------------------------------------------------
+
+
+def cancel_while_the_model_thinks(script, monkeypatch):
+    """El modelo falso 'tarda': mientras contesta, la persona toca el cuadradito (core.cancel)."""
+    real = llm.chat_tools
+
+    def fake(history, system, offered, max_tokens=1500, allow_calls=True):
+        assert core.cancel(CID) is True  # había un turno corriendo en esa conversación
+        return real(history, system, offered, max_tokens, allow_calls)
+
+    monkeypatch.setattr(llm, "chat_tools", fake)
+
+
+def test_cancelling_while_the_model_thinks_runs_no_tool_and_says_so(script, monkeypatch):
+    allow("nota")
+    cancel_while_the_model_thinks(script, monkeypatch)
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("nunca")]
+
+    reply = say("anotá pan")
+
+    assert reply.text == core.CANCELLED and not reply.ai and inbox() == ""
+    assert len(script.seen) == 1  # no hubo una segunda llamada al modelo
+
+
+def test_cancelling_between_two_tools_skips_the_rest(script):
+    allow("nota")
+    notes.save_note("compras", "- un switch")
+    seen = []
+    real_execute = core._execute
+
+    def execute_then_cancel(tool_id, args, artifacts):
+        seen.append(tool_id)
+        core.cancel(CID)  # se cancela después de la primera herramienta
+        return real_execute(tool_id, args, artifacts)
+
+    core._execute = execute_then_cancel
+    try:
+        script.steps = [step(calls=[("notas.guardar", "uno"), ("notas.guardar", "dos")])]
+        reply = say("anotá dos cosas")
+    finally:
+        core._execute = real_execute
+
+    assert reply.text == core.CANCELLED and seen == ["nota"]
+    assert "uno" in inbox() and "dos" not in inbox()  # lo ya hecho se queda; lo siguiente no corre
+
+
+def test_cancel_without_a_running_turn_does_nothing_and_never_affects_the_next_message(script):
+    assert core.cancel(CID) is False
+    script.steps = [step("hola de vuelta")]
+
+    assert say("hola").text == "hola de vuelta"
+    assert core.cancel(CID) is False  # el turno terminó: no queda nada registrado
+
+
+def test_a_cancelled_turn_does_not_cancel_the_next_one(script, monkeypatch):
+    real = llm.chat_tools
+    cancel_now = [True]
+
+    def fake(history, system, offered, max_tokens=1500, allow_calls=True):
+        if cancel_now[0]:
+            core.cancel(CID)
+        return real(history, system, offered, max_tokens, allow_calls)
+
+    monkeypatch.setattr(llm, "chat_tools", fake)
+    script.steps = [step("no se usa")]
+    assert say("uno").text == core.CANCELLED
+
+    cancel_now[0] = False
+    script.steps = [step("sí se usa")]
+    assert say("dos").text == "sí se usa"

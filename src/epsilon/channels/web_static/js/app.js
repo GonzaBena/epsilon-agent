@@ -51,6 +51,7 @@ let pendingFile = null;      // archivo elegido, esperando que se envíe
 let previewUrl = null;       // dirección local (blob:) de la miniatura; hay que liberarla
 let wantsCsv = false;        // true si el archivo se pidió con el atajo «Imagen a CSV»
 const CSV_TEMPLATE = "nombre: campo1, campo2"; // ejemplo del pedido de CSV
+const CANCELLED_TEXT = "Cancelé lo que estaba haciendo."; // el mismo aviso que guarda el servidor (core.CANCELLED)
 let busy = false;            // true mientras esperamos una respuesta
 
 // Modo IA: el tipo de chat se elige antes del primer mensaje y después no cambia (el servidor lo
@@ -435,9 +436,13 @@ async function readStream(response, onEvent) {
   return reply;
 }
 
+// Mientras se espera, el botón de enviar es el cuadradito que cancela el pedido.
 function setBusy(value) {
   busy = value;
-  sendButton.disabled = value;
+  sendButton.classList.toggle("stop", value);
+  const label = value ? "Cancelar" : "Enviar";
+  sendButton.setAttribute("aria-label", label);
+  sendButton.title = label;
   // Los botones de acción también esperan: dos toques seguidos no deben
   // mandar dos veces la misma orden.
   for (const button of log.querySelectorAll(".action")) {
@@ -449,12 +454,32 @@ function setBusy(value) {
 
 // Manda una petición y agrega la respuesta a la conversación.
 // "request" es una función que hace el fetch (así sirve para JSON y para archivos).
+let currentRequest = null; // { controller, target }: el pedido en curso, para poder cancelarlo
+
+// El cuadradito: corta la espera acá y le avisa al servidor para que no use el modelo ni las herramientas de más.
+// Lo que el servidor ya alcanzó a guardar se queda; el aviso del servidor se guarda en la conversación.
+function cancelRequest() {
+  if (!currentRequest) return;
+  const { controller, target } = currentRequest;
+  currentRequest.cancelled = true;
+  controller.abort();
+  if (target) {
+    fetch("/api/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: target }),
+    }).catch(() => {}); // sin conexión no hay nada que frenar
+  }
+}
+
 async function ask(request) {
   setBusy(true);
   const thinking = showThinking();
   const target = conversationId; // en qué conversación se hizo el pedido
+  const current = { controller: new AbortController(), target, cancelled: false };
+  currentRequest = current;
   try {
-    const response = await request();
+    const response = await request(current.controller.signal);
     let data;
     if (response.ok && (response.headers.get("Content-Type") || "").includes("ndjson")) {
       data = await readStream(response, (event) => trackProgress(thinking, event));
@@ -478,6 +503,11 @@ async function ask(request) {
     }
     announce(); // «Recientes» y el título pueden haber cambiado
   } catch (error) {
+    if (current.cancelled) {
+      // Cancelaste vos: no es un error. El servidor guarda el mismo aviso en la conversación.
+      if (target === conversationId) addMessage({ role: "bot", text: CANCELLED_TEXT });
+      return;
+    }
     // fetch falla con TypeError cuando no hay conexión con el servidor.
     const offline = error instanceof TypeError;
     setStatus(!offline);
@@ -492,6 +522,7 @@ async function ask(request) {
       });
     }
   } finally {
+    if (currentRequest === current) currentRequest = null;
     thinking.remove();
     setBusy(false);
     refreshButtons();
@@ -503,11 +534,12 @@ function postJson(body) {
   // Sin conversation_id (no hay servidor al que guardarle) el pedido igual funciona.
   const payload = conversationId ? { ...body, conversation_id: conversationId } : body;
   if (!started) payload.mode = chatMode; // el modo solo cuenta en el primer mensaje
-  return () =>
+  return (signal) =>
     fetch("/api/message/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal,
     });
 }
 
@@ -518,7 +550,7 @@ function postFile(file, text) {
   form.append("text", text);
   if (conversationId) form.append("conversation_id", conversationId);
   if (!started) form.append("mode", chatMode);
-  return () => fetch("/api/upload", { method: "POST", body: form });
+  return (signal) => fetch("/api/upload", { method: "POST", body: form, signal });
 }
 
 // Después de una respuesta, los botones todavía sin usar vuelven a funcionar.
@@ -752,7 +784,8 @@ async function submit() {
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault(); // evita que el formulario recargue la página
-  submit();
+  if (busy) cancelRequest(); // esperando una respuesta, el botón es el cuadradito
+  else submit();
 });
 
 // Enter envía; Shift+Enter hace un salto de línea. Con las sugerencias abiertas, las flechas

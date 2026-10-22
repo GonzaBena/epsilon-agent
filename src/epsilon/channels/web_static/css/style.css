@@ -1352,6 +1352,16 @@ textarea::placeholder {
   opacity: 0.45;
   cursor: default;
 }
+/* Mientras la IA trabaja el botón es el cuadradito que cancela (shell de app.js: setBusy). */
+.send-btn .icon-stop {
+  display: none;
+}
+.send-btn.stop .icon-send {
+  display: none;
+}
+.send-btn.stop .icon-stop {
+  display: block;
+}
 
 /* Archivo adjunto, antes de enviar: miniatura cuadrada con el botón de quitar
    arriba a la derecha (al pasar el mouse) y el nombre debajo. */

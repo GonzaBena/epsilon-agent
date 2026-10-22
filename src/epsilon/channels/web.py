@@ -86,6 +86,10 @@ def is_allowed(host: str, origin: str | None) -> bool:
 # --- Formato de la API -------------------------------------------------------
 
 
+class CancelIn(BaseModel):
+    conversation_id: str = Field(max_length=40)
+
+
 class MessageIn(BaseModel):
     text: str = Field("", max_length=10_000)
     action: str | None = Field(None, max_length=100)
@@ -355,6 +359,13 @@ def create_app() -> FastAPI:
                 yield json.dumps(event, ensure_ascii=False) + "\n"
 
         return StreamingResponse(lines(), media_type="application/x-ndjson")
+
+    @app.post("/api/cancel")
+    def cancel_message(body: CancelIn):
+        """El cuadradito del chat: frena el turno de IA que está corriendo en esa conversación (ver core.cancel).
+        La respuesta del turno ("Cancelé lo que estaba haciendo.") se guarda sola en el hilo."""
+        cid = conversation_of(body.conversation_id)
+        return {"cancelled": bool(cid and core.cancel(cid))}
 
     @app.post("/api/upload")
     def upload(

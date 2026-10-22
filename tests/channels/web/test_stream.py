@@ -54,3 +54,28 @@ def test_stream_has_the_same_host_defense(client):
 def test_page_uses_the_stream_endpoint():
     code = js("app.js")
     assert "/api/message/stream" in code and "readStream" in code
+
+
+# --- POST /api/cancel: el cuadradito del chat ---------------------------------------------------
+
+
+def test_cancel_asks_the_core_to_stop_that_conversation(client, monkeypatch):
+    asked = []
+    monkeypatch.setattr(web.core, "cancel", lambda cid: asked.append(cid) or True)
+    cid = new_conversation(client)
+
+    response = client.post("/api/cancel", json={"conversation_id": cid})
+
+    assert response.status_code == 200 and response.json() == {"cancelled": True}
+    assert asked == [cid]
+
+
+def test_cancel_reports_when_there_was_nothing_to_cancel(client):
+    cid = new_conversation(client)
+
+    assert client.post("/api/cancel", json={"conversation_id": cid}).json() == {"cancelled": False}
+
+
+def test_cancel_rejects_a_bad_or_missing_conversation_id(client):
+    assert client.post("/api/cancel", json={"conversation_id": "../x"}).status_code == 422
+    assert client.post("/api/cancel", json={}).status_code == 422
