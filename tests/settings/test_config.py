@@ -575,7 +575,7 @@ def test_chat_limit_default_is_fifty_cents(env_file):
     assert entry("CHAT_LIMIT_USD", env_file)["value"] in ("", "0.50")
 
 
-@pytest.mark.parametrize("key,value", [("CHAT_MAX_FILES", "8"), ("CHAT_MAX_FILES", "20"), ("CHAT_MAX_MB", "30"), ("CHAT_MAX_MB", "100"), ("CHAT_MAX_TURNS", "1"), ("CHAT_MAX_TURNS", "100")])
+@pytest.mark.parametrize("key,value", [("CHAT_MAX_FILES", "8"), ("CHAT_MAX_FILES", "20"), ("CHAT_MAX_MB", "30"), ("CHAT_MAX_MB", "100"), ("CHAT_MAX_TURNS", "1"), ("CHAT_MAX_TURNS", "100"), ("CHAT_MAX_TURNS_TELEGRAM", "1"), ("CHAT_MAX_TURNS_TELEGRAM", "100")])
 def test_chat_file_limits_accept_whole_numbers_in_range(key, value, env_file, monkeypatch):
     monkeypatch.delenv(key, raising=False)
 
@@ -589,6 +589,7 @@ def test_chat_file_limits_accept_whole_numbers_in_range(key, value, env_file, mo
     ("CHAT_MAX_FILES", "0"), ("CHAT_MAX_FILES", "21"), ("CHAT_MAX_FILES", "x"), ("CHAT_MAX_FILES", "2.5"),
     ("CHAT_MAX_MB", "0"), ("CHAT_MAX_MB", "101"), ("CHAT_MAX_MB", "x"), ("CHAT_MAX_MB", "1\n2"),
     ("CHAT_MAX_TURNS", "0"), ("CHAT_MAX_TURNS", "101"), ("CHAT_MAX_TURNS", "x"), ("CHAT_MAX_TURNS", "2.5"),
+    ("CHAT_MAX_TURNS_TELEGRAM", "0"), ("CHAT_MAX_TURNS_TELEGRAM", "101"), ("CHAT_MAX_TURNS_TELEGRAM", "x"),
 ])
 def test_chat_file_limits_reject_anything_else(key, value, env_file):
     with pytest.raises(config.ConfigError):

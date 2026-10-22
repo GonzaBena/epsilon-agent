@@ -246,6 +246,14 @@ SETTINGS = (
         default="10",
         validate=_whole(1, 100, "La cantidad de pares"),
     ),
+    # Lo mismo para la charla con IA de Telegram, más corta (chat.py lo lee en cada mensaje).
+    Setting(
+        "CHAT_MAX_TURNS_TELEGRAM",
+        "Mensajes anteriores que ve la IA en Telegram (pares)",
+        live=True,
+        default="5",
+        validate=_whole(1, 100, "La cantidad de pares"),
+    ),
     Setting(
         "CHAT_MAX_MB",
         "Tamaño máximo de los archivos por mensaje (MB)",

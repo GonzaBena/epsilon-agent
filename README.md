@@ -48,6 +48,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `WEATHER_CITY`                                               | Opcional: la ciudad que usa `/clima` cuando no escribís otra.                                                           |
 | `CHAT_MAX_FILES`                                             | Opcional: archivos que se pueden mencionar con `@` en un mensaje del chat con IA. Por defecto 5.                        |
 | `CHAT_MAX_TURNS`                                             | Opcional: cuántos pares (tu mensaje y la respuesta) de la charla se reenvían a la IA en cada mensaje; lo anterior sigue guardado pero no viaja. Por defecto 10. |
+| `CHAT_MAX_TURNS_TELEGRAM`                                    | Opcional: lo mismo que `CHAT_MAX_TURNS` pero para la charla con IA de Telegram. Por defecto 5.                          |
 | `CHAT_MAX_MB`                                                | Opcional: tamaño total (MB) de esos archivos por mensaje. Por defecto 15.                                               |
 | `AI_MODEL`                                                  | Opcional: modelo de IA predeterminado, como `proveedor:modelo` (`gemini:…` u `ollama:…`). Si falta, rige `GEMINI_MODEL`. |
 | `AI_MODEL_CHAT`                                             | Opcional: modelo del chat con IA. Si falta, el predeterminado. |

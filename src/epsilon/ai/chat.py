@@ -18,6 +18,7 @@ MAX_TOKENS = 1500  # tope de salida de cada respuesta
 # puede pedir ninguna y cierra con texto (hasta MAX_TOOL_STEPS + 1 = 7 llamadas por mensaje).
 MAX_TOOL_STEPS = 6
 DEFAULT_TURNS = 10  # pares (tu mensaje y la respuesta) que se reenvían, si CHAT_MAX_TURNS no está
+DEFAULT_TURNS_TELEGRAM = 5  # lo mismo en Telegram (CHAT_MAX_TURNS_TELEGRAM): ahí la charla es más corta
 
 SYSTEM = (
     "Sos Epsilon, el asistente personal del usuario. Respondé en español, claro y breve. "
@@ -39,13 +40,18 @@ def default_limit() -> float:
     return value if conversations.LIMIT_MIN <= value <= conversations.LIMIT_MAX else DEFAULT_LIMIT
 
 
-def max_turns() -> int:
-    """Cuántos pares de la charla se reenvían al modelo (CHAT_MAX_TURNS); inválido o fuera de rango, el de siempre."""
+def max_turns(conversation_id: str | None = None) -> int:
+    """Cuántos pares de la charla se reenvían al modelo: CHAT_MAX_TURNS, o CHAT_MAX_TURNS_TELEGRAM si la
+    conversación es de Telegram. Inválido o fuera de rango, el de siempre."""
+    if conversation_id and conversations.channel(conversation_id) == "telegram":
+        key, default = "CHAT_MAX_TURNS_TELEGRAM", DEFAULT_TURNS_TELEGRAM
+    else:
+        key, default = "CHAT_MAX_TURNS", DEFAULT_TURNS
     try:
-        value = int(os.environ.get("CHAT_MAX_TURNS") or DEFAULT_TURNS)
+        value = int(os.environ.get(key) or default)
     except ValueError:
-        return DEFAULT_TURNS
-    return value if 1 <= value <= 100 else DEFAULT_TURNS
+        return default
+    return value if 1 <= value <= 100 else default
 
 
 def status(conversation_id: str) -> dict:
@@ -79,7 +85,7 @@ def status(conversation_id: str) -> dict:
         "blocked": reason is not None,
         "reason": reason,
         "model_change": change,
-        "trimmed": max(0, len(_pairs(conversation_id)) - max_turns()),
+        "trimmed": max(0, len(_pairs(conversation_id)) - max_turns(conversation_id)),
     }
 
 
@@ -97,11 +103,11 @@ def _pairs(conversation_id: str) -> list[tuple[str, str]]:
 
 
 def turns(conversation_id: str, text: str) -> list[tuple[str, str]]:
-    """La charla para el modelo: los últimos CHAT_MAX_TURNS pares (cada respuesta de la IA con el mensaje
+    """La charla para el modelo: los últimos CHAT_MAX_TURNS pares (en Telegram, CHAT_MAX_TURNS_TELEGRAM) (cada respuesta de la IA con el mensaje
     tuyo que la precede) y al final el mensaje nuevo. Lo anterior sigue guardado, pero no viaja. El tuyo
     que ya está guardado y aún no tiene respuesta no se repite."""
     result: list[tuple[str, str]] = []
-    for question, answer in _pairs(conversation_id)[-max_turns():]:
+    for question, answer in _pairs(conversation_id)[-max_turns(conversation_id):]:
         result += [("user", question), ("model", answer)]
     result.append(("user", config.redact(text)))
     return result

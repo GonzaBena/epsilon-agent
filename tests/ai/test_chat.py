@@ -217,6 +217,60 @@ def test_status_reports_how_many_pairs_are_trimmed(monkeypatch):
     assert chat.status(CID)["trimmed"] == 0
 
 
+def _telegram_talk(pairs):
+    """Una charla de modo IA de Telegram con `pairs` pares ya contestados."""
+    cid = conversations.start_channel("telegram", "ai", 1)
+    for n in range(pairs):
+        conversations.add_message(cid, "user", f"pregunta {n}")
+        conversations.add_message(cid, "bot", f"respuesta {n}", ai=True)
+    return cid
+
+
+def test_telegram_talk_keeps_five_pairs_by_default(monkeypatch):
+    monkeypatch.delenv("CHAT_MAX_TURNS_TELEGRAM", raising=False)
+    monkeypatch.delenv("CHAT_MAX_TURNS", raising=False)
+    cid = _telegram_talk(12)
+
+    result = chat.turns(cid, "nueva")
+
+    assert len(result) == 11 and result[0] == ("user", "pregunta 7")
+
+
+def test_telegram_talk_uses_its_own_setting_not_the_web_one(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "10")
+    monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", "2")
+    cid = _telegram_talk(6)
+
+    assert len(chat.turns(cid, "nueva")) == 5
+    assert chat.max_turns(cid) == 2
+    assert chat.max_turns() == 10  # sin conversación (o la web): el de siempre
+
+
+def test_web_talk_ignores_the_telegram_setting(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "3")
+    monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", "1")
+    _talk(6)
+
+    assert chat.max_turns(CID) == 3
+    assert len(chat.turns(CID, "nueva")) == 7
+
+
+@pytest.mark.parametrize("bad", ["0", "-2", "101", "abc", "2.5"])
+def test_telegram_max_turns_falls_back_when_invalid(bad, monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", bad)
+    cid = _telegram_talk(1)
+
+    assert chat.max_turns(cid) == chat.DEFAULT_TURNS_TELEGRAM == 5
+
+
+def test_status_counts_trimmed_pairs_with_the_telegram_limit(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "10")
+    monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", "3")
+    cid = _telegram_talk(5)
+
+    assert chat.status(cid)["trimmed"] == 2
+
+
 @pytest.fixture
 def captured(monkeypatch):
     calls = []
