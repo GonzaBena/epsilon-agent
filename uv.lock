@@ -421,6 +421,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "python-telegram-bot" },
     { name = "uvicorn" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -446,6 +447,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "python-telegram-bot", specifier = ">=22.8" },
     { name = "uvicorn", specifier = ">=0.54.0" },
+    { name = "websockets", specifier = ">=16.1.1" },
 ]
 provides-extras = ["voz"]
 

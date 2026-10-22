@@ -139,3 +139,16 @@ def no_plugin_settings():
     config.reset_plugin_settings()
     yield
     config.reset_plugin_settings()
+
+
+@pytest.fixture(autouse=True)
+def block_real_browser(monkeypatch):
+    """Ningún test habla con un Chromium, un DNS ni un proceso de verdad."""
+    from epsilon.utils import navegador
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó hablar con Chromium de verdad")
+
+    for name in ("_http", "_cdp", "_resolve", "_run"):
+        monkeypatch.setattr(navegador, name, forbidden)
+    monkeypatch.setattr(navegador, "_opened", set())
