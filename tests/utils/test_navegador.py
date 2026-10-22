@@ -361,3 +361,67 @@ def test_open_url_waits_past_the_initial_blank_document(monkeypatch):
     tab = navegador.open_url("https://music.youtube.com/")
 
     assert tab.id in navegador._opened
+
+
+# --- resolve_target: de un nombre suelto a una dirección ---
+
+
+def history(monkeypatch, rows):
+    monkeypatch.setattr(navegador, "_history", lambda: rows)
+
+
+def test_resolve_target_leaves_full_addresses_alone():
+    assert navegador.resolve_target(" https://x.com/a ") == "https://x.com/a"
+    assert navegador.resolve_target("file:///etc/passwd") == "file:///etc/passwd"  # lo rechaza la revisión de la dirección
+
+
+def test_resolve_target_adds_https_to_a_bare_domain():
+    assert navegador.resolve_target("youtube.com/watch?v=1") == "https://youtube.com/watch?v=1"
+
+
+def test_resolve_target_looks_a_name_up_in_the_history(monkeypatch):
+    history(monkeypatch, [("https://www.youtube.com/watch?v=secreto", "YouTube", 10, 3)])
+    assert navegador.resolve_target("yt") == "https://youtube.com/"  # solo el sitio: nunca la página del historial
+
+
+def test_resolve_target_never_picks_a_blocked_site(monkeypatch):
+    history(monkeypatch, [("https://mail.google.com/", "Gmail", 900, 50)])
+    with pytest.raises(navegador.NavegadorError, match="No encontré"):
+        navegador.resolve_target("gm")
+
+
+def test_resolve_target_explains_instead_of_searching(monkeypatch):
+    history(monkeypatch, [])
+    with pytest.raises(navegador.NavegadorError, match="pasame la dirección completa"):
+        navegador.resolve_target("zzz")
+
+
+def test_resolve_target_does_not_read_the_history_for_addresses(monkeypatch):
+    def boom():
+        raise AssertionError("no debía leer el historial")
+
+    monkeypatch.setattr(navegador, "_history", boom)
+    navegador.resolve_target("https://x.com/")
+    navegador.resolve_target("x.com")
+
+
+def test_history_reads_a_copy_in_read_only_mode(tmp_path):
+    import sqlite3
+
+    source = tmp_path / "History"
+    db = sqlite3.connect(source)
+    db.execute("CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INT, typed_count INT, last_visit_time INT, hidden INT)")
+    db.executemany(
+        "INSERT INTO urls (url, title, visit_count, typed_count, hidden) VALUES (?, ?, ?, ?, ?)",
+        [("https://a.com/", "A", 5, 1, 0), ("https://oculta.com/", "O", 9, 9, 1), ("chrome://settings", "S", 9, 9, 0)],
+    )
+    db.commit()
+    db.close()
+    before = source.read_bytes()
+    assert navegador.read_history(source) == [("https://a.com/", "A", 5, 1)]
+    assert source.read_bytes() == before
+
+
+def test_history_without_the_file_says_so(tmp_path):
+    with pytest.raises(navegador.NavegadorError, match="historial"):
+        navegador.read_history(tmp_path / "nada")

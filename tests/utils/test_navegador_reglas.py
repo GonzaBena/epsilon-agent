@@ -95,3 +95,57 @@ def test_more_sensitive_labels(label):
 @pytest.mark.parametrize("label", ["Siguiente", "Anteriores", "Más", "Iniciar búsqueda", "Reproducir", "Pausa"])
 def test_navigation_labels_stay_harmless(label):
     assert not reglas.is_sensitive_label(label)
+
+
+# --- Nombres de sitio sacados del historial ---
+
+HISTORY = [
+    ("https://www.youtube.com/", "YouTube", 400, 30),
+    ("https://music.youtube.com/", "YouTube Music", 50, 2),
+    ("https://github.com/x/y", "x/y", 120, 5),
+    ("https://www.mercadolibre.com.ar/", "Mercado Libre", 90, 8),
+    ("https://mail.google.com/", "Gmail", 900, 50),
+    ("https://youtubeclone.example/", "otro", 1, 0),
+]
+
+
+@pytest.mark.parametrize(
+    "query, site",
+    [
+        ("yt", "youtube.com"),  # letras en orden dentro del nombre
+        ("you", "youtube.com"),  # el nombre empieza igual; gana el más usado
+        ("gh", "github.com"),
+        ("mercado", "mercadolibre.com.ar"),  # sitio de tres partes
+        ("libre", "mercadolibre.com.ar"),  # palabra del título
+        ("YT", "youtube.com"),
+    ],
+)
+def test_pick_site_resolves_short_names(query, site):
+    assert reglas.pick_site(query, HISTORY, []) == site
+
+
+def test_pick_site_prefers_the_name_over_a_looser_match():
+    rows = [("https://xyzzy.com/", "x", 1, 0), ("https://abc.com/", "yzzy", 500, 9)]
+    assert reglas.pick_site("xy", rows, []) == "xyzzy.com"
+
+
+def test_pick_site_never_returns_a_blocked_site():
+    assert reglas.pick_site("gm", HISTORY, ["mail.google.com"]) is None
+    assert reglas.pick_site("goo", HISTORY, ["google.com"]) is None
+
+
+@pytest.mark.parametrize("query", ["", "y", "yt yt", "a/b", "javascript:x", "zzz"])
+def test_pick_site_returns_none_for_what_does_not_match(query):
+    assert reglas.pick_site(query, HISTORY, []) is None
+
+
+def test_pick_site_ignores_ip_addresses():
+    assert reglas.pick_site("19", [("http://192.168.0.1/", "router", 99, 9)], []) is None
+
+
+@pytest.mark.parametrize(
+    "host, site",
+    [("music.youtube.com", "youtube.com"), ("a.b.mercadolibre.com.ar", "mercadolibre.com.ar"), ("x.com", "x.com")],
+)
+def test_site_of_keeps_the_registrable_part(host, site):
+    assert reglas.site_of(host) == site

@@ -363,8 +363,8 @@ TOOLS = (
         ai_group="navegador",
         ai_action="abrir",
         ai_name="nav_abrir",
-        ai_help="abrir una dirección web en una pestaña nueva; devuelve el id de la pestaña",
-        ai_arg="la dirección completa, con https://",
+        ai_help="abrir un sitio web en una pestaña nueva; devuelve el id de la pestaña. Nunca busca en Google",
+        ai_arg="la dirección (https://…) o el nombre del sitio tal como lo dijo la persona (yt, banco, github): el código lo busca en su historial",
     ),
     Tool(
         "Navegador: hacer clic",

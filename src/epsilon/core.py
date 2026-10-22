@@ -112,6 +112,7 @@ class PendingTool:
     index: int  # la llamada que espera permiso
     results: list[tuple[str, str]]  # lo que devolvieron las anteriores
     artifacts: list[Artifact]  # lo que guardaron las herramientas en este turno
+    resolved: str | None = None  # los argumentos que se aprobaron, si el código los cambió (un nombre de sitio ya hecho dirección)
 
 
 @dataclass
@@ -868,12 +869,20 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
             continue
         tool = tools.route(call_id)  # el código decide qué herramienta es: una acción inventada es «no disponible»
         decision = permissions.decide(cid, tools.ai_id(tool)) if tool else "block"
+        if tool and decision != "block" and tools.ai_id(tool) == "nav_abrir":
+            try:  # un nombre suelto («yt») se vuelve dirección ACÁ, para que la guardia, la pregunta y el registro vean el sitio real
+                args = navegador.resolve_target(args)
+            except navegador.NavegadorError as error:
+                _tool_event("nav_abrir", args, "blocked")
+                state.results.append((name, str(error)))
+                continue
         review = browser_guard.Review()
         if tool and decision != "block":  # los guardrails del navegador solo pueden endurecer el permiso
             review = browser_guard.review(tool, args, state.turn)
             decision = {"ask": "ask", "block": "block"}.get(review.verdict, decision)
         if decision == "ask":
             state.index = index
+            state.resolved = args
             session.pending_tool = state
             # Lo que ya guardaron las anteriores va con la pregunta (y no se repite al terminar).
             question = _question(tool, args, review.shown)
@@ -959,6 +968,7 @@ def _answer_permission(answer: str, msg: Message, session: Session) -> Reply:
     ):
         return Reply(STALE)
     call_id, args = state.step.calls[state.index]
+    args = state.resolved if state.resolved is not None else args  # lo aprobado, tal cual se mostró
     tool = tools.route(call_id)  # la pregunta solo se hizo por una herramienta que existe
     if answer == "no":
         # Se corta el turno: no se ejecuta ni se vuelve a llamar al modelo.

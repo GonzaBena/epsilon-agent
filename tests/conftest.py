@@ -149,6 +149,6 @@ def block_real_browser(monkeypatch):
     def forbidden(*args, **kwargs):
         raise RuntimeError("Un test intentó hablar con Chromium de verdad")
 
-    for name in ("_http", "_cdp", "_resolve", "_run"):
+    for name in ("_http", "_cdp", "_resolve", "_run", "_history"):
         monkeypatch.setattr(navegador, name, forbidden)
     monkeypatch.setattr(navegador, "_opened", set())

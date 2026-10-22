@@ -1,8 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 import json
+import shutil
 import socket
+import sqlite3
 import subprocess
+import tempfile
 import threading
 import time
 from urllib.parse import quote
@@ -28,6 +32,8 @@ LOAD_TRIES = 20  # al abrir: cuántas veces se mira si la pestaña cargó (de a 
 LAUNCH_WAIT = 15.0  # segundos que se espera a que un Chromium recién lanzado abra el puerto
 LOG_FILE = "browser.log"
 LOG_RESULT_CHARS = 120
+HISTORY_FILE = Path.home() / ".config/chromium/Default/History"  # el historial de Chromium: se lee, jamás se escribe
+HISTORY_ROWS = 5000  # cuántas direcciones se miran (las más visitadas)
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
 MAX_TEXT = 3000  # caracteres de texto que devuelve `read`
@@ -244,6 +250,55 @@ def resolve_tab(ref: str) -> Tab:
     if len(found) != 1:
         raise NavegadorError("No encuentro esa pestaña: pedí la lista de pestañas de nuevo.")
     return found[0]
+
+
+def _history() -> list[tuple[str, str, int, int]]:
+    """Punto único (bloqueado en los tests): el historial real de Chromium."""
+    return read_history(HISTORY_FILE)
+
+
+def read_history(source: Path) -> list[tuple[str, str, int, int]]:
+    """Las direcciones más visitadas del historial de Chromium (url, título, visitas, veces escrita). Chromium tiene el
+    archivo bloqueado mientras corre: se lee una copia temporal, abierta en solo lectura, que se borra al terminar.
+    Sirve SOLO para resolver el nombre de un sitio (ver resolve_target); el historial nunca llega al modelo."""
+    if not source.is_file():
+        raise NavegadorError("No encuentro el historial de Chromium: pasame la dirección completa.")
+    with tempfile.TemporaryDirectory() as folder:
+        copy = Path(folder) / "history.db"
+        shutil.copyfile(source, copy)
+        try:
+            db = sqlite3.connect(f"file:{copy}?mode=ro", uri=True)
+            try:
+                return [
+                    (str(url), str(title or ""), int(visits), int(typed))
+                    for url, title, visits, typed in db.execute(
+                        "SELECT url, title, visit_count, typed_count FROM urls "
+                        "WHERE hidden = 0 AND (url LIKE 'http://%' OR url LIKE 'https://%') "
+                        "ORDER BY typed_count DESC, visit_count DESC LIMIT ?",
+                        (HISTORY_ROWS,),
+                    )
+                ]
+            finally:
+                db.close()
+        except sqlite3.Error:
+            raise NavegadorError("No pude leer el historial de Chromium: pasame la dirección completa.") from None
+
+
+def resolve_target(text: str) -> str:
+    """De lo que pidió la IA a una dirección: una con «://» se deja tal cual (después la revisan las reglas), un dominio
+    («youtube.com/watch») recibe https://, y un nombre suelto («yt», «banco») se busca en el historial. Si no se
+    reconoce, NavegadorError con un mensaje claro (nunca una búsqueda en Google)."""
+    text = text.strip()
+    if "://" in text or not text:
+        return text
+    if reglas.DOMAIN_LIKE.fullmatch(text):
+        return "https://" + text
+    if not reglas.NAME_ONLY.fullmatch(text):
+        return text  # algo raro («javascript:…», con espacios): lo rechaza la revisión de la dirección
+    site = reglas.pick_site(text, _history(), config.site_list("BROWSER_BLOCKED_SITES"))
+    if not site:
+        raise NavegadorError(f"No encontré «{text}» en el historial de Chromium: pasame la dirección completa.")
+    return f"https://{site}/"
 
 
 def open_url(url: str) -> Tab:

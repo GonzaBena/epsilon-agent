@@ -92,3 +92,54 @@ def url_problem(url: str, addresses: list[str]) -> str | None:
 def is_sensitive_label(label: str) -> bool:
     """¿El rótulo de un botón parece enviar, publicar, borrar o pagar? Un rótulo vacío cuenta como sensible."""
     return not label.strip() or bool(SENSITIVE.search(label))
+
+
+# --- Nombres de sitio: «yt» → youtube.com, sacado del historial ------------------------------------------------
+
+SECOND_LEVEL = {"co", "com", "net", "org", "gov", "edu", "gob"}  # mercadolibre.com.ar: el sitio son tres partes
+NAME_ONLY = re.compile(r"[\w-]{2,40}")
+DOMAIN_LIKE = re.compile(r"(?:[\w-]+\.)+[a-z]{2,}(?:[/?#]\S*)?", re.IGNORECASE)
+
+
+def site_of(host: str) -> str:
+    """El sitio «de la persona» de un host: music.youtube.com → youtube.com, www.x.com.ar → x.com.ar."""
+    parts = host.split(".")
+    keep = 3 if len(parts) >= 3 and len(parts[-1]) == 2 and parts[-2] in SECOND_LEVEL else 2
+    return ".".join(parts[-keep:])
+
+
+def _subsequence(small: str, big: str) -> bool:
+    letters = iter(big)
+    return all(letter in letters for letter in small)  # cada letra aparece, en orden, después de la anterior
+
+
+def pick_site(query: str, rows: list[tuple[str, str, int, int]], blocked: list[str]) -> str | None:
+    """El sitio del historial que mejor responde a un nombre corto (`rows`: url, título, visitas, veces escrita).
+    Se prefiere, en orden: el nombre del sitio empieza igual («you» → youtube.com), una palabra de su título empieza
+    igual, y las letras aparecen en orden dentro del nombre («yt»). Dentro de cada grupo gana el más usado, con más
+    peso lo que la persona escribió a mano. Los sitios bloqueados nunca salen. None si nada coincide."""
+    q = query.strip().lower()
+    if not NAME_ONLY.fullmatch(q):
+        return None
+    sites: dict[str, dict] = {}
+    for url, title, visits, typed in rows:
+        host = host_of(url)
+        if not host or _is_ip(host) or matches(host, blocked):
+            continue
+        entry = sites.setdefault(site_of(host.removeprefix("www.")), {"score": 0, "words": set()})
+        entry["score"] += visits + 10 * typed
+        entry["words"].update(re.findall(r"\w+", (title or "").lower()))
+    best: tuple[int, int, str] | None = None
+    for site, entry in sites.items():
+        name = site.split(".")[0]
+        if name.startswith(q):
+            tier = 0
+        elif any(word.startswith(q) for word in entry["words"]):
+            tier = 1
+        elif _subsequence(q, name):
+            tier = 2
+        else:
+            continue
+        candidate = (tier, -entry["score"], site)
+        best = candidate if best is None or candidate < best else best
+    return best[2] if best else None

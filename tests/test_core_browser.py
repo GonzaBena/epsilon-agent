@@ -298,3 +298,35 @@ def test_a_blocked_link_destination_never_runs(script, monkeypatch):
     say("tocá")
 
     assert clicked == [] and "no" in results(script.seen[1][0])[0].lower()
+
+
+# --- un nombre suelto («yt») se vuelve dirección antes de la guardia ---
+
+
+def test_a_short_name_is_resolved_before_the_guard_and_the_question_shows_the_real_site(script, monkeypatch):
+    opened = []
+    monkeypatch.setattr(navegador, "_history", lambda: [("https://www.ejemplo.com/", "Ejemplo", 400, 30)])
+    monkeypatch.setattr(navegador, "open_url", lambda url: opened.append(url) or tab("QWERTY999"))
+    script.steps = [step(calls=[("navegador.abrir", "ej")]), step("Listo")]
+
+    reply = say("abrí ej")
+
+    assert "ejemplo.com" in reply.text and opened == []  # no es de confianza: pregunta, con el sitio real
+    # Aunque el historial cambie mientras espera, se abre lo que se mostró y aprobó.
+    monkeypatch.setattr(navegador, "_history", lambda: [("https://ejemplo.evil.com/", "Ejemplo", 999, 99)])
+
+    done = press("perm:si")
+
+    assert opened == ["https://ejemplo.com/"] and done.text == "Listo"
+
+
+def test_an_unknown_name_tells_the_model_to_ask_for_the_address(script, monkeypatch):
+    opened = []
+    monkeypatch.setattr(navegador, "_history", lambda: [])
+    monkeypatch.setattr(navegador, "open_url", lambda url: opened.append(url) or tab())
+    script.steps = [step(calls=[("navegador.abrir", "zzz")]), step("No pude")]
+
+    say("abrí zzz")
+
+    assert opened == []
+    assert "No encontré «zzz»" in results(script.seen[1][0])[0]
