@@ -90,7 +90,7 @@ def test_clean_note_name_keeps_only_safe_characters():
     assert notes.clean_note_name("///") == ""
 
 
-# --- edit_note: la única forma de pisar una nota ------------------------------------------
+# --- edit_line: la única forma de pisar una nota ------------------------------------------
 
 
 def make_note(tmp_path, monkeypatch, text="- [ ] pagar internet\n- [ ] comprar café\n"):
@@ -99,44 +99,49 @@ def make_note(tmp_path, monkeypatch, text="- [ ] pagar internet\n- [ ] comprar c
     return tmp_path / "todo.md"
 
 
-def test_edit_note_changes_only_that_fragment_and_keeps_the_previous_version(tmp_path, monkeypatch):
+def test_edit_line_changes_only_that_line_and_keeps_the_previous_version(tmp_path, monkeypatch):
     path = make_note(tmp_path, monkeypatch)
 
-    assert notes.edit_note("todo", "- [ ] pagar internet", "- [x] pagar internet") == "Editado todo.md"
+    assert notes.edit_line("todo", 1, "- [x] pagar internet") == "Editado todo.md"
 
     assert path.read_text(encoding="utf-8") == "- [x] pagar internet\n- [ ] comprar café\n"
     assert (tmp_path / "todo.md.bak").read_text(encoding="utf-8") == "- [ ] pagar internet\n- [ ] comprar café\n"
     assert not (tmp_path / "todo.md.tmp").exists()  # el temporal no queda
 
 
-def test_edit_note_with_empty_new_text_deletes_the_fragment(tmp_path, monkeypatch):
+def test_edit_line_with_empty_text_deletes_that_line(tmp_path, monkeypatch):
     path = make_note(tmp_path, monkeypatch)
 
-    notes.edit_note("todo", "- [ ] comprar café\n", "")
+    notes.edit_line("todo", 2, "")
 
     assert path.read_text(encoding="utf-8") == "- [ ] pagar internet\n"
 
 
-@pytest.mark.parametrize(
-    "old, message",
-    [("- [ ] inventada", "No encontré"), ("- [ ] ", "2 veces"), ("", "Falta el texto")],
-)
-def test_edit_note_refuses_and_touches_nothing_when_the_fragment_is_missing_ambiguous_or_empty(tmp_path, monkeypatch, old, message):
+def test_edit_line_keeps_a_last_line_without_a_final_newline_working(tmp_path, monkeypatch):
+    path = make_note(tmp_path, monkeypatch, "uno\ndos")
+
+    notes.edit_line("todo", 2, "tres")
+
+    assert path.read_text(encoding="utf-8") == "uno\ntres\n"
+
+
+@pytest.mark.parametrize("n", [0, 3, -1])
+def test_edit_line_refuses_a_line_that_does_not_exist_and_touches_nothing(tmp_path, monkeypatch, n):
     path = make_note(tmp_path, monkeypatch)
     before = path.read_text(encoding="utf-8")
 
-    with pytest.raises(ValueError, match=message):
-        notes.edit_note("todo", old, "x")
+    with pytest.raises(ValueError, match="tiene 2 líneas"):
+        notes.edit_line("todo", n, "x")
 
     assert path.read_text(encoding="utf-8") == before and not (tmp_path / "todo.md.bak").exists()
 
 
-def test_edit_note_never_creates_a_note_and_stays_inside_the_data_dir(tmp_path, monkeypatch):
+def test_edit_line_never_creates_a_note_and_stays_inside_the_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
 
     with pytest.raises(ValueError, match="No existe"):
-        notes.edit_note("nueva", "a", "b")
+        notes.edit_line("nueva", 1, "b")
     with pytest.raises(ValueError, match="fuera"):
-        notes.edit_note("../../etc/passwd", "a", "b")
+        notes.edit_line("../../etc/passwd", 1, "b")
 
     assert list(tmp_path.iterdir()) == []

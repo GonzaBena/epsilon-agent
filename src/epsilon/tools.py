@@ -60,15 +60,14 @@ TOOLS = (
     ),
     Tool(
         "Editar nota",
-        usage="nombre de la nota en la primera línea, el texto a cambiar, una línea «=>» y el texto nuevo",
+        usage="nombre de la nota, número de línea y el texto nuevo de esa línea",
         ai_help=(
-            "cambiar un fragmento de una nota que YA existe: marcar una tarea como hecha, corregir o borrar una línea. "
-            "El fragmento tiene que aparecer una sola vez (leé la nota antes para copiarlo igual); con el texto nuevo vacío se borra"
+            "cambiar UNA línea de una nota que YA existe, por su número: marcar una tarea como hecha, corregir o borrar una línea. "
+            "Primero leé la nota: leer muestra cada línea con su número"
         ),
         ai_arg=(
-            "primera línea: el nombre de la nota; después el texto exacto a cambiar; una línea que diga solo «=>»; "
-            "y el texto nuevo (vacío para borrar). Ej. para tachar una tarea: tres líneas después del nombre «todo»: "
-            "«- [ ] pagar internet», «=>» y «- [x] pagar internet»"
+            "tres líneas: el nombre de la nota; el número de la línea (el que muestra leer); y el texto nuevo COMPLETO de esa línea "
+            "(vacío para borrarla). Ej. para tachar la línea 2 de todo: «todo», «2», «- [x] pagar internet»"
         ),
         writes=True,
         ai="write",
@@ -94,6 +93,7 @@ TOOLS = (
         ai="read",
         ai_group="notas",
         ai_action="leer",
+        ai_help="leer una nota (por defecto inbox); cada línea viene con su número, el que usa editar",
         ai_arg="nombre de la nota; vacío para inbox",
     ),
     Tool(
@@ -377,7 +377,7 @@ TOOLS = (
 # cuál de las suyas usar (menos declaraciones, y entre las que quedan se elige mejor). Por dentro nada cambia: cada
 # acción es una herramienta de TOOLS, con su permiso, y `route` traduce la llamada a ella. Grupo -> para qué sirve.
 AI_GROUPS: dict[str, str] = {
-    "notas": "Tus notas: guardar, leer, buscar y editar. Las TAREAS también son una nota, la llamada «todo», con una casilla por línea («- [ ] texto»): para agregar una, guardar_con_nombre; para ver las pendientes, leer; para marcar una como hecha, editar (cambiá «- [ ]» por «- [x]»)",
+    "notas": "Tus notas: guardar, leer, buscar y editar. Las TAREAS también son una nota, la llamada «todo», con una casilla por línea («- [ ] texto»): para agregar una, guardar_con_nombre; para ver las pendientes, leer (muestra los números de línea); para marcar una como hecha, editar esa línea con «- [x]» en vez de «- [ ]»",
     "archivos": "Lo guardado en la biblioteca (notas, tickets, CSV): listar, mandar, resumir y consultar CSV",
     "memoria": "Lo que Epsilon recuerda de la persona (datos y preferencias)",
     "consultar": "Datos de afuera, sin guardar nada: fecha y hora, dólar, clima y estado de la máquina",

@@ -19,7 +19,7 @@ Con 17-19 herramientas el prompt crecía y el modelo (sobre todo uno chico) eleg
 ## Grupos
 | Grupo | Acciones (herramienta) |
 |---|---|
-| notas | guardar (nota), guardar_con_nombre (nota_nombrada), editar (nota_editar), leer (ver), buscar |
+| notas | guardar (nota), guardar_con_nombre (nota_nombrada), editar línea (nota_editar), leer (ver), buscar |
 | archivos | listar (archivos), enviar, resumir, csv |
 | memoria | agregar (recordar), ver (memoria), editar, borrar (olvidar) |
 | consultar | fecha, dolar, clima, sistema |
@@ -28,10 +28,11 @@ Con 17-19 herramientas el prompt crecía y el modelo (sobre todo uno chico) eleg
 Primero hubo un grupo `tareas`, pero el modelo lo confundía con una lista con nombre («la lista de la compra» iba a
 `/todo`). Como `todo.md` ya es una nota de casillas, la IA ya no tiene herramientas de tareas: agrega con
 `notas.guardar_con_nombre` (nota `todo`, `- [ ] texto`), lee con `notas.leer` y marca con `notas.editar`
-(`- [ ]` -> `- [x]`). `/todo`, `/tareas` y `/hecho` siguen para la persona.
+(`- [ ]` -> `- [x]` en esa línea). `/todo`, `/tareas` y `/hecho` siguen para la persona.
 
-`notas.editar` (`nota_editar`, permiso «preguntar») es la única excepción a «nunca pisar»: reemplaza un fragmento
-exacto y único (`notes.edit_note`), con archivo temporal y `.bak`. Memoria, archivos y consultas quedan como están, para no
+`notas.editar` (`nota_editar`, permiso «preguntar») es la única excepción a «nunca pisar»: cambia una línea por su
+número (`notes.edit_line`; con texto vacío la borra), con archivo temporal y `.bak`. `leer` numera las líneas para la IA.
+La primera versión reemplazaba un fragmento exacto (`viejo`, `=>`, `nuevo`) y un modelo de 4B no lo copiaba bien. Memoria, archivos y consultas quedan como están, para no
 perder precisión ni permisos por herramienta.
 
 ## Medición

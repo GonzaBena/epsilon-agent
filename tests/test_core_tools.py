@@ -817,32 +817,78 @@ def test_checkbox_lines_are_saved_as_they_are_so_tareas_still_reads_them(script)
     assert core.handle(core.Message(text="/tareas", session_id="web:x")).text.count("comprar café") == 1
 
 
-def test_a_task_can_be_marked_done_by_editing_its_note_after_asking(script):
+def test_reading_a_note_numbers_its_lines_for_the_model_but_the_user_sees_it_plain(script):
     notes.save_note("todo", "- [ ] pagar internet")
-    script.steps = [step(calls=[("notas.editar", "todo\n- [ ] pagar internet\n=>\n- [x] pagar internet")]), step("Listo")]
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.leer", "todo")]), step("ok")]
 
-    reply = say("ya pagué internet")
-    assert "Editar nota" in reply.text and "- [x] pagar internet" in reply.text and todo_text() == "- [ ] pagar internet\n"  # pregunta y no toca nada
+    say("qué tengo pendiente")
+
+    assert results(script.seen[1][0])[0].endswith("1: - [ ] pagar internet\n2: - [ ] comprar pan")
+    assert core.handle(core.Message(text="/ver todo", session_id="web:y")).text == "- [ ] pagar internet\n- [ ] comprar pan\n"
+
+
+def test_reading_a_missing_note_is_not_numbered(script):
+    script.steps = [step(calls=[("notas.leer", "nada")]), step("ok")]
+
+    say("leé nada")
+
+    assert "No existe la nota 'nada'" in results(script.seen[1][0])[0]
+
+
+def test_a_task_can_be_marked_done_by_editing_its_line_after_asking(script):
+    notes.save_note("todo", "- [ ] pagar internet")
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.editar", "todo\n2\n- [x] comprar pan")]), step("Listo")]
+
+    reply = say("ya compré pan")
+    assert "Editar nota" in reply.text and "- [x] comprar pan" in reply.text and "[x]" not in todo_text()  # pregunta y no toca nada
     press("perm:si")
 
-    assert todo_text() == "- [x] pagar internet\n"
-    assert "Editada la nota todo.md" in results(script.seen[1][0])[0]
+    assert todo_text() == "- [ ] pagar internet\n- [x] comprar pan\n"
+    assert "Editada la línea 2 de todo.md" in results(script.seen[1][0])[0]
 
 
-def test_an_edit_that_does_not_match_tells_the_model_and_changes_nothing(script):
+@pytest.mark.parametrize(
+    "args",
+    ["todo\n1\n- [x] pagar", "todo 1 - [x] pagar", "todo\n1\n\n- [x] pagar".replace("\n\n", "\n"), "  todo  \n 1 \n- [x] pagar"],
+)
+def test_edit_accepts_the_line_format_and_the_one_line_format(script, args):
     allow("nota_editar")
     notes.save_note("todo", "- [ ] pagar internet")
-    script.steps = [step(calls=[("notas.editar", "todo\n- [ ] pagar luz\n=>\n- [x] pagar luz")]), step("no pude")]
+    script.steps = [step(calls=[("notas.editar", args)]), step("ok")]
+
+    say("ya pagué")
+
+    assert todo_text() == "- [x] pagar\n"
+
+
+def test_edit_with_no_text_deletes_the_line(script):
+    allow("nota_editar")
+    notes.save_note("todo", "- [ ] pagar internet")
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.editar", "todo\n1")]), step("ok")]
+
+    say("borrá la primera")
+
+    assert todo_text() == "- [ ] comprar pan\n"
+
+
+def test_an_edit_of_a_line_that_does_not_exist_tells_the_model_and_changes_nothing(script):
+    allow("nota_editar")
+    notes.save_note("todo", "- [ ] pagar internet")
+    script.steps = [step(calls=[("notas.editar", "todo\n9\n- [x] pagar luz")]), step("no pude")]
 
     say("ya pagué la luz")
 
-    assert "No encontré" in results(script.seen[1][0])[0] and todo_text() == "- [ ] pagar internet\n"
+    assert "tiene 1 líneas" in results(script.seen[1][0])[0] and todo_text() == "- [ ] pagar internet\n"
 
 
-def test_a_badly_formatted_edit_is_refused(script):
+@pytest.mark.parametrize("args", ["todo\n- [ ] pagar internet", "todo", "- [x] pagar", ""])
+def test_a_badly_formatted_edit_is_refused(script, args):
     allow("nota_editar")
     notes.save_note("todo", "- [ ] pagar internet")
-    script.steps = [step(calls=[("notas.editar", "todo\n- [ ] pagar internet")]), step("no pude")]
+    script.steps = [step(calls=[("notas.editar", args)]), step("no pude")]
 
     say("ya pagué internet")
 

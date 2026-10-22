@@ -173,19 +173,34 @@ def _save(text: str) -> Reply:
 CHECKBOX = re.compile(r"- \[[ x]\] \S")
 
 
+EDIT_LINE_ARGS = (
+    re.compile(r"\s*(?P<name>[^\n]+?)\s*\n\s*(?P<n>\d{1,6})[ \t]*(?:\n(?P<text>.*))?", re.S),  # nombre, número y texto en líneas
+    re.compile(r"\s*(?P<name>\S+)[ \t]+(?P<n>\d{1,6})(?:[ \t]+(?P<text>.*))?", re.S),  # todo en una línea: «todo 2 texto»
+)
+
+
 def _edit_note(args: str) -> Reply:
-    """Herramienta de la IA: primera línea = nota, luego el texto a cambiar, una línea «=>» y el texto nuevo."""
-    raw_name, _, rest = args.strip("\n").partition("\n")
-    lines = rest.split("\n")
-    arrow = next((i for i, line in enumerate(lines) if line.strip() == "=>"), None)
-    name = notes.clean_note_name(raw_name)
-    if not name or arrow is None:
-        return Reply("Formato: el nombre de la nota, el texto a cambiar, una línea «=>» y el texto nuevo. No se cambió nada.")
+    """Herramienta de la IA: nombre de la nota, número de línea (el que muestra `ver`) y el texto nuevo de esa línea
+    (vacío para borrarla). Acepta que lo mande en líneas o todo en una."""
+    match = next((m for rx in EDIT_LINE_ARGS if (m := rx.fullmatch(args))), None)
+    name = notes.clean_note_name(match["name"]) if match else ""
+    if not name:
+        return Reply("Formato: el nombre de la nota, el número de línea y el texto nuevo de esa línea. No se cambió nada.")
     try:
-        notes.edit_note(name, "\n".join(lines[:arrow]), "\n".join(lines[arrow + 1 :]))
+        notes.edit_line(name, int(match["n"]), match["text"] or "")
     except ValueError as e:
         return Reply(str(e))
-    return Reply(f"Editada la nota {name}.md", artifacts=[_artifact("note", notes.safe_path(f"{name}.md"))])
+    return Reply(f"Editada la línea {int(match['n'])} de {name}.md", artifacts=[_artifact("note", notes.safe_path(f"{name}.md"))])
+
+
+def _watch_numbered(args: str) -> Reply:
+    """`ver` para la IA: las líneas de la nota con su número, el que después usa `editar`."""
+    reply = _watch(args)
+    name = args.split()[0] if args.split() else "inbox"
+    if reply.text.startswith(("No existe la nota", "Nombre de nota no válido")) or not notes.safe_path(f"{name}.md").exists():
+        return reply
+    lines = notes.read_note(name).splitlines()
+    return Reply("\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1)) or "(vacía)")
 
 
 def _save_named(args: str) -> Reply:
@@ -951,7 +966,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "nota_editar": lambda args: _edit_note(config.redact(args)),
-    "ver": _watch,
+    "ver": _watch_numbered,
     "buscar": _search,
     "archivos": _files,
     "fecha": _date,
