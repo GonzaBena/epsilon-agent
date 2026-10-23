@@ -55,6 +55,22 @@ def _props(schema: dict) -> dict:
     return props if isinstance(props, dict) else {}
 
 
+def _kind(spec: dict) -> object:
+    """El tipo de un argumento. Los opcionales (`int | None`) llegan como `anyOf: [{integer}, {null}]`, sin `type`."""
+    kind = spec.get("type")
+    if isinstance(kind, str):
+        return kind
+    options = spec.get("anyOf")
+    found = {o.get("type") for o in options if isinstance(o, dict)} if isinstance(options, list) else set()
+    found = {k for k in found if isinstance(k, str) and k != "null"}
+    return found.pop() if len(found) == 1 else None
+
+
+def _nullable(spec: dict) -> bool:
+    options = spec.get("anyOf")
+    return isinstance(options, list) and any(isinstance(o, dict) and o.get("type") == "null" for o in options)
+
+
 def _required(schema: dict) -> list[str]:
     req = schema.get("required") if isinstance(schema, dict) else None
     return [r for r in req if isinstance(r, str)] if isinstance(req, list) else []
@@ -71,7 +87,7 @@ def arg_help(schema: dict, prefix: str = "") -> str:
         if isinstance(enum, list) and enum:
             kind = "uno de: " + ", ".join(_short(v, 30) for v in enum)
         else:
-            kind = TYPE_NAMES.get(spec.get("type"), "cualquiera")
+            kind = TYPE_NAMES.get(_kind(spec), "cualquiera")
         sep = "; " if kind.startswith("uno de") else ", "  # como en el ejemplo: «uno de: on, off; opcional»
         parts.append(f"{_short(key, 40)} ({kind}{sep}{'obligatorio' if key in required else 'opcional'})")
     text = prefix + "objeto JSON con: " + ", ".join(parts)
@@ -147,9 +163,11 @@ def _validate(schema: dict, data: dict, received: str) -> dict:
             raise ArgsError(f"«{_short(key, 40)}» debe ser uno de: {_short(', '.join(map(str, enum)), 60)}. Recibí: {_short(value, 40)}")
         if isinstance(value, float) and not math.isfinite(value):
             raise ArgsError(f"«{_short(key, 40)}» no puede ser infinito ni NaN. Recibí: {_short(received)}")
-        if not _type_ok(spec.get("type"), value):
+        if value is None and _nullable(spec):
+            continue  # un opcional puede ir como null
+        if not _type_ok(_kind(spec), value):
             raise ArgsError(
-                f"«{_short(key, 40)}» debe ser {TYPE_NAMES.get(spec.get('type'), 'otro tipo')}. Recibí: {_short(json.dumps(value, ensure_ascii=False), 40)}"
+                f"«{_short(key, 40)}» debe ser {TYPE_NAMES.get(_kind(spec), 'otro tipo')}. Recibí: {_short(json.dumps(value, ensure_ascii=False), 40)}"
             )
     return data
 
@@ -205,5 +223,5 @@ def parse_cli(schema: dict, text: str) -> dict:
         if not sep or not key:
             raise ArgsError(f"Usá clave=valor. Recibí: {_short(token, 80)}")
         spec = props.get(key) if isinstance(props.get(key), dict) else {}
-        data[key] = _coerce(spec.get("type"), key, value)
+        data[key] = _coerce(_kind(spec), key, value)
     return _validate(schema, data, raw)

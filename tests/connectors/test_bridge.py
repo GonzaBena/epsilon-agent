@@ -165,6 +165,39 @@ def test_parse_cli_key_value_pairs_and_coercion():
     assert bridge.parse_cli(SCHEMA, "habitacion=a fuerte=true ratio=1.5")["ratio"] == 1.5
 
 
+# Así llega un argumento opcional (`int | None = None`) desde un servidor MCP hecho con el SDK de Python.
+OPTIONAL = {
+    "type": "object",
+    "properties": {
+        "punto_venta": {"anyOf": [{"type": "integer"}, {"type": "null"}], "default": None},
+        "desde": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+        "cualquiera": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
+    },
+}
+
+
+def test_optional_arguments_are_coerced_and_checked_like_the_plain_type():
+    assert bridge.parse_cli(OPTIONAL, "punto_venta=2 desde=2026-01-01") == {"punto_venta": 2, "desde": "2026-01-01"}
+    with pytest.raises(bridge.ArgsError, match=r"«punto_venta» debe ser entero\. Recibí: <número>"):
+        bridge.parse_cli(OPTIONAL, "punto_venta=<número>")  # antes llegaba crudo al servidor y fallaba con un error de pydantic
+    with pytest.raises(bridge.ArgsError, match="debe ser entero"):
+        bridge.parse_args(OPTIONAL, '{"punto_venta": "dos"}')  # lo mismo para la IA, que manda JSON
+
+
+def test_an_optional_argument_can_be_null_but_a_plain_one_cannot():
+    assert bridge.parse_args(OPTIONAL, '{"punto_venta": null}') == {"punto_venta": None}
+    with pytest.raises(bridge.ArgsError, match="debe ser entero"):
+        bridge.parse_args(SCHEMA, '{"habitacion": "x", "brillo": null}')
+
+
+def test_a_union_of_different_types_is_left_alone():
+    assert bridge.parse_cli(OPTIONAL, "cualquiera=hola") == {"cualquiera": "hola"}  # no se adivina
+
+
+def test_the_help_names_the_type_of_an_optional_argument():
+    assert "punto_venta (entero, opcional)" in bridge.arg_help(OPTIONAL)
+
+
 def test_parse_cli_quotes():
     s = {"type": "object", "properties": {"nombre": {"type": "string"}}, "required": ["nombre"]}
     assert bridge.parse_cli(s, 'nombre="sala grande"') == {"nombre": "sala grande"}
