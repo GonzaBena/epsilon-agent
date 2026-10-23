@@ -9,8 +9,8 @@ o instala un plugin.
 Un **plugin de canal** es una forma nueva de hablar con Epsilon (Discord, WhatsApp…). Es una carpeta;
 Epsilon la encuentra sola, la muestra en la página **Canales** apagada y la prendés desde ahí.
 
-- Las **integraciones** (Obsidian, Calendar…) serán servidores MCP: es otro proyecto, para después del
-  modo chat con IA. No son plugins de canal.
+- Las **integraciones** (Obsidian, Calendar, luces…) son **conectores MCP**, que no son plugins de canal:
+  ver `plan-conectores.md`.
 - Memoria y voz son funciones del núcleo, no plugins.
 
 ## Instalar uno
