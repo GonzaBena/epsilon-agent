@@ -365,15 +365,15 @@ def test_secrets_never_reach_the_answers(ready, monkeypatch):
 def approved(number=46, extra=""):
     return wsfe_answer("FECAESolicitar", (
         "<FeCabResp><Cuit>20123456789</Cuit><PtoVta>3</PtoVta><CbteTipo>11</CbteTipo><Resultado>A</Resultado></FeCabResp>"
-        f"<FeDetResp><FEDetResponse><Concepto>3</Concepto><DocTipo>99</DocTipo><DocNro>0</DocNro><CbteDesde>{number}</CbteDesde>"
+        f"<FeDetResp><FECAEDetResponse><Concepto>3</Concepto><DocTipo>99</DocTipo><DocNro>0</DocNro><CbteDesde>{number}</CbteDesde>"
         f"<CbteHasta>{number}</CbteHasta><Resultado>A</Resultado><CAE>74123456789012</CAE><CbteFch>20261023</CbteFch>"
-        f"<CAEFchVto>20261102</CAEFchVto>{extra}</FEDetResponse></FeDetResp>"))
+        f"<CAEFchVto>20261102</CAEFchVto>{extra}</FECAEDetResponse></FeDetResp>"))
 
 
 def rejected(obs):
     return wsfe_answer("FECAESolicitar", (
-        "<FeCabResp><Resultado>R</Resultado></FeCabResp><FeDetResp><FEDetResponse><Resultado>R</Resultado>"
-        f"<CAE></CAE>{obs}</FEDetResponse></FeDetResp>"))
+        "<FeCabResp><Resultado>R</Resultado></FeCabResp><FeDetResp><FECAEDetResponse><Resultado>R</Resultado>"
+        f"<CAE></CAE>{obs}</FECAEDetResponse></FeDetResp>"))
 
 
 def the_code(text):
@@ -642,3 +642,41 @@ def test_a_command_line_like_the_one_a_person_types_reaches_the_tool_with_the_ri
 
     assert parsed == {"importe": 1500.5, "concepto": "productos", "documento": "12345678", "punto_venta": 2, "confirmar": "123456"}
     assert schema["required"] == ["importe"]
+
+
+def test_the_manual_names_the_detail_block_differently_from_what_arca_sends_and_both_are_read(ready, monkeypatch):
+    manual_style = approved().replace("FECAEDetResponse", "FEDetResponse")
+
+    text, _ = issue(ready, monkeypatch, answer=manual_style)
+
+    assert text.startswith("✓") and "CAE: 74123456789012" in text
+
+
+@pytest.mark.parametrize("answer", [
+    wsfe_answer("FECAESolicitar", "<Algo>raro</Algo>"),  # no hay bloque de detalle
+    wsfe_answer("FECAESolicitar", "<FeDetResp><FECAEDetResponse><Resultado>P</Resultado></FECAEDetResponse></FeDetResp>"),  # resultado desconocido
+])
+def test_an_answer_it_cannot_read_never_claims_nothing_was_issued_without_looking(ready, monkeypatch, answer):
+    # La primera lectura del último número es la simulación, la segunda la confirmación y la tercera, tras no entender: ve el 46.
+    state = {"n": 0}
+
+    def last(body):
+        state["n"] += 1
+        return wsfe_answer("FECompUltimoAutorizado", f"<CbteNro>{45 if state['n'] <= 2 else 46}</CbteNro>")
+
+    calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": last, "FECAESolicitar": answer})
+    code = the_code(ready.emitir_factura(importe=500, concepto="productos"))
+
+    text = ready.emitir_factura(importe=500, concepto="productos", confirmar=code)
+
+    assert "ARCA SÍ emitió el comprobante 0003-00000046" in text and "No se emitió nada" not in text
+    assert len(sent(calls, "FECAESolicitar")) == 1  # y no se reintenta
+    logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
+    assert logged["resultado"] == "emitida_sin_respuesta" and "respuesta" in logged  # queda la respuesta cruda para diagnosticar
+
+
+def test_a_rejection_without_observations_points_to_the_raw_answer(ready, monkeypatch):
+    text, _ = issue(ready, monkeypatch, answer=rejected(""))
+
+    assert "✗ ARCA rechazó el comprobante: sin más detalle" in text and "No se emitió nada" in text
+    assert "Resultado=R" in json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])["respuesta"]

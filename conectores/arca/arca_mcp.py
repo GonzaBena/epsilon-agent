@@ -675,12 +675,17 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
             return settle_after_silence(account, point, number, problem, entry)
         entry.update(resultado="error", error=one_line(problem, 300))
         return f"✗ {problem}\nNo se emitió nada." + record(entry)
-    detail = find(root, "FEDetResponse")
+    raw = "; ".join(f"{local(e.tag)}={one_line(e.text, 80)}" for e in root.iter() if e.text and e.text.strip())[:1500]  # para diagnosticar
+    detail = find(root, "FECAEDetResponse") or find(root, "FEDetResponse")  # el manual dice una cosa y ARCA manda la otra: vale cualquiera
     outcome = text_of(detail[0], "Resultado") if detail else ""
-    notes = observations(detail[0]) if detail else []
-    if outcome != "A":
-        entry.update(resultado="rechazada", observaciones=notes)
-        reasons = "; ".join(notes) or "sin detalle"
+    if outcome not in ("A", "R"):
+        # Contestó pero no sé leerlo: NO puedo decir que no emitió. Se mira el último número, como cuando no hay respuesta.
+        entry["respuesta"] = raw
+        return settle_after_silence(account, point, number, Problem("ARCA contestó con una respuesta que no sé leer", maybe_sent=True), entry)
+    notes = observations(detail[0]) + [f"{one_line(text_of(e, 'Msg'), 200)} (aviso {text_of(e, 'Code')})" for e in find(root, "Evt")]
+    if outcome == "R":
+        entry.update(resultado="rechazada", observaciones=notes, respuesta=raw)
+        reasons = "; ".join(notes) or "sin más detalle (ver «respuesta» en emitidas.jsonl)"
         return f"✗ ARCA rechazó el comprobante: {reasons}\nNo se emitió nada." + record(entry)
     cae, expires = text_of(detail[0], "CAE"), day(text_of(detail[0], "CAEFchVto"))
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
