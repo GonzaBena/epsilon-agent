@@ -94,54 +94,77 @@
         <h2 class="page-title">Conectores</h2>
         <p class="help">Programas externos (MCP) que le dan herramientas nuevas a la IA. Cada herramienta nueva arranca en «preguntar» en Permisos.</p>
 
-        <form class="routine-new" id="conn-form" autocomplete="off">
-          <h3>Agregar un conector</h3>
-          <label for="conn-name">Nombre</label>
-          <input id="conn-name" type="text" maxlength="20" spellcheck="false" placeholder="luces">
-          <label for="conn-command">Comando</label>
-          <input id="conn-command" type="text" maxlength="500" spellcheck="false" placeholder="uv run luces_mcp.py" aria-describedby="conn-hint">
-          <label for="conn-env">Variables de entorno (opcional, una por línea: CLAVE=valor)</label>
-          <textarea id="conn-env" rows="2" spellcheck="false" autocomplete="off"></textarea>
-          <p class="hint" id="conn-hint">Se corre el comando tal cual, sin shell, con solo esas variables. Pegalo y tocá «Ver cómo lo entiendo».</p>
-          <div class="routine-new-row">
-            <button type="button" class="secondary" id="conn-preview">Ver cómo lo entiendo</button>
+        <div class="conn-layout">
+          <div class="conn-main">
+            <p class="result" id="conn-status" role="status"></p>
+            <ul class="routine-list" id="conn-list"></ul>
+            <p class="routine-empty" id="conn-empty" hidden>No hay conectores todavía. Agregá uno a la derecha.</p>
+
+            <h3 class="buttons-title">Botones</h3>
+            <p class="help">Atajos para ejecutar una herramienta de un conector con un toque, sin pasar por la IA. El resultado se ve en la tarjeta y no se guarda en ninguna conversación.</p>
+            <div class="button-grid" id="btn-grid"></div>
+            <p class="routine-empty" id="btn-empty" hidden>No hay botones todavía.</p>
           </div>
-          <div id="conn-confirm" hidden>
-            <p class="routine-banner" role="status">Este programa va a correr en tu PC con tu usuario. Agregalo solo si confiás en quien lo escribió.</p>
-            <pre id="conn-argv"></pre>
-            <button type="submit" class="send" id="conn-add">Confirmar y agregar</button>
+
+          <div class="conn-side">
+            <form class="routine-new conn-card" id="conn-form" autocomplete="off">
+              <h3>Agregar un conector</h3>
+              <div class="conn-fields">
+                <div class="conn-field conn-field-short">
+                  <label for="conn-name">Nombre</label>
+                  <input id="conn-name" type="text" maxlength="20" spellcheck="false" placeholder="luces">
+                </div>
+                <div class="conn-field">
+                  <label for="conn-command">Comando</label>
+                  <input id="conn-command" type="text" maxlength="500" spellcheck="false" placeholder="uv run luces_mcp.py" aria-describedby="conn-hint">
+                </div>
+              </div>
+              <label for="conn-env">Variables de entorno (opcional, una por línea: CLAVE=valor)</label>
+              <textarea id="conn-env" rows="2" spellcheck="false" autocomplete="off"></textarea>
+              <p class="hint" id="conn-hint">Se corre el comando tal cual, sin shell, con solo esas variables. Pegalo y tocá «Ver cómo lo entiendo».</p>
+              <div class="routine-new-row">
+                <button type="button" class="secondary" id="conn-preview">Ver cómo lo entiendo</button>
+              </div>
+              <div id="conn-confirm" hidden>
+                <p class="routine-banner" role="status">Este programa va a correr en tu PC con tu usuario. Agregalo solo si confiás en quien lo escribió.</p>
+                <pre id="conn-argv"></pre>
+                <button type="submit" class="send" id="conn-add">Confirmar y agregar</button>
+              </div>
+              <p class="result fail" id="conn-error" role="alert"></p>
+            </form>
+
+            <form class="routine-new conn-card" id="btn-form" autocomplete="off">
+              <h3>Crear botón</h3>
+              <div class="conn-fields">
+                <div class="conn-field">
+                  <label for="btn-connector">Conector</label>
+                  <select id="btn-connector"></select>
+                </div>
+                <div class="conn-field">
+                  <label for="btn-tool">Herramienta</label>
+                  <select id="btn-tool"></select>
+                </div>
+              </div>
+              <div class="conn-fields">
+                <div class="conn-field">
+                  <label for="btn-label">Nombre del botón</label>
+                  <input id="btn-label" type="text" maxlength="40">
+                </div>
+                <div class="conn-field">
+                  <label for="btn-args">Argumentos (clave=valor o JSON)</label>
+                  <input id="btn-args" type="text" maxlength="1000" spellcheck="false" placeholder="vacío si no lleva">
+                </div>
+              </div>
+              <div class="routine-new-row">
+                <button type="submit" class="send" id="btn-add">Crear botón</button>
+                <button type="button" class="secondary" id="btn-suggest">Ver sugeridos</button>
+              </div>
+              <p class="hint">«Sugeridos» le pregunta al conector qué botones propone (puede arrancarlo). No se crea ninguno solo.</p>
+              <ul class="routine-list" id="btn-suggestions"></ul>
+              <p class="result fail" id="btn-error" role="alert"></p>
+            </form>
           </div>
-          <p class="result fail" id="conn-error" role="alert"></p>
-        </form>
-
-        <p class="result" id="conn-status" role="status"></p>
-
-        <ul class="routine-list" id="conn-list"></ul>
-        <p class="routine-empty" id="conn-empty" hidden>No hay conectores todavía. Agregá uno arriba.</p>
-
-        <h3 class="page-title buttons-title">Botones</h3>
-        <p class="help">Atajos para ejecutar una herramienta de un conector con un toque, sin pasar por la IA. El resultado se ve en la tarjeta y no se guarda en ninguna conversación.</p>
-        <div class="button-grid" id="btn-grid"></div>
-        <p class="routine-empty" id="btn-empty" hidden>No hay botones todavía.</p>
-
-        <form class="routine-new" id="btn-form" autocomplete="off">
-          <h3>Crear botón</h3>
-          <label for="btn-connector">Conector</label>
-          <select id="btn-connector"></select>
-          <label for="btn-tool">Herramienta</label>
-          <select id="btn-tool"></select>
-          <label for="btn-args">Argumentos (clave=valor o JSON, vacío si no lleva)</label>
-          <input id="btn-args" type="text" maxlength="1000" spellcheck="false">
-          <label for="btn-label">Nombre del botón</label>
-          <input id="btn-label" type="text" maxlength="40">
-          <div class="routine-new-row">
-            <button type="submit" class="send" id="btn-add">Crear botón</button>
-            <button type="button" class="secondary" id="btn-suggest">Ver sugeridos</button>
-          </div>
-          <p class="hint">«Sugeridos» le pregunta al conector qué botones propone (puede arrancarlo). No se crea ninguno solo.</p>
-          <ul class="routine-list" id="btn-suggestions"></ul>
-          <p class="result fail" id="btn-error" role="alert"></p>
-        </form>
+        </div>
       </main>
     </div>
 

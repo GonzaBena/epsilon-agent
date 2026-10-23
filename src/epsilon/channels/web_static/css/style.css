@@ -583,7 +583,9 @@ body.view-telegram {
 .shell:is([data-left="collapsed"], .is-narrow) {
   --left-w: 64px;
 }
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .label {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .label {
   max-width: 0;
   margin-left: 0;
   opacity: 0;
@@ -594,7 +596,9 @@ body.view-telegram {
 }
 /* Lo que desaparece también sale del orden de tabulación (visibility), pero recién
    cuando termina el desvanecimiento. */
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .side-title {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .side-title {
   max-height: 0;
   margin-bottom: 0;
   opacity: 0;
@@ -603,7 +607,9 @@ body.view-telegram {
     margin var(--t) ease,
     opacity 0.1s ease;
 }
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .recents {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .recents {
   max-height: 0;
   opacity: 0;
   visibility: hidden;
@@ -612,7 +618,9 @@ body.view-telegram {
     opacity 0.1s ease,
     visibility 0s linear var(--t);
 }
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .local-card {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .local-card {
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -2761,6 +2769,7 @@ a.ghost {
   font-weight: 600;
 }
 .routine-new-row {
+  margin-top: 20px;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
@@ -2973,14 +2982,169 @@ a.ghost {
   gap: 0.6rem;
 }
 
-/* Página Conectores (comparte el diseño de Rutinas) */
-.connectors-page .routine-new textarea { width: 100%; font: inherit; }
-.connectors-page .routine-new input { width: 100%; }
-.connectors-page #conn-argv { white-space: pre-wrap; overflow-wrap: anywhere; }
-.conn-tools { margin: 0.25rem 0 0; padding-left: 1.1rem; }
-
-.button-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 0.75rem 0; }
-.button-card { border: 1px solid var(--border, #8884); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.button-card .button-result { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9em; max-height: 10rem; overflow: auto; }
-.buttons-title { margin-top: 2rem; }
-.connectors-page select { width: 100%; font: inherit; }
+/* Página Conectores (comparte el diseño de Rutinas): lista y botones a la izquierda, formularios a la derecha. */
+.connectors-page {
+  max-width: 72rem;
+}
+.conn-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (min-width: 60rem) {
+  .conn-layout {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: 2rem;
+  }
+  .conn-side {
+    position: sticky;
+    top: 1rem;
+  }
+}
+.conn-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.conn-card {
+  margin: 0;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.conn-card h3 {
+  margin: 0 0 0.9rem;
+  font-size: 1.05rem;
+}
+.conn-card label {
+  font-size: 0.92rem;
+}
+.conn-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.conn-field {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.conn-field-short {
+  flex: 0 1 7rem;
+}
+.connectors-page .conn-card input,
+.connectors-page select {
+  width: 100%;
+  min-width: 0;
+}
+.connectors-page select {
+  font: inherit;
+}
+/* El textarea global no tiene borde ni fondo (es el del chat): acá se dibuja como un campo más. */
+.connectors-page textarea {
+  display: block;
+  width: 100%;
+  max-height: none;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  resize: vertical;
+}
+.connectors-page textarea:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 1px;
+}
+.conn-card .hint {
+  margin: 0.5rem 0 0;
+}
+.connectors-page .routine-new-row {
+  margin-top: 1rem;
+}
+.connectors-page #conn-argv {
+  margin: 0.75rem 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.conn-main .result {
+  margin: 0 0 0.75rem;
+}
+.conn-tools {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+.conn-env-edit {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+.conn-env-edit label {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.conn-env-edit .hint {
+  margin: 0;
+}
+.conn-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.connectors-page .routine-actions {
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+.buttons-title {
+  margin: 2rem 0 0.4rem;
+  font-size: 1.15rem;
+}
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.button-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.button-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.button-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.button-card .button-result {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9em;
+  max-height: 10rem;
+  overflow: auto;
+}
+.button-card .button-result:empty {
+  display: none;
+}
+@media (max-width: 34rem) {
+  .button-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

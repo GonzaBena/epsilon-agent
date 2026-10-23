@@ -125,7 +125,12 @@ function renderRow(connector) {
   remove.setAttribute("aria-label", `Quitar el conector ${connector.name}`);
   remove.addEventListener("click", () => change("DELETE", connector.name, undefined, "Conector quitado."));
 
-  actions.append(auto, toggle, remove);
+  const labeled = (text, control) => {
+    const wrap = make("span", "conn-switch");
+    wrap.append(make("span", "routine-next", text), control);
+    return wrap;
+  };
+  actions.append(labeled("Con Epsilon", auto), labeled("Activo", toggle), remove);
   item.append(info, actions);
   return item;
 }
@@ -331,7 +336,11 @@ function renderButtons(buttons) {
     remove.type = "button";
     remove.setAttribute("aria-label", `Quitar el botón ${button.label}`);
     remove.addEventListener("click", () => buttonRequest(`/api/buttons/${button.id}`, { method: "DELETE" }));
-    card.append(make("strong", "", button.label), make("span", "routine-next", `${button.connector}.${button.tool}`), run, remove, result);
+    const head = make("div", "button-head");
+    head.append(make("strong", "", button.label), make("span", "routine-next", `${button.connector}.${button.tool}`));
+    const foot = make("div", "button-actions");
+    foot.append(run, remove);
+    card.append(head, foot, result);
     return card;
   }));
   btnEmpty.hidden = buttons.length > 0;
