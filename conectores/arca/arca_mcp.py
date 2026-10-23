@@ -64,6 +64,10 @@ server = MCPServer("arca")
 class Problem(Exception):
     """Algo que la persona puede entender y arreglar; el mensaje va tal cual a la herramienta."""
 
+    def __init__(self, message: str, codes: tuple[str, ...] = ()):
+        super().__init__(message)
+        self.codes = codes  # códigos de error de ARCA, si el problema vino de ahí
+
 
 # ---------- configuración ----------
 
@@ -259,10 +263,23 @@ def wsfe(account: dict, method: str, params: str = "", *, auth: bool = True) -> 
         token, sign = ticket(account)
         credentials = f"<Auth><Token>{escape(token)}</Token><Sign>{escape(sign)}</Sign><Cuit>{account['cuit']}</Cuit></Auth>"
     root = soap(account["urls"]["wsfe"], WSFE_NS + method, f'<{method} xmlns="{WSFE_NS}">{credentials}{params}</{method}>')
-    errors = [f"{one_line(text_of(e, 'Msg'), 200)} (código {text_of(e, 'Code')})" for e in find(root, "Err")]
+    errors = [(text_of(e, "Code"), one_line(text_of(e, "Msg"), 200)) for e in find(root, "Err")]
     if errors:
-        raise Problem("ARCA: " + "; ".join(errors))
+        raise Problem("ARCA: " + "; ".join(f"{msg} (código {code})" for code, msg in errors), codes=tuple(c for c, _ in errors))
     return root
+
+
+NO_RESULTS = "602"  # ARCA contesta «Sin Resultados» como un error cuando una lista está vacía
+
+
+def sale_points(account: dict) -> list[ET.Element]:
+    """Los puntos de venta para web services; sin ninguno, ARCA da el error 602 y acá es una lista vacía."""
+    try:
+        return find(wsfe(account, "FEParamGetPtosVenta"), "PtoVenta")
+    except Problem as problem:
+        if NO_RESULTS in problem.codes:
+            return []
+        raise
 
 
 # ---------- formato ----------
@@ -354,7 +371,7 @@ def verificar(cuenta: str | None = None) -> str:
         status = wsfe(account, "FEDummy", auth=False)
         servers = {name: text_of(status, name) for name in ("AppServer", "DbServer", "AuthServer")}
         step(all(v == "OK" for v in servers.values()), "Servidores de facturación: " + ", ".join(f"{k} {v or '?'}" for k, v in servers.items()))
-        points = find(wsfe(account, "FEParamGetPtosVenta"), "PtoVenta")
+        points = sale_points(account)
         step(bool(points), f"{len(points)} punto(s) de venta para web services" if points else
              "No hay puntos de venta para web services: creá uno de tipo «RECE para aplicativo y web services» en ARCA")
     except Problem as problem:
@@ -367,7 +384,7 @@ def puntos_de_venta(cuenta: str | None = None) -> str:
     """Los puntos de venta habilitados para facturar por web service."""
     try:
         account = pick(cuenta)
-        points = find(wsfe(account, "FEParamGetPtosVenta"), "PtoVenta")
+        points = sale_points(account)
     except Problem as problem:
         return str(problem)
     if not points:

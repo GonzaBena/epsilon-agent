@@ -236,6 +236,24 @@ def test_no_sale_points_explains_which_kind_to_create(ready, monkeypatch):
     assert "RECE para aplicativo y web services" in ready.puntos_de_venta()
 
 
+def test_arca_answering_602_to_the_sale_points_request_means_there_are_none(ready, monkeypatch):
+    # Lo que contestó ARCA de verdad en homologación cuando todavía no había ningún punto de venta.
+    none = wsfe_answer("FEParamGetPtosVenta", "<Errors><Err><Code>602</Code><Msg>Sin Resultados: - Metodo FEParamGetPtosVenta</Msg></Err></Errors>")
+    serve(ready, monkeypatch, {"FEParamGetPtosVenta": none, "FEDummy": DUMMY})
+
+    assert "No hay puntos de venta para web services" in ready.puntos_de_venta()
+    text = ready.verificar()
+    assert "✗ No hay puntos de venta para web services" in text and "Sin Resultados" not in text
+    assert text.count("✗") == 1  # lo demás sigue en verde
+
+
+def test_other_arca_errors_on_the_sale_points_are_not_hidden(ready, monkeypatch):
+    broken = wsfe_answer("FEParamGetPtosVenta", "<Errors><Err><Code>500</Code><Msg>Error interno</Msg></Err></Errors>")
+    serve(ready, monkeypatch, {"FEParamGetPtosVenta": broken})
+
+    assert ready.puntos_de_venta() == "ARCA: Error interno (código 500)"
+
+
 def test_one_voucher_shows_amounts_receiver_service_dates_and_cae(ready, monkeypatch):
     calls = serve(ready, monkeypatch, {"FECompConsultar": CONSULT})
 
