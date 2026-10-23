@@ -3,6 +3,7 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import asdict
 import json
 import os
+import shlex
 from pathlib import Path
 import socket
 from queue import Queue
@@ -18,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
+from epsilon.connectors import bridge, manager as connector_manager, store as connector_store
 from epsilon.data import conversations, library, notes
 from epsilon.routines import rules as routine_rules, store as routine_store
 from epsilon.settings import checks, config
@@ -196,6 +198,73 @@ def routines_view() -> dict:
 def routines_now():
     """La hora de la pared, sin zona: así se guardan y comparan las rutinas."""
     return clock.now().replace(tzinfo=None)
+
+
+class ConnectorPreviewIn(BaseModel):
+    command: str = Field(max_length=500)
+
+
+class ConnectorIn(BaseModel):
+    name: str = Field(max_length=40)
+    command: str = Field(max_length=500)
+    env: dict[str, str] = Field(default_factory=dict, max_length=20)
+    confirm: bool = False
+
+
+class ConnectorChangeIn(BaseModel):
+    enabled: bool | None = None
+    autostart: bool | None = None
+    env: dict[str, str] | None = Field(default=None, max_length=20)
+
+
+def split_command(command: str) -> list[str]:
+    """El comando como lista (shlex, NUNCA por un shell). ValueError en español si no se entiende."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        raise ValueError("No entiendo el comando: revisá las comillas.") from None
+    if not argv:
+        raise ValueError("Escribí el comando que arranca el conector.")
+    return argv
+
+
+def connectors_view() -> dict:
+    """Lo que la página de conectores dibuja. Nunca lleva los valores de `env`: solo si está cargada y su largo."""
+    shown = []
+    for entry in connector_store.list_all():
+        try:
+            public = connector_store.public(entry)
+            taken: set[str] = set()
+            found = []
+            for item in public.get("tools", []):
+                if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                    continue
+                action = bridge.action_name(item["name"], taken)
+                taken.add(action)
+                description = item.get("description") if isinstance(item.get("description"), str) else ""
+                # «changed»: sin hash guardado, la herramienta quedó pendiente de que la vuelvas a autorizar.
+                found.append({"action": action, "description": config.redact(description)[:200],
+                              "changed": not item.get("hash")})
+            shown.append({
+                "name": entry["name"], "command": shlex.join(entry["argv"]), "enabled": bool(entry.get("enabled")),
+                "autostart": bool(entry.get("autostart")), "status": connector_manager.status(entry["name"]),
+                "error": config.redact(str(entry.get("error") or "")), "env": public["env"], "tools": found,
+            })
+        except (KeyError, ValueError, TypeError, connector_manager.ConnectorError):
+            continue  # una ficha rota (archivo editado a mano) no tira la página
+    return {"connectors": shown}
+
+
+def connector_start(name: str) -> None:
+    """Arranca el conector; si falla, queda guardado «detenido» con el motivo (ya redactado)."""
+    try:
+        connector_manager.start(name)
+    except Exception as error:  # noqa: BLE001 - cualquier falla deja el conector detenido, no tira la página
+        reason = config.redact(str(error)) or "No pude arrancarlo."
+        try:
+            connector_store.update(name, error=reason[:300])
+        except connector_store.StoreError:
+            pass
 
 
 class TitleIn(BaseModel):
@@ -521,6 +590,66 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "No existe esa rutina")
         return routines_view()
 
+    @app.get("/api/connectors")
+    def get_connectors():
+        return connectors_view()
+
+    @app.post("/api/connectors/preview")
+    def preview_connector(body: ConnectorPreviewIn):
+        """Cómo se entiende el comando, sin correr nada."""
+        try:
+            return {"argv": split_command(body.command)}
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.post("/api/connectors")
+    def create_connector(body: ConnectorIn):
+        """Guarda y arranca un conector. Exige la confirmación explícita: corre un programa de la PC."""
+        if body.confirm is not True:
+            raise HTTPException(422, "Confirmá que querés correr este programa.")
+        try:
+            argv = split_command(body.command)
+            connector_store.add(body.name, argv, body.env)
+        except (ValueError, connector_store.StoreError) as e:
+            raise HTTPException(422, str(e)) from None
+        connector_start(body.name)
+        return connectors_view()
+
+    @app.put("/api/connectors/{name}")
+    def change_connector(name: str, body: ConnectorChangeIn):
+        fields = {}
+        if body.autostart is not None:
+            fields["autostart"] = body.autostart
+        if body.enabled is not None:
+            fields["enabled"] = body.enabled
+        try:
+            if connector_store.get(name) is None:
+                raise HTTPException(404, "No existe ese conector")
+            if body.env is not None:  # se suman a las que ya había; un valor vacío saca la variable
+                merged = {**connector_store.get(name).get("env", {}), **body.env}
+                fields["env"] = {k: v for k, v in merged.items() if v != ""}
+            if fields:
+                connector_store.update(name, **fields)
+        except connector_store.StoreError as e:
+            raise HTTPException(422, str(e)) from None
+        if body.enabled is False:
+            connector_manager.stop(name)
+        elif body.enabled is True:
+            connector_start(name)
+        return connectors_view()
+
+    @app.delete("/api/connectors/{name}")
+    def delete_connector(name: str):
+        if connector_store.get(name) is None:
+            raise HTTPException(404, "No existe ese conector")
+        try:
+            connector_manager.stop(name)
+        except Exception:  # noqa: BLE001 - un cierre que falla no impide quitarlo
+            pass
+        # Task 7: acá también se borran los botones de este conector.
+        connector_store.remove(name)
+        return connectors_view()
+
     @app.put("/api/conversations/{conversation_id}/title")
     def rename_conversation(conversation_id: str, body: TitleIn):
         if not conversations.is_valid_id(conversation_id):
@@ -819,6 +948,10 @@ def create_app() -> FastAPI:
     @app.get("/rutinas", include_in_schema=False)
     def routines_page():
         return FileResponse(STATIC_DIR / "rutinas.html")
+
+    @app.get("/conectores", include_in_schema=False)
+    def connectors_page():
+        return FileResponse(STATIC_DIR / "conectores.html")
 
     @app.get("/biblioteca", include_in_schema=False)
     def library_page():

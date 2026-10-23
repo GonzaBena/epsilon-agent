@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conectores · Epsilon</title>
+  <link rel="icon" href="/static/img/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Estructura de la página. El estilo está en style.css, la lógica en
+       conectores.js y el esqueleto (paneles, menú) en shell.js. Las fichas las
+       dibuja conectores.js con lo que responde GET /api/connectors. -->
+  <script src="/static/js/boot.js"></script>
+  <script src="/static/js/palette.js" defer></script>
+  <script src="/static/js/shell.js" defer></script>
+  <script src="/static/js/conectores.js" defer></script>
+</head>
+<body class="settings-page">
+
+  <header class="top">
+    <a class="brand" href="/">
+      <img class="brand-logo" src="/static/img/apple-touch-icon.png" alt="" width="30" height="30">
+      <h1>Epsilon</h1>
+    </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a class="top-link" href="/">Chat</a>
+      <a class="top-link" href="/canales">Canales</a>
+      <a class="top-link" href="/uso">Uso</a>
+      <a class="top-link" href="/permisos">Permisos</a>
+    </nav>
+    <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Conectores</span></p>
+    <div class="top-actions">
+      <button type="button" class="model-chip" id="model-chip" aria-haspopup="dialog" title="Cambiar el modelo de IA"><span id="model-name">…</span></button>
+    </div>
+  </header>
+
+  <div class="shell" data-left="open" data-right="open">
+
+    <!-- Menú lateral. Es el mismo en todas las páginas (si cambia uno, cambia el otro:
+         un test lo vigila). Contraído, queda una columna de íconos; las
+         etiquetas siguen ahí para los lectores de pantalla. -->
+    <aside class="side side-left" id="left" aria-label="Menú principal">
+      <a class="new-chat" id="new-chat" href="/?nuevo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="label">Nuevo chat</span>
+      </a>
+
+      <p class="side-title">Menú</p>
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-item" href="/">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20.5l1.4-4.4A8 8 0 1 1 21 12z"/></svg>
+          <span class="label">Chat</span>
+        </a>
+        <a class="nav-item" href="/biblioteca">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="label">Biblioteca</span>
+        </a>
+        <a class="nav-item" href="/permisos">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span class="label">Permisos</span>
+        </a>
+        <a class="nav-item" href="/conectores" aria-current="page">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v3"/></svg>
+          <span class="label">Conectores</span>
+        </a>
+        <a class="nav-item" href="/rutinas">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span class="label">Rutinas</span>
+        </a>
+        <a class="nav-item" href="/config">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+          <span class="label">Configuración</span>
+        </a>
+      </nav>
+
+      <section class="recents" aria-label="Conversaciones">
+        <ul class="recents-list" id="recents"></ul>
+      </section>
+
+      <div class="local-card" id="local-card">
+        <strong>Local</strong>
+        <span class="local-path" id="local-path"></span>
+      </div>
+
+      <button type="button" class="panel-toggle" data-toggle="left"
+              aria-expanded="true" aria-controls="left" aria-label="Cerrar el menú" title="Cerrar el menú">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+      </button>
+    </aside>
+
+    <div class="stage">
+      <main class="settings routines-page connectors-page">
+        <h2 class="page-title">Conectores</h2>
+        <p class="help">Programas externos (MCP) que le dan herramientas nuevas a la IA. Cada herramienta nueva arranca en «preguntar» en Permisos.</p>
+
+        <form class="routine-new" id="conn-form" autocomplete="off">
+          <h3>Agregar un conector</h3>
+          <label for="conn-name">Nombre</label>
+          <input id="conn-name" type="text" maxlength="20" spellcheck="false" placeholder="luces">
+          <label for="conn-command">Comando</label>
+          <input id="conn-command" type="text" maxlength="500" spellcheck="false" placeholder="uv run luces_mcp.py" aria-describedby="conn-hint">
+          <label for="conn-env">Variables de entorno (opcional, una por línea: CLAVE=valor)</label>
+          <textarea id="conn-env" rows="2" spellcheck="false" autocomplete="off"></textarea>
+          <p class="hint" id="conn-hint">Se corre el comando tal cual, sin shell, con solo esas variables. Pegalo y tocá «Ver cómo lo entiendo».</p>
+          <div class="routine-new-row">
+            <button type="button" class="secondary" id="conn-preview">Ver cómo lo entiendo</button>
+          </div>
+          <div id="conn-confirm" hidden>
+            <p class="routine-banner" role="status">Este programa va a correr en tu PC con tu usuario. Agregalo solo si confiás en quien lo escribió.</p>
+            <pre id="conn-argv"></pre>
+            <button type="submit" class="send" id="conn-add">Confirmar y agregar</button>
+          </div>
+          <p class="result fail" id="conn-error" role="alert"></p>
+        </form>
+
+        <p class="result" id="conn-status" role="status"></p>
+
+        <ul class="routine-list" id="conn-list"></ul>
+        <p class="routine-empty" id="conn-empty" hidden>No hay conectores todavía. Agregá uno arriba.</p>
+      </main>
+    </div>
+
+  </div>
+
+</body>
+</html>

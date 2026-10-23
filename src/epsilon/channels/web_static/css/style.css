@@ -2972,3 +2972,9 @@ a.ghost {
   flex-wrap: wrap;
   gap: 0.6rem;
 }
+
+/* Página Conectores (comparte el diseño de Rutinas) */
+.connectors-page .routine-new textarea { width: 100%; font: inherit; }
+.connectors-page .routine-new input { width: 100%; }
+.connectors-page #conn-argv { white-space: pre-wrap; overflow-wrap: anywhere; }
+.conn-tools { margin: 0.25rem 0 0; padding-left: 1.1rem; }
