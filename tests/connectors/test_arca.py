@@ -125,7 +125,7 @@ def test_server_defines_its_tools_and_the_buttons_fit_them(arca):
     found = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}
 
     assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante",
-                          "condiciones_iva_receptor", "emitir_factura"}
+                          "condiciones_iva_receptor", "actividades", "emitir_factura"}
     for button in json.loads(arca.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -680,3 +680,45 @@ def test_a_rejection_without_observations_points_to_the_raw_answer(ready, monkey
 
     assert "✗ ARCA rechazó el comprobante: sin más detalle" in text and "No se emitió nada" in text
     assert "Resultado=R" in json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])["respuesta"]
+
+
+ACTIVITIES = wsfe_answer("FEParamGetActividades", (
+    "<ResultGet><ActividadesTipo><Id>620100</Id><Orden>1</Orden><Desc>SERVICIOS DE CONSULTORES EN INFORMATICA</Desc></ActividadesTipo>"
+    "<ActividadesTipo><Id>479900</Id><Orden>2</Orden><Desc>VENTA AL POR MENOR NO REALIZADA EN COMERCIOS</Desc></ActividadesTipo></ResultGet>"))
+NO_ACTIVITIES = wsfe_answer("FEParamGetActividades", "<Errors><Err><Code>602</Code><Msg>Sin Resultados: - Metodo FEParamGetActividades</Msg></Err></Errors>")
+
+
+def test_activities_are_listed_with_the_main_one_marked_and_an_empty_list_explains_itself(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FEParamGetActividades": ACTIVITIES})
+    text = ready.actividades()
+    assert "- 620100 · SERVICIOS DE CONSULTORES EN INFORMATICA (principal)" in text
+    assert "- 479900 · VENTA AL POR MENOR NO REALIZADA EN COMERCIOS" in text and text.count("(principal)") == 1
+
+    serve(ready, monkeypatch, {"FEParamGetActividades": NO_ACTIVITIES})  # lo que ARCA contesta en homologación sin actividades
+    assert "no tiene actividades habilitadas" in ready.actividades() and "quitala de cuentas.json" in ready.actividades()
+
+
+def test_the_activity_rejection_says_how_to_continue(arca, monkeypatch):
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "productos", "actividad": "479900"})
+    make_files(arca.home())
+    obs = ("<Observaciones><Obs><Code>10223</Code><Msg>La actividad seleccionada 479900 no se encuentra vinculada al emisor "
+           "o no esta activa. Ver método FEParamGetActividades</Msg></Obs></Observaciones>")
+
+    text, _ = issue(arca, monkeypatch, answer=rejected(obs))
+
+    assert text.startswith("✗ ARCA rechazó el comprobante: La actividad seleccionada 479900 no se encuentra vinculada al emisor")
+    assert "herramienta «actividades»" in text and "quitá «actividad»" in text and "No se emitió nada" in text
+
+
+def test_verify_checks_the_configured_activity_against_the_ones_of_the_issuer(arca, monkeypatch):
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "actividad": "479900"})
+    make_files(arca.home())
+    serve(arca, monkeypatch, {"FEDummy": DUMMY, "FEParamGetPtosVenta": POINTS, "FEParamGetActividades": ACTIVITIES})
+    assert "✓ La actividad 479900 de la cuenta está habilitada para el emisor" in arca.verificar()
+
+    serve(arca, monkeypatch, {"FEDummy": DUMMY, "FEParamGetPtosVenta": POINTS, "FEParamGetActividades": NO_ACTIVITIES})
+    assert "✗ La actividad 479900 de la cuenta NO está entre las del emisor (ninguna)" in arca.verificar()
+
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3})  # sin actividad configurada no se pregunta nada
+    serve(arca, monkeypatch, {"FEDummy": DUMMY, "FEParamGetPtosVenta": POINTS})  # FEParamGetActividades ausente: llamarlo daría KeyError
+    assert "actividad" not in arca.verificar()

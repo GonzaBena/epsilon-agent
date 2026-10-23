@@ -62,6 +62,7 @@ y por qué.
 | `tipos_de_comprobante` | Los tipos que ARCA permite (11 = Factura C, 13 = Nota de crédito C…) |
 | `ultimo_comprobante` | Último número autorizado. Sin `tipo` usa el de la cuenta (monotributo: 11); sin `punto_venta`, el guardado en `cuentas.json` |
 | `ver_comprobante` | Fecha, importes, receptor, concepto y CAE de uno ya autorizado: `/c arca ver_comprobante numero=45` |
+| `actividades` | Las actividades del emisor que ARCA acepta asociar a un comprobante (el código va en `actividad`). En homologación suele no haber ninguna |
 | `condiciones_iva_receptor` | Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C |
 | `emitir_factura` | Emite una Factura C. Ver la sección siguiente |
 
@@ -112,7 +113,8 @@ Solo datos, sin secretos (las claves son archivos aparte con permisos 600):
 
 - `concepto` (opcional): `productos`, `servicios` o `productos_y_servicios`, para no escribirlo en cada emisión.
 - `actividad` (opcional): código de actividad que ARCA debe asociar al comprobante, por ejemplo `"479900"`. Solo se
-  envía si lo ponés; ARCA exige que sea una de las actividades activas del emisor.
+  envía si lo ponés; ARCA exige que sea una de las actividades activas del emisor (se ven con `actividades`, y
+  `verificar` lo comprueba). **En homologación el emisor de pruebas casi nunca las tiene: probá sin `actividad`.**
 - `descripcion` (opcional): texto por defecto del registro, por ejemplo `"Repuestos y reparaciones"`.
 - `emision` (solo producción): `true` para permitir emitir de verdad.
 - `cert` y `key` (opcionales): rutas a otros archivos; por defecto `<cuenta>.crt` y `<cuenta>.key` en la misma carpeta.

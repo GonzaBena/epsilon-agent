@@ -277,14 +277,18 @@ def wsfe(account: dict, method: str, params: str = "", *, auth: bool = True) -> 
 NO_RESULTS = "602"  # ARCA contesta «Sin Resultados» como un error cuando una lista está vacía
 
 
-def sale_points(account: dict) -> list[ET.Element]:
-    """Los puntos de venta para web services; sin ninguno, ARCA da el error 602 y acá es una lista vacía."""
+def listed(account: dict, method: str, element: str) -> list[ET.Element]:
+    """Los elementos de una lista de ARCA; sin ninguno, ARCA da el error 602 y acá es una lista vacía."""
     try:
-        return find(wsfe(account, "FEParamGetPtosVenta"), "PtoVenta")
+        return find(wsfe(account, method), element)
     except Problem as problem:
         if NO_RESULTS in problem.codes:
             return []
         raise
+
+
+def sale_points(account: dict) -> list[ET.Element]:
+    return listed(account, "FEParamGetPtosVenta", "PtoVenta")
 
 
 # ---------- formato ----------
@@ -380,6 +384,12 @@ def verificar(cuenta: str | None = None) -> str:
         points = sale_points(account)
         step(bool(points), f"{len(points)} punto(s) de venta para web services" if points else
              "No hay puntos de venta para web services: creá uno de tipo «RECE para aplicativo y web services» en ARCA")
+        if account.get("actividad"):
+            ids = [text_of(a, "Id") for a in listed(account, "FEParamGetActividades", "ActividadesTipo")]
+            wanted = str(account["actividad"])
+            step(wanted in ids, f"La actividad {wanted} de la cuenta está habilitada para el emisor" if wanted in ids else
+                 f"La actividad {wanted} de la cuenta NO está entre las del emisor ({', '.join(ids) or 'ninguna'}): "
+                 "cambiala o quitá «actividad» de cuentas.json (en homologación suele no haber ninguna)")
     except Problem as problem:
         lines.append(f"✗ {problem}")
     return "\n".join(lines)
@@ -456,6 +466,21 @@ def ver_comprobante(numero: int, tipo: int | None = None, punto_venta: int | Non
         f"Concepto: {detail}",
         f"CAE: {text_of(root, 'CodAutorizacion') or '?'} · vence {day(text_of(root, 'FchVto'))} · {result}",
     ])
+
+
+@server.tool()
+def actividades(cuenta: str | None = None) -> str:
+    """Las actividades del emisor que ARCA permite asociar a un comprobante (el código es el de «actividad» en la cuenta)."""
+    try:
+        account = pick(cuenta)
+        found = listed(account, "FEParamGetActividades", "ActividadesTipo")
+    except Problem as problem:
+        return str(problem)
+    if not found:
+        return (f"[{account['alias']}] ARCA no tiene actividades habilitadas para este emisor ({account['ambiente']}). "
+                "Si la cuenta tiene «actividad», quitala de cuentas.json: ARCA rechazaría el comprobante.")
+    return f"[{account['alias']}] Actividades del emisor:\n" + "\n".join(
+        f"- {text_of(a, 'Id')} · {one_line(text_of(a, 'Desc'), 120)}" + (" (principal)" if text_of(a, "Orden") == "1" else "") for a in found)
 
 
 @server.tool()
@@ -686,6 +711,8 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
     if outcome == "R":
         entry.update(resultado="rechazada", observaciones=notes, respuesta=raw)
         reasons = "; ".join(notes) or "sin más detalle (ver «respuesta» en emitidas.jsonl)"
+        if any(f"código {c}" in reasons for c in ("10220", "10223")):  # actividad no habilitada: se dice cómo seguir
+            reasons += ". Mirá las válidas con la herramienta «actividades» o quitá «actividad» de esta cuenta en cuentas.json"
         return f"✗ ARCA rechazó el comprobante: {reasons}\nNo se emitió nada." + record(entry)
     cae, expires = text_of(detail[0], "CAE"), day(text_of(detail[0], "CAEFchVto"))
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
