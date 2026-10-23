@@ -442,6 +442,7 @@ voz = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "cryptography" },
     { name = "httpx2" },
     { name = "pytest" },
 ]
@@ -464,6 +465,7 @@ provides-extras = ["voz"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "cryptography", specifier = ">=43" },
     { name = "httpx2", specifier = ">=2.14.0" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]

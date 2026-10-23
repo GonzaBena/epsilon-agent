@@ -30,12 +30,12 @@ ni saldo, por eso se hace uno propio.
 
 ## Fase 2: ARCA, solo lectura y en homologación
 
-- Web services oficiales (WSAA + WSFEv1). Dependencias: `cryptography` (firma) y `zeep` (SOAP).
-- `arca_setup.py`: genera clave privada y CSR; guía del trámite en el README (WSASS en homologación, Administración
+- Web services oficiales (WSAA + WSFEv1). Dependencia: solo `cryptography` (firma); el SOAP se arma a mano con la biblioteca estándar (sin `zeep`).
+- `arca_mcp.py nueva <nombre> --cuit <CUIT>`: genera clave privada y CSR y anota la cuenta; guía del trámite en el README (WSASS en homologación, Administración
   de Certificados Digitales en producción, relación con `wsfe`, punto de venta tipo «RECE para aplicativo y web services»).
-- `arca_cuentas.json` (sin secretos): alias → CUIT, rutas del certificado y la clave, punto de venta, ambiente, condición fiscal.
+- `cuentas.json` en `ARCA_HOME` (por defecto `~/.config/epsilon-arca/`; sin secretos): alias → CUIT, rutas del certificado y la clave, punto de venta, ambiente, condición fiscal.
 - Token del WSAA en caché (dura ~12 h), renovado solo.
-- Herramientas: `cuentas`, `puntos_de_venta`, `ultimo_comprobante`, `ver_comprobante`, `tipos_de_comprobante`.
+- Herramientas: `cuentas`, `verificar` (revisa archivos, certificado, ingreso, servidores y puntos de venta), `puntos_de_venta`, `ultimo_comprobante`, `ver_comprobante`, `tipos_de_comprobante`.
 
 ## Fase 3: emitir facturas (después de probar 1 y 2)
 
