@@ -1016,7 +1016,7 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
         # Se lee ANTES del permiso: el manager vuelve a «preguntar» antes de mostrar el hash nuevo, así que un hash
         # leído primero nunca es más nuevo que el permiso que se lee después.
         state.connector_hash = _connector_hash(tools.ai_id(tool)) if tool else None
-        decision = permissions.decide(cid, tools.ai_id(tool)) if tool else "block"
+        decision = permissions.decide(cid, tools.ai_id(tool), state.connector_hash) if tool else "block"
         if tool and decision != "block" and tools.ai_id(tool) == "nav_abrir":
             try:  # un nombre suelto («yt») se vuelve dirección ACÁ, para que la guardia, la pregunta y el registro vean el sitio real
                 args = navegador.resolve_target(args)
@@ -1164,9 +1164,9 @@ def _answer_permission(answer: str, msg: Message, session: Session) -> Reply:
     name = tools.model_name(call_id)
     tool_id = tools.ai_id(tool) if tool else ""
     if tool and answer == "siempre":
-        permissions.grant(state.turn.conversation_id, tool_id)  # decide() igual respeta un «deny» posterior
+        permissions.grant(state.turn.conversation_id, tool_id, state.connector_hash)  # decide() igual respeta un «deny» posterior
     # Si mientras esperaba la bloqueaste en la configuración, el «sí» ya no alcanza.
-    if tool is None or permissions.decide(state.turn.conversation_id, tool_id) == "block":
+    if tool is None or permissions.decide(state.turn.conversation_id, tool_id, state.connector_hash) == "block":
         state.results.append((name, UNAVAILABLE))
     elif stop := _run(state, tool, name, args, asked=True):
         return stop

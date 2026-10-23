@@ -68,6 +68,7 @@ _loop_thread: threading.Thread | None = None
 _ticker_future = None  # el reloj de inactividad (stop_all lo frena; `_loop` lo vuelve a poner)
 _ticker_task: asyncio.Task | None = None
 _loop_lock = threading.Lock()
+_stopping = False  # stop_all en curso: `_loop` no vuelve a poner el reloj mientras cierra
 
 
 # --- El hilo y su ciclo -----------------------------------------------------------------------------------------
@@ -82,7 +83,7 @@ def _loop() -> asyncio.AbstractEventLoop:
             _loop_thread = threading.Thread(target=loop.run_forever, name="connectors", daemon=True)
             _loop_thread.start()
             _loop_ref = loop
-        if _ticker_future is None or _ticker_future.done():
+        if not _stopping and (_ticker_future is None or _ticker_future.done()):
             _ticker_future = asyncio.run_coroutine_threadsafe(_ticker(), _loop_ref)
         return _loop_ref
 
@@ -338,8 +339,25 @@ async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> 
         log.warning("%s", message)
         raise ConnectorError(message) from None
     tools = _normalize(found)
-    before = {t.get("name"): t.get("hash") for t in (store.get(name) or {}).get("tools", []) if isinstance(t, dict)}
-    changed = [t["name"] for t in tools if before.get(t["name"]) != t["hash"]]
+    from epsilon.connectors import bridge  # acá y no arriba: bridge importa este módulo
+
+    previous = [t for t in (store.get(name) or {}).get("tools", []) if isinstance(t, dict) and isinstance(t.get("name"), str)]
+    before = {t["name"]: t.get("hash") for t in previous}
+    # El id de una acción depende del orden (x, x_2): si una herramienta cambió de acción, su permiso ya no vale.
+    old_actions, taken = {}, set()
+    for t in previous:
+        action = bridge.action_name(t["name"], taken)
+        taken.add(action)
+        old_actions.setdefault(t["name"], action)
+    new_actions, taken = {}, set()
+    for t in tools:
+        action = bridge.action_name(t["name"], taken)
+        taken.add(action)
+        new_actions.setdefault(t["name"], action)
+    changed = [
+        t["name"] for t in tools
+        if before.get(t["name"]) != t["hash"] or old_actions.get(t["name"]) != new_actions[t["name"]]
+    ]
     slot.hashes = {t["name"]: t["hash"] for t in tools}
     return tools, changed
 
@@ -546,18 +564,23 @@ def stop(name: str) -> None:
 
 
 def stop_all() -> None:
-    """Cierra todos (uno que no se deja cerrar no frena a los demás) y frena el reloj de inactividad."""
-    global _ticker_future
+    """Cierra todos (uno que no se deja cerrar no frena a los demás) y frena el reloj de inactividad. Mientras
+    cierra, `_loop` no lo vuelve a poner (cerrar usa el ciclo); vuelve recién cuando se use un conector otra vez."""
+    global _ticker_future, _stopping
     with _loop_lock:
+        _stopping = True
         if _ticker_future is not None and _loop_ref is not None:
             # El futuro ya está «corriendo» y no se deja cancelar desde afuera: se cancela la tarea, en su ciclo.
             _loop_ref.call_soon_threadsafe(lambda: _ticker_task is not None and _ticker_task.cancel())
         _ticker_future = None
-    for name in list(_slots):
-        try:
-            stop(name)
-        except Exception as error:  # noqa: BLE001
-            log.warning("No pude cerrar el conector «%s»: %s", name, config.redact(_reason(error)))
+    try:
+        for name in list(_slots):
+            try:
+                stop(name)
+            except Exception as error:  # noqa: BLE001
+                log.warning("No pude cerrar el conector «%s»: %s", name, config.redact(_reason(error)))
+    finally:
+        _stopping = False
 
 
 def tick(now: float) -> None:

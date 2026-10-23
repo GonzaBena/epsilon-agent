@@ -68,6 +68,10 @@ def test_view_never_contains_env_values(client, monkeypatch):
         assert SECRET not in reply.text
     view = client.get("/api/connectors").json()["connectors"][0]
     assert view["env"]["TOKEN"] == {"set": True, "length": len(SECRET)}
+    assert view["tools"] == [{"action": "saludar", "description": "dice hola", "changed": True}]  # sin permiso decidido
+    monkeypatch.setattr(web.tools, "_providers", [registry.provide])
+    permissions.save(permissions.load())  # la persona revisó /permisos: ya no es «nueva»
+    view = client.get("/api/connectors").json()["connectors"][0]
     assert view["tools"] == [{"action": "saludar", "description": "dice hola", "changed": False}]
     assert (view["name"], view["command"], view["enabled"], view["status"]) == ("luces", "luces --modo x", True, "activo")
 
@@ -168,3 +172,18 @@ def test_menu_is_identical_on_every_page():
     assert labels.index("Permisos") + 1 == labels.index("Conectores") == labels.index("Rutinas") - 1
     for name, items in menus.items():
         assert items == first, name
+
+
+def test_stop_failure_on_toggle_off_is_not_a_500(client, monkeypatch):
+    install(monkeypatch, {"luces": FakeLink(tools=[tool("saludar")])})
+    add(client)
+    monkeypatch.setattr(web.connector_manager, "stop", lambda name: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    reply = client.put("/api/connectors/luces", json={"enabled": False})
+
+    assert reply.status_code == 200 and reply.json()["connectors"][0]["enabled"] is False
+
+
+def test_button_label_max_is_40(client):
+    reply = client.post("/api/buttons", json={"label": "x" * 41, "connector": "luces", "tool": "t", "args": {}})
+    assert reply.status_code == 422

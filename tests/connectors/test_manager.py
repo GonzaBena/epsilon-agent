@@ -468,3 +468,29 @@ def test_stop_all_keeps_going_when_one_stop_fails(monkeypatch):
     wait_for(ticker.done)  # el reloj de inactividad también se frenó
     manager.call("bb", "saludar", {})
     assert not manager._ticker_future.done()  # y vuelve con el próximo uso
+
+
+def test_a_moved_action_id_counts_as_changed(monkeypatch):
+    # «a-b» y «a_b» limpian a lo mismo: el segundo es a_b_2. Si sacan el primero, el segundo pasa a ser a_b.
+    first, second = tool("a-b", "uno"), tool("a_b", "dos")
+    link = FakeLink(tools=[first, second])
+    install(monkeypatch, {"luces": link})
+    add("luces")
+    manager.start("luces")
+
+    link.tools = [second]
+
+    assert manager.start("luces") == ["a_b"]  # mismo hash, pero su acción se movió
+
+
+def test_stop_all_does_not_rearm_the_idle_ticker(monkeypatch):
+    install(monkeypatch, {"luces": FakeLink()})
+    add("luces")
+    manager.start("luces")
+    seen = []
+    real = manager.stop
+    monkeypatch.setattr(manager, "stop", lambda name: (seen.append(manager._stopping), real(name)))
+
+    manager.stop_all()
+
+    assert seen == [True] and manager._stopping is False

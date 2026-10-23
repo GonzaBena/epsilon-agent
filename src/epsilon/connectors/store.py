@@ -37,6 +37,7 @@ def _write(items: list[dict]) -> None:
     path = notes.safe_path(FILE)
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps({"connectors": items}, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.chmod(temp, 0o600)  # lleva claves: solo la persona
     os.replace(temp, path)
 
 

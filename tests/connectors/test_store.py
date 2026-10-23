@@ -109,3 +109,10 @@ def test_name_cannot_contain_double_underscore(tmp_path, monkeypatch):
     from epsilon.connectors import store
     with pytest.raises(store.StoreError, match="guiones bajos"):
         store.add("a__b", ["x"], {})
+
+
+def test_connectors_file_is_private():
+    import stat
+    store.add("luces", ["uvx", "mcp-luces"], {"TOKEN": "secreto"})
+
+    assert stat.S_IMODE((notes.DATA_DIR / store.FILE).stat().st_mode) == 0o600

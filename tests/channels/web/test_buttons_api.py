@@ -48,7 +48,7 @@ def test_create_and_delete_errors(client, monkeypatch):
 def test_buttons_page_data_has_no_env_values(client, monkeypatch):
     setup_connector(monkeypatch, result=f"el token es {SECRET}", resources={})
     client.post("/api/buttons", json={"label": "Sala", "connector": "luces", "tool": "prender", "args": {"cuarto": "sala"}})
-    texts = [client.get("/api/buttons").text, client.get("/api/connectors/luces/suggestions").text,
+    texts = [client.get("/api/buttons").text, client.post("/api/connectors/luces/suggestions").text,
              client.post("/api/buttons/1/run").text]
     assert all(SECRET not in t for t in texts)
 
@@ -56,8 +56,8 @@ def test_buttons_page_data_has_no_env_values(client, monkeypatch):
 def test_suggestions_endpoint_and_get_buttons_start_nothing(client, monkeypatch):
     link = setup_connector(monkeypatch, resources={buttons.RESOURCE: '[{"label": "Sala", "tool": "prender", "args": {"cuarto": "sala"}}]'})
     assert client.get("/api/buttons").json() == {"buttons": []} and link.opens == []
-    assert client.get("/api/connectors/luces/suggestions").json()["suggestions"][0]["label"] == "Sala"
-    assert client.get("/api/connectors/nada/suggestions").status_code == 404
+    assert client.post("/api/connectors/luces/suggestions").json()["suggestions"][0]["label"] == "Sala"
+    assert client.post("/api/connectors/nada/suggestions").status_code == 404
     assert buttons.list_all() == []
 
 
@@ -78,5 +78,5 @@ def test_create_button_from_cli_text_with_integer(client, monkeypatch):
 def test_suggestions_endpoint_explains_a_failure(client, monkeypatch):
     setup_connector(monkeypatch)
     monkeypatch.setattr(manager, "read_resource", lambda *a: (_ for _ in ()).throw(manager.ConnectorError("Ya hay 3 conectores trabajando")))
-    reply = client.get("/api/connectors/luces/suggestions")
+    reply = client.post("/api/connectors/luces/suggestions")
     assert reply.status_code == 422 and "trabajando" in reply.json()["detail"]

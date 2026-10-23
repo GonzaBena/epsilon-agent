@@ -137,3 +137,21 @@ def test_with_the_browser_on_its_tools_are_offered(monkeypatch):
     monkeypatch.setenv("BROWSER_ENABLED", "si")
 
     assert set(NAV_IDS) <= {tools.ai_id(t) for t in permissions.offered()}
+
+
+def test_grant_is_tied_to_the_version_and_reset_drops_every_version():
+    permissions.grant("c1", "nota", "H1")
+
+    assert permissions.decide("c1", "nota", "H1") == "run"
+    assert permissions.decide("c1", "nota", "H2") == "ask"  # la herramienta cambió: vuelve a preguntar
+    assert permissions.decide("c1", "nota") == "ask"
+    permissions.reset("nota")
+    assert permissions.decide("c1", "nota", "H1") == "ask"
+
+
+def test_is_saved():
+    assert permissions.is_saved("nota") is False
+    permissions.save(permissions.load())
+    assert permissions.is_saved("nota") is True
+    permissions.reset("nota")
+    assert permissions.is_saved("nota") is False

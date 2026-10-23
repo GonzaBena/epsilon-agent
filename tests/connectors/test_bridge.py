@@ -242,3 +242,11 @@ def test_arg_help_is_capped_for_hostile_schemas():
     assert len(bridge.arg_help({"type": "object", "properties": {f"p{i}": {} for i in range(500)}})) <= 300
     t = bridge.build_tools({"name": "x1", "tools": [{"name": "t", "schema": {"type": "object", "properties": props}}]})[0]
     assert len(t.ai_arg) <= 300
+
+
+def test_ai_arg_of_connector_tools_says_it_is_from_a_connector():
+    entry = {"name": "luces", "tools": [{"name": "prender", "description": "x", "schema": {"type": "object", "properties": {"a": {"type": "string"}}}},
+                                        {"name": "sin", "description": "x", "schema": {}}]}
+    built = bridge.build_tools(entry)
+
+    assert all(t.ai_arg.startswith("(del conector) ") and len(t.ai_arg) <= 300 for t in built)

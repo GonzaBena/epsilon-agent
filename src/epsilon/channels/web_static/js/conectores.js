@@ -58,13 +58,55 @@ function renderRow(connector) {
     const tools = make("ul", "conn-tools");
     for (const tool of connector.tools) {
       const row = make("li", "", `${tool.action}${tool.description ? ` — ${tool.description}` : ""}`);
-      if (tool.changed) row.append(make("span", "perm-kind", "nueva o cambió"));
+      if (tool.changed) row.append(make("span", "perm-kind", "nueva o cambió (revisala en Permisos)"));
       tools.append(row);
     }
     info.append(tools);
   } else {
     info.append(make("p", "routine-next", "Sin herramientas todavía."));
   }
+
+  const auto = make("button", "switch");
+  auto.type = "button";
+  auto.dataset.focus = `autostart-${connector.name}`;
+  auto.setAttribute("role", "switch");
+  auto.setAttribute("aria-checked", String(connector.autostart));
+  auto.setAttribute("aria-label", `Arrancar con Epsilon: ${connector.name}`);
+  auto.title = "Arrancar con Epsilon";
+  auto.append(make("span", "knob"));
+  auto.addEventListener("click", () =>
+    change("PUT", connector.name, { autostart: !connector.autostart },
+      connector.autostart ? "Ya no arranca con Epsilon." : "Arrancará con Epsilon."));
+
+  // Variables de entorno: «CLAVE=valor» por línea; un valor vacío («CLAVE=») la saca. No vuelven a mostrarse.
+  const envBox = make("div", "conn-env-edit");
+  const envLabel = make("label", "", "Cambiar variables (CLAVE=valor, una por línea; CLAVE= la quita)");
+  const envField = make("textarea");
+  envField.rows = 2;
+  envField.spellcheck = false;
+  envField.autocomplete = "off";
+  envField.id = `env-${connector.name}`;
+  envLabel.htmlFor = envField.id;
+  const envSave = make("button", "secondary", "Guardar variables");
+  envSave.type = "button";
+  envSave.dataset.focus = `env-save-${connector.name}`;
+  envSave.addEventListener("click", () => {
+    let env;
+    try {
+      env = parseEnv(envField.value);
+    } catch (error) {
+      showError(error.message);
+      return;
+    }
+    if (!Object.keys(env).length) {
+      showError("Escribí al menos una variable (CLAVE=valor).");
+      return;
+    }
+    change("PUT", connector.name, { env }, "Variables guardadas. Reiniciá el conector (apagalo y prendelo) para aplicar.");
+  });
+  envBox.append(envLabel, envField, envSave,
+    make("p", "hint", "Reiniciá el conector (apagalo y prendelo) para aplicar: si está corriendo, sigue con las variables de antes."));
+  info.append(envBox);
 
   const actions = make("div", "routine-actions");
   const toggle = make("button", "switch");
@@ -83,7 +125,7 @@ function renderRow(connector) {
   remove.setAttribute("aria-label", `Quitar el conector ${connector.name}`);
   remove.addEventListener("click", () => change("DELETE", connector.name, undefined, "Conector quitado."));
 
-  actions.append(toggle, remove);
+  actions.append(auto, toggle, remove);
   item.append(info, actions);
   return item;
 }
@@ -330,7 +372,7 @@ btnSuggest.addEventListener("click", async () => {
   if (!btnConnector.value) return;
   btnSuggest.disabled = true;
   try {
-    const data = await request(`/api/connectors/${encodeURIComponent(btnConnector.value)}/suggestions`, {});
+    const data = await request(`/api/connectors/${encodeURIComponent(btnConnector.value)}/suggestions`, { method: "POST" });
     if (!data.suggestions.length) btnError.textContent = "Este conector no propone botones.";
     btnSuggestions.replaceChildren(...data.suggestions.map((s) => {
       const row = make("li", "routine-row");

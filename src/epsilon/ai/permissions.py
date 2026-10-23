@@ -68,12 +68,27 @@ def _write(states: dict[str, str]) -> None:
     os.replace(tmp, path)  # el archivo nunca queda a medias
 
 
+def _key(tool_id: str, version: str | None) -> str:
+    return f"{tool_id}@{version}" if version else tool_id
+
+
+def is_saved(tool_id: str) -> bool:
+    """¿Hay un estado guardado a mano (en permissions.json) para esta herramienta?"""
+    try:
+        raw = json.loads(notes.safe_path(FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(raw, dict) and tool_id in raw
+
+
 def reset(tool_id: str) -> None:
-    """Vuelve la herramienta a su estado inicial: borra lo guardado y el «sí por el resto de la conversación».
+    """Vuelve la herramienta a su estado inicial: borra lo guardado y el «sí por el resto de la conversación»
+    (también el de cualquier versión: las claves «id@hash»).
     Lo usan los conectores cuando una herramienta aparece o cambia (la persona tiene que volver a decidir)."""
     with _lock:
         for granted in _granted.values():
-            granted.discard(tool_id)
+            for key in [k for k in granted if k == tool_id or k.startswith(tool_id + "@")]:
+                granted.discard(key)
     with _file_lock:
         try:
             raw = json.loads(notes.safe_path(FILE).read_text(encoding="utf-8"))
@@ -89,8 +104,9 @@ def _browser_off(tool: tools.Tool) -> bool:
     return tool.ai_group == "navegador" and not config.enabled("BROWSER_ENABLED")
 
 
-def decide(conversation_id: str, tool_id: str) -> str:
-    """«run», «ask» o «block» para esta herramienta en esta conversación."""
+def decide(conversation_id: str, tool_id: str, version: str | None = None) -> str:
+    """«run», «ask» o «block» para esta herramienta en esta conversación. `version` (el hash de un conector):
+    el «siempre» solo vale para esa versión."""
     if any(tools.ai_id(tool) == tool_id and _browser_off(tool) for tool in tools.ai_tools()):
         return "block"
     state = load().get(tool_id)
@@ -98,14 +114,14 @@ def decide(conversation_id: str, tool_id: str) -> str:
         return "run"
     if state == "ask":
         with _lock:
-            return "run" if tool_id in _granted.get(conversation_id, ()) else "ask"
+            return "run" if _key(tool_id, version) in _granted.get(conversation_id, ()) else "ask"
     return "block"  # deny o desconocida
 
 
-def grant(conversation_id: str, tool_id: str) -> None:
+def grant(conversation_id: str, tool_id: str, version: str | None = None) -> None:
     """Permite la herramienta en esta conversación hasta que se reinicie Epsilon. No pisa «deny»."""
     with _lock:
-        _granted.setdefault(conversation_id, set()).add(tool_id)
+        _granted.setdefault(conversation_id, set()).add(_key(tool_id, version))
 
 
 def offered() -> list[tools.Tool]:

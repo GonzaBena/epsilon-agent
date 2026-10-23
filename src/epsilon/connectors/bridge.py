@@ -60,10 +60,10 @@ def _required(schema: dict) -> list[str]:
     return [r for r in req if isinstance(r, str)] if isinstance(req, list) else []
 
 
-def arg_help(schema: dict) -> str:
+def arg_help(schema: dict, prefix: str = "") -> str:
     props, required = _props(schema), _required(schema)
     if not props:
-        return "sin argumentos (dejalo vacío)"
+        return prefix + "sin argumentos (dejalo vacío)"
     parts = []
     for key, spec in props.items():
         spec = spec if isinstance(spec, dict) else {}
@@ -74,7 +74,7 @@ def arg_help(schema: dict) -> str:
             kind = TYPE_NAMES.get(spec.get("type"), "cualquiera")
         sep = "; " if kind.startswith("uno de") else ", "  # como en el ejemplo: «uno de: on, off; opcional»
         parts.append(f"{_short(key, 40)} ({kind}{sep}{'obligatorio' if key in required else 'opcional'})")
-    text = "objeto JSON con: " + ", ".join(parts)
+    text = prefix + "objeto JSON con: " + ", ".join(parts)
     return text if len(text) <= MAX_HELP else text[: MAX_HELP - 1] + "…"
 
 
@@ -104,7 +104,7 @@ def build_tools(entry: dict) -> tuple[tools.Tool, ...]:
                 ai_group=entry["name"],
                 ai_action=action,
                 ai_help=_trim(item.get("description")) or "herramienta del conector",
-                ai_arg=arg_help(schema),
+                ai_arg=arg_help(schema, prefix="(del conector) "),
             )
         )
     return tuple(built)

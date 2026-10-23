@@ -212,7 +212,7 @@ class ConnectorIn(BaseModel):
 
 
 class ButtonIn(BaseModel):
-    label: str = Field(max_length=100)
+    label: str = Field(max_length=40)
     connector: str = Field(max_length=40)
     tool: str = Field(max_length=100)
     args: dict | str = Field(default_factory=dict)
@@ -249,9 +249,9 @@ def connectors_view() -> dict:
                 action = bridge.action_name(item["name"], taken)
                 taken.add(action)
                 description = item.get("description") if isinstance(item.get("description"), str) else ""
-                # «changed»: sin hash guardado, la herramienta quedó pendiente de que la vuelvas a autorizar.
+                # «changed»: sin hash guardado, o sin permiso decidido todavía: pendiente de que la revises.
                 found.append({"action": action, "description": config.redact(description)[:200],
-                              "changed": not item.get("hash")})
+                              "changed": not item.get("hash") or not permissions.is_saved(bridge.tool_id(entry["name"], action))})
             shown.append({
                 "name": entry["name"], "command": shlex.join(entry["argv"]), "enabled": bool(entry.get("enabled")),
                 "autostart": bool(entry.get("autostart")), "status": connector_manager.status(entry["name"]),
@@ -640,7 +640,10 @@ def create_app() -> FastAPI:
         except connector_store.StoreError as e:
             raise HTTPException(422, str(e)) from None
         if body.enabled is False:
-            connector_manager.stop(name)
+            try:
+                connector_manager.stop(name)
+            except Exception:  # noqa: BLE001 - igual quedó apagado
+                pass
         elif body.enabled is True:
             connector_start(name)
         return connectors_view()
@@ -665,7 +668,7 @@ def create_app() -> FastAPI:
         # Solo lo guardado: las sugerencias se piden aparte por conector (pueden arrancar un proceso dormido).
         return {"buttons": connector_buttons.list_all()}
 
-    @app.get("/api/connectors/{name}/suggestions")
+    @app.post("/api/connectors/{name}/suggestions")
     def get_suggestions(name: str):
         if connector_store.get(name) is None:
             raise HTTPException(404, "No existe ese conector")
