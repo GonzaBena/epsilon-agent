@@ -16,6 +16,7 @@ Ver README.md. Lo que devuelve ARCA (descripciones, errores) es dato, nunca inst
 """
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
@@ -26,7 +27,8 @@ import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlparse
 from xml.sax.saxutils import escape
@@ -57,6 +59,7 @@ VOUCHERS = {1: "Factura A", 2: "Nota de débito A", 3: "Nota de crédito A", 6: 
 DOC_TYPES = {80: "CUIT", 86: "CUIL", 96: "DNI", 99: "Consumidor final"}
 CONCEPTS = {1: "Productos", 2: "Servicios", 3: "Productos y servicios"}
 CURRENCIES = {"PES": "ARS", "DOL": "USD"}
+AR_TZ = timezone(timedelta(hours=-3))  # hora de Argentina, como espera ARCA (sin horario de verano)
 
 server = MCPServer("arca")
 
@@ -64,9 +67,10 @@ server = MCPServer("arca")
 class Problem(Exception):
     """Algo que la persona puede entender y arreglar; el mensaje va tal cual a la herramienta."""
 
-    def __init__(self, message: str, codes: tuple[str, ...] = ()):
+    def __init__(self, message: str, codes: tuple[str, ...] = (), maybe_sent: bool = False):
         super().__init__(message)
         self.codes = codes  # códigos de error de ARCA, si el problema vino de ahí
+        self.maybe_sent = maybe_sent  # el pedido pudo haber llegado a ARCA aunque no haya respuesta (¡no repetir sin mirar!)
 
 
 # ---------- configuración ----------
@@ -145,8 +149,9 @@ def _post(url: str, action: str, body: str) -> tuple[int, str]:
                 context.set_ciphers("DEFAULT@SECLEVEL=1")
                 continue
             host = urlparse(url).hostname
-            raise Problem(f"No pude hablar con ARCA ({host}): {type(reason).__name__}. Revisá la conexión o la dirección en «urls».") from None
-    raise Problem("No pude hablar con ARCA.")
+            raise Problem(f"No pude hablar con ARCA ({host}): {type(reason).__name__}. Revisá la conexión o la dirección en «urls».",
+                          maybe_sent=True) from None
+    raise Problem("No pude hablar con ARCA.", maybe_sent=True)
 
 
 def local(tag: str) -> str:
@@ -169,7 +174,7 @@ def soap(url: str, action: str, inner: str) -> ET.Element:
     try:
         root = ET.fromstring(answer)
     except ET.ParseError:
-        raise Problem(f"ARCA contestó algo que no entiendo (código {status}). Probá de nuevo en un rato.") from None
+        raise Problem(f"ARCA contestó algo que no entiendo (código {status}). Probá de nuevo en un rato.", maybe_sent=True) from None
     fault = text_of(root, "faultstring")
     if fault:
         raise Problem(explain_fault(one_line(fault, 300)))
@@ -209,7 +214,7 @@ def sign_request(request_xml: bytes, cert: x509.Certificate, key) -> str:
 
 def login(account: dict) -> dict:
     cert, key = read_pair(account)
-    now = datetime.now(timezone(timedelta(hours=-3)))  # hora de Argentina, como espera ARCA
+    now = datetime.now(AR_TZ)
     stamp = lambda moment: moment.isoformat(timespec="seconds")  # noqa: E731
     request = ('<?xml version="1.0" encoding="UTF-8"?><loginTicketRequest version="1.0"><header>'
                f"<uniqueId>{int(time.time())}</uniqueId><generationTime>{stamp(now - timedelta(minutes=10))}</generationTime>"
@@ -300,7 +305,7 @@ def day(value: str) -> str:
     return f"{value[:4]}-{value[4:6]}-{value[6:8]}" if re.fullmatch(r"\d{8}", value or "") else (value or "?")
 
 
-def number(point: int, n: int) -> str:
+def number_text(point: int, n: int) -> str:
     return f"{int(point):04d}-{int(n):08d}"
 
 
@@ -340,7 +345,8 @@ def cuentas() -> str:
     rows = []
     for alias, account in sorted(found.items()):
         ready = "listo" if file_of(account, "cert").is_file() and file_of(account, "key").is_file() else "falta el certificado o la clave"
-        rows.append(f"- {alias}{' (predeterminada)' if alias == default else ''}: CUIT {account['cuit']} · {account['ambiente']} · {ready}")
+        note = " · solo lectura" if account["ambiente"] == "produccion" and not may_issue(account) else ""
+        rows.append(f"- {alias}{' (predeterminada)' if alias == default else ''}: CUIT {account['cuit']} · {account['ambiente']} · {ready}{note}")
     return "\n".join(rows)
 
 
@@ -421,7 +427,7 @@ def ultimo_comprobante(tipo: int | None = None, punto_venta: int | None = None, 
         return str(problem) if isinstance(problem, Problem) else "ARCA no devolvió un número válido."
     if last == 0:
         return f"[{account['alias']}] {label(kind)}, punto de venta {point}: todavía no hay comprobantes."
-    return f"[{account['alias']}] Último {label(kind)}: {number(point, last)}"
+    return f"[{account['alias']}] Último {label(kind)}: {number_text(point, last)}"
 
 
 @server.tool()
@@ -444,12 +450,245 @@ def ver_comprobante(numero: int, tipo: int | None = None, punto_venta: int | Non
         detail += f" ({day(text_of(root, 'FchServDesde'))} a {day(text_of(root, 'FchServHasta'))}, vence el pago {day(text_of(root, 'FchVtoPago'))})"
     result = {"A": "aprobado", "R": "rechazado"}.get(text_of(root, "Resultado"), text_of(root, "Resultado") or "?")
     return "\n".join([
-        f"[{account['alias']}] {label(kind)} {number(point, numero)} · {day(text_of(root, 'CbteFch'))}",
+        f"[{account['alias']}] {label(kind)} {number_text(point, numero)} · {day(text_of(root, 'CbteFch'))}",
         f"Total: {money(text_of(root, 'ImpTotal'), coin)} (neto {money(text_of(root, 'ImpNeto'))} · IVA {money(text_of(root, 'ImpIVA'))})",
         f"Receptor: {receiver}",
         f"Concepto: {detail}",
         f"CAE: {text_of(root, 'CodAutorizacion') or '?'} · vence {day(text_of(root, 'FchVto'))} · {result}",
     ])
+
+
+@server.tool()
+def condiciones_iva_receptor(cuenta: str | None = None) -> str:
+    """Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C (el número es el que usa la emisión)."""
+    try:
+        account = pick(cuenta)
+        found = find(wsfe(account, "FEParamGetCondicionIvaReceptor", "<ClaseCmp>C</ClaseCmp>"), "CondicionIvaReceptor")
+    except Problem as problem:
+        return str(problem)
+    return f"[{account['alias']}] Condición del receptor en Factura C:\n" + "\n".join(
+        f"- {text_of(c, 'Id')} · {one_line(text_of(c, 'Desc'))}" for c in found)
+
+
+# ---------- emitir una Factura C ----------
+# Solo Factura C (monotributo, sin IVA). Productos, servicios o ambos; una sola línea de detalle. A ARCA viajan los
+# importes, el receptor y las fechas; la descripción, el domicilio y la forma de pago NO (solo existen en el PDF).
+
+INVOICE_C = 11
+CONCEPT_IDS = {"productos": 1, "servicios": 2, "productos_y_servicios": 3}
+RECEIVER_CONDITIONS = {"consumidor_final": 5, "responsable_inscripto": 1, "exento": 4, "monotributo": 6,
+                       "no_categorizado": 7, "monotributo_social": 13}
+DOC_BY_NAME = {"dni": 96, "cuil": 86, "cuit": 80}
+MAX_AMOUNT = Decimal("9999999999.99")
+DATE_WINDOW = {1: 5, 2: 10, 3: 10}  # días antes o después de hoy que ARCA acepta, según el concepto
+
+
+def may_issue(account: dict) -> bool:
+    """Homologación siempre; producción solo si la cuenta lo habilita a propósito (`"emision": true`)."""
+    return account["ambiente"] == "homologacion" or account.get("emision") is True
+
+
+def banner(account: dict) -> str:
+    return "HOMOLOGACIÓN (pruebas, sin validez fiscal)" if account["ambiente"] == "homologacion" else "PRODUCCIÓN (comprobante real)"
+
+
+def valid_cuit(number: str) -> bool:
+    """Dígito verificador de un CUIT/CUIL (módulo 11)."""
+    if not re.fullmatch(r"\d{11}", number):
+        return False
+    total = sum(int(d) * w for d, w in zip(number[:10], (5, 4, 3, 2, 7, 6, 5, 4, 3, 2)))
+    check = {11: 0, 10: 9}.get(11 - total % 11, 11 - total % 11)
+    return check == int(number[10])
+
+
+def parse_amount(value) -> Decimal:
+    try:
+        exact = Decimal(str(value))
+        if not exact.is_finite():  # NaN no falla al redondear: se rechaza antes
+            raise InvalidOperation
+        amount = exact.quantize(Decimal("0.01"), ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        raise Problem("El importe no es un número válido.") from None
+    if amount != exact:
+        raise Problem("El importe lleva como máximo 2 decimales (por ejemplo 1500.50). No redondeo por mi cuenta.")
+    if not Decimal("0.01") <= amount <= MAX_AMOUNT:
+        raise Problem("El importe tiene que ser mayor a 0.")
+    return amount
+
+
+def parse_receiver(kind: str | None, number: str | None) -> tuple[int, int, str]:
+    """(tipo de documento de ARCA, número, texto para mostrar). Sin documento: consumidor final sin identificar."""
+    digits = re.sub(r"[.\-\s]", "", str(number)) if number not in (None, "") else ""
+    if not digits:
+        if kind:
+            raise Problem("Indicaste el tipo de documento pero falta el número (documento=…).")
+        return 99, 0, "Consumidor final (sin identificar)"
+    if not digits.isdigit():
+        raise Problem("El documento lleva solo números.")
+    if kind is None:  # 8 cifras o menos: DNI; 11: CUIL de persona (20/23/24/27) o CUIT de empresa
+        kind = "dni" if len(digits) <= 8 else ("cuil" if digits[:2] in ("20", "23", "24", "27") else "cuit")
+    kind = kind.strip().lower()
+    if kind not in DOC_BY_NAME:
+        raise Problem("tipo_documento tiene que ser dni, cuil o cuit.")
+    if kind == "dni":
+        if len(digits) > 8 or int(digits) == 0:
+            raise Problem("Un DNI tiene hasta 8 números.")
+    elif not valid_cuit(digits):
+        raise Problem(f"El {kind.upper()} {digits} no es válido: revisá los números (el último es un dígito de control).")
+    return DOC_BY_NAME[kind], int(digits), f"{kind.upper()} {digits}"
+
+
+def parse_day(value: str | None, name: str, default: date) -> date:
+    if not value:
+        return default
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        raise Problem(f"«{name}» va como AAAA-MM-DD. Recibí: {one_line(value, 30)!r}") from None
+
+
+def build_invoice(account: dict, point: int, number: int, concept: int, doc: tuple[int, int], issued: date,
+                  amount: Decimal, condition: int, service: tuple[date, date, date]) -> str:
+    """El pedido FECAESolicitar. ARCA valida el XML EN ORDEN: es el del manual (ver docs/plan-facturas-pagos.md)."""
+    day_text = lambda d: d.strftime("%Y%m%d")  # noqa: E731
+    total = f"{amount:.2f}"
+    fields = [("Concepto", concept), ("DocTipo", doc[0]), ("DocNro", doc[1]), ("CbteDesde", number), ("CbteHasta", number),
+              ("CbteFch", day_text(issued)), ("ImpTotal", total), ("ImpTotConc", "0.00"), ("ImpNeto", total),
+              ("ImpOpEx", "0.00"), ("ImpTrib", "0.00"), ("ImpIVA", "0.00")]  # tipo C: el neto es el subtotal y no hay IVA
+    if concept in (2, 3):
+        fields += [("FchServDesde", day_text(service[0])), ("FchServHasta", day_text(service[1])), ("FchVtoPago", day_text(service[2]))]
+    fields += [("MonId", "PES"), ("MonCotiz", "1"), ("CondicionIVAReceptorId", condition)]
+    detail = "".join(f"<{name}>{escape(str(value))}</{name}>" for name, value in fields)
+    activity = str(account.get("actividad") or "")
+    if activity:
+        if not re.fullmatch(r"\d{1,6}", activity):
+            raise Problem(f"Cuenta «{account['alias']}»: «actividad» son hasta 6 números (por ejemplo 479900).")
+        detail += f"<Actividades><Actividad><Id>{activity}</Id></Actividad></Actividades>"
+    return (f"<FeCAEReq><FeCabReq><CantReg>1</CantReg><PtoVta>{point}</PtoVta><CbteTipo>{INVOICE_C}</CbteTipo></FeCabReq>"
+            f"<FeDetReq><FECAEDetRequest>{detail}</FECAEDetRequest></FeDetReq></FeCAEReq>")
+
+
+def last_number(account: dict, point: int) -> int:
+    root = wsfe(account, "FECompUltimoAutorizado", f"<PtoVta>{point}</PtoVta><CbteTipo>{INVOICE_C}</CbteTipo>")
+    try:
+        return int(text_of(root, "CbteNro") or 0)
+    except ValueError:
+        raise Problem("ARCA no devolvió un número de comprobante válido.") from None
+
+
+def confirmation_code(*parts) -> str:
+    """Código corto atado a TODO lo que se va a emitir, incluido el número que le toca: no sirve dos veces."""
+    return hashlib.sha256("|".join(map(str, parts)).encode("utf-8")).hexdigest()[:6]
+
+
+def record(entry: dict) -> str:
+    """Anota el intento en el registro local (solo se agrega, permisos 600). Devuelve un aviso si no pudo."""
+    path = home() / "emitidas.jsonl"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        return f"\n(No pude anotarlo en el registro local {path}: guardá estos datos a mano.)"
+    return ""
+
+
+def observations(detail: ET.Element) -> list[str]:
+    """Observaciones de un comprobante. El manual las muestra como Obs/Observaciones y ARCA las manda al revés: vale cualquiera."""
+    found = [o for o in detail.iter() if local(o.tag) in ("Obs", "Observaciones") and any(local(c.tag) == "Code" for c in o)]
+    return [f"{one_line(text_of(o, 'Msg'), 200)} (código {text_of(o, 'Code')})" for o in found]
+
+
+def settle_after_silence(account: dict, point: int, number: int, problem: Problem, entry: dict) -> str:
+    """El pedido salió pero no hubo respuesta: no se sabe si ARCA emitió. Se mira antes de decir nada, y NUNCA se repite solo."""
+    try:
+        now_last = last_number(account, point)
+    except Problem:
+        entry["resultado"] = "sin_confirmar"
+        return (f"✗ {problem}\nNo pude comprobar si ARCA emitió el comprobante {number_text(point, number)}. **No repitas el comando**: "
+                f"mirá primero con ultimo_comprobante (si el último es {number_text(point, number)}, ya se emitió).") + record(entry)
+    if now_last >= number:
+        entry["resultado"] = "emitida_sin_respuesta"
+        return (f"⚠ ARCA SÍ emitió el comprobante {number_text(point, number)}, aunque la respuesta no llegó ({problem}). "
+                f"Mirá el detalle con ver_comprobante numero={number}. No lo repitas.") + record(entry)
+    entry["resultado"] = "no_emitida"
+    return f"✗ {problem}\nARCA no emitió nada (el último comprobante sigue siendo el {now_last}). Podés volver a simular y confirmar." + record(entry)
+
+
+@server.tool()
+def emitir_factura(importe: float, concepto: str | None = None, documento: str | None = None, tipo_documento: str | None = None,
+                   condicion_receptor: str | None = None, descripcion: str | None = None, fecha: str | None = None,
+                   servicio_desde: str | None = None, servicio_hasta: str | None = None, vencimiento_pago: str | None = None,
+                   punto_venta: int | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
+    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. Sin documento es consumidor final sin identificar."""
+    try:
+        account = pick(cuenta)
+        point = sale_point(account, punto_venta)
+        concept_name = (concepto or account.get("concepto") or "").strip().lower()
+        if concept_name not in CONCEPT_IDS:
+            raise Problem("Decime el concepto: concepto=productos, servicios o productos_y_servicios (o guardalo en la cuenta con «concepto»).")
+        concept = CONCEPT_IDS[concept_name]
+        amount = parse_amount(importe)
+        doc_type, doc_number, receiver = parse_receiver(tipo_documento, documento)
+        wanted = str(condicion_receptor or "consumidor_final").strip().lower()
+        condition = int(wanted) if wanted.isdigit() else RECEIVER_CONDITIONS.get(wanted)
+        if condition is None:
+            raise Problem(f"condicion_receptor: uno de {', '.join(RECEIVER_CONDITIONS)} (o el número, ver condiciones_iva_receptor).")
+        today = datetime.now(AR_TZ).date()
+        issued = parse_day(fecha, "fecha", today)
+        if abs((issued - today).days) > DATE_WINDOW[concept]:
+            raise Problem(f"Con {concept_name.replace('_', ' ')}, la fecha puede ser hasta {DATE_WINDOW[concept]} días antes o después de hoy ({today}).")
+        service = (parse_day(servicio_desde, "servicio_desde", issued), parse_day(servicio_hasta, "servicio_hasta", issued),
+                   parse_day(vencimiento_pago, "vencimiento_pago", issued))
+        if service[1] < service[0]:
+            raise Problem("«servicio_hasta» no puede ser anterior a «servicio_desde».")
+        if service[2] < issued:
+            raise Problem("«vencimiento_pago» no puede ser anterior a la fecha del comprobante.")
+        number = last_number(account, point) + 1
+        request = build_invoice(account, point, number, concept, (doc_type, doc_number), issued, amount, condition, service)
+        what = descripcion if descripcion is not None else account.get("descripcion")
+        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request)
+        summary = [f"[{account['alias']}] {banner(account)}",
+                   f"Factura C {number_text(point, number)} · {issued.isoformat()}",
+                   f"Total: {money(amount, 'ARS')} · Concepto: {concept_name.replace('_', ' ')}",
+                   f"Receptor: {receiver} · condición {wanted}"]
+        if what:
+            summary.append(f"Descripción: {one_line(what, 120)} (solo queda en el registro local; ARCA no la guarda)")
+        if confirmar is None:
+            return "\n".join(summary + [f"No se emitió nada. Para emitir, repetí el mismo pedido agregando confirmar={code}"])
+        if confirmar.strip().lower() != code:
+            return "\n".join(["El código no coincide con este comprobante: algo cambió (el número que le toca, algún dato) o ya se emitió.",
+                              "No se emitió nada. Esto es lo que se emitiría ahora:"] + summary + [f"Para emitir, agregá confirmar={code}"])
+        if not may_issue(account):
+            raise Problem(f"La cuenta «{account['alias']}» es de PRODUCCIÓN y está en solo lectura. Para habilitar la emisión agregá "
+                          f'"emision": true a esa cuenta en {home() / "cuentas.json"} (a propósito, y solo si querés emitir de verdad).')
+        entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
+                 "punto_venta": point, "tipo": INVOICE_C, "numero": number, "fecha": issued.isoformat(), "importe": f"{amount:.2f}",
+                 "receptor": f"{doc_type}:{doc_number}", "concepto": concept_name, "descripcion": what or ""}
+    except Problem as problem:
+        return str(problem)
+    try:
+        root = wsfe(account, "FECAESolicitar", request)
+    except Problem as problem:
+        if problem.maybe_sent:
+            return settle_after_silence(account, point, number, problem, entry)
+        entry.update(resultado="error", error=one_line(problem, 300))
+        return f"✗ {problem}\nNo se emitió nada." + record(entry)
+    detail = find(root, "FEDetResponse")
+    outcome = text_of(detail[0], "Resultado") if detail else ""
+    notes = observations(detail[0]) if detail else []
+    if outcome != "A":
+        entry.update(resultado="rechazada", observaciones=notes)
+        reasons = "; ".join(notes) or "sin detalle"
+        return f"✗ ARCA rechazó el comprobante: {reasons}\nNo se emitió nada." + record(entry)
+    cae, expires = text_of(detail[0], "CAE"), day(text_of(detail[0], "CAEFchVto"))
+    entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
+    done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {issued.isoformat()}",
+            f"Total: {money(amount, 'ARS')} · Receptor: {receiver}", f"CAE: {cae} · vence {expires}"]
+    if notes:
+        done.append("Observaciones de ARCA: " + "; ".join(notes))
+    return "\n".join(done) + record(entry)
 
 
 @server.resource("epsilon://buttons")

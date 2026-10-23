@@ -1,10 +1,11 @@
-# Conector de ARCA (ex AFIP), solo lectura
+# Conector de ARCA (ex AFIP)
 
-Consultar tus comprobantes electrónicos desde Epsilon, sin gastar IA: puntos de venta, último comprobante, ver uno
-y verificar que la configuración esté bien. Usa los web services oficiales de ARCA (WSAA + WSFEv1).
+Consultar y emitir comprobantes electrónicos desde Epsilon, sin gastar IA: puntos de venta, último comprobante,
+ver uno, verificar la configuración y **emitir Factura C** (monotributo). Usa los web services oficiales de ARCA
+(WSAA + WSFEv1).
 
-> Por ahora **no emite** facturas: primero se prueba la lectura. Todo arranca en **homologación** (el entorno de
-> pruebas de ARCA, donde no pasa nada real).
+> Todo arranca en **homologación** (el entorno de pruebas de ARCA, donde no pasa nada real). En **producción** la
+> emisión está apagada hasta que la habilites a propósito en cada cuenta (ver «Emitir»).
 
 ## 1. Crear la cuenta (clave + pedido de certificado)
 
@@ -61,8 +62,43 @@ y por qué.
 | `tipos_de_comprobante` | Los tipos que ARCA permite (11 = Factura C, 13 = Nota de crédito C…) |
 | `ultimo_comprobante` | Último número autorizado. Sin `tipo` usa el de la cuenta (monotributo: 11); sin `punto_venta`, el guardado en `cuentas.json` |
 | `ver_comprobante` | Fecha, importes, receptor, concepto y CAE de uno ya autorizado: `/c arca ver_comprobante numero=45` |
+| `condiciones_iva_receptor` | Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C |
+| `emitir_factura` | Emite una Factura C. Ver la sección siguiente |
 
 Todas aceptan `cuenta=<nombre>` para cambiar de cuenta. Para que la IA **no** las use, poné `deny` en `/permisos`.
+
+## Emitir una Factura C
+
+Siempre en **dos pasos**, para no emitir nada por error:
+
+```
+/c arca emitir_factura importe=1500.50 concepto=productos_y_servicios documento=12345678
+```
+
+1. **Simula**: muestra la cuenta, el ambiente, el número que le tocaría, el receptor y el importe, y **no emite nada**.
+   Termina con un código: `confirmar=7f3a9c`.
+2. **Emite** si repetís el mismo pedido agregando ese código:
+   `/c arca emitir_factura importe=1500.50 concepto=productos_y_servicios documento=12345678 confirmar=7f3a9c`
+
+El código depende de todos los datos **y del número que le toca**, así que no sirve dos veces ni si cambiás algo:
+repetir un comando ya emitido no emite otra factura.
+
+| Argumento | Qué es |
+|---|---|
+| `importe` | Total, hasta 2 decimales (no redondea por su cuenta). En Factura C no hay IVA |
+| `concepto` | `productos`, `servicios` o `productos_y_servicios` (o guardalo en la cuenta) |
+| `documento`, `tipo_documento` | DNI, CUIL o CUIT del receptor, con puntos o guiones si querés. Sin documento: consumidor final sin identificar. El tipo se deduce (hasta 8 números: DNI; 11 que empiezan con 20/23/24/27: CUIL; otros: CUIT) y se puede forzar con `tipo_documento=dni\|cuil\|cuit`. Se revisa el dígito verificador |
+| `condicion_receptor` | `consumidor_final` (por defecto), `monotributo`, `responsable_inscripto`, `exento`, `no_categorizado`, `monotributo_social`, o el número (ver `condiciones_iva_receptor`) |
+| `fecha` | AAAA-MM-DD, por defecto hoy. ARCA acepta hasta 5 días antes o después con productos y 10 con servicios |
+| `servicio_desde`, `servicio_hasta`, `vencimiento_pago` | Para servicios, por defecto la fecha del comprobante |
+| `descripcion` | Solo queda en el registro local: **ARCA no guarda la descripción** (existirá en el PDF) |
+| `punto_venta` | Por defecto el de la cuenta |
+
+- **Si ARCA no responde después de recibir el pedido**, el conector **no lo repite**: mira el último número autorizado y
+  te dice si se emitió o no. Si tampoco puede mirar, te pide que **no repitas** y que revises con `ultimo_comprobante`.
+- Cada intento queda anotado en `emitidas.jsonl` (junto a `cuentas.json`; solo se agrega, permisos 600).
+- **Producción** exige `"emision": true` en la cuenta de `cuentas.json` (solo el valor `true`, a propósito). Sin eso,
+  `cuentas` la muestra como «solo lectura» y la emisión se niega. Una factura real solo se corrige con una nota de crédito.
 
 ## `cuentas.json`
 
@@ -74,6 +110,11 @@ Solo datos, sin secretos (las claves son archivos aparte con permisos 600):
 }
 ```
 
+- `concepto` (opcional): `productos`, `servicios` o `productos_y_servicios`, para no escribirlo en cada emisión.
+- `actividad` (opcional): código de actividad que ARCA debe asociar al comprobante, por ejemplo `"479900"`. Solo se
+  envía si lo ponés; ARCA exige que sea una de las actividades activas del emisor.
+- `descripcion` (opcional): texto por defecto del registro, por ejemplo `"Repuestos y reparaciones"`.
+- `emision` (solo producción): `true` para permitir emitir de verdad.
 - `cert` y `key` (opcionales): rutas a otros archivos; por defecto `<cuenta>.crt` y `<cuenta>.key` en la misma carpeta.
 - `urls` (opcional): `{"wsaa": "https://…", "wsfe": "https://…"}`, por si ARCA cambia las direcciones. Siempre `https://`.
 - El ticket que da ARCA (dura ~12 h) se guarda en `cache/` con permisos 600: ARCA no da otro mientras haya uno vigente.

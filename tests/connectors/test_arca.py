@@ -3,9 +3,12 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import stat
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -15,6 +18,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.x509.oid import NameOID
+
+from epsilon.connectors import bridge
 
 SCRIPT = Path(__file__).resolve().parents[2] / "conectores" / "arca" / "arca_mcp.py"
 CUIT = "20123456789"
@@ -88,10 +93,16 @@ def serve(arca, monkeypatch, wsfe: dict, wsaa=None):
         if "LoginCms" in url:
             return (wsaa or (200, wsaa_answer()))
         method = action.rsplit("/", 1)[-1]
-        return 200, wsfe[method]
+        answer = wsfe[method]  # un método que el test no esperaba llamar da KeyError: falla fuerte
+        return 200, (answer(body) if callable(answer) else answer)
 
     monkeypatch.setattr(arca, "_post", fake)
     return calls
+
+
+def sent(calls, method):
+    """Los cuerpos de los pedidos que se mandaron a un método de WSFE."""
+    return [c[2] for c in calls if c[1].endswith("/" + method)]
 
 
 LAST = wsfe_answer("FECompUltimoAutorizado", "<PtoVta>3</PtoVta><CbteTipo>11</CbteTipo><CbteNro>45</CbteNro>")
@@ -110,10 +121,11 @@ def test_script_declares_its_own_dependencies():
     assert "# /// script" in head and '"mcp' in head and '"cryptography' in head
 
 
-def test_server_defines_the_read_only_tools_and_the_buttons_fit_them(arca):
+def test_server_defines_its_tools_and_the_buttons_fit_them(arca):
     found = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}
 
-    assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante"}
+    assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante",
+                          "condiciones_iva_receptor", "emitir_factura"}
     for button in json.loads(arca.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -346,3 +358,287 @@ def test_secrets_never_reach_the_answers(ready, monkeypatch):
 
     assert "TOKEN-SECRETO" not in everything and "SIGN-SECRETO" not in everything
     assert key_text.splitlines()[1] not in everything
+
+
+# ---------- emitir una Factura C ----------
+
+def approved(number=46, extra=""):
+    return wsfe_answer("FECAESolicitar", (
+        "<FeCabResp><Cuit>20123456789</Cuit><PtoVta>3</PtoVta><CbteTipo>11</CbteTipo><Resultado>A</Resultado></FeCabResp>"
+        f"<FeDetResp><FEDetResponse><Concepto>3</Concepto><DocTipo>99</DocTipo><DocNro>0</DocNro><CbteDesde>{number}</CbteDesde>"
+        f"<CbteHasta>{number}</CbteHasta><Resultado>A</Resultado><CAE>74123456789012</CAE><CbteFch>20261023</CbteFch>"
+        f"<CAEFchVto>20261102</CAEFchVto>{extra}</FEDetResponse></FeDetResp>"))
+
+
+def rejected(obs):
+    return wsfe_answer("FECAESolicitar", (
+        "<FeCabResp><Resultado>R</Resultado></FeCabResp><FeDetResp><FEDetResponse><Resultado>R</Resultado>"
+        f"<CAE></CAE>{obs}</FEDetResponse></FeDetResp>"))
+
+
+def the_code(text):
+    return re.search(r"confirmar=([0-9a-f]{6})", text).group(1)
+
+
+def issue(ready, monkeypatch, answer=None, **fields):
+    """Simula y después confirma con el código que dio la simulación. Devuelve (texto emitido, pedidos a ARCA)."""
+    fields.setdefault("importe", 500)
+    fields.setdefault("concepto", "productos_y_servicios")
+    calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "FECAESolicitar": answer or approved()})
+    code = the_code(ready.emitir_factura(**fields))
+    return ready.emitir_factura(confirmar=code, **fields), calls
+
+
+def test_simulating_shows_what_would_be_issued_and_sends_nothing(ready, monkeypatch):
+    calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})  # FECAESolicitar no está: llamarlo daría KeyError
+
+    text = ready.emitir_factura(importe=500, concepto="productos_y_servicios")
+
+    for expected in ["HOMOLOGACIÓN", "Factura C 0003-00000046", "Total: ARS 500,00", "productos y servicios",
+                     "Consumidor final (sin identificar)", "condición consumidor_final", "No se emitió nada"]:
+        assert expected in text
+    assert the_code(text) and not sent(calls, "FECAESolicitar")
+    assert not (ready.home() / "emitidas.jsonl").exists()
+
+
+def test_confirming_with_the_code_sends_the_invoice_in_the_order_the_manual_requires(ready, monkeypatch):
+    text, calls = issue(ready, monkeypatch, descripcion="Repuestos y reparaciones", documento="12345678")
+
+    assert text.splitlines()[:4] == [
+        "✓ [negocio] HOMOLOGACIÓN (pruebas, sin validez fiscal)", f"Factura C 0003-00000046 emitida · {datetime.now(ready.AR_TZ).date().isoformat()}",
+        "Total: ARS 500,00 · Receptor: DNI 12345678", "CAE: 74123456789012 · vence 2026-11-02"]
+    request = ET.fromstring(sent(calls, "FECAESolicitar")[0])
+    names = [e.tag.rsplit("}", 1)[-1] for e in next(e for e in request.iter() if e.tag.endswith("FECAEDetRequest"))]
+    assert names == ["Concepto", "DocTipo", "DocNro", "CbteDesde", "CbteHasta", "CbteFch", "ImpTotal", "ImpTotConc", "ImpNeto", "ImpOpEx",
+                     "ImpTrib", "ImpIVA", "FchServDesde", "FchServHasta", "FchVtoPago", "MonId", "MonCotiz", "CondicionIVAReceptorId"]
+    values = {e.tag.rsplit("}", 1)[-1]: e.text for e in request.iter() if e.text and e.text.strip()}
+    today = datetime.now(ready.AR_TZ).date().strftime("%Y%m%d")
+    assert (values["Concepto"], values["DocTipo"], values["DocNro"], values["CbteDesde"], values["CbteHasta"]) == ("3", "96", "12345678", "46", "46")
+    assert (values["ImpTotal"], values["ImpNeto"], values["ImpTotConc"], values["ImpOpEx"], values["ImpTrib"], values["ImpIVA"]) == (
+        "500.00", "500.00", "0.00", "0.00", "0.00", "0.00")  # tipo C: el neto es el subtotal, no hay IVA
+    assert (values["CbteFch"], values["FchServDesde"], values["FchServHasta"], values["FchVtoPago"]) == (today,) * 4
+    assert (values["MonId"], values["MonCotiz"], values["CondicionIVAReceptorId"], values["PtoVta"], values["CbteTipo"]) == ("PES", "1", "5", "3", "11")
+    assert "<Iva>" not in sent(calls, "FECAESolicitar")[0] and "<Actividades>" not in sent(calls, "FECAESolicitar")[0]
+    logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
+    assert logged["resultado"] == "emitida" and logged["cae"] == "74123456789012" and logged["numero"] == 46
+    assert logged["descripcion"] == "Repuestos y reparaciones" and logged["ambiente"] == "homologacion"
+    assert stat.S_IMODE((ready.home() / "emitidas.jsonl").stat().st_mode) == 0o600
+
+
+def test_products_only_sends_no_service_dates_and_services_send_the_given_ones(ready, monkeypatch):
+    _, calls = issue(ready, monkeypatch, concepto="productos")
+    assert "FchServDesde" not in sent(calls, "FECAESolicitar")[0]
+
+    _, calls = issue(ready, monkeypatch, concepto="servicios", fecha="2026-10-23", servicio_desde="2026-10-01",
+                     servicio_hasta="2026-10-31", vencimiento_pago="2026-11-10")
+    body = sent(calls, "FECAESolicitar")[0]
+    assert "<FchServDesde>20261001</FchServDesde><FchServHasta>20261031</FchServHasta><FchVtoPago>20261110</FchVtoPago>" in body
+
+
+def test_the_activity_goes_last_and_only_when_the_account_has_one(arca, monkeypatch):
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "productos", "actividad": "479900"})
+    make_files(arca.home())
+
+    _, calls = issue(arca, monkeypatch)
+
+    assert "<CondicionIVAReceptorId>5</CondicionIVAReceptorId><Actividades><Actividad><Id>479900</Id></Actividad></Actividades>" in sent(calls, "FECAESolicitar")[0]
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "productos", "actividad": "venta minorista"})
+    assert "hasta 6 números" in arca.emitir_factura(importe=10)
+
+
+def test_the_code_only_works_once_for_exactly_that_invoice(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})  # sin FECAESolicitar: ninguna de estas confirmaciones puede emitir
+    code = the_code(ready.emitir_factura(importe=500, concepto="productos"))
+
+    for changed in [{"importe": 501}, {"importe": 500, "documento": "12345678"}, {"importe": 500, "fecha": "2026-10-22"}]:
+        refused = ready.emitir_factura(concepto="productos", confirmar=code, **changed)
+        assert "El código no coincide" in refused and "No se emitió nada" in refused
+    assert "El código no coincide" in ready.emitir_factura(importe=500, concepto="productos", confirmar="true")
+
+    # Alguien (o este mismo comando, repetido) ya emitió el 46: el que ahora toca es el 47 y el código viejo no sirve.
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": wsfe_answer("FECompUltimoAutorizado", "<CbteNro>46</CbteNro>")})
+    again = ready.emitir_factura(importe=500, concepto="productos", confirmar=code)
+    assert "El código no coincide" in again and "0003-00000047" in again
+
+
+def test_production_is_read_only_unless_the_account_enables_emission_on_purpose(arca, monkeypatch):
+    write_accounts(arca, prod={"cuit": CUIT, "ambiente": "produccion", "punto_venta": 3, "concepto": "productos"})
+    make_files(arca.home(), alias="prod")
+    assert "prod (predeterminada): CUIT 20123456789 · produccion · listo · solo lectura" in arca.cuentas()
+    serve(arca, monkeypatch, {"FECompUltimoAutorizado": LAST})  # FECAESolicitar no está: no puede emitir
+
+    simulation = arca.emitir_factura(importe=500)
+    assert "PRODUCCIÓN (comprobante real)" in simulation
+    refused = arca.emitir_factura(importe=500, confirmar=the_code(simulation))
+    assert "PRODUCCIÓN y está en solo lectura" in refused and '"emision": true' in refused
+    assert not (arca.home() / "emitidas.jsonl").exists()
+
+    write_accounts(arca, prod={"cuit": CUIT, "ambiente": "produccion", "punto_venta": 3, "concepto": "productos", "emision": True})
+    assert "solo lectura" not in arca.cuentas()
+    text, _ = issue(arca, monkeypatch)
+    assert text.startswith("✓ [prod] PRODUCCIÓN (comprobante real)")
+    write_accounts(arca, prod={"cuit": CUIT, "ambiente": "produccion", "punto_venta": 3, "concepto": "productos", "emision": "true"})
+    assert "solo lectura" in arca.cuentas()  # solo el booleano verdadero habilita: ni el texto «true» ni nada parecido
+
+
+@pytest.mark.parametrize("kind, number, expected", [
+    (None, None, (99, 0, "Consumidor final (sin identificar)")),
+    (None, "12.345.678", (96, 12345678, "DNI 12345678")),
+    (None, "20-40937847-2", (86, 20409378472, "CUIL 20409378472")),
+    (None, "30712345671", (80, 30712345671, "CUIT 30712345671")),
+    ("cuit", "20409378472", (80, 20409378472, "CUIT 20409378472")),
+    ("DNI", "5000000", (96, 5000000, "DNI 5000000"))])
+def test_the_receiver_document_is_read_the_way_a_person_writes_it(arca, kind, number, expected):
+    assert arca.parse_receiver(kind, number) == expected
+
+
+@pytest.mark.parametrize("kind, number, message", [
+    (None, "20409378473", "no es válido"), (None, "123456789", "no es válido"), (None, "12a45678", "solo números"),
+    ("dni", None, "falta el número"), ("pasaporte", "123", "dni, cuil o cuit"), ("dni", "123456789", "hasta 8"), ("dni", "0", "hasta 8")])
+def test_a_wrong_receiver_is_refused_before_asking_arca(arca, kind, number, message):
+    with pytest.raises(arca.Problem, match=message):
+        arca.parse_receiver(kind, number)
+
+
+@pytest.mark.parametrize("value, expected", [(500, "500.00"), (1500.5, "1500.50"), ("20.05", "20.05"), (0.01, "0.01")])
+def test_amounts_are_exact_with_two_decimals(arca, value, expected):
+    assert f"{arca.parse_amount(value)}" == expected and isinstance(arca.parse_amount(value), Decimal)
+
+
+@pytest.mark.parametrize("value, message", [(0, "mayor a 0"), (-5, "mayor a 0"), (10.005, "2 decimales"), (0.1 + 0.2, "2 decimales"),
+                                            (float("nan"), "no es un número"), (10 ** 12, "mayor a 0")])
+def test_bad_amounts_are_refused_and_never_rounded_silently(arca, value, message):
+    with pytest.raises(arca.Problem, match=message):
+        arca.parse_amount(value)
+
+
+def test_dates_follow_arca_windows_and_the_service_period_must_make_sense(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
+    today = datetime.now(ready.AR_TZ).date()
+    day = lambda n: (today + timedelta(days=n)).isoformat()  # noqa: E731
+
+    assert "hasta 5 días" in ready.emitir_factura(importe=10, concepto="productos", fecha=day(-6))
+    assert "No se emitió nada" in ready.emitir_factura(importe=10, concepto="productos", fecha=day(5))
+    assert "hasta 10 días" in ready.emitir_factura(importe=10, concepto="servicios", fecha=day(11))
+    assert "No se emitió nada" in ready.emitir_factura(importe=10, concepto="servicios", fecha=day(-10))
+    assert "AAAA-MM-DD" in ready.emitir_factura(importe=10, concepto="productos", fecha="23/10/2026")
+    assert "no puede ser anterior a «servicio_desde»" in ready.emitir_factura(importe=10, concepto="servicios", servicio_desde=day(0), servicio_hasta=day(-1))
+    assert "vencimiento_pago" in ready.emitir_factura(importe=10, concepto="servicios", vencimiento_pago=day(-1))
+
+
+def test_the_concept_is_asked_for_unless_the_account_has_a_default(arca, monkeypatch):
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3})
+    make_files(arca.home())
+    serve(arca, monkeypatch, {"FECompUltimoAutorizado": LAST})
+
+    assert "Decime el concepto" in arca.emitir_factura(importe=10)
+    assert "Decime el concepto" in arca.emitir_factura(importe=10, concepto="regalos")
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "servicios"})
+    assert "servicios" in arca.emitir_factura(importe=10) and "Decime" not in arca.emitir_factura(importe=10)
+
+
+def test_receiver_condition_accepts_a_name_or_a_number(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
+
+    assert "condición monotributo" in ready.emitir_factura(importe=10, concepto="productos", condicion_receptor="Monotributo")
+    assert "condición 13" in ready.emitir_factura(importe=10, concepto="productos", condicion_receptor="13")
+    assert "condicion_receptor: uno de" in ready.emitir_factura(importe=10, concepto="productos", condicion_receptor="otra")
+
+
+def test_arca_rejecting_the_invoice_says_why_and_logs_it(ready, monkeypatch):
+    for index, obs in enumerate(["<Observaciones><Obs><Code>10238</Code><Msg>La CUIT receptora ingresada no existe.</Msg></Obs></Observaciones>",
+                                 "<Obs><Observaciones><Code>10245</Code><Msg>Falta la condición del receptor.</Msg></Observaciones></Obs>"]):
+        text, _ = issue(ready, monkeypatch, answer=rejected(obs))
+
+        assert text.startswith("✗ ARCA rechazó el comprobante: ") and "No se emitió nada" in text and "CAE" not in text
+        assert ("(código 10238)" if index == 0 else "(código 10245)") in text
+    logged = [json.loads(line) for line in (ready.home() / "emitidas.jsonl").read_text().splitlines()]
+    assert [e["resultado"] for e in logged] == ["rechazada", "rechazada"] and "cae" not in logged[0]
+
+
+def test_an_arca_error_such_as_a_wrong_sequence_number_is_reported_and_logged(ready, monkeypatch):
+    error = wsfe_answer("FECAESolicitar", "<Errors><Err><Code>10016</Code><Msg>El número de comprobante debe ser mayor en 1 al último</Msg></Err></Errors>")
+
+    text, _ = issue(ready, monkeypatch, answer=error)
+
+    assert text.startswith("✗ ARCA: El número de comprobante debe ser mayor en 1 al último (código 10016)\nNo se emitió nada.")
+    assert json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])["resultado"] == "error"
+
+
+def test_an_approval_with_warnings_shows_them(ready, monkeypatch):
+    text, _ = issue(ready, monkeypatch, answer=approved(extra="<Obs><Code>10063</Code><Msg>Revisá la categoría</Msg></Obs>"))
+
+    assert text.startswith("✓") and "Observaciones de ARCA: Revisá la categoría (código 10063)" in text
+
+
+def silent(ready, monkeypatch, after):
+    """ARCA recibe el pedido pero no contesta. `after` es el último número que ve ARCA al mirar de nuevo (None: tampoco contesta).
+    El último número se lee 3 veces: al simular, al confirmar (para recalcular el que toca) y después del silencio."""
+    lasts = []
+
+    def fake(url, action, body):
+        if "LoginCms" in url:
+            return 200, wsaa_answer()
+        method = action.rsplit("/", 1)[-1]
+        if method == "FECompUltimoAutorizado":
+            lasts.append(1)
+            if len(lasts) <= 2:
+                return 200, LAST
+            if after is None:
+                raise ready.Problem("No pude hablar con ARCA (host): URLError.", maybe_sent=True)
+            return 200, wsfe_answer("FECompUltimoAutorizado", f"<CbteNro>{after}</CbteNro>")
+        raise ready.Problem("No pude hablar con ARCA (host): TimeoutError.", maybe_sent=True)
+
+    monkeypatch.setattr(ready, "_post", fake)
+    return lasts
+
+
+@pytest.mark.parametrize("after, expected, result", [
+    (46, "ARCA SÍ emitió el comprobante 0003-00000046", "emitida_sin_respuesta"),
+    (45, "ARCA no emitió nada (el último comprobante sigue siendo el 45)", "no_emitida"),
+    (None, "No repitas el comando", "sin_confirmar")])
+def test_when_arca_goes_silent_after_the_request_it_checks_before_saying_anything_and_never_retries(ready, monkeypatch, after, expected, result):
+    lasts = silent(ready, monkeypatch, after)
+    code = the_code(ready.emitir_factura(importe=500, concepto="productos"))
+
+    text = ready.emitir_factura(importe=500, concepto="productos", confirmar=code)
+
+    assert expected in text
+    assert len(lasts) == 3  # simular, confirmar y comprobar: el pedido de emisión no se reintenta
+    assert json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])["resultado"] == result
+
+
+def test_a_failure_that_certainly_did_not_reach_arca_is_not_treated_as_uncertain(ready, monkeypatch):
+    fault = envelope("<soap:Fault><faultcode>x</faultcode><faultstring>token vencido</faultstring></soap:Fault>")
+    text, _ = issue(ready, monkeypatch, answer=fault)
+
+    assert text.startswith("✗ ARCA rechazó el pedido: token vencido\nNo se emitió nada.")
+
+
+def test_the_log_survives_a_failure_to_write_it(ready, monkeypatch):
+    (ready.home() / "emitidas.jsonl").mkdir()  # no se puede abrir como archivo
+
+    text, _ = issue(ready, monkeypatch)
+
+    assert text.startswith("✓") and "No pude anotarlo en el registro local" in text  # emitió igual y avisa
+
+
+def test_receiver_conditions_are_read_from_arca(ready, monkeypatch):
+    answer = wsfe_answer("FEParamGetCondicionIvaReceptor", (
+        "<ResultGet><CondicionIvaReceptor><Id>5</Id><Desc>Consumidor Final</Desc><Cmp_Clase>C</Cmp_Clase></CondicionIvaReceptor>"
+        "<CondicionIvaReceptor><Id>6</Id><Desc>Responsable Monotributo</Desc><Cmp_Clase>C</Cmp_Clase></CondicionIvaReceptor></ResultGet>"))
+    calls = serve(ready, monkeypatch, {"FEParamGetCondicionIvaReceptor": answer})
+
+    text = ready.condiciones_iva_receptor()
+
+    assert "- 5 · Consumidor Final" in text and "- 6 · Responsable Monotributo" in text
+    assert "<ClaseCmp>C</ClaseCmp>" in sent(calls, "FEParamGetCondicionIvaReceptor")[0]
+
+
+def test_a_command_line_like_the_one_a_person_types_reaches_the_tool_with_the_right_types(arca):
+    schema = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}["emitir_factura"]
+
+    parsed = bridge.parse_cli(schema, "importe=1500.50 concepto=productos documento=12345678 punto_venta=2 confirmar=123456")
+
+    assert parsed == {"importe": 1500.5, "concepto": "productos", "documento": "12345678", "punto_venta": 2, "confirmar": "123456"}
+    assert schema["required"] == ["importe"]
