@@ -136,7 +136,7 @@ def day_bounds(since: str | None, until: str | None) -> tuple[str, str, str, str
         first = date.fromisoformat(since) if since else date.today()
         last = date.fromisoformat(until) if until else first
     except ValueError:
-        raise Problem("Las fechas van como AAAA-MM-DD (por ejemplo 2026-10-23).") from None
+        raise Problem(f"Las fechas van como AAAA-MM-DD (por ejemplo 2026-10-23). Recibí: desde={one_line(since, 30)!r} hasta={one_line(until, 30)!r}") from None
     if last < first:
         raise Problem("«hasta» no puede ser anterior a «desde».")
     begin = datetime.combine(first, time.min).astimezone().isoformat(timespec="milliseconds")

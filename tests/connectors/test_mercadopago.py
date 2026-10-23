@@ -109,7 +109,11 @@ def test_search_says_when_there_is_more_than_what_it_shows_and_when_there_is_not
 def test_search_rejects_bad_dates_without_calling_mercado_pago(mp, monkeypatch, since, until, message):
     monkeypatch.setenv("MP_TOKEN_NEGOCIO", "t")
 
-    assert message in mp.buscar_pagos(desde=since, hasta=until)  # _http prohibido: si llamara, fallaría
+    text = mp.buscar_pagos(desde=since, hasta=until)  # _http prohibido: si llamara, fallaría
+
+    assert message in text
+    if since == "23/10/2026":
+        assert "desde='23/10/2026'" in text  # dice qué recibió
 
 
 def test_one_payment_shows_fee_net_and_context(mp, monkeypatch):
