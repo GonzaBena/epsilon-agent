@@ -66,3 +66,17 @@ def test_deleting_a_connector_removes_its_buttons(client, monkeypatch):
     client.post("/api/buttons", json={"label": "Sala", "connector": "luces", "tool": "prender", "args": {"cuarto": "sala"}})
     assert client.delete("/api/connectors/luces").status_code == 200
     assert buttons.list_all() == []
+
+
+def test_create_button_from_cli_text_with_integer(client, monkeypatch):
+    setup_connector(monkeypatch)
+    store.update("luces", tools=[{**tool("prender", "", {"type": "object", "properties": {"nivel": {"type": "integer"}}}), "hash": "h"}])
+    reply = client.post("/api/buttons", json={"label": "Nivel", "connector": "luces", "tool": "prender", "args": "nivel=3"})
+    assert reply.status_code == 200 and reply.json()["buttons"][0]["args"] == {"nivel": 3}
+
+
+def test_suggestions_endpoint_explains_a_failure(client, monkeypatch):
+    setup_connector(monkeypatch)
+    monkeypatch.setattr(manager, "read_resource", lambda *a: (_ for _ in ()).throw(manager.ConnectorError("Ya hay 3 conectores trabajando")))
+    reply = client.get("/api/connectors/luces/suggestions")
+    assert reply.status_code == 422 and "trabajando" in reply.json()["detail"]

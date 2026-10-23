@@ -316,26 +316,10 @@ async function createButton(body) {
   });
 }
 
-// «clave=valor clave2="con espacios"» o un objeto JSON → objeto. Los números y sí/no los valida el servidor
-// contra el esquema, así que acá todo valor va como texto salvo que se escriba JSON.
-function parseButtonArgs(text) {
-  const raw = text.trim();
-  if (!raw) return {};
-  if (raw.startsWith("{")) return JSON.parse(raw);
-  const args = {};
-  for (const match of raw.matchAll(/([^\s=]+)=("([^"]*)"|\S*)/g)) args[match[1]] = match[3] !== undefined ? match[3] : match[2];
-  return args;
-}
-
 btnForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  let args;
-  try {
-    args = parseButtonArgs(btnArgs.value);
-  } catch {
-    btnError.textContent = "Los argumentos no son un JSON válido.";
-    return;
-  }
+  // El texto va tal cual: el servidor lo entiende (clave=valor o JSON) y convierte cada valor según el esquema.
+  const args = btnArgs.value.trim();
   const ok = await createButton({ label: btnLabel.value.trim(), connector: btnConnector.value, tool: btnTool.value, args });
   if (ok) { btnLabel.value = ""; btnArgs.value = ""; }
 });

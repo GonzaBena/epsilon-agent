@@ -155,3 +155,34 @@ def test_deleting_a_connector_removes_its_buttons():
     buttons.add("Sala", "luces", "prender", {"cuarto": "x"})
     buttons.remove_for("luces")
     assert buttons.list_all() == []
+
+
+def test_add_with_cli_text_coerces_by_schema():
+    make()
+    saved = buttons.add("Sala", "luces", "prender", "cuarto=sala nivel=3")
+    assert saved["args"] == {"cuarto": "sala", "nivel": 3}
+    with pytest.raises(store.StoreError, match="entero"):
+        buttons.add("Mal", "luces", "prender", "cuarto=sala nivel=tres")
+
+
+def test_suggestions_scrub_the_connector_env_secret(monkeypatch):
+    store.add("luces", ["luces"], {"TOKEN": "tok-secreto-99"})
+    store.update("luces", tools=[{**tool("prender", "", SCHEMA), "hash": "h1"}])
+    resource(monkeypatch, [{"label": "Sala tok-secreto-99", "tool": "prender", "args": {"cuarto": "x tok-secreto-99"}}])
+    shown = buttons.suggestions("luces")
+    assert "tok-secreto-99" not in json.dumps(shown) and shown
+
+
+def test_suggestions_report_a_failing_connector(monkeypatch):
+    make()
+    monkeypatch.setattr(manager, "read_resource", lambda *a: (_ for _ in ()).throw(manager.ConnectorError("Ya hay 3 conectores trabajando")))
+    with pytest.raises(store.StoreError, match="trabajando"):
+        buttons.suggestions("luces")
+
+
+def test_run_maps_unexpected_errors_to_a_spanish_error(monkeypatch):
+    make()
+    button = buttons.add("Sala", "luces", "prender", {"cuarto": "x"})
+    monkeypatch.setattr(manager, "call", lambda *a: 1 / 0)
+    with pytest.raises(store.StoreError, match="No pude ejecutar"):
+        buttons.run(button["id"])

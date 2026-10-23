@@ -215,7 +215,7 @@ class ButtonIn(BaseModel):
     label: str = Field(max_length=100)
     connector: str = Field(max_length=40)
     tool: str = Field(max_length=100)
-    args: dict = Field(default_factory=dict)
+    args: dict | str = Field(default_factory=dict)
 
 
 class ConnectorChangeIn(BaseModel):
@@ -669,7 +669,10 @@ def create_app() -> FastAPI:
     def get_suggestions(name: str):
         if connector_store.get(name) is None:
             raise HTTPException(404, "No existe ese conector")
-        return {"suggestions": connector_buttons.suggestions(name)}
+        try:
+            return {"suggestions": connector_buttons.suggestions(name)}
+        except connector_store.StoreError as e:
+            raise HTTPException(422, str(e)) from None
 
     @app.post("/api/buttons")
     def create_button(body: ButtonIn):

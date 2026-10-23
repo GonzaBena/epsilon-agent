@@ -88,10 +88,18 @@ def _check_args(schema: dict, args: object) -> dict:
         raise StoreError(config.redact(str(error))) from None
 
 
-def add(label: str, connector: str, tool: str, args: dict) -> dict:
+def _parse_text(schema: dict, text: str) -> dict:
+    """Los argumentos escritos por la persona (clave=valor o JSON): se convierten según el esquema (3 → entero)."""
+    try:
+        return bridge.parse_cli(schema, text)
+    except bridge.ArgsError as error:
+        raise StoreError(config.redact(str(error))) from None
+
+
+def add(label: str, connector: str, tool: str, args: "dict | str") -> dict:
     text = _label(label)
     _, _, schema = _find_tool(connector, tool)
-    clean = _check_args(schema, args)
+    clean = _parse_text(schema, args) if isinstance(args, str) else _check_args(schema, args)
 
     def change(items: list[dict]) -> dict:
         if len(items) >= MAX_BUTTONS:
@@ -137,6 +145,9 @@ def run(button_id: int) -> str:
         text = manager.call(button["connector"], real, args, None)
     except manager.ConnectorError as error:
         text = f"Error: {error}"
+    except Exception as error:  # noqa: BLE001 - cualquier falla inesperada vuelve como texto, no como un 500
+        print(f"Error en el botón {button_id}: {config.redact(repr(error))}")
+        raise StoreError("No pude ejecutar el botón.") from None
     return config.redact(text)[:manager.MAX_RESULT_CHARS]
 
 
@@ -148,8 +159,11 @@ def suggestions(connector: str) -> list[dict]:
         return []
     try:
         text = manager.read_resource(connector, RESOURCE)
-    except Exception:  # noqa: BLE001 - sin el recurso o con el conector caído, simplemente no hay sugerencias
-        return []
+    except manager.ConnectorError as error:  # caído, ocupado o sin lugar: se dice por qué (no es «no propone botones»)
+        raise StoreError(config.redact(str(error))[:200] or "No pude consultar al conector.") from None
+    except Exception as error:  # noqa: BLE001
+        print(f"Error leyendo las sugerencias de {connector}: {config.redact(repr(error))}")
+        raise StoreError("No pude consultar al conector.") from None
     if not isinstance(text, str) or not text or len(text) > MAX_RESOURCE:
         return []
     try:
@@ -158,6 +172,17 @@ def suggestions(connector: str) -> list[dict]:
         return []
     if isinstance(data, dict):
         data = data.get("buttons")
+    env = entry.get("env") if isinstance(entry.get("env"), dict) else {}
+
+    def scrub(value):  # lo que dice el conector no puede traer sus propias claves
+        if isinstance(value, str):
+            return manager._clean(value, env, len(value) + 1)
+        if isinstance(value, dict):
+            return {k: scrub(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [scrub(v) for v in value]
+        return value
+
     found: list[dict] = []
     for item in data if isinstance(data, list) else []:
         if len(found) >= MAX_SUGGESTIONS:
@@ -169,8 +194,8 @@ def suggestions(connector: str) -> list[dict]:
             continue
         try:
             _, _, schema = _find_tool(connector, tool)
-            clean = _check_args(schema, args)
-            shown = _label(" ".join(config.redact(label).split())[:MAX_LABEL])
+            clean = _check_args(schema, scrub(args))
+            shown = _label(" ".join(scrub(label).split())[:MAX_LABEL])
         except StoreError:
             continue
         found.append({"label": shown, "connector": connector, "tool": tool, "args": clean})
