@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
-from epsilon.connectors import bridge, manager as connector_manager, store as connector_store
+from epsilon.connectors import bridge, buttons as connector_buttons, manager as connector_manager, store as connector_store
 from epsilon.data import conversations, library, notes
 from epsilon.routines import rules as routine_rules, store as routine_store
 from epsilon.settings import checks, config
@@ -209,6 +209,13 @@ class ConnectorIn(BaseModel):
     command: str = Field(max_length=500)
     env: dict[str, str] = Field(default_factory=dict, max_length=20)
     confirm: bool = False
+
+
+class ButtonIn(BaseModel):
+    label: str = Field(max_length=100)
+    connector: str = Field(max_length=40)
+    tool: str = Field(max_length=100)
+    args: dict = Field(default_factory=dict)
 
 
 class ConnectorChangeIn(BaseModel):
@@ -646,9 +653,49 @@ def create_app() -> FastAPI:
             connector_manager.stop(name)
         except Exception:  # noqa: BLE001 - un cierre que falla no impide quitarlo
             pass
-        # Task 7: acá también se borran los botones de este conector.
         connector_store.remove(name)
+        try:
+            connector_buttons.remove_for(name)  # sus botones ya no sirven
+        except connector_store.StoreError:
+            pass
         return connectors_view()
+
+    @app.get("/api/buttons")
+    def get_buttons():
+        # Solo lo guardado: las sugerencias se piden aparte por conector (pueden arrancar un proceso dormido).
+        return {"buttons": connector_buttons.list_all()}
+
+    @app.get("/api/connectors/{name}/suggestions")
+    def get_suggestions(name: str):
+        if connector_store.get(name) is None:
+            raise HTTPException(404, "No existe ese conector")
+        return {"suggestions": connector_buttons.suggestions(name)}
+
+    @app.post("/api/buttons")
+    def create_button(body: ButtonIn):
+        try:
+            connector_buttons.add(body.label, body.connector, body.tool, body.args)
+        except connector_store.StoreError as e:
+            raise HTTPException(422, str(e)) from None
+        return {"buttons": connector_buttons.list_all()}
+
+    @app.delete("/api/buttons/{button_id}")
+    def delete_button(button_id: int):
+        try:
+            found = connector_buttons.remove(button_id)
+        except connector_store.StoreError as e:
+            raise HTTPException(422, str(e)) from None
+        if not found:
+            raise HTTPException(404, "No existe ese botón")
+        return {"buttons": connector_buttons.list_all()}
+
+    @app.post("/api/buttons/{button_id}/run")
+    def run_button(button_id: int):
+        """Ejecuta el botón sin modelo y sin tocar ninguna conversación."""
+        try:
+            return {"text": connector_buttons.run(button_id)}
+        except connector_store.StoreError as e:
+            raise HTTPException(422, str(e)) from None
 
     @app.put("/api/conversations/{conversation_id}/title")
     def rename_conversation(conversation_id: str, body: TitleIn):

@@ -118,6 +118,30 @@
 
         <ul class="routine-list" id="conn-list"></ul>
         <p class="routine-empty" id="conn-empty" hidden>No hay conectores todavía. Agregá uno arriba.</p>
+
+        <h3 class="page-title buttons-title">Botones</h3>
+        <p class="help">Atajos para ejecutar una herramienta de un conector con un toque, sin pasar por la IA. El resultado se ve en la tarjeta y no se guarda en ninguna conversación.</p>
+        <div class="button-grid" id="btn-grid"></div>
+        <p class="routine-empty" id="btn-empty" hidden>No hay botones todavía.</p>
+
+        <form class="routine-new" id="btn-form" autocomplete="off">
+          <h3>Crear botón</h3>
+          <label for="btn-connector">Conector</label>
+          <select id="btn-connector"></select>
+          <label for="btn-tool">Herramienta</label>
+          <select id="btn-tool"></select>
+          <label for="btn-args">Argumentos (clave=valor o JSON, vacío si no lleva)</label>
+          <input id="btn-args" type="text" maxlength="1000" spellcheck="false">
+          <label for="btn-label">Nombre del botón</label>
+          <input id="btn-label" type="text" maxlength="40">
+          <div class="routine-new-row">
+            <button type="submit" class="send" id="btn-add">Crear botón</button>
+            <button type="button" class="secondary" id="btn-suggest">Ver sugeridos</button>
+          </div>
+          <p class="hint">«Sugeridos» le pregunta al conector qué botones propone (puede arrancarlo). No se crea ninguno solo.</p>
+          <ul class="routine-list" id="btn-suggestions"></ul>
+          <p class="result fail" id="btn-error" role="alert"></p>
+        </form>
       </main>
     </div>
 

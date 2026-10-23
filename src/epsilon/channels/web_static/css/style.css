@@ -2978,3 +2978,9 @@ a.ghost {
 .connectors-page .routine-new input { width: 100%; }
 .connectors-page #conn-argv { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conn-tools { margin: 0.25rem 0 0; padding-left: 1.1rem; }
+
+.button-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin: 0.75rem 0; }
+.button-card { border: 1px solid var(--border, #8884); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.button-card .button-result { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9em; max-height: 10rem; overflow: auto; }
+.buttons-title { margin-top: 2rem; }
+.connectors-page select { width: 100%; font: inherit; }

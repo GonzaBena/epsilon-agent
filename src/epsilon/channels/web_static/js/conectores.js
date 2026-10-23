@@ -88,7 +88,11 @@ function renderRow(connector) {
   return item;
 }
 
+let known = []; // los conectores de la última lista (para los desplegables del formulario de botones)
+
 function render(data) {
+  known = data.connectors;
+  fillConnectorSelect();
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.focus : "";
   list.replaceChildren(...data.connectors.map(renderRow));
   empty.hidden = data.connectors.length > 0;
@@ -224,7 +228,147 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+// ---- Botones ----
+const grid = document.getElementById("btn-grid");
+const btnEmpty = document.getElementById("btn-empty");
+const btnForm = document.getElementById("btn-form");
+const btnConnector = document.getElementById("btn-connector");
+const btnTool = document.getElementById("btn-tool");
+const btnArgs = document.getElementById("btn-args");
+const btnLabel = document.getElementById("btn-label");
+const btnError = document.getElementById("btn-error");
+const btnSuggest = document.getElementById("btn-suggest");
+const btnSuggestions = document.getElementById("btn-suggestions");
+let lastButtons = "";
+
+function fillConnectorSelect() {
+  const chosen = btnConnector.value;
+  const options = known.filter((c) => c.tools.length).map((c) => {
+    const option = make("option", "", c.name);
+    option.value = c.name;
+    return option;
+  });
+  btnConnector.replaceChildren(...options);
+  if (chosen && options.some((o) => o.value === chosen)) btnConnector.value = chosen;
+  fillToolSelect();
+}
+
+function fillToolSelect() {
+  const connector = known.find((c) => c.name === btnConnector.value);
+  const chosen = btnTool.value;
+  const options = (connector ? connector.tools : []).map((t) => {
+    const option = make("option", "", t.action);
+    option.value = t.action;
+    return option;
+  });
+  btnTool.replaceChildren(...options);
+  if (chosen && options.some((o) => o.value === chosen)) btnTool.value = chosen;
+}
+btnConnector.addEventListener("change", fillToolSelect);
+
+function renderButtons(buttons) {
+  grid.replaceChildren(...buttons.map((button) => {
+    const card = make("div", "button-card");
+    const result = make("p", "button-result");
+    result.setAttribute("role", "status");
+    const run = make("button", "send", "Ejecutar");
+    run.type = "button";
+    run.addEventListener("click", async () => {
+      run.disabled = true;
+      result.textContent = "Ejecutando…";
+      try {
+        const data = await request(`/api/buttons/${button.id}/run`, { method: "POST" });
+        result.textContent = data.text || "(sin respuesta)";
+      } catch (error) {
+        result.textContent = error.message;
+      } finally {
+        run.disabled = false;
+      }
+    });
+    const remove = make("button", "secondary", "Quitar");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Quitar el botón ${button.label}`);
+    remove.addEventListener("click", () => buttonRequest(`/api/buttons/${button.id}`, { method: "DELETE" }));
+    card.append(make("strong", "", button.label), make("span", "routine-next", `${button.connector}.${button.tool}`), run, remove, result);
+    return card;
+  }));
+  btnEmpty.hidden = buttons.length > 0;
+}
+
+async function buttonRequest(path, options) {
+  btnError.textContent = "";
+  try {
+    const data = await request(path, options);
+    const json = JSON.stringify(data.buttons);
+    if (json !== lastButtons) { lastButtons = json; renderButtons(data.buttons); }
+    return true;
+  } catch (error) {
+    btnError.textContent = plain(error.message);
+    return false;
+  }
+}
+
+async function createButton(body) {
+  return buttonRequest("/api/buttons", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// «clave=valor clave2="con espacios"» o un objeto JSON → objeto. Los números y sí/no los valida el servidor
+// contra el esquema, así que acá todo valor va como texto salvo que se escriba JSON.
+function parseButtonArgs(text) {
+  const raw = text.trim();
+  if (!raw) return {};
+  if (raw.startsWith("{")) return JSON.parse(raw);
+  const args = {};
+  for (const match of raw.matchAll(/([^\s=]+)=("([^"]*)"|\S*)/g)) args[match[1]] = match[3] !== undefined ? match[3] : match[2];
+  return args;
+}
+
+btnForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  let args;
+  try {
+    args = parseButtonArgs(btnArgs.value);
+  } catch {
+    btnError.textContent = "Los argumentos no son un JSON válido.";
+    return;
+  }
+  const ok = await createButton({ label: btnLabel.value.trim(), connector: btnConnector.value, tool: btnTool.value, args });
+  if (ok) { btnLabel.value = ""; btnArgs.value = ""; }
+});
+
+btnSuggest.addEventListener("click", async () => {
+  btnError.textContent = "";
+  btnSuggestions.replaceChildren();
+  if (!btnConnector.value) return;
+  btnSuggest.disabled = true;
+  try {
+    const data = await request(`/api/connectors/${encodeURIComponent(btnConnector.value)}/suggestions`, {});
+    if (!data.suggestions.length) btnError.textContent = "Este conector no propone botones.";
+    btnSuggestions.replaceChildren(...data.suggestions.map((s) => {
+      const row = make("li", "routine-row");
+      const add = make("button", "secondary", "Agregar");
+      add.type = "button";
+      add.addEventListener("click", () => createButton(s));
+      row.append(make("span", "routine-what", `${s.label} — ${s.tool}`), add);
+      return row;
+    }));
+  } catch (error) {
+    btnError.textContent = plain(error.message);
+  } finally {
+    btnSuggest.disabled = false;
+  }
+});
+
+async function loadButtons() {
+  await buttonRequest("/api/buttons", {});
+}
+
 async function load() {
+  loadButtons();
   try {
     adopt(await request("/api/connectors", {}));
   } catch (error) {
