@@ -37,12 +37,38 @@ ni saldo, por eso se hace uno propio.
 - Token del WSAA en caché (dura ~12 h), renovado solo.
 - Herramientas: `cuentas`, `verificar` (revisa archivos, certificado, ingreso, servidores y puntos de venta), `puntos_de_venta`, `ultimo_comprobante`, `ver_comprobante`, `tipos_de_comprobante`.
 
-## Fase 3: emitir facturas (después de probar 1 y 2)
+## Fase 3: emitir facturas (después de probar 1 y 2; primero SOLO en homologación)
 
-- `emitir_factura`: simula por defecto, emite solo con `confirmar=true`. Monotributo → Factura C (11, sin IVA);
-  responsable inscripto → A/B con IVA. Productos, servicios o ambos (servicios piden fechas y vencimiento).
-- Valida importes y correlatividad; nunca reintenta solo (primero consulta). En homologación lo dice en la primera línea.
-- Después: nota de crédito, PDF con QR a la biblioteca, formulario en la página.
+Referencia: `docs/afip/` (capturas de «Comprobantes en línea», el flujo que esto reemplaza; contienen datos
+personales: no se suben al repositorio).
+
+- `emitir_factura`: **simula por defecto**, emite solo con `confirmar=true`. Monotributo → Factura C (11, sin IVA);
+  responsable inscripto → A/B con IVA. Una sola línea: `descripcion` + `importe` (el neto de Mercado Pago o del banco).
+- **Qué viaja a ARCA** (WSFEv1): tipo y punto de venta, concepto (productos / servicios / ambos), importes, fecha,
+  tipo y número de documento del receptor (DNI 96, CUIL 86, CUIT 80, sin identificar 99), condición del receptor
+  frente al IVA (obligatoria desde la RG 5616; consumidor final = 5), y, si el manual lo confirma, la actividad
+  (`Actividades`, p. ej. 479900). Con servicios: período y vencimiento del pago, por defecto la fecha de emisión.
+  **No viajan**: descripción, domicilio, nombre del receptor ni forma de pago; solo existen en el PDF.
+- Por cuenta, en `cuentas.json`: `actividad`, `descripcion` (por defecto «Repuestos y reparaciones»), `domicilio`
+  (por defecto «CABA») y `emision`.
+- **Seguridad**: homologación emite siempre; **producción solo con `"emision": true`** en la cuenta. Sin reintentos
+  automáticos: si la red falla tras enviar, primero consulta el último número autorizado y recién ahí dice qué pasó.
+  Siempre pide el último y usa el siguiente. Cada emisión se anota en un registro local que solo se agrega.
+- No hay «emitir de prueba» en producción: la primera factura real es real (se corrige solo con nota de crédito).
+
+## Fase 4: PDF y padrón
+
+- **PDF** con QR (opcional: `pdf=true` o fijado en la cuenta; el detalle de lo vendido solo queda ahí). Hace falta una
+  librería de QR chica (`segno`, sin dependencias) declarada en el script.
+- **Padrón** (nombre y domicilio del cliente, y elegir entre dos CUIL con el mismo DNI, como hace la web):
+  - Servicio `ws_sr_padron_a13` (manual oficial v1.4): `getIdPersonaListByDocumento` devuelve las claves (CUIL/CUIT)
+    de un DNI y `getPersona` da nombre y domicilio. Se habilita en ARCA creando una relación «Consulta a Padrón
+    Alcance 13» para el certificado, y pide su propio ticket de WSAA (el nombre del servicio va en el pedido).
+  - **Sin verificar**: qué datos devuelve a un monotributista y si tiene condiciones de uso; en homologación los padrones
+    suelen traer datos de prueba. **Se decide con una prueba real y de solo lectura**: habilitar la relación junto con el
+    certificado de producción y consultar el propio DNI/CUIL.
+  - Si no se puede, no bloquea nada: la factura se emite igual con DNI/CUIL y el nombre/domicilio del PDF se escriben a mano.
+- Después: nota de crédito, formulario en la página.
 
 ## Riesgos
 
