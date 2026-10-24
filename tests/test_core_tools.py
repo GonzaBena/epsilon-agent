@@ -1087,7 +1087,7 @@ def test_a_confirmed_routine_is_saved_and_the_model_hears_how(script, at_1430):
 
     press("perm:si")
 
-    assert [r["do"] for r in core.routine_store.rules()] == [{"kind": "volumen", "arg": "20"}]
+    assert [r["steps"] for r in core.routine_store.rules()] == [[{"tool": "volumen", "args": "20"}]]
     assert "Listo, rutina 1: todos los días a las 23:00 → volumen 20" in results(script.seen[1][0])[0]
 
 

@@ -3,7 +3,7 @@ import logging
 import os
 import threading
 
-from epsilon import state, tools
+from epsilon import core, state, tools
 from epsilon.connectors import manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.plugins import channels as plugin_channels
 from epsilon.routines import engine
@@ -258,6 +258,7 @@ def main():
     enabled = enabled_channels(os.environ)
 
     try:
+        core.register_routine_executor()
         engine.start()  # las rutinas; si no arrancan, la web y los canales siguen igual
     except Exception as e:
         print(f"No pude prender el motor de rutinas: {config.redact(repr(e))}")

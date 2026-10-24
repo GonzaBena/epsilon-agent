@@ -82,7 +82,8 @@ def _step(rule_id: object, step: dict, outputs: dict[int, str], trigger: str) ->
     if _executor is None:
         return StepResult(False, "No hay un ejecutor de herramientas registrado.")
     try:
-        return _executor(tool, args)
+        version = step.get("version")
+        return _executor(tool, args) if version is None else _executor(tool, args, version=version)
     except Exception as e:  # un paso con problemas corta la cadena, no al programa
         log(rule_id, f"error en {tool}", repr(e))
         return StepResult(False, f"No pude ejecutar {tool}.")

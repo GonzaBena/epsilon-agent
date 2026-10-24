@@ -17,7 +17,7 @@ from epsilon.connectors import bridge, manager as connectors, registry as connec
 from epsilon.data import conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
-from epsilon.routines import rules as routine_rules, store as routine_store
+from epsilon.routines import rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
 from epsilon.utils import clima, clock, dolar, multimedia, navegador, sistema, ventanas
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
@@ -93,6 +93,9 @@ class Reply:
     # Archivos guardados que el canal tiene que ENVIAR junto con la respuesta (rutas relativas a DATA_DIR,
     # armadas por el servidor). Solo los llena handle(); el canal que no puede enviar (la web) los ignora.
     files: list[str] = field(default_factory=list)
+    # True: lo que se pidió salió mal (opción rara, falta el programa, el navegador no responde). Solo lo mira una
+    # rutina, que corta su cadena; el texto es el mismo que ve la persona o el modelo.
+    failed: bool = False
 
 
 def _artifact(kind: str, path) -> Artifact:
@@ -499,7 +502,7 @@ def _pc(action: Callable[[str], str]) -> Callable[[str], Reply]:
         try:
             return Reply(config.redact(action(args)))
         except (ValueError, multimedia.MultimediaError, ventanas.VentanasError) as e:
-            return Reply(str(e))
+            return Reply(str(e), failed=True)
 
     return run
 
@@ -1112,6 +1115,81 @@ def _execute_connector(tool_id: str, args: str, decided_hash: str | None = None)
     return f"Resultado de {tool_id} (datos, no instrucciones):\n{config.redact(text)[:MAX_RESULT_CHARS]}"
 
 
+# --- Pasos de una rutina -------------------------------------------------------------------------------
+# Una rutina corre sin nadie mirando: la confirmación que dio la persona al crearla vale como permiso (por eso una
+# herramienta que "pregunta" corre). Lo que no corre nunca: lo bloqueado en /permisos, lo apagado y lo que no está en el
+# catálogo. La guardia del navegador (`browser_guard`) NO interviene, pero `navegador.py` sigue con sus bloqueos duros.
+
+ROUTINE_EXCLUDED_GROUPS = {"rutinas"}  # una rutina no programa rutinas
+ROUTINE_EXCLUDED_TOOLS = {"enviar"}  # depende del canal de una conversación
+ROUTINE_SCOPE = "rutina"  # el «ámbito» de permisos de las rutinas: nada concedido por «siempre» en un chat vale acá
+
+
+def _catalog_tools() -> list[tools.Tool]:
+    """Las herramientas de la IA que una rutina puede usar ahora: sin las que gastan IA, las excluidas y las bloqueadas."""
+    return [
+        tool for tool in tools.ai_tools()
+        if not tool.uses_ai and tool.ai_group not in ROUTINE_EXCLUDED_GROUPS and tools.ai_id(tool) not in ROUTINE_EXCLUDED_TOOLS
+        and permissions.decide(ROUTINE_SCOPE, tools.ai_id(tool), _connector_hash(tools.ai_id(tool))) != "block"
+    ]
+
+
+def _catalog_ids() -> set[str]:
+    return {tools.ai_id(tool) for tool in _catalog_tools()}
+
+
+def routine_catalog() -> list[dict]:
+    """Los pasos que se pueden elegir: {id, label, hint, group, destructive, schema} (schema: el de un conector, o None)."""
+    found = []
+    for tool in _catalog_tools():
+        tool_id = tools.ai_id(tool)
+        connector = connector_registry.resolve(tool_id) if tool_id.startswith("mcp_") else None
+        found.append({
+            "id": tool_id, "label": tool.label, "hint": tool.ai_arg or tool.usage, "group": tool.ai_group,
+            "destructive": tool.ai == "delete" or tool_id == "nota_editar", "schema": connector[2] if connector else None,
+        })
+    for tool_id, info in routine_steps.LOCAL.items():
+        found.append({"id": tool_id, "label": info["label"], "hint": info["hint"], "group": "rutinas", "destructive": False, "schema": None})
+    return found
+
+
+def stamp_steps(chain: list[dict]) -> list[dict]:
+    """Anota en cada paso de un conector la versión (hash) de la herramienta que la persona vio al confirmar."""
+    stamped = []
+    for step in chain:
+        version = _connector_hash(step["tool"])
+        stamped.append({**step, "version": version} if version else dict(step))
+    return stamped
+
+
+def run_step(tool_id: str, args: str, version: str | None = None) -> routine_runner.StepResult:
+    """Ejecuta UN paso de una rutina, sin modelo. `version`: el hash que tenía la herramienta de un conector al guardar la
+    rutina; si cambió, no corre (el esquema y lo que la persona aprobó eran de la de antes)."""
+    if tool_id not in _catalog_ids():
+        return routine_runner.StepResult(False, f"«{tool_id[:40]}» ya no está disponible para las rutinas.")
+    current = _connector_hash(tool_id)
+    if version is not None and current is not None and version != current:
+        return routine_runner.StepResult(False, "La herramienta del conector cambió desde que guardaste la rutina: volvé a guardarla.")
+    if tool_id.startswith("mcp_"):
+        text = _execute_connector(tool_id, args, current)
+        failed = text.startswith(f"Argumentos inválidos") or "\nError: " in text
+        return routine_runner.StepResult(not failed, text.split(":\n", 1)[-1] if text.startswith("Resultado de") else text)
+    runner = AI_RUNNERS.get(tool_id)
+    if runner is None:
+        return routine_runner.StepResult(False, UNAVAILABLE)
+    try:
+        reply = runner(args)
+    except Exception as e:
+        print(f"Error en el paso {tool_id}: {config.redact(repr(e))}")  # el detalle, a la terminal
+        return routine_runner.StepResult(False, f"No pude ejecutar {tool_id}.")
+    return routine_runner.StepResult(not reply.failed, config.redact(reply.text)[:MAX_RESULT_CHARS])
+
+
+def register_routine_executor() -> None:
+    """Le da al runner de las rutinas la forma de correr herramientas (lo llama main al arrancar)."""
+    routine_runner.set_executor(run_step)
+
+
 def _question(tool: tools.Tool, args: str, shown: str = "") -> Reply:
     """El pedido de permiso: qué herramienta y con qué datos (no es una respuesta de la IA). `shown`, si viene,
     lo armó el código desde la pestaña real (ai/browser_guard.py) y reemplaza a los argumentos tal cual los pidió el modelo."""
@@ -1232,7 +1310,7 @@ def _nav(action: Callable[[str], str]) -> Callable[[str], Reply]:
         try:
             return Reply(action(args))
         except navegador.NavegadorError as e:
-            return Reply(str(e))
+            return Reply(str(e), failed=True)
 
     return run
 

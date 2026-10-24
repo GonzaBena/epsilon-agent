@@ -122,7 +122,10 @@ def _check_step(step: dict) -> dict:
     elif tool == "esperar":
         if not args.isdigit() or not 1 <= int(args) <= steps_mod.MAX_WAIT:
             raise ValueError(f"«esperar» lleva los segundos a esperar, de 1 a {steps_mod.MAX_WAIT}.")
-    return {"tool": tool, "args": args}
+    kept = {"tool": tool, "args": args}
+    if isinstance(step.get("version"), str) and len(step["version"]) <= 80:
+        kept["version"] = step["version"]  # la versión del conector que la persona vio al confirmar (la anota el núcleo)
+    return kept
 
 
 def _layout(layout: dict) -> dict:
@@ -170,7 +173,7 @@ def build_from(name: str, when_text: str, chain: list[dict], now: datetime, know
         raise ValueError("Los pasos no son válidos.")
     if not name.strip():
         raise ValueError("Ponele un nombre a la rutina.")
-    return _assemble(name, parse_when(when_text.strip(), now), [{"tool": s["tool"], "args": str(s.get("args", ""))} for s in chain],
+    return _assemble(name, parse_when(when_text.strip(), now), [{**s, "tool": s["tool"], "args": str(s.get("args", ""))} for s in chain],
                      now, known, layout)
 
 
