@@ -16,6 +16,7 @@
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/rutinas.js" defer></script>
   <script src="/static/js/rutinas-editor.js" defer></script>
+  <script src="/static/js/rutinas-canvas.js" defer></script>
 </head>
 <body class="settings-page">
 
@@ -168,6 +169,12 @@
                   <span>%</span>
                 </div>
               </fieldset>
+
+              <!-- Pizarra: solo en pantallas anchas (rutinas-canvas.js). Muestra los mismos pasos que la lista de abajo. -->
+              <div class="rt-board" id="rt-board" hidden>
+                <svg class="rt-svg" id="rt-svg" role="group" aria-label="Pizarra de la rutina: el activador y sus pasos, conectados"></svg>
+                <p class="hint">Arrastrá los nodos para acomodarlos; tocá uno para editar su paso. La línea punteada muestra de qué paso sale lo que usa otro.</p>
+              </div>
 
               <h4 class="rt-heading">Pasos</h4>
               <p class="hint">Se hacen en orden. Un paso puede usar lo que devolvió uno anterior (botones «Usar»).</p>

@@ -133,3 +133,29 @@ def test_the_editor_css_exists():
 
     for selector in (".rt-step", ".rt-chip", ".rt-confirm", ".rt-dialog"):
         assert selector in css
+
+
+# --- la pizarra de nodos (pantallas anchas) ------------------------------------------------------------------------
+
+
+def test_the_board_lives_in_the_dialog_and_its_script_loads_after_the_editor():
+    html = page("rutinas.html")
+
+    assert 'id="rt-board"' in html and 'id="rt-svg"' in html
+    assert html.index("/static/js/rutinas-editor.js") < html.index("/static/js/rutinas-canvas.js")
+
+
+def test_the_canvas_script_never_builds_html_or_inline_styles():
+    code = code_of("rutinas-canvas.js")
+
+    assert "textContent" in code and "createElementNS" in code
+    for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", ".style.", 'setAttribute("style"', "fetch("):
+        assert forbidden not in code
+
+
+def test_wide_screens_get_the_board_and_narrow_ones_the_list_over_the_same_data():
+    script, css = page("rutinas-canvas.js"), page("style.css")
+
+    assert 'matchMedia("(min-width: 900px)")' in script and "window.routineEditor" in script and "setLayout" in script
+    for selector in (".rt-wide", ".rt-node", ".rt-edge", ".rt-board"):
+        assert selector in css

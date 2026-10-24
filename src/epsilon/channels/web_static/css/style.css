@@ -4396,3 +4396,76 @@ button.claude-icon-wrap {
   gap: 0.35rem;
   overflow-wrap: anywhere;
 }
+
+/* Pizarra de nodos (pantallas anchas): el mismo contenido que la lista de pasos, dibujado como nodos conectados. */
+.rt-dialog.rt-wide {
+  max-width: 72rem;
+}
+.rt-board {
+  margin: 0 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 0.5rem;
+}
+.rt-board[hidden] {
+  display: none;
+}
+.rt-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+}
+.rt-node {
+  cursor: grab;
+}
+.rt-node:active {
+  cursor: grabbing;
+}
+.rt-node rect {
+  fill: var(--surface-2);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+.rt-node-trigger rect {
+  fill: var(--accent-soft);
+  stroke: var(--accent-line);
+}
+.rt-node.is-selected rect,
+.rt-node:focus-visible rect {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.rt-node:focus {
+  outline: none;
+}
+.rt-node text {
+  fill: var(--text);
+  font-size: 13px;
+  pointer-events: none;
+}
+.rt-node-title,
+.rt-node-detail {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.rt-node-label {
+  font-weight: 600;
+}
+.rt-edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+}
+.rt-edge-data {
+  stroke: var(--accent);
+  stroke-dasharray: 5 4;
+}
+.rt-arrow {
+  fill: var(--muted);
+}
+/* En la pizarra, la lista de abajo se vuelve el panel del paso elegido: solo ese muestra sus campos. */
+.rt-wide .rt-step:not(.is-selected) .rt-step-body {
+  display: none;
+}
