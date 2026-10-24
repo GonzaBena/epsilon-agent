@@ -21,7 +21,7 @@ from epsilon import core, state, tools
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.connectors import bridge, buttons as connector_buttons, manager as connector_manager, store as connector_store
 from epsilon.data import conversations, library, notes
-from epsilon.routines import rules as routine_rules, store as routine_store
+from epsilon.routines import rules as routine_rules, runner as routine_runner, store as routine_store
 from epsilon.settings import checks, config
 from epsilon.utils import clock
 from epsilon.voice import transcribe
@@ -175,8 +175,19 @@ def permissions_view() -> dict:
     }
 
 
+class RoutineStepIn(BaseModel):
+    tool: str = Field(max_length=80)
+    args: str = Field(default="", max_length=3000)
+
+
 class RoutineIn(BaseModel):
-    text: str = Field(max_length=300)  # «cuándo | qué», la misma sintaxis que /rutina
+    """O bien `text` («cuándo | paso > paso», la misma sintaxis que /rutina), o bien la forma estructurada del editor."""
+    text: str = Field(default="", max_length=600)
+    name: str = Field(default="", max_length=200)
+    when: str = Field(default="", max_length=100)
+    steps: list[RoutineStepIn] = Field(default_factory=list, max_length=50)
+    layout: dict = Field(default_factory=dict)
+    confirmed: bool = False  # la persona vio la lista exacta de pasos (la exige el servidor, no solo la página)
 
 
 class RoutineEnabledIn(BaseModel):
@@ -619,14 +630,66 @@ def create_app() -> FastAPI:
     def get_routines():
         return routines_view()
 
+    @app.get("/api/routines/steps")
+    def get_routine_steps():
+        """Los pasos que se pueden elegir ahora (herramientas permitidas, de conectores prendidos, y los propios de las rutinas)."""
+        return {"steps": core.routine_catalog()}
+
+    def build_routine(body: RoutineIn) -> dict:
+        """La regla que describe el cuerpo, o ValueError con el motivo. Los pasos de conectores quedan con su versión."""
+        known = {item["id"] for item in core.routine_catalog()}
+        if body.text.strip():
+            rule = routine_rules.build(body.text.strip(), routines_now(), known)
+        else:
+            rule = routine_rules.build_from(body.name, body.when, [step.model_dump() for step in body.steps], routines_now(), known, body.layout)
+        rule["steps"] = core.stamp_steps(rule["steps"])
+        return rule
+
+    def same_plan(a: dict, b: dict) -> bool:
+        """¿Hacen lo mismo? Cuándo y pasos (herramienta y argumentos); el nombre y la pizarra no cuentan."""
+        key = lambda rule: (rule["when"], [(s["tool"], s["args"]) for s in rule["steps"]])  # noqa: E731
+        return key(a) == key(b)
+
     @app.post("/api/routines")
     def create_routine(body: RoutineIn):
-        """Crea una rutina con la misma sintaxis y validación que /rutina; si no se entiende, 422 con el motivo."""
+        """Crea una rutina. Con `text` usa la sintaxis de /rutina; con pasos exige `confirmed`. Si no se entiende, 422 con el motivo."""
         try:
-            routine_store.add(routine_rules.build(body.text.strip(), routines_now()))
+            rule = build_routine(body)
+            if not body.text.strip() and not body.confirmed:
+                raise ValueError("Falta confirmar los pasos antes de guardar la rutina.")
+            routine_store.add(rule)
         except (ValueError, routine_store.StoreError) as e:
             raise HTTPException(422, str(e)) from None
         return routines_view()
+
+    @app.put("/api/routines/{rule_id}/edit")
+    def edit_routine(rule_id: int, body: RoutineIn):
+        """Cambia nombre, cuándo, pasos y pizarra. Cambiar el cuándo o los pasos exige confirmar de nuevo."""
+        current = next((r for r in routine_store.rules() if r["id"] == rule_id), None)
+        if current is None:
+            raise HTTPException(404, "No existe esa rutina")
+        try:
+            rule = build_routine(body)
+            if same_plan(rule, current):
+                rule["steps"] = current["steps"]  # lo mismo que ya estaba confirmado: conserva sus versiones
+            elif not body.confirmed:
+                raise ValueError("Falta confirmar los pasos antes de guardar los cambios.")
+            routine_store.replace(rule_id, rule)
+        except (ValueError, routine_store.StoreError) as e:
+            raise HTTPException(422, str(e)) from None
+        return routines_view()
+
+    @app.post("/api/routines/test")
+    def test_routine(body: RoutineIn):
+        """Ejecuta de verdad, una vez, lo que está en pantalla (sin guardarlo) y devuelve el resultado de cada paso."""
+        try:
+            rule = build_routine(body)
+            if not body.confirmed:
+                raise ValueError("Falta confirmar los pasos antes de probar la rutina.")
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        results = routine_runner.run_chain(rule)
+        return {"results": [{"ok": r.ok, "text": r.text} for r in results]}
 
     @app.put("/api/routines/{rule_id}")
     def pause_or_resume_routine(rule_id: int, body: RoutineEnabledIn):

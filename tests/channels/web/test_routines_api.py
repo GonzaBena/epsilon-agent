@@ -133,3 +133,112 @@ def test_the_view_is_what_the_commands_see(client):
 
     assert shown["when"] == "De lunes a viernes a las 09:00"
     assert rules.next_text(store.rules()[0]) == shown["next_text"]
+
+
+# --- rutinas con pasos: catálogo, crear, editar y probar ---------------------------------------------------------
+
+from epsilon.routines import runner
+
+
+def definition(**extra):
+    base = {
+        "name": "Despertador", "when": "lun-vie 08:00", "confirmed": True,
+        "steps": [{"tool": "volumen", "args": "15"}, {"tool": "esperar", "args": "2"}, {"tool": "avisar", "args": "Arriba {{paso 1}}"}],
+    }
+    return {**base, **extra}
+
+
+def test_the_catalog_lists_the_steps_that_can_be_chosen(client):
+    steps = client.get("/api/routines/steps").json()["steps"]
+
+    assert {"volumen", "musica", "nav_abrir", "avisar", "esperar"} <= {s["id"] for s in steps}
+    assert all({"id", "label", "hint", "destructive", "schema"} <= set(s) for s in steps)
+
+
+def test_creating_with_steps_needs_the_confirmation(client):
+    reply = client.post("/api/routines", json=definition(confirmed=False))
+
+    assert reply.status_code == 422 and "confirmar" in reply.json()["detail"]
+    assert store.rules() == []
+
+
+def test_creating_with_steps_saves_name_steps_and_layout(client):
+    reply = client.post("/api/routines", json=definition(layout={"0": {"x": 10, "y": 20}, "1": {"x": 200, "y": 20}}))
+
+    assert reply.status_code == 200
+    shown = reply.json()["rules"][0]
+    assert shown["name"] == "Despertador" and [s["tool"] for s in shown["steps"]] == ["volumen", "esperar", "avisar"]
+    assert shown["layout"]["1"] == {"x": 200, "y": 20}
+
+
+@pytest.mark.parametrize("change", [
+    {"steps": [{"tool": "inventada", "args": ""}]},
+    {"steps": [{"tool": "avisar", "args": "{{paso 2}}"}, {"tool": "volumen", "args": "10"}]},
+    {"steps": [{"tool": "esperar", "args": "1"}] * 11},
+    {"steps": []},
+    {"layout": {"1": {"x": 9999, "y": 0}}},
+    {"when": "mañana"},
+    {"name": "  "},
+])
+def test_bad_definitions_are_refused_with_the_reason(client, change):
+    reply = client.post("/api/routines", json=definition(**change))
+
+    assert reply.status_code == 422 and store.rules() == []
+
+
+def test_the_old_text_way_still_works_without_confirmation(client):
+    assert create(client, "08:00 | volumen 15 > esperar 2").status_code == 200
+    assert len(store.rules()[0]["steps"]) == 2
+
+
+def test_renaming_or_moving_nodes_does_not_need_confirmation(client):
+    client.post("/api/routines", json=definition())
+
+    reply = client.put("/api/routines/1/edit", json=definition(name="Otra", confirmed=False, layout={"0": {"x": 5, "y": 5}}))
+
+    assert reply.status_code == 200 and reply.json()["rules"][0]["name"] == "Otra"
+
+
+@pytest.mark.parametrize("change", [
+    {"steps": [{"tool": "volumen", "args": "99"}]},
+    {"when": "09:00"},
+])
+def test_changing_steps_or_trigger_needs_the_confirmation_again(client, change):
+    client.post("/api/routines", json=definition())
+
+    assert client.put("/api/routines/1/edit", json=definition(confirmed=False, **change)).status_code == 422
+    assert client.put("/api/routines/1/edit", json=definition(confirmed=True, **change)).status_code == 200
+
+
+def test_editing_keeps_a_paused_routine_paused_and_404s_on_unknown(client):
+    client.post("/api/routines", json=definition())
+    client.put("/api/routines/1", json={"enabled": False})
+
+    reply = client.put("/api/routines/1/edit", json=definition(name="Otra"))
+
+    assert reply.json()["rules"][0]["active"] is False
+    assert client.put("/api/routines/9/edit", json=definition()).status_code == 404
+
+
+def test_testing_needs_the_confirmation_and_runs_every_step(client):
+    runner.set_executor(lambda tool, args: runner.StepResult(True, f"ok {tool} {args}"))
+    try:
+        assert client.post("/api/routines/test", json=definition(confirmed=False)).status_code == 422
+
+        reply = client.post("/api/routines/test", json=definition(steps=[{"tool": "volumen", "args": "15"}, {"tool": "musica", "args": "play"}]))
+    finally:
+        runner.set_executor(None)
+
+    assert reply.status_code == 200
+    assert reply.json()["results"] == [{"ok": True, "text": "ok volumen 15"}, {"ok": True, "text": "ok musica play"}]
+    assert store.rules() == []  # probar no guarda nada
+
+
+def test_testing_stops_at_the_first_failure(client):
+    runner.set_executor(lambda tool, args: runner.StepResult(tool != "volumen", "no pude"))
+    try:
+        reply = client.post("/api/routines/test", json=definition(steps=[{"tool": "volumen", "args": "15"}, {"tool": "musica", "args": "play"}]))
+    finally:
+        runner.set_executor(None)
+
+    assert reply.json()["results"] == [{"ok": False, "text": "no pude"}]
