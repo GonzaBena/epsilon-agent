@@ -82,3 +82,11 @@ y el bloqueo en `conftest.py` de `notify` para que ningún test avise de verdad.
 ## Fuera de alcance (por ahora)
 Que una rutina llame al modelo (gasto sin supervisión), ejecutar comandos de notas o de archivos, rutinas
 encadenadas, y «ventana activa» como disparador. Si más adelante hace falta, es otra decisión aparte.
+
+## Actualización: rutinas con pasos (2026-10-24)
+
+Una rutina pasó de «cuándo | una acción» a **activador + cadena de pasos**, con un editor de dos vistas (pizarra de nodos y lista).
+El diseño está en `docs/superpowers/specs/2026-10-24-rutinas-nodos-design.md` y el plan en
+`docs/superpowers/plans/2026-10-24-rutinas-nodos.md`. Pendiente a propósito: ramas y condiciones («solo si…»), pasos con IA
+(p. ej. un reporte de mails con un conector de Gmail, con tope de gasto por ejecución) y más activadores.
+
