@@ -318,6 +318,8 @@
     }
     const name = document.getElementById("model-name");
     if (name) name.textContent = id;
+    const composerName = document.getElementById("composer-model-name");
+    if (composerName) composerName.textContent = id;
     dialog.close();
   }
 

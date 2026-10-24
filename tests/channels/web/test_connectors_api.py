@@ -187,3 +187,15 @@ def test_stop_failure_on_toggle_off_is_not_a_500(client, monkeypatch):
 def test_button_label_max_is_40(client):
     reply = client.post("/api/buttons", json={"label": "x" * 41, "connector": "luces", "tool": "t", "args": {}})
     assert reply.status_code == 422
+
+
+def test_connector_commands_list_only_enabled_connectors(client, monkeypatch):
+    schema = {"type": "object", "properties": {"sala": {"type": "string"}, "nivel": {"type": "integer"}}, "required": ["sala"]}
+    install(monkeypatch, {"luces": FakeLink(tools=[tool("Encender", "prende una luz", schema)])})
+    add(client)
+
+    items = client.get("/api/connector-commands").json()["items"]
+    assert items == [{"connector": "luces", "action": "encender", "args": "sala=", "desc": "prende una luz"}]
+
+    client.put("/api/connectors/luces", json={"enabled": False})
+    assert client.get("/api/connector-commands").json()["items"] == []

@@ -2,6 +2,7 @@
 
 /* --- Colores y medidas en un solo lugar ------------------------------------ */
 :root {
+  interpolate-size: allow-keywords;
   --bg: #0e0f10; /* fondo de la página */
   --side: #141516; /* paneles laterales */
   --surface: #151718; /* compositor, chips */
@@ -1211,15 +1212,22 @@ body.booting .log {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  position: relative;
+}
+.row.composer-box {
+  border-radius: 18px;
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 .row:focus-within {
   border-color: var(--accent);
 }
+.row.composer-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
 
 /* Sugerencias de comandos: flotan arriba del cuadro, sin mover el resto. */
-.row {
-  position: relative;
-}
 .suggest {
   position: absolute;
   bottom: calc(100% + 0.4rem);
@@ -1295,30 +1303,81 @@ textarea::placeholder {
 }
 
 /* Micrófono: mientras graba se pone rojo y late; transcribiendo, queda quieto y apagado. */
-.icon-btn.recording {
+.icon-btn.recording,
+.composer-icon-btn.recording {
   color: var(--danger);
   background: var(--surface-2);
   animation: rec 1.4s ease-in-out infinite;
 }
-.icon-btn:disabled {
+.icon-btn:disabled,
+.composer-icon-btn:disabled {
   opacity: 0.45;
-  cursor: default;
+  cursor: not-allowed;
+  pointer-events: auto;
 }
 @keyframes rec {
   50% {
     opacity: 0.55;
   }
 }
+
+/* Micrófono: contenedor relativo para el tooltip flotante */
+.mic-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Tooltip emergente sobre el botón del micrófono */
 .mic-status {
-  margin: 0.4rem 0 0;
-  font-size: 0.85rem;
-  color: var(--muted);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--surface-2, #1d2022);
+  border: 1px solid var(--line, #2c3032);
+  border-radius: 8px;
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 70;
+  animation: tooltip-fade 0.16s ease;
+}
+.mic-status::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--line, #2c3032);
 }
 .mic-status.error {
-  color: var(--danger);
+  background: #231517;
+  border-color: rgba(224, 82, 82, 0.5);
+  color: #fca5a5;
+}
+.mic-status.error::after {
+  border-top-color: rgba(224, 82, 82, 0.5);
+}
+@keyframes tooltip-fade {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .icon-btn.recording {
+  .icon-btn.recording,
+  .composer-icon-btn.recording {
     animation: none;
   }
 }
@@ -1339,22 +1398,26 @@ textarea::placeholder {
   cursor: default;
 }
 
-/* Enviar en el chat: cuadrado con ícono, como en el mockup. */
+/* Enviar en el chat: cuadrado con ícono, integrado a la derecha */
 .send-btn {
   flex: none;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   background: var(--accent);
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--on-accent);
   cursor: pointer;
+  transition: transform 0.1s ease, filter 0.12s ease;
 }
 .send-btn:hover:not(:disabled) {
   filter: brightness(1.08);
+}
+.send-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 .send-btn:disabled {
   opacity: 0.45;
@@ -1369,6 +1432,215 @@ textarea::placeholder {
 }
 .send-btn.stop .icon-stop {
   display: block;
+}
+
+/* --- Barra de herramientas inferior moderna (estilo LLM) --------------------- */
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  padding-inline: 0.2rem;
+}
+.composer-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+.composer-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+}
+
+/* Botones de íconos compactos (+, mic, voz) */
+.composer-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+.composer-icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* Chips de texto clicables a la derecha (Modelo, Esfuerzo, Modo Tools) */
+.composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+.composer-chip:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.composer-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Anclaje y menús desplegables */
+.popover-anchor-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.composer-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  margin: 0;
+  padding: 0.35rem;
+  min-width: 240px;
+  max-width: 320px;
+  background: var(--surface-2, #1d2022);
+  border: 1px solid var(--line, #2c3032);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: popover-appear 0.14s ease;
+}
+.composer-popover[hidden] {
+  display: none !important;
+}
+@keyframes popover-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.popover-title {
+  padding: 0.35rem 0.5rem 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 3px;
+}
+.popover-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.popover-item:hover,
+.popover-item:focus-visible {
+  background: var(--surface);
+  outline: 0;
+}
+.popover-item[aria-selected="true"] {
+  background: var(--accent-soft, rgba(82, 168, 126, 0.16));
+}
+.popover-item strong {
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+.popover-item span {
+  font-size: 0.73rem;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.25;
+}
+
+/* Popover del botón + (adjuntar) */
+.attach-popover {
+  left: 0;
+  right: auto;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  white-space: nowrap;
+}
+.popover-action-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease;
+}
+.popover-action-item:hover,
+.popover-action-item:focus-visible {
+  background: var(--surface);
+  outline: 0;
+}
+.popover-action-item .action-item-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.popover-action-item .action-item-left svg {
+  color: var(--muted);
+  flex: none;
+  margin: 0;
+}
+.popover-action-item:hover .action-item-left svg {
+  color: var(--text);
+}
+.shortcut-tag {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: inherit;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+@media (max-width: 48rem) {
+  .composer-toolbar {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
 }
 
 /* Archivo adjunto, antes de enviar: miniatura cuadrada con el botón de quitar
@@ -1546,7 +1818,6 @@ a.ghost {
 .help {
   margin: 0 0 1rem;
   color: var(--muted);
-  max-width: 60ch;
 }
 
 /* --- Configuración por secciones --------------------------------------------
@@ -2982,44 +3253,774 @@ a.ghost {
   gap: 0.6rem;
 }
 
-/* Página Conectores (comparte el diseño de Rutinas): lista y botones a la izquierda, formularios a la derecha. */
+/* Página Conectores: diseño inspirado en Claude con lista tabular, tabs y modal de agregar */
 .connectors-page {
   max-width: 72rem;
+  width: 100%;
 }
-.conn-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
-}
-@media (min-width: 60rem) {
-  .conn-layout {
-    grid-template-columns: minmax(0, 1fr) 22rem;
-    gap: 2rem;
-  }
-  .conn-side {
-    position: sticky;
-    top: 1rem;
-  }
-}
-.conn-side {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-.conn-card {
-  margin: 0;
-  padding: 1rem 1.1rem 1.1rem;
+
+/* Ventana principal estilo Claude */
+.claude-window {
   background: var(--side);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem 2rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
 }
-.conn-card h3 {
-  margin: 0 0 0.9rem;
-  font-size: 1.05rem;
+
+.claude-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.claude-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+  flex-wrap: wrap;
+}
+
+.claude-title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+/* Control segmentado estilo Claude (Tuyos / Botones) */
+.claude-segmented {
+  display: inline-flex;
+  align-items: center;
+  background: #000000;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.claude-seg-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.claude-seg-btn:hover {
+  color: var(--text);
+}
+.claude-seg-btn:active {
+  transform: scale(0.96);
+}
+.claude-seg-btn.is-active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Transición al cambiar de pestaña */
+@keyframes tabFadeSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.claude-panel:not([hidden]) {
+  animation: tabFadeSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.claude-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Buscador estilo Claude */
+.claude-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.claude-search svg {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+.claude-search input {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem 0.45rem 2.2rem;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  width: 14rem;
+  transition: border-color 0.15s ease;
+}
+.claude-search input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Botón + Agregar blanco de alto contraste estilo Claude */
+.claude-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #ffffff;
+  color: #0e0f10;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s ease, opacity 0.15s ease;
+}
+.claude-add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(255, 255, 255, 0.18);
+  opacity: 0.96;
+}
+.claude-add-btn:active {
+  transform: scale(0.96);
+}
+.claude-add-btn .plus-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.claude-add-btn:hover .plus-icon {
+  transform: rotate(90deg);
+}
+
+/* Cabecera de la tabla estilo Claude */
+.claude-table-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) 100px 140px 130px;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+.claude-table-header-btns {
+  grid-template-columns: minmax(0, 1.5fr) 1.5fr 140px;
+}
+
+/* Lista de filas */
+.claude-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.claude-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  border-radius: 8px;
+  transition: background 0.18s ease;
+}
+.claude-row:last-child {
+  border-bottom: none;
+}
+.claude-row.is-expanded {
+  background: color-mix(in srgb, var(--surface) 28%, transparent);
+}
+.claude-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) 100px 140px 130px;
+  gap: 1rem;
+  padding: 0.85rem 0.75rem;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 8px;
+  user-select: none;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+.claude-row-main:hover {
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+.claude-row-main:active {
+  transform: scale(0.995);
+}
+.claude-row-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.claude-col {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.col-conn {
+  gap: 0.85rem;
+}
+
+/* Ícono de aplicación con suave realce al hover */
+.claude-icon-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+button.claude-icon-wrap {
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.claude-row.is-paused .claude-icon-wrap {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.claude-row-main:hover .claude-icon-wrap {
+  transform: scale(1.08);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.claude-name-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.claude-conn-name {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.claude-conn-cmd {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.claude-type-tag,
+.claude-tools-tag {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* Puntos de pulso animado */
+@keyframes dotPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.75;
+  }
+}
+.claude-changed-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 0.4rem;
+  box-shadow: 0 0 6px var(--accent);
+  flex-shrink: 0;
+  animation: dotPulse 2.4s ease-in-out infinite;
+}
+
+.col-status {
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+/* Tilde verde con animación pop */
+@keyframes checkmarkPop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  65% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.claude-status-connected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.claude-status-connected svg {
+  animation: checkmarkPop 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Botón [Conectar] para conectores apagados estilo Claude */
+.claude-connect-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+.claude-connect-btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.claude-connect-btn:active {
+  transform: scale(0.96);
+}
+
+.claude-reconnect-btn {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--danger);
+  cursor: pointer;
+  transition: transform 0.16s ease;
+}
+.claude-reconnect-btn:hover {
+  transform: translateY(-1px);
+}
+.claude-reconnect-btn:active {
+  transform: scale(0.96);
+}
+
+.claude-status-dormant {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #f59e0b;
+  font-size: 0.85rem;
+}
+.claude-dot-amber {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 5px #f59e0b;
+  flex-shrink: 0;
+  animation: dotPulse 2.4s ease-in-out infinite;
+}
+
+.claude-chevron {
+  font-size: 1.25rem;
+  color: var(--muted);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease;
+  line-height: 1;
+  user-select: none;
+}
+.claude-row.is-expanded .claude-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+/* Panel expandible con animación de entrada deslizante */
+@keyframes panelSlideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.claude-details-panel {
+  padding: 0.85rem 0.75rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  border-top: 1px dashed var(--line);
+  margin-top: 0.25rem;
+  animation: panelSlideDown 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.claude-details-panel[hidden] {
+  display: none;
+}
+
+/* Comando en terminal interactiva */
+.conn-cmd-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+.conn-cmd-prompt {
+  color: var(--accent);
+  font-weight: bold;
+  user-select: none;
+}
+.conn-cmd-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.conn-copy-btn {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+/* Alerta de error de conexión */
+.conn-alert-fail {
+  padding: 0.65rem 0.85rem;
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--danger);
+}
+
+/* Sección de herramientas */
+.conn-tools-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.conn-tools-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.conn-tools-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.conn-tools-count {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-family: var(--mono);
+  color: var(--accent);
+}
+.conn-tools-grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.conn-tool-card {
+  padding: 0.5rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.conn-tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.conn-tool-name {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.conn-badge-changed {
+  padding: 0.1rem 0.45rem;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 4px;
+  font-size: 0.74rem;
+  color: var(--accent);
+  font-weight: 500;
+}
+.conn-tool-desc {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.conn-tools-empty {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* Disclosure de variables de entorno (<details>) */
+.conn-env-details {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.conn-env-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 0.88rem;
+}
+.conn-env-summary::-webkit-details-marker {
+  display: none;
+}
+.conn-env-summary-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.conn-env-label {
+  font-weight: 600;
+}
+.conn-env-pill {
+  padding: 0.1rem 0.45rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.conn-chevron {
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+.conn-env-details[open] .conn-chevron {
+  transform: rotate(90deg);
+}
+.conn-env-body {
+  padding: 0 0.8rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.conn-env-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.4rem;
+}
+.conn-env-tag {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.conn-env-tag code {
+  color: var(--text);
+  font-weight: 600;
+}
+.conn-env-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+.conn-env-edit label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.conn-env-edit .hint {
+  margin: 0;
+}
+
+/* Pie de tarjeta con interruptores y botón quitar */
+.conn-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+.conn-switches {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.conn-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.conn-switch-label {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.conn-btn-delete {
+  font-size: 0.85rem;
+  transition: all 0.15s ease;
+}
+.conn-btn-delete:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Estados vacíos */
+.claude-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3.5rem 1.5rem;
+}
+.claude-empty-icon {
+  margin-bottom: 0.85rem;
+  color: var(--muted);
+  opacity: 0.6;
+}
+.claude-empty-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.claude-empty-desc {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--muted);
+  max-width: 25rem;
+}
+
+/* Ventanas modales estilo Claude */
+@keyframes modalScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes backdropFadeIn {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+.claude-dialog {
+  padding: 0;
+  background: transparent;
+  border: none;
+  max-width: 33rem;
+  width: 92%;
+}
+.claude-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+}
+.claude-dialog[open]::backdrop {
+  animation: backdropFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.claude-dialog[open] .claude-modal-box {
+  animation: modalScaleIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.claude-modal-box {
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.5rem;
+  color: var(--text);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.claude-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.85rem;
+}
+.claude-modal-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+}
+.claude-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.claude-modal-close:hover {
+  color: var(--text);
+  transform: scale(1.1);
+}
+.claude-modal-close:active {
+  transform: scale(0.95);
+}
+
+.conn-card {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 .conn-card label {
   font-size: 0.92rem;
+  display: block;
+  margin-bottom: 0.35rem;
 }
 .conn-fields {
   display: flex;
@@ -3042,7 +4043,6 @@ a.ghost {
 .connectors-page select {
   font: inherit;
 }
-/* El textarea global no tiene borde ni fondo (es el del chat): acá se dibuja como un campo más. */
 .connectors-page textarea {
   display: block;
   width: 100%;
@@ -3053,7 +4053,7 @@ a.ghost {
   border-radius: 8px;
   color: var(--text);
   font-family: var(--mono);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   resize: vertical;
 }
 .connectors-page textarea:focus-visible {
@@ -3063,68 +4063,125 @@ a.ghost {
 .conn-card .hint {
   margin: 0.5rem 0 0;
 }
-.connectors-page .routine-new-row {
-  margin-top: 1rem;
+
+.conn-presets {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.conn-presets-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.conn-preset-chip {
+  padding: 0.2rem 0.55rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.conn-preset-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+.conn-preset-chip:active {
+  transform: scale(0.96);
+}
+
+.conn-confirm-box {
+  margin: 0.9rem 0;
+  padding: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.conn-confirm-box .routine-banner {
+  margin: 0 0 0.75rem;
+}
+.conn-argv-head {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
 }
 .connectors-page #conn-argv {
-  margin: 0.75rem 0;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.conn-main .result {
-  margin: 0 0 0.75rem;
-}
-.conn-tools {
-  margin: 0.5rem 0 0;
-  padding-left: 1.1rem;
-}
-.conn-env-edit {
-  margin-top: 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  align-items: flex-start;
-}
-.conn-env-edit label {
-  font-size: 0.92rem;
-  font-weight: 600;
-}
-.conn-env-edit .hint {
-  margin: 0;
-}
-.conn-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.connectors-page .routine-actions {
-  flex-wrap: wrap;
-  gap: 0.75rem 1.25rem;
-}
-.buttons-title {
-  margin: 2rem 0 0.4rem;
-  font-size: 1.15rem;
-}
-.button-grid {
+
+/* Tarjetas de Botones con suave elevación */
+.claude-button-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin: 0.75rem 0;
+  gap: 0.85rem;
+  margin-top: 0.75rem;
 }
-.button-card {
+.conn-btn-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem;
-  background: var(--side);
+  gap: 0.8rem;
+  padding: 1rem 1.15rem;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease, box-shadow 0.2s ease;
+}
+.conn-btn-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 }
 .button-head {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.35rem;
   min-width: 0;
+}
+.button-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.button-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.button-tool-tag {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+}
+.button-args-tag {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .button-actions {
@@ -3132,19 +4189,82 @@ a.ghost {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+.button-run-btn {
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+.button-run-btn:hover {
+  transform: translateY(-1px);
+}
+.button-run-btn:active {
+  transform: scale(0.96);
+}
+.button-result-container {
+  padding: 0.65rem 0.8rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.button-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+.button-result-title {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.button-copy-result {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.74rem;
+  transition: all 0.14s ease;
+}
+.button-copy-result:active {
+  transform: scale(0.94);
+}
 .button-card .button-result {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 0.9em;
+  font-family: var(--mono);
+  font-size: 0.88rem;
   max-height: 10rem;
-  overflow: auto;
+  overflow-y: auto;
+  color: var(--text);
 }
 .button-card .button-result:empty {
   display: none;
 }
-@media (max-width: 34rem) {
-  .button-grid {
+
+@media (max-width: 48rem) {
+  .claude-table-header {
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+  .claude-table-header .col-type,
+  .claude-table-header .col-tools {
+    display: none;
+  }
+  .claude-row-main {
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+  .claude-row-main .col-type,
+  .claude-row-main .col-tools {
+    display: none;
+  }
+  .claude-button-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

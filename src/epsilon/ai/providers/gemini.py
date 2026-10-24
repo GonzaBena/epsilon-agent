@@ -47,6 +47,22 @@ def _declaration(tool: ToolSpec) -> types.FunctionDeclaration:
     return types.FunctionDeclaration(name=tool.name, description=tool.description, parameters_json_schema=tool.parameters())
 
 
+def _thinking_config() -> types.ThinkingConfig | None:
+    effort = (os.environ.get("AI_THINKING_EFFORT") or "medio").strip().lower()
+    if effort in ("desactivado", "off", "none", "0"):
+        return types.ThinkingConfig(thinking_budget=0)
+    if hasattr(types, "ThinkingLevel"):
+        levels = {
+            "bajo": types.ThinkingLevel.LOW,
+            "medio": types.ThinkingLevel.MEDIUM,
+            "alto": types.ThinkingLevel.HIGH,
+        }
+        if effort in levels:
+            return types.ThinkingConfig(thinking_level=levels[effort])
+    budgets = {"bajo": 1024, "medio": 4096, "alto": 8192}
+    return types.ThinkingConfig(thinking_budget=budgets.get(effort, 4096))
+
+
 class GeminiProvider(Provider):
     name = "gemini"
 
@@ -60,6 +76,7 @@ class GeminiProvider(Provider):
                 temperature=0,
                 max_output_tokens=max_tokens,  # tope de salida, para controlar el costo
                 response_mime_type="application/json" if json_mode else None,
+                thinking_config=_thinking_config(),
             ),
         )
         return GenerateResult(response.text, *_tokens(response))
@@ -77,6 +94,7 @@ class GeminiProvider(Provider):
                 tool_config=None
                 if allow_calls
                 else types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE")),
+                thinking_config=_thinking_config(),
             ),
         )
         calls = [parse_call(call.name, call.args) for call in response.function_calls or []]

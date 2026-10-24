@@ -1,4 +1,4 @@
-// Página Conectores: programas externos (MCP) que le dan herramientas a la IA.
+// Página Conectores: programas externos (MCP) inspirada en el diseño de Claude.
 // Lee GET /api/connectors; agrega con POST (antes, POST /preview muestra cómo se entiende el comando),
 // prende/apaga con PUT /api/connectors/{nombre} y quita con DELETE. El servidor contesta con la lista entera.
 //
@@ -18,13 +18,27 @@ const argvBox = document.getElementById("conn-argv");
 const addButton = document.getElementById("conn-add");
 const errorBox = document.getElementById("conn-error");
 const statusBox = document.getElementById("conn-status");
+const filterInput = document.getElementById("conn-filter");
 
+const connDialog = document.getElementById("conn-dialog");
+const btnDialog = document.getElementById("btn-dialog");
+const openAddBtn = document.getElementById("open-add-btn");
+const connDialogClose = document.getElementById("conn-dialog-close");
+const btnDialogClose = document.getElementById("btn-dialog-close");
+
+const segConnectors = document.getElementById("seg-connectors");
+const segButtons = document.getElementById("seg-buttons");
+const panelConnectors = document.getElementById("panel-connectors");
+const panelButtons = document.getElementById("panel-buttons");
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 const REFRESH_MS = 30000;
-const STATUS_LABELS = { activo: "Activo", dormido: "Dormido (arranca al usarlo)", detenido: "Detenido", apagado: "Apagado" };
+const STATUS_LABELS = { activo: "Activo", dormido: "Dormido", detenido: "Detenido", apagado: "Apagado" };
 
 let busy = false;
 let lastJson = "";
 let previewed = ""; // el comando que se mostró: si lo cambian, hay que volver a verlo
+let expandedConnectors = new Set(); // nombres de conectores desplegados para mantener estado entre refrescos
 
 function make(tag, className, text) {
   const node = document.createElement(tag);
@@ -37,48 +51,307 @@ const plain = (message) => String(message || "").replaceAll("`", "");
 const showError = (message) => { errorBox.textContent = plain(message); };
 const showStatus = (message) => { statusBox.textContent = message || ""; };
 
-function renderRow(connector) {
-  const item = make("li", `routine-row${connector.enabled ? "" : " is-paused"}`);
-  const info = make("div", "routine-info");
-  const title = make("div", "routine-title");
-  title.append(make("strong", "routine-when", connector.name));
-  title.append(make("span", "perm-kind", STATUS_LABELS[connector.status] || connector.status));
-  info.append(title, make("p", "routine-what", connector.command));
-  if (connector.error) info.append(make("p", "routine-next", `Motivo: ${connector.error}`));
+// Pestañas estilo Claude (Tuyos / Botones)
+function setTab(tab) {
+  const isConnectors = tab === "connectors";
+  segConnectors.classList.toggle("is-active", isConnectors);
+  segConnectors.setAttribute("aria-selected", String(isConnectors));
+  panelConnectors.hidden = !isConnectors;
 
-  const envNames = Object.keys(connector.env);
-  if (envNames.length) {
-    const lines = envNames.map((key) => {
-      const state = connector.env[key];
-      return `${key}: ${state.set ? `cargada, ${state.length} caracteres` : "vacía"}`;
-    });
-    info.append(make("p", "routine-next", `Variables: ${lines.join(" · ")}`));
-  }
-  if (connector.tools.length) {
-    const tools = make("ul", "conn-tools");
-    for (const tool of connector.tools) {
-      const row = make("li", "", `${tool.action}${tool.description ? ` — ${tool.description}` : ""}`);
-      if (tool.changed) row.append(make("span", "perm-kind", "nueva o cambió (revisala en Permisos)"));
-      tools.append(row);
-    }
-    info.append(tools);
+  segButtons.classList.toggle("is-active", !isConnectors);
+  segButtons.setAttribute("aria-selected", String(!isConnectors));
+  panelButtons.hidden = isConnectors;
+  applyFilter();
+}
+
+segConnectors.addEventListener("click", () => setTab("connectors"));
+segButtons.addEventListener("click", () => setTab("buttons"));
+
+// Modales de agregar (+ Agregar)
+openAddBtn.addEventListener("click", () => {
+  if (segButtons.classList.contains("is-active")) {
+    btnDialog.showModal();
   } else {
-    info.append(make("p", "routine-next", "Sin herramientas todavía."));
+    connDialog.showModal();
+  }
+});
+connDialogClose.addEventListener("click", () => connDialog.close());
+btnDialogClose.addEventListener("click", () => btnDialog.close());
+
+connDialog.addEventListener("click", (event) => {
+  if (event.target === connDialog) connDialog.close();
+});
+btnDialog.addEventListener("click", (event) => {
+  if (event.target === btnDialog) btnDialog.close();
+});
+
+// Plantillas rápidas
+document.querySelectorAll(".conn-preset-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    nameInput.value = chip.dataset.name || "";
+    commandInput.value = chip.dataset.cmd || "";
+    hideConfirm();
+    commandInput.focus();
+    commandInput.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+});
+
+// Búsqueda y filtrado
+function applyFilter() {
+  if (!filterInput) return;
+  const q = filterInput.value.trim().toLowerCase();
+  for (const row of list.children) {
+    const text = (row.textContent || "").toLowerCase();
+    row.hidden = q ? !text.includes(q) : false;
+  }
+  for (const card of grid.children) {
+    const text = (card.textContent || "").toLowerCase();
+    card.hidden = q ? !text.includes(q) : false;
+  }
+}
+
+if (filterInput) {
+  filterInput.addEventListener("input", applyFilter);
+}
+
+// Íconos SVG al estilo de las aplicaciones en Claude
+function makeConnectorIcon(connector) {
+  const name = connector.name;
+  // El ícono también prende y apaga el conector (igual que el interruptor del detalle)
+  const wrap = make("button", "claude-icon-wrap");
+  wrap.type = "button";
+  wrap.setAttribute("aria-pressed", String(connector.enabled));
+  wrap.setAttribute("aria-label", `${connector.enabled ? "Apagar" : "Prender"} ${name}`);
+  wrap.title = connector.enabled ? "Apagar este conector" : "Prender este conector";
+  wrap.addEventListener("click", (e) => {
+    e.stopPropagation();
+    change("PUT", name, { enabled: !connector.enabled }, connector.enabled ? "Conector apagado." : "Conector prendido.");
+  });
+  wrap.addEventListener("keydown", (e) => e.stopPropagation());
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+
+  const path = document.createElementNS(SVG_NS, "path");
+  const n = (name || "").toLowerCase();
+  if (n.includes("luz") || n.includes("luces") || n.includes("lamp")) {
+    path.setAttribute("d", "M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41M12 6a6 6 0 0 0-6 6c0 2.22 1.21 4.16 3 5.2V19a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1.8c1.79-1.04 3-2.98 3-5.2a6 6 0 0 0-6-6z");
+  } else if (n.includes("sql") || n.includes("db") || n.includes("base") || n.includes("datos")) {
+    path.setAttribute("d", "M4 6c0 1.66 3.58 3 8 3s8-1.34 8-3-3.58-3-8-3-8 1.34-8 3zm0 6c0 1.66 3.58 3 8 3s8-1.34 8-3M4 18c0 1.66 3.58 3 8 3s8-1.34 8-3");
+    const sides = document.createElementNS(SVG_NS, "path");
+    sides.setAttribute("d", "M4 6v12M20 6v12");
+    svg.append(sides);
+  } else if (n.includes("fetch") || n.includes("web") || n.includes("net") || n.includes("http")) {
+    path.setAttribute("d", "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 0c-3 3-5 7-5 10s2 7 5 10m0-20c3 3 5 7 5 10s-2 7-5 10M2 12h20");
+  } else if (n.includes("git") || n.includes("code")) {
+    path.setAttribute("d", "m16 18 6-6-6-6M8 6l-6 6 6 6");
+  } else {
+    // Conector MCP por defecto
+    path.setAttribute("d", "M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v3");
+  }
+  svg.append(path);
+  wrap.append(svg);
+  return wrap;
+}
+
+function makeCheckIcon() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2.6");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", "M20 6 9 17l-5-5");
+  svg.append(path);
+  return svg;
+}
+
+function renderRow(connector) {
+  const item = make("li", `claude-row${connector.enabled ? "" : " is-paused"}`);
+  item.dataset.name = connector.name;
+
+  // Fila principal estilo tabla de Claude
+  const mainRow = make("div", "claude-row-main");
+  mainRow.tabIndex = 0;
+  mainRow.setAttribute("role", "button");
+  mainRow.setAttribute("aria-expanded", String(expandedConnectors.has(connector.name)));
+  mainRow.setAttribute("aria-label", `Detalles del conector ${connector.name}`);
+
+  // Columna 1: Conector (Ícono + Nombre + Comando breve)
+  const colConn = make("div", "claude-col col-conn");
+  colConn.append(makeConnectorIcon(connector));
+  const nameBox = make("div", "claude-name-box");
+  nameBox.append(make("strong", "claude-conn-name", connector.name));
+  nameBox.append(make("span", "claude-conn-cmd", connector.command));
+  colConn.append(nameBox);
+
+  // Columna 2: Tipo ("stdio")
+  const colType = make("div", "claude-col col-type");
+  colType.append(make("span", "claude-type-tag", "stdio"));
+
+  // Columna 3: Herramientas disponibles
+  const colTools = make("div", "claude-col col-tools");
+  const toolCount = connector.tools ? connector.tools.length : 0;
+  const toolsText = toolCount === 1 ? "1 herramienta" : `${toolCount} herramientas`;
+  const toolsSpan = make("span", "claude-tools-tag", toolsText);
+  if (connector.tools && connector.tools.some((t) => t.changed)) {
+    const dot = make("span", "claude-changed-dot");
+    dot.title = "Hay herramientas nuevas o que cambiaron (revisala en Permisos)";
+    colTools.append(dot);
+  }
+  colTools.append(toolsSpan);
+
+  // Columna 4: Estado (Checkmark verde si está activo, o botón [Conectar] si está apagado)
+  const colStatus = make("div", "claude-col col-status");
+  if (connector.enabled && connector.status === "activo") {
+    const checkWrap = make("span", "claude-status-connected");
+    checkWrap.append(makeCheckIcon(), make("span", "claude-status-label", "Activo"));
+    colStatus.append(checkWrap);
+  } else if (!connector.enabled) {
+    const connectBtn = make("button", "claude-connect-btn", "Conectar");
+    connectBtn.type = "button";
+    connectBtn.title = "Activar este conector";
+    connectBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      change("PUT", connector.name, { enabled: true }, "Conector prendido.");
+    });
+    colStatus.append(connectBtn);
+  } else if (connector.status === "dormido") {
+    const sleepWrap = make("span", "claude-status-dormant");
+    sleepWrap.append(make("span", "claude-dot-amber"), make("span", "", "Dormido"));
+    colStatus.append(sleepWrap);
+  } else {
+    const reconnectBtn = make("button", "claude-reconnect-btn", "Reconectar");
+    reconnectBtn.type = "button";
+    reconnectBtn.title = `Detenido: ${connector.error || "error"}`;
+    reconnectBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      change("PUT", connector.name, { enabled: true }, "Reconectando conector.");
+    });
+    colStatus.append(reconnectBtn);
   }
 
-  const auto = make("button", "switch");
-  auto.type = "button";
-  auto.dataset.focus = `autostart-${connector.name}`;
-  auto.setAttribute("role", "switch");
-  auto.setAttribute("aria-checked", String(connector.autostart));
-  auto.setAttribute("aria-label", `Arrancar con Epsilon: ${connector.name}`);
-  auto.title = "Arrancar con Epsilon";
-  auto.append(make("span", "knob"));
-  auto.addEventListener("click", () =>
-    change("PUT", connector.name, { autostart: !connector.autostart },
-      connector.autostart ? "Ya no arranca con Epsilon." : "Arrancará con Epsilon."));
+  const chevron = make("span", "claude-chevron", "›");
+  chevron.setAttribute("aria-hidden", "true");
+  colStatus.append(chevron);
 
-  // Variables de entorno: «CLAVE=valor» por línea; un valor vacío («CLAVE=») la saca. No vuelven a mostrarse.
+  mainRow.append(colConn, colType, colTools, colStatus);
+
+  // Panel expandible con todos los detalles y opciones
+  const details = make("div", "claude-details-panel");
+  const isExpanded = expandedConnectors.has(connector.name);
+  details.hidden = !isExpanded;
+  if (isExpanded) item.classList.add("is-expanded");
+
+  const toggleExpansion = () => {
+    const open = !details.hidden;
+    details.hidden = open;
+    mainRow.setAttribute("aria-expanded", String(!open));
+    item.classList.toggle("is-expanded", !open);
+    if (open) expandedConnectors.delete(connector.name);
+    else expandedConnectors.add(connector.name);
+  };
+
+  mainRow.addEventListener("click", toggleExpansion);
+  mainRow.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleExpansion();
+    }
+  });
+
+  // 1. Comando completo con botón de copiar
+  const cmdBox = make("div", "conn-cmd-box");
+  const cmdPrompt = make("span", "conn-cmd-prompt", "$");
+  cmdPrompt.setAttribute("aria-hidden", "true");
+  const cmdCode = make("code", "conn-cmd-code", connector.command);
+  const copyBtn = make("button", "secondary conn-copy-btn", "Copiar");
+  copyBtn.type = "button";
+  copyBtn.setAttribute("aria-label", `Copiar comando de ${connector.name}`);
+  copyBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(connector.command);
+      copyBtn.textContent = "¡Copiado!";
+      setTimeout(() => { copyBtn.textContent = "Copiar"; }, 1500);
+    } catch {
+      // sin soporte
+    }
+  });
+  cmdBox.append(cmdPrompt, cmdCode, copyBtn);
+  details.append(cmdBox);
+
+  // 2. Alerta de error si falló
+  if (connector.error) {
+    const errBox = make("div", "conn-alert-fail");
+    errBox.setAttribute("role", "alert");
+    errBox.append(make("strong", "", "Motivo: "), document.createTextNode(connector.error));
+    details.append(errBox);
+  }
+
+  // 3. Herramientas expuestas para la IA
+  const toolsSection = make("div", "conn-tools-section");
+  const toolsHeader = make("div", "conn-tools-head");
+  toolsHeader.append(make("span", "conn-tools-title", "Herramientas expuestas"));
+  if (connector.tools && connector.tools.length) {
+    toolsHeader.append(make("span", "conn-tools-count", `${connector.tools.length}`));
+    toolsSection.append(toolsHeader);
+    const toolsGrid = make("ul", "conn-tools-grid");
+    for (const tool of connector.tools) {
+      const toolCard = make("li", "conn-tool-card");
+      const toolHead = make("div", "conn-tool-card-head");
+      toolHead.append(make("code", "conn-tool-name", tool.action));
+      if (tool.changed) {
+        toolHead.append(make("span", "conn-badge-changed", "nueva o cambió (revisala en Permisos)"));
+      }
+      toolCard.append(toolHead);
+      if (tool.description) {
+        toolCard.append(make("p", "conn-tool-desc", tool.description));
+      }
+      toolsGrid.append(toolCard);
+    }
+    toolsSection.append(toolsGrid);
+  } else {
+    toolsSection.append(toolsHeader, make("p", "conn-tools-empty", "Sin herramientas descubiertas todavía (iniciá el conector para consultarlas)."));
+  }
+  details.append(toolsSection);
+
+  // 4. Variables de entorno (<details>)
+  const envNames = Object.keys(connector.env || {});
+  const envDetails = make("details", "conn-env-details");
+  const envSummary = make("summary", "conn-env-summary");
+  const summaryLeft = make("span", "conn-env-summary-left");
+  summaryLeft.append(make("span", "conn-env-label", "Variables de entorno"));
+  summaryLeft.append(make("span", "conn-env-pill", envNames.length ? `${envNames.length} configuradas` : "Sin variables"));
+  const envChevron = make("span", "conn-chevron", "›");
+  envChevron.setAttribute("aria-hidden", "true");
+  envSummary.append(summaryLeft, envChevron);
+  envDetails.append(envSummary);
+
+  const envBody = make("div", "conn-env-body");
+  if (envNames.length) {
+    const envTags = make("div", "conn-env-tags");
+    for (const key of envNames) {
+      const state = connector.env[key];
+      const tag = make("span", "conn-env-tag");
+      tag.append(make("code", "", key), document.createTextNode(`: ${state.set ? `cargada (${state.length} car.)` : "vacía"}`));
+      envTags.append(tag);
+    }
+    envBody.append(envTags);
+  }
+
   const envBox = make("div", "conn-env-edit");
   const envLabel = make("label", "", "Cambiar variables (CLAVE=valor, una por línea; CLAVE= la quita)");
   const envField = make("textarea");
@@ -106,32 +379,60 @@ function renderRow(connector) {
   });
   envBox.append(envLabel, envField, envSave,
     make("p", "hint", "Reiniciá el conector (apagalo y prendelo) para aplicar: si está corriendo, sigue con las variables de antes."));
-  info.append(envBox);
+  envBody.append(envBox);
+  envDetails.append(envBody);
+  details.append(envDetails);
 
-  const actions = make("div", "routine-actions");
+  // 5. Pie de controles: switches y botón quitar
+  const footer = make("div", "conn-item-footer");
+  const switches = make("div", "conn-switches");
+
+  const auto = make("button", "switch");
+  auto.type = "button";
+  auto.dataset.focus = `autostart-${connector.name}`;
+  auto.setAttribute("role", "switch");
+  auto.setAttribute("aria-checked", String(connector.autostart));
+  auto.setAttribute("aria-label", `Arrancar con Epsilon: ${connector.name}`);
+  auto.title = "Arrancar con Epsilon al iniciar el programa";
+  auto.append(make("span", "knob"));
+  auto.addEventListener("click", (e) => {
+    e.stopPropagation();
+    change("PUT", connector.name, { autostart: !connector.autostart },
+      connector.autostart ? "Ya no arranca con Epsilon." : "Arrancará con Epsilon.");
+  });
+
   const toggle = make("button", "switch");
   toggle.type = "button";
   toggle.dataset.focus = `switch-${connector.name}`;
   toggle.setAttribute("role", "switch");
   toggle.setAttribute("aria-checked", String(connector.enabled));
   toggle.setAttribute("aria-label", `Activo: ${connector.name}`);
+  toggle.title = "Prender o apagar este conector";
   toggle.append(make("span", "knob"));
-  toggle.addEventListener("click", () =>
-    change("PUT", connector.name, { enabled: !connector.enabled }, connector.enabled ? "Conector apagado." : "Conector prendido."));
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    change("PUT", connector.name, { enabled: !connector.enabled }, connector.enabled ? "Conector apagado." : "Conector prendido.");
+  });
 
-  const remove = make("button", "secondary routine-delete", "Quitar");
+  const remove = make("button", "secondary routine-delete conn-btn-delete", "Quitar conector");
   remove.type = "button";
   remove.dataset.focus = `delete-${connector.name}`;
   remove.setAttribute("aria-label", `Quitar el conector ${connector.name}`);
-  remove.addEventListener("click", () => change("DELETE", connector.name, undefined, "Conector quitado."));
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation();
+    change("DELETE", connector.name, undefined, "Conector quitado.");
+  });
 
   const labeled = (text, control) => {
     const wrap = make("span", "conn-switch");
-    wrap.append(make("span", "routine-next", text), control);
+    wrap.append(make("span", "conn-switch-label", text), control);
     return wrap;
   };
-  actions.append(labeled("Con Epsilon", auto), labeled("Activo", toggle), remove);
-  item.append(info, actions);
+  switches.append(labeled("Con Epsilon", auto), labeled("Activo", toggle));
+  footer.append(switches, remove);
+  details.append(footer);
+
+  item.append(mainRow, details);
   return item;
 }
 
@@ -143,6 +444,7 @@ function render(data) {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.focus : "";
   list.replaceChildren(...data.connectors.map(renderRow));
   empty.hidden = data.connectors.length > 0;
+  applyFilter();
   if (focused) {
     const again = list.querySelector(`[data-focus="${focused}"]`);
     if (again) again.focus();
@@ -266,6 +568,7 @@ form.addEventListener("submit", async (event) => {
     commandInput.value = "";
     envInput.value = "";
     hideConfirm();
+    connDialog.close();
     showStatus("Conector agregado.");
   } catch (error) {
     showStatus("");
@@ -315,35 +618,76 @@ btnConnector.addEventListener("change", fillToolSelect);
 
 function renderButtons(buttons) {
   grid.replaceChildren(...buttons.map((button) => {
-    const card = make("div", "button-card");
+    const card = make("div", "button-card conn-btn-card");
+    const head = make("div", "button-head");
+    const titleRow = make("div", "button-title-row");
+    titleRow.append(make("strong", "button-title", button.label));
+    const targetTag = make("span", "button-tool-tag", `${button.connector} · ${button.tool}`);
+    titleRow.append(targetTag);
+    head.append(titleRow);
+
+    if (button.args && Object.keys(button.args).length) {
+      const argsText = typeof button.args === "object" ? JSON.stringify(button.args) : String(button.args);
+      const argsTag = make("span", "button-args-tag", `args: ${argsText}`);
+      head.append(argsTag);
+    }
+
+    const foot = make("div", "button-actions");
+    const run = make("button", "send button-run-btn", "Ejecutar");
+    run.type = "button";
+
+    const remove = make("button", "secondary button-remove-btn", "Quitar");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Quitar el botón ${button.label}`);
+    remove.addEventListener("click", () => buttonRequest(`/api/buttons/${button.id}`, { method: "DELETE" }));
+
+    foot.append(run, remove);
+
+    const resultBox = make("div", "button-result-container");
+    resultBox.hidden = true;
+
+    const resultHead = make("div", "button-result-head");
+    resultHead.append(make("span", "button-result-title", "Salida:"));
+    const copyResult = make("button", "secondary button-copy-result", "Copiar");
+    copyResult.type = "button";
+    resultHead.append(copyResult);
+
     const result = make("p", "button-result");
     result.setAttribute("role", "status");
-    const run = make("button", "send", "Ejecutar");
-    run.type = "button";
+    resultBox.append(resultHead, result);
+
+    copyResult.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(result.textContent);
+        copyResult.textContent = "¡Copiado!";
+        setTimeout(() => { copyResult.textContent = "Copiar"; }, 1500);
+      } catch {
+        // sin soporte de portapapeles
+      }
+    });
+
     run.addEventListener("click", async () => {
       run.disabled = true;
+      resultBox.hidden = false;
+      copyResult.hidden = true;
       result.textContent = "Ejecutando…";
       try {
         const data = await request(`/api/buttons/${button.id}/run`, { method: "POST" });
         result.textContent = data.text || "(sin respuesta)";
+        copyResult.hidden = false;
       } catch (error) {
         result.textContent = error.message;
+        copyResult.hidden = true;
       } finally {
         run.disabled = false;
       }
     });
-    const remove = make("button", "secondary", "Quitar");
-    remove.type = "button";
-    remove.setAttribute("aria-label", `Quitar el botón ${button.label}`);
-    remove.addEventListener("click", () => buttonRequest(`/api/buttons/${button.id}`, { method: "DELETE" }));
-    const head = make("div", "button-head");
-    head.append(make("strong", "", button.label), make("span", "routine-next", `${button.connector}.${button.tool}`));
-    const foot = make("div", "button-actions");
-    foot.append(run, remove);
-    card.append(head, foot, result);
+
+    card.append(head, foot, resultBox);
     return card;
   }));
   btnEmpty.hidden = buttons.length > 0;
+  applyFilter();
 }
 
 async function buttonRequest(path, options) {
@@ -360,11 +704,15 @@ async function buttonRequest(path, options) {
 }
 
 async function createButton(body) {
-  return buttonRequest("/api/buttons", {
+  const ok = await buttonRequest("/api/buttons", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (ok) {
+    btnDialog.close();
+  }
+  return ok;
 }
 
 btnForm.addEventListener("submit", async (event) => {

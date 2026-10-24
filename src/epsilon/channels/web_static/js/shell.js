@@ -538,6 +538,8 @@
 
       const modelName = document.getElementById("model-name");
       if (modelName) modelName.textContent = state.model || "sin modelo"; // «proveedor:modelo», lo arma el servidor
+      const composerModelName = document.getElementById("composer-model-name");
+      if (composerModelName) composerModelName.textContent = state.model || "sin modelo";
 
       const dataDir = (find("DATA_DIR") || {}).value;
       const path = document.getElementById("local-path");
@@ -564,6 +566,8 @@
   // El botón con el modelo abre la paleta para elegir otro (palette.js).
   const modelChip = document.getElementById("model-chip");
   if (modelChip) modelChip.addEventListener("click", () => window.epsilonPalette.open());
+  const composerModel = document.getElementById("composer-model");
+  if (composerModel) composerModel.addEventListener("click", () => window.epsilonPalette.open());
 
   // --- Arranque -------------------------------------------------------------------------------
   applyLayout();

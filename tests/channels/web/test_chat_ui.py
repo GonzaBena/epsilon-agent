@@ -63,13 +63,22 @@ def test_tool_rows_are_buttons_that_fill_the_message_box_without_sending():
     assert "sendMessage" not in render and "submit" not in render
 
 
-def test_quick_actions_sit_above_the_message_box():
+def test_modern_composer_toolbar_has_llm_controls():
     html = chat_html()
     composer = re.search(r'<form id="composer".*?</form>', html, re.S).group(0)
 
-    for label in ("Guardar nota", "Imagen a CSV", "Resumir"):
-        assert label in composer, label
-    assert composer.index("Guardar nota") < composer.index('id="input"')
+    # La barra vieja de atajos (.quick) ya no está arriba del input
+    assert 'class="quick"' not in composer
+    # Barra inferior moderna con controles estilo LLM
+    assert 'class="composer-toolbar"' in composer
+    assert 'id="attach"' in composer
+    assert 'id="attach-popover"' in composer
+    assert 'id="mic"' in composer
+    assert 'id="composer-model"' in composer
+    assert 'id="composer-effort"' in composer
+    assert 'id="composer-tools-mode"' in composer
+    assert 'id="effort-popover"' in composer
+    assert 'id="tools-mode-popover"' in composer
 
 
 def test_chat_warns_that_reading_images_can_be_wrong():
@@ -184,14 +193,11 @@ def test_the_recents_list_can_hold_many_conversations():
 # --- Panel de herramientas: «Imagen a CSV» y la etiqueta «usa IA» ------------
 
 
-def test_the_tools_panel_has_an_image_to_csv_row_that_works_like_the_pill(client):
-    html = chat_html()
+def test_the_tools_panel_has_an_image_to_csv_row(client):
     row = next(r for r in client.get("/api/tools").json()["tools"] if r["label"] == "Imagen a CSV")
 
     assert row["action"] == "csv"
-    # La píldora y la fila hacen lo mismo: las dos usan armCsv() de app.js.
-    assert re.search(r'<button[^>]*id="pill-csv"[^>]*data-csv', html)
-    assert "[data-csv]" in js("app.js") and 'tool.action === "csv"' in js("app.js")
+    assert 'tool.action === "csv"' in js("app.js")
 
 
 def test_only_the_tools_that_spend_tokens_say_they_use_ai(client):

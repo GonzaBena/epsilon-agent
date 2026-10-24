@@ -139,13 +139,6 @@
       </div>
 
       <form id="composer" class="composer" autocomplete="off">
-        <!-- Atajos: preparan el mensaje, no envían nada. -->
-        <div class="quick">
-          <button class="pill" type="button" data-insert="+ ">Guardar nota</button>
-          <button class="pill" type="button" id="pill-csv" data-csv>Imagen a CSV</button>
-          <button class="pill" type="button" data-insert="/resumir ">Resumir</button>
-        </div>
-
         <!-- Archivo elegido, esperando que se envíe junto con el texto. -->
         <div id="chip" class="attachment" hidden>
           <div class="thumb">
@@ -163,30 +156,12 @@
           <span id="chip-name" class="thumb-name"></span>
         </div>
 
-        <div class="row">
+        <div class="row composer-box">
           <!-- Sugerencias de comandos: aparecen al escribir «/» (app.js). -->
           <ul id="suggest" class="suggest" role="listbox" aria-label="Comandos" hidden></ul>
-          <button id="attach" class="icon-btn" type="button" aria-label="Adjuntar imagen o PDF">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.9-8.9a3.3 3.3 0 0 1 4.7 4.7l-8.9 8.9a1.7 1.7 0 0 1-2.4-2.4l8.2-8.2"/>
-            </svg>
-          </button>
-          <input id="file" type="file" accept="image/*,application/pdf" hidden>
 
           <textarea id="input" rows="1" aria-label="Mensaje" aria-controls="suggest" aria-autocomplete="list"
-                    placeholder="Escribí un mensaje o un comando"></textarea>
-
-          <!-- Micrófono: graba, transcribe y deja el texto en el cuadro SIN enviarlo.
-               Se muestra solo si el navegador puede grabar (app.js). -->
-          <button id="mic" class="icon-btn" type="button" aria-label="Dictar con la voz"
-                  title="Dictar con la voz" aria-pressed="false" hidden>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="9" y="3" width="6" height="11" rx="3"/>
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
-            </svg>
-          </button>
+                    placeholder="Responder o escribir un comando..."></textarea>
 
           <button id="send" class="send-btn" type="submit" aria-label="Enviar" title="Enviar">
             <svg class="icon-send" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -194,9 +169,95 @@
           </button>
         </div>
 
-        <p id="mic-status" class="mic-status" role="status" hidden></p>
+        <!-- Barra inferior moderna: acciones a la izquierda, opciones a la derecha -->
+        <div class="composer-toolbar">
+          <div class="composer-actions-left">
+            <div class="popover-anchor-wrap">
+              <button id="attach" class="composer-icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Adjuntar archivo o imagen" title="Adjuntar archivo o imagen">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <div id="attach-popover" class="composer-popover attach-popover" role="menu" aria-label="Opciones de adjuntar" hidden>
+                <button type="button" class="popover-action-item" id="opt-upload-file">
+                  <span class="action-item-left">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                    <span>Subir o agregar archivos</span>
+                  </span>
+                  <span class="shortcut-tag">Ctrl+U</span>
+                </button>
+              </div>
+            </div>
+            <input id="file" type="file" accept="image/*,application/pdf" hidden>
 
-        <p class="disclaimer">Epsilon puede equivocarse al leer imágenes. Revisá los datos antes de guardar.</p>
+            <!-- Micrófono con su tooltip flotante -->
+            <div class="mic-wrap">
+              <button id="mic" class="composer-icon-btn" type="button" aria-label="Dictar con la voz"
+                      title="Dictar con la voz" aria-pressed="false" hidden>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="11" rx="3"/>
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+                </svg>
+              </button>
+              <p id="mic-status" class="mic-status" role="status" hidden></p>
+            </div>
+          </div>
+
+          <div class="composer-actions-right">
+            <button id="composer-model" class="composer-chip model-chip" type="button" aria-haspopup="dialog" title="Cambiar modelo de IA">
+              <span id="composer-model-name">…</span>
+            </button>
+
+            <div class="popover-anchor-wrap">
+              <button id="composer-effort" class="composer-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Esfuerzo de pensamiento" title="Esfuerzo de pensamiento">
+                <span id="effort-label">Medio</span>
+              </button>
+              <div id="effort-popover" class="composer-popover" role="menu" aria-label="Esfuerzo de pensamiento" hidden>
+                <div class="popover-title">Esfuerzo y pensamiento</div>
+                <button type="button" class="popover-item" data-effort="desactivado">
+                  <strong>Desactivado</strong>
+                  <span>Sin tiempo de reflexión adicional</span>
+                </button>
+                <button type="button" class="popover-item" data-effort="bajo">
+                  <strong>Bajo</strong>
+                  <span>Respuestas rápidas y directas</span>
+                </button>
+                <button type="button" class="popover-item" data-effort="medio">
+                  <strong>Medio</strong>
+                  <span>Equilibrio estándar de razonamiento</span>
+                </button>
+                <button type="button" class="popover-item" data-effort="alto">
+                  <strong>Alto</strong>
+                  <span>Razonamiento profundo para tareas complejas</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="popover-anchor-wrap">
+              <button id="composer-tools-mode" class="composer-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Modo de ejecución de herramientas" title="Modo de ejecución de herramientas">
+                <span id="tools-mode-label">Manual</span>
+              </button>
+              <div id="tools-mode-popover" class="composer-popover" role="menu" aria-label="Modo de herramientas" hidden>
+                <div class="popover-title">Modo de herramientas</div>
+                <button type="button" class="popover-item" data-tools-mode="manual">
+                  <strong>Manual</strong>
+                  <span>Pregunta siempre antes de ejecutar cualquier herramienta</span>
+                </button>
+                <button type="button" class="popover-item" data-tools-mode="auto">
+                  <strong>Automático</strong>
+                  <span>Ejecuta herramientas permitidas automáticamente</span>
+                </button>
+                <button type="button" class="popover-item" data-tools-mode="inseguro">
+                  <strong>Solo si es inseguro</strong>
+                  <span>Automático en lecturas; pregunta en escrituras, borrados o riesgo</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="disclaimer">Epsilon puede equivocarse al leer imágenes o responder. Revisá los datos antes de guardar.</p>
       </form>
     </div>
 

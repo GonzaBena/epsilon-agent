@@ -154,6 +154,13 @@ def _yes_no(value: str) -> str:
     return value
 
 
+def _thinking_effort(value: str) -> str:
+    value = value.strip().lower()
+    if value not in ("desactivado", "bajo", "medio", "alto"):
+        raise ValueError("Tiene que ser «desactivado», «bajo», «medio» o «alto».")
+    return value
+
+
 @dataclass(frozen=True)
 class Setting:
     key: str  # nombre de la variable en el .env
@@ -275,6 +282,14 @@ SETTINGS = (
     Setting("AI_MODEL_ASK", "Modelo de /ia", live=True, validate=_model_id),
     Setting("AI_MODEL_SUMMARY", "Modelo para resumir archivos", live=True, validate=_model_id),
     Setting("AI_MODEL_CSV", "Modelo de imagen a CSV", live=True, validate=_model_id),
+    Setting(
+        "AI_THINKING_EFFORT",
+        "Esfuerzo de razonamiento de la IA",
+        page="chat",
+        live=True,
+        default="medio",
+        validate=_thinking_effort,
+    ),
     Setting(
         "OLLAMA_URL",
         "Dirección de Ollama",

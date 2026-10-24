@@ -55,6 +55,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `AI_MODEL_ASK`                                              | Opcional: modelo de `/ia`. Si falta, el predeterminado. |
 | `AI_MODEL_SUMMARY`                                          | Opcional: modelo de los resúmenes. Si falta, el predeterminado. |
 | `AI_MODEL_CSV`                                              | Opcional: modelo de imagen a CSV. Si falta, el predeterminado. |
+| `AI_THINKING_EFFORT`                                         | Opcional: esfuerzo de razonamiento de la IA (`desactivado`, `bajo`, `medio`, `alto`). Por defecto `medio`. |
 | `OLLAMA_URL`                                                | Opcional: dirección de Ollama. Por defecto `http://127.0.0.1:11434`. |
 | `BROWSER_ENABLED`                                             | Navegador: deja que la IA use tu Chromium (por defecto, `si`; `no` la deja sin esa herramienta).                         |
 | `BROWSER_GUARD`                                               | Guardia del navegador: con `no` la IA no pregunta por sitios que no son de confianza (siguen los bloqueos y los topes; por defecto, `si`). |

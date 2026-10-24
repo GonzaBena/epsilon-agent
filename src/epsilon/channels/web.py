@@ -415,6 +415,34 @@ def create_app() -> FastAPI:
             "link_commands": tools.link_commands(),
         }
 
+    @app.get("/api/connector-commands")
+    def connector_commands():
+        # Para autocompletar «/c conector herramienta clave=…»: solo conectores prendidos. Lo que escribió el
+        # conector (descripciones) viaja redactado y recortado; la web lo dibuja como texto.
+        found = []
+        for entry in connector_store.list_all():
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry.get("enabled"):
+                continue
+            taken: set[str] = set()
+            for item in entry.get("tools", []):
+                if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                    continue
+                action = bridge.action_name(item["name"], taken)
+                taken.add(action)
+                schema = item.get("schema") if isinstance(item.get("schema"), dict) else {}
+                props = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+                required = schema.get("required") if isinstance(schema.get("required"), list) else []
+                args = " ".join(f"{key}=" for key in props if key in required)
+                found.append(
+                    {
+                        "connector": entry["name"],
+                        "action": action,
+                        "args": args,
+                        "desc": config.redact(" ".join(str(item.get("description") or "").split())[:120]),
+                    }
+                )
+        return {"items": found}
+
     # Los endpoints son "def" (no "async def") a propósito: FastAPI los corre
     # en un hilo aparte, así core.handle() puede esperar a Gemini sin trabar
     # a los demás requests.

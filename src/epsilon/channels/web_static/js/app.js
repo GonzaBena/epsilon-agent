@@ -660,9 +660,58 @@ function clearFile() {
   input.placeholder = DEFAULT_PLACEHOLDER;
 }
 
-attachButton.addEventListener("click", () => {
-  wantsCsv = false;
-  fileInput.click();
+// --- Control universal de menús desplegables del compositor -----------------
+function closeAllDropdowns() {
+  for (const popover of document.querySelectorAll(".composer-popover")) {
+    popover.hidden = true;
+  }
+  for (const btn of document.querySelectorAll(".composer-toolbar [aria-haspopup]")) {
+    btn.setAttribute("aria-expanded", "false");
+  }
+}
+
+function setupDropdown(triggerBtn, popoverEl) {
+  if (!triggerBtn || !popoverEl) return;
+  triggerBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const wasOpen = !popoverEl.hidden;
+    closeAllDropdowns();
+    if (!wasOpen) {
+      popoverEl.hidden = false;
+      triggerBtn.setAttribute("aria-expanded", "true");
+    }
+  });
+  popoverEl.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+}
+
+document.addEventListener("click", closeAllDropdowns);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeAllDropdowns();
+});
+
+const uploadFileOpt = document.getElementById("opt-upload-file");
+const attachPopover = document.getElementById("attach-popover");
+
+setupDropdown(attachButton, attachPopover);
+
+if (uploadFileOpt) {
+  uploadFileOpt.addEventListener("click", () => {
+    closeAllDropdowns();
+    wantsCsv = false;
+    fileInput.click();
+  });
+}
+
+// Atajo Ctrl+U (o Cmd+U en macOS) para subir o agregar archivos rápidamente
+window.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "u") {
+    event.preventDefault();
+    closeAllDropdowns();
+    wantsCsv = false;
+    fileInput.click();
+  }
 });
 // «Imagen a CSV»: la píldora y la fila del panel de herramientas hacen lo mismo.
 function armCsv() {
@@ -813,11 +862,25 @@ input.addEventListener("input", () => {
 // para que lo revises (igual que las herramientas del panel). El audio no se guarda.
 let recorder = null;       // el MediaRecorder mientras se graba
 let transcribing = false;  // true mientras el servidor transcribe
+let micTimer = null;       // temporizador para ocultar el tooltip automáticamente
 
 function micMessage(text, isError) {
+  if (micTimer) {
+    clearTimeout(micTimer);
+    micTimer = null;
+  }
   micStatus.textContent = text;
   micStatus.classList.toggle("error", Boolean(isError));
   micStatus.hidden = !text;
+
+  // Los avisos y errores se ocultan automáticamente tras 4 segundos para no estorbar
+  if (text) {
+    micTimer = setTimeout(() => {
+      micStatus.hidden = true;
+      micStatus.textContent = "";
+      micTimer = null;
+    }, 4000);
+  }
 }
 
 function setRecording(on) {
@@ -863,12 +926,15 @@ async function startRecording() {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (error) {
     // NotFoundError = no hay ningún micrófono; el resto (NotAllowedError...) es permiso.
-    micMessage(
-      error && error.name === "NotFoundError"
-        ? "No encontré un micrófono en este equipo."
-        : "No tengo permiso para usar el micrófono. Habilitalo en el navegador.",
-      true,
-    );
+    const notFound = error && error.name === "NotFoundError";
+    const msg = notFound
+      ? "No encontré un micrófono en este equipo."
+      : "No tengo permiso para usar el micrófono. Habilitalo en el navegador.";
+    micMessage(msg, true);
+    if (notFound) {
+      micButton.disabled = true;
+      micButton.title = msg;
+    }
     return;
   }
   const chunks = [];
@@ -893,13 +959,17 @@ let voiceOff = false; // la voz está apagada en la configuración: el botón no
 let refreshMic = () => {};
 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) {
   micButton.addEventListener("click", () => {
+    if (micButton.disabled) {
+      micMessage("No encontré un micrófono en este equipo.", true);
+      return;
+    }
     if (transcribing) return;
     if (recorder) recorder.stop();
     else startRecording();
   });
 
   // Solo se muestra si hay un micrófono (kind «audioinput»; la lista no pide permiso).
-  // Si lo enchufás después, «devicechange» lo hace aparecer.
+  // Si no hay micrófono disponible, se deshabilita y avisa con tooltip.
   refreshMic = async () => {
     if (voiceOff) {
       micButton.hidden = true;
@@ -907,7 +977,11 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.Medi
     }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      micButton.hidden = !devices.some((device) => device.kind === "audioinput");
+      const hasMic = devices.some((device) => device.kind === "audioinput");
+      micButton.hidden = false;
+      micButton.disabled = !hasMic;
+      const title = hasMic ? "Dictar con la voz" : "No encontré un micrófono en este equipo.";
+      micButton.title = title;
     } catch {
       micButton.hidden = false; // no se pudo saber: que lo intente y avise
     }
@@ -915,6 +989,99 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.Medi
   refreshMic();
   navigator.mediaDevices.addEventListener("devicechange", refreshMic);
 }
+
+// --- Barra de herramientas: Esfuerzo de pensamiento y Modo de herramientas ---
+const effortBtn = document.getElementById("composer-effort");
+const effortLabel = document.getElementById("effort-label");
+const effortPopover = document.getElementById("effort-popover");
+const EFFORT_LABELS = {
+  desactivado: "Desactivado",
+  bajo: "Bajo",
+  medio: "Medio",
+  alto: "Alto",
+};
+
+setupDropdown(effortBtn, effortPopover);
+
+async function setEffort(value, saveToServer) {
+  const label = EFFORT_LABELS[value] || "Medio";
+  if (effortLabel) effortLabel.textContent = label;
+  localStorage.setItem("epsilon_thinking_effort", value);
+  for (const item of document.querySelectorAll("[data-effort]")) {
+    item.setAttribute("aria-selected", String(item.dataset.effort === value));
+  }
+  closeAllDropdowns();
+  if (saveToServer) {
+    try {
+      await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ changes: { AI_THINKING_EFFORT: value }, clear: [] }),
+      });
+    } catch {
+      // Sin conexión: queda guardado localmente
+    }
+  }
+}
+
+for (const btn of document.querySelectorAll("[data-effort]")) {
+  btn.addEventListener("click", () => setEffort(btn.dataset.effort, true));
+}
+
+const storedEffort = localStorage.getItem("epsilon_thinking_effort") || "medio";
+setEffort(storedEffort, false);
+
+const toolsModeBtn = document.getElementById("composer-tools-mode");
+const toolsModeLabel = document.getElementById("tools-mode-label");
+const toolsModePopover = document.getElementById("tools-mode-popover");
+const TOOLS_MODE_LABELS = {
+  manual: "Manual",
+  auto: "Automático",
+  inseguro: "Solo si es inseguro",
+};
+
+setupDropdown(toolsModeBtn, toolsModePopover);
+
+async function setToolsMode(mode, applyToServer) {
+  const label = TOOLS_MODE_LABELS[mode] || "Manual";
+  if (toolsModeLabel) toolsModeLabel.textContent = label;
+  localStorage.setItem("epsilon_tools_mode", mode);
+  for (const item of document.querySelectorAll("[data-tools-mode]")) {
+    item.setAttribute("aria-selected", String(item.dataset.toolsMode === mode));
+  }
+  closeAllDropdowns();
+  if (applyToServer) {
+    try {
+      const response = await fetch("/api/permissions");
+      if (!response.ok) return;
+      const data = await response.json();
+      const newStates = {};
+      for (const tool of data.tools) {
+        if (mode === "manual") {
+          newStates[tool.id] = "ask";
+        } else if (mode === "auto") {
+          newStates[tool.id] = "allow";
+        } else if (mode === "inseguro") {
+          newStates[tool.id] = tool.kind === "read" ? "allow" : "ask";
+        }
+      }
+      await fetch("/api/permissions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ states: newStates }),
+      });
+    } catch {
+      // Sin conexión: queda en local
+    }
+  }
+}
+
+for (const btn of document.querySelectorAll("[data-tools-mode]")) {
+  btn.addEventListener("click", () => setToolsMode(btn.dataset.toolsMode, true));
+}
+
+const storedToolsMode = localStorage.getItem("epsilon_tools_mode") || "manual";
+setToolsMode(storedToolsMode, false);
 
 // --- Comandos con un toque: los del estado vacío y los del menú lateral ------------------
 // Los del menú son enlaces (/?cmd=...) para que también funcionen desde la
@@ -1029,12 +1196,56 @@ function paintSuggestions() {
   suggestList.children[suggestIndex].scrollIntoView({ block: "nearest" });
 }
 
+// «/c conector herramienta»: las herramientas de los conectores prendidos (GET /api/connector-commands).
+let connectorTools = [];
+let connectorToolsAt = 0;
+
+async function loadConnectorTools() {
+  if (Date.now() - connectorToolsAt < 5000) return; // no pedirlo en cada tecla
+  connectorToolsAt = Date.now();
+  try {
+    const response = await fetch("/api/connector-commands");
+    if (response.ok) connectorTools = (await response.json()).items;
+  } catch {
+    // Sin servidor no hay sugerencias; escribir sigue andando.
+  }
+}
+
+// Devuelve true si el texto era «/c …» (ahí se eligen conector y herramienta, no el comando).
+function updateConnectorSuggestions() {
+  const match = /^\/c +([^\s]*)(?: +([^\s]*))?$/i.exec(input.value);
+  if (!match) return false;
+  loadConnectorTools().then(() => {
+    if (input.value !== match.input) return; // se siguió escribiendo
+    const [, first, second] = match;
+    const picked = second !== undefined && connectorTools.some((t) => t.connector === first);
+    suggestions = connectorTools
+      .filter((t) => (picked ? t.connector === first && t.action.startsWith(second.toLowerCase()) : t.connector.startsWith(first.toLowerCase())))
+      .map((t) => ({
+        usage: picked ? `${t.action} ${t.args}`.trim() : `${t.connector} ${t.action}`,
+        desc: t.desc,
+        insert: `/c ${t.connector} ${t.action} `,
+        from: 0,
+        to: input.value.length,
+      }));
+    if (!suggestions.length) return closeSuggestions();
+    suggestIndex = 0;
+    suggestList.hidden = false;
+    paintSuggestions();
+  });
+  return true;
+}
+
 function updateSuggestions() {
   if (readOnly) return closeSuggestions();
+  if (updateConnectorSuggestions()) return;
   const match = /^\/([a-záéíóúñ]*)$/i.exec(input.value);
   if (!match) return updateMentions();
   const typed = match[1].toLowerCase();
-  suggestions = commandList.filter((command) => command.name.startsWith(typed));
+  // El comando escrito entero va primero (si no, «/c» queda perdido entre cancelar, chat, clima…).
+  suggestions = commandList
+    .filter((command) => command.name.startsWith(typed))
+    .sort((a, b) => (b.name === typed) - (a.name === typed));
   // Si ya escribiste el comando entero y es el único, no hay nada que completar: Enter lo envía.
   if (!suggestions.length || (suggestions.length === 1 && suggestions[0].name === typed)) {
     return closeSuggestions();

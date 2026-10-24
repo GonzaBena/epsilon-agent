@@ -91,24 +91,79 @@
 
     <div class="stage">
       <main class="settings routines-page connectors-page">
-        <h2 class="page-title">Conectores</h2>
-        <p class="help">Programas externos (MCP) que le dan herramientas nuevas a la IA. Cada herramienta nueva arranca en «preguntar» en Permisos.</p>
-
-        <div class="conn-layout">
-          <div class="conn-main">
-            <p class="result" id="conn-status" role="status"></p>
-            <ul class="routine-list" id="conn-list"></ul>
-            <p class="routine-empty" id="conn-empty" hidden>No hay conectores todavía. Agregá uno a la derecha.</p>
-
-            <h3 class="buttons-title">Botones</h3>
-            <p class="help">Atajos para ejecutar una herramienta de un conector con un toque, sin pasar por la IA. El resultado se ve en la tarjeta y no se guarda en ninguna conversación.</p>
-            <div class="button-grid" id="btn-grid"></div>
-            <p class="routine-empty" id="btn-empty" hidden>No hay botones todavía.</p>
+        <div class="claude-window">
+          <div class="claude-header">
+            <div class="claude-header-left">
+              <h2 class="claude-title">Conectores</h2>
+              <div class="claude-segmented" role="tablist" aria-label="Secciones de conectores">
+                <button type="button" class="claude-seg-btn is-active" id="seg-connectors" role="tab" aria-selected="true" aria-controls="panel-connectors">Tuyos</button>
+                <button type="button" class="claude-seg-btn" id="seg-buttons" role="tab" aria-selected="false" aria-controls="panel-buttons">Botones</button>
+              </div>
+            </div>
+            <div class="claude-header-right">
+              <div class="claude-search">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input type="search" id="conn-filter" placeholder="Buscar" aria-label="Buscar conectores o herramientas" autocomplete="off">
+              </div>
+              <button type="button" class="claude-add-btn" id="open-add-btn">
+                <span class="plus-icon">+</span>
+                <span>Agregar</span>
+              </button>
+            </div>
           </div>
 
-          <div class="conn-side">
+          <p class="result" id="conn-status" role="status"></p>
+
+          <!-- Vista Tuyos (Conectores MCP) -->
+          <div class="claude-panel" id="panel-connectors" role="tabpanel" aria-labelledby="seg-connectors">
+            <div class="claude-table-header">
+              <span class="col-conn">Conector</span>
+              <span class="col-type">Tipo</span>
+              <span class="col-tools">Herramientas</span>
+              <span class="col-status">Estado</span>
+            </div>
+            <ul class="routine-list claude-list" id="conn-list"></ul>
+            <div class="routine-empty claude-empty" id="conn-empty" hidden>
+              <div class="claude-empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v3"/></svg>
+              </div>
+              <p class="claude-empty-title">No hay conectores todavía</p>
+              <p class="claude-empty-desc">Tocá «+ Agregar» para conectar un programa MCP externo (stdio) a tu IA.</p>
+            </div>
+          </div>
+
+          <!-- Vista Botones -->
+          <div class="claude-panel" id="panel-buttons" role="tabpanel" aria-labelledby="seg-buttons" hidden>
+            <div class="claude-table-header claude-table-header-btns">
+              <span class="col-conn">Botón</span>
+              <span class="col-type">Destino</span>
+              <span class="col-status">Acciones</span>
+            </div>
+            <div class="button-grid claude-button-grid" id="btn-grid"></div>
+            <div class="routine-empty claude-empty" id="btn-empty" hidden>
+              <div class="claude-empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4V8z"/></svg>
+              </div>
+              <p class="claude-empty-title">No hay botones creados</p>
+              <p class="claude-empty-desc">Los botones te permiten ejecutar herramientas MCP con 1 toque sin pasar por la IA.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ventana modal: Agregar conector -->
+        <dialog class="claude-dialog" id="conn-dialog" aria-labelledby="conn-dialog-title">
+          <div class="claude-modal-box">
+            <div class="claude-modal-header">
+              <h3 class="claude-modal-title" id="conn-dialog-title">Agregar un conector</h3>
+              <button type="button" class="claude-modal-close" id="conn-dialog-close" aria-label="Cerrar">✕</button>
+            </div>
             <form class="routine-new conn-card" id="conn-form" autocomplete="off">
-              <h3>Agregar un conector</h3>
+              <div class="conn-presets" aria-label="Plantillas de ejemplo">
+                <span class="conn-presets-label">Ejemplos:</span>
+                <button type="button" class="conn-preset-chip" data-name="sqlite" data-cmd="uvx mcp-server-sqlite --db datos.db">SQLite</button>
+                <button type="button" class="conn-preset-chip" data-name="fetch" data-cmd="uvx mcp-server-fetch">Fetch Web</button>
+                <button type="button" class="conn-preset-chip" data-name="luces" data-cmd="uv run luces_mcp.py">Python MCP</button>
+              </div>
               <div class="conn-fields">
                 <div class="conn-field conn-field-short">
                   <label for="conn-name">Nombre</label>
@@ -120,21 +175,32 @@
                 </div>
               </div>
               <label for="conn-env">Variables de entorno (opcional, una por línea: CLAVE=valor)</label>
-              <textarea id="conn-env" rows="2" spellcheck="false" autocomplete="off"></textarea>
+              <textarea id="conn-env" rows="2" spellcheck="false" autocomplete="off" placeholder="TOKEN=secreto&#10;API_KEY=12345"></textarea>
               <p class="hint" id="conn-hint">Se corre el comando tal cual, sin shell, con solo esas variables. Pegalo y tocá «Ver cómo lo entiendo».</p>
               <div class="routine-new-row">
                 <button type="button" class="secondary" id="conn-preview">Ver cómo lo entiendo</button>
               </div>
               <div id="conn-confirm" hidden>
-                <p class="routine-banner" role="status">Este programa va a correr en tu PC con tu usuario. Agregalo solo si confiás en quien lo escribió.</p>
-                <pre id="conn-argv"></pre>
+                <div class="conn-confirm-box">
+                  <p class="routine-banner" role="status">Este programa va a correr en tu PC con tu usuario. Agregalo solo si confiás en quien lo escribió.</p>
+                  <div class="conn-argv-head">Desglose del comando:</div>
+                  <pre id="conn-argv"></pre>
+                </div>
                 <button type="submit" class="send" id="conn-add">Confirmar y agregar</button>
               </div>
               <p class="result fail" id="conn-error" role="alert"></p>
             </form>
+          </div>
+        </dialog>
 
+        <!-- Ventana modal: Crear botón -->
+        <dialog class="claude-dialog" id="btn-dialog" aria-labelledby="btn-dialog-title">
+          <div class="claude-modal-box">
+            <div class="claude-modal-header">
+              <h3 class="claude-modal-title" id="btn-dialog-title">Crear botón de acceso rápido</h3>
+              <button type="button" class="claude-modal-close" id="btn-dialog-close" aria-label="Cerrar">✕</button>
+            </div>
             <form class="routine-new conn-card" id="btn-form" autocomplete="off">
-              <h3>Crear botón</h3>
               <div class="conn-fields">
                 <div class="conn-field">
                   <label for="btn-connector">Conector</label>
@@ -148,7 +214,7 @@
               <div class="conn-fields">
                 <div class="conn-field">
                   <label for="btn-label">Nombre del botón</label>
-                  <input id="btn-label" type="text" maxlength="40">
+                  <input id="btn-label" type="text" maxlength="40" placeholder="Ej: Prender sala">
                 </div>
                 <div class="conn-field">
                   <label for="btn-args">Argumentos (clave=valor o JSON)</label>
@@ -164,7 +230,7 @@
               <p class="result fail" id="btn-error" role="alert"></p>
             </form>
           </div>
-        </div>
+        </dialog>
       </main>
     </div>
 
