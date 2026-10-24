@@ -22,7 +22,8 @@ GRACE = timedelta(minutes=2)  # pasado esto de la hora, la rutina se considera p
 USAGE = (
     "Se escribe «cuándo | qué». Cuándo: `23:00` (todos los días), `lun-vie 09:00`, `sab,dom 10:30`, `en 30m` / `en 2h` (una sola vez) "
     "o `disco>90` / `ram>85` (cuando el uso pasa de ese %). "
-    "Qué: `avisar texto`, `volumen 20` o `musica pausa`. Ejemplo: /rutina 23:00 | volumen 20"
+    "Qué: `avisar texto`, `volumen 20`, `musica pausa`, `abrir <sitio o link>`, `esperar 5` y las demás herramientas; se pueden encadenar con « > » "
+    "y un paso usa lo que devolvió uno anterior con `{{paso 1}}`. Ejemplos: /rutina 23:00 | volumen 20   ·   /rutina 08:00 | volumen 15 > abrir <link> > esperar 5 > musica play"
 )
 
 DAY_SHORT = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")

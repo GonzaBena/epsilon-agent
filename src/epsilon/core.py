@@ -576,7 +576,9 @@ ROUTINE_VERBS = {"borrar": "Borré", "pausar": "Pausé", "seguir": "Reanudé"}
 def _routine_create(text: str) -> Reply:
     """Crea una rutina desde «cuándo | qué». Nunca pausa ni borra: es lo único que hace la herramienta de crear de la IA."""
     try:
-        rule = routine_store.add(routine_rules.build(text.strip(), _local_now()))
+        built = routine_rules.build(text.strip(), _local_now(), _catalog_ids())
+        built["steps"] = stamp_steps(built["steps"])
+        rule = routine_store.add(built)
     except (ValueError, routine_store.StoreError) as e:
         return Reply(str(e))
     if "next_run" not in rule:
@@ -614,7 +616,9 @@ def _routine_preview(tool_id: str, args: str) -> str:
     el modelo. Va en un bloque de código: el texto de un aviso lo escribió el modelo."""
     if tool_id == "rutina_crear":
         try:
-            return f"\nSe guardaría como:\n{_fenced(routine_rules.describe(routine_rules.build(_bare(args), _local_now())))}"
+            built = routine_rules.build(_bare(args), _local_now(), _catalog_ids())
+            lines = [routine_rules.describe_when(built["when"]), *(f"{n}. {routine_rules.describe_step(st)}" for n, st in enumerate(built["steps"], 1))]
+            return f"\nSe guardaría como:\n{_fenced(chr(10).join(lines))}"
         except ValueError as e:
             return f"\nNo se entiende ({str(e)[:100]}): no se guardaría nada."
     if tool_id == "rutina_borrar":
@@ -624,13 +628,19 @@ def _routine_preview(tool_id: str, args: str) -> str:
     return ""
 
 
+def _routine_label(rule: dict) -> str:
+    """El nombre (si la persona le puso uno distinto de lo que hace) y la frase completa."""
+    text = routine_rules.describe(rule)
+    return text if rule["name"] == routine_rules.describe_chain(rule["steps"])[:routine_rules.MAX_NAME] else f"**{rule['name']}**: {text}"
+
+
 def _routines_cmd(args: str, session: "Session") -> Reply:
     """/rutinas: las rutinas guardadas, numeradas."""
     found = routine_store.rules()
     if not found:
         return Reply("No tenés rutinas. Creá una, por ejemplo: /rutina 23:00 | volumen 20")
     rows = [
-        f"| {r['id']} | {routine_rules.describe(r).replace('|', '/')} | {routine_rules.next_text(r) if r.get('enabled', True) else 'en pausa'} |"
+        f"| {r['id']} | {_routine_label(r).replace('|', '/')} | {routine_rules.next_text(r) if r.get('enabled', True) else 'en pausa'} |"
         for r in found
     ]
     warning = "" if config.enabled("ROUTINES_ENABLED") else "⚠ Las rutinas están apagadas (ajuste ROUTINES_ENABLED): ninguna se cumple.\n\n"

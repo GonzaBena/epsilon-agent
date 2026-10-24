@@ -282,7 +282,7 @@ def test_rutina_explains_itself_and_refuses_what_it_does_not_understand(tmp_path
     routines_clock(tmp_path, monkeypatch)
 
     assert "cuándo | qué" in say("/rutina").text
-    for bad in ("23:00 | apagar", "23:00 | volumen 40; reboot", "mañana | volumen 20", "volumen 20", "23:00 | sistema ram"):
+    for bad in ("23:00 | apagar", "23:00 | volumen 40; reboot", "mañana | volumen 20", "volumen 20", "23:00 | hackear todo"):
         reply = say("/rutina " + bad).text
         assert reply and "Listo" not in reply, bad
     assert say("/rutinas").text.startswith("No tenés rutinas")

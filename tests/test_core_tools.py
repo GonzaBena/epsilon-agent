@@ -1077,7 +1077,7 @@ def test_the_question_shows_how_the_code_understood_the_routine_and_nothing_is_s
 
     reply = say("bajá el volumen a las 11 de la noche")
 
-    assert "Se guardaría como:" in reply.text and "todos los días a las 23:00 → volumen 20" in reply.text
+    assert "Se guardaría como:" in reply.text and "todos los días a las 23:00" in reply.text and "1. volumen 20" in reply.text
     assert core.routine_store.rules() == []
 
 
@@ -1089,6 +1089,43 @@ def test_a_confirmed_routine_is_saved_and_the_model_hears_how(script, at_1430):
 
     assert [r["steps"] for r in core.routine_store.rules()] == [[{"tool": "volumen", "args": "20"}]]
     assert "Listo, rutina 1: todos los días a las 23:00 → volumen 20" in results(script.seen[1][0])[0]
+
+
+def test_the_question_lists_each_step_numbered(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "08:00 | volumen 15 > abrir yt > esperar 5 > musica play")])]
+
+    reply = say("armame un despertador")
+
+    assert "1. volumen 15" in reply.text and "2. nav_abrir yt" in reply.text and "3. esperar 5" in reply.text and "4. musica play" in reply.text
+    assert core.routine_store.rules() == []
+
+
+def test_a_confirmed_chain_is_saved_with_every_step(script, at_1430):
+    allow("rutina_crear")
+    script.steps = [step(calls=[("rutinas.crear", "08:00 | volumen 15 > abrir yt > esperar 5 > musica play")]), step("ok")]
+
+    say("armame un despertador")
+
+    saved = core.routine_store.rules()[0]
+    assert [s["tool"] for s in saved["steps"]] == ["volumen", "nav_abrir", "esperar", "musica"]
+
+
+def test_slash_rutina_creates_a_chain_without_the_model(script, at_1430):
+    reply = core._routine_cmd("08:00 | volumen 15 > esperar 2 > avisar Despertá", core.Session())
+
+    assert "Listo, rutina 1" in reply.text and len(core.routine_store.rules()[0]["steps"]) == 3
+
+
+def test_a_step_that_is_not_available_is_not_saved_and_says_so(script, at_1430):
+    reply = core._routine_cmd("08:00 | volumen 15 > hackear todo", core.Session())
+
+    assert "no está disponible" in reply.text and core.routine_store.rules() == []
+
+
+def test_a_forward_reference_is_refused(script, at_1430):
+    reply = core._routine_cmd("08:00 | avisar {{paso 2}} > volumen 10", core.Session())
+
+    assert "no es anterior" in reply.text and core.routine_store.rules() == []
 
 
 def test_a_refused_routine_is_not_saved(script, at_1430):
