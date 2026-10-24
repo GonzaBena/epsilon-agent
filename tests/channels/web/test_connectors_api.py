@@ -68,11 +68,11 @@ def test_view_never_contains_env_values(client, monkeypatch):
         assert SECRET not in reply.text
     view = client.get("/api/connectors").json()["connectors"][0]
     assert view["env"]["TOKEN"] == {"set": True, "length": len(SECRET)}
-    assert view["tools"] == [{"action": "saludar", "description": "dice hola", "changed": True}]  # sin permiso decidido
+    assert view["tools"] == [{"action": "saludar", "description": "dice hola", "params": [], "changed": True}]  # sin permiso decidido
     monkeypatch.setattr(web.tools, "_providers", [registry.provide])
     permissions.save(permissions.load())  # la persona revisó /permisos: ya no es «nueva»
     view = client.get("/api/connectors").json()["connectors"][0]
-    assert view["tools"] == [{"action": "saludar", "description": "dice hola", "changed": False}]
+    assert view["tools"] == [{"action": "saludar", "description": "dice hola", "params": [], "changed": False}]
     assert (view["name"], view["command"], view["enabled"], view["status"]) == ("luces", "luces --modo x", True, "activo")
 
 
@@ -199,3 +199,15 @@ def test_connector_commands_list_only_enabled_connectors(client, monkeypatch):
 
     client.put("/api/connectors/luces", json={"enabled": False})
     assert client.get("/api/connector-commands").json()["items"] == []
+
+
+def test_connectors_view_lists_tool_params_for_the_button_form(client, monkeypatch):
+    schema = {"type": "object", "properties": {"sala": {"type": "string", "enum": ["a", "b"]}, "nivel": {"type": "integer", "description": "0-100"}}, "required": ["sala"]}
+    install(monkeypatch, {"luces": FakeLink(tools=[tool("encender", "prende", schema)])})
+    add(client)
+
+    params = client.get("/api/connectors").json()["connectors"][0]["tools"][0]["params"]
+    assert params == [
+        {"name": "sala", "type": "string", "required": True, "description": "", "enum": ["a", "b"]},
+        {"name": "nivel", "type": "integer", "required": False, "description": "0-100", "enum": []},
+    ]

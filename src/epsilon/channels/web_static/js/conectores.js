@@ -584,7 +584,6 @@ const btnEmpty = document.getElementById("btn-empty");
 const btnForm = document.getElementById("btn-form");
 const btnConnector = document.getElementById("btn-connector");
 const btnTool = document.getElementById("btn-tool");
-const btnArgs = document.getElementById("btn-args");
 const btnLabel = document.getElementById("btn-label");
 const btnError = document.getElementById("btn-error");
 const btnSuggest = document.getElementById("btn-suggest");
@@ -613,8 +612,73 @@ function fillToolSelect() {
   });
   btnTool.replaceChildren(...options);
   if (chosen && options.some((o) => o.value === chosen)) btnTool.value = chosen;
+  fillParams();
 }
 btnConnector.addEventListener("change", fillToolSelect);
+btnTool.addEventListener("change", fillParams);
+
+// Un campo por argumento de la herramienta elegida (sale de su esquema): nadie escribe nombres a mano.
+const btnParams = document.getElementById("btn-params");
+let paramFields = []; // {param, input}
+
+function fillParams() {
+  const connector = known.find((c) => c.name === btnConnector.value);
+  const tool = connector && connector.tools.find((t) => t.action === btnTool.value);
+  const params = (tool && tool.params) || [];
+  paramFields = params.map((param) => {
+    const field = make("div", "conn-field");
+    const id = `btn-param-${param.name}`;
+    const label = make("label", "", param.required ? param.name : `${param.name} (opcional)`);
+    label.htmlFor = id;
+    let input;
+    if (param.enum.length) {
+      input = make("select");
+      if (!param.required) input.append(make("option", "", "—"));
+      for (const value of param.enum) {
+        const option = make("option", "", String(value));
+        option.value = String(value);
+        input.append(option);
+      }
+    } else if (param.type === "boolean") {
+      input = make("select");
+      for (const [value, text] of [["", "—"], ["true", "Sí"], ["false", "No"]]) {
+        const option = make("option", "", text);
+        option.value = value;
+        input.append(option);
+      }
+    } else {
+      input = make("input");
+      input.type = param.type === "integer" || param.type === "number" ? "number" : "text";
+      if (param.type === "number") input.step = "any";
+      input.maxLength = 500;
+      input.spellcheck = false;
+      if (param.type === "array" || param.type === "object") input.placeholder = "JSON";
+    }
+    input.id = id;
+    field.append(label, input);
+    if (param.description) field.append(make("p", "hint", param.description));
+    return { param, input, field };
+  });
+  btnParams.replaceChildren(...paramFields.map((f) => f.field));
+  if (!params.length) btnParams.replaceChildren(make("p", "hint", "Esta herramienta no lleva argumentos."));
+}
+
+// Arma el objeto de argumentos con los campos completados; el servidor lo vuelve a validar contra el esquema.
+function collectArgs() {
+  const args = {};
+  for (const { param, input } of paramFields) {
+    const raw = input.value.trim();
+    if (!raw) {
+      if (param.required) throw new Error(`Falta completar «${param.name}».`);
+      continue;
+    }
+    if (param.type === "integer" || param.type === "number") args[param.name] = Number(raw);
+    else if (param.type === "boolean") args[param.name] = raw === "true";
+    else if (param.type === "array" || param.type === "object") args[param.name] = JSON.parse(raw);
+    else args[param.name] = raw;
+  }
+  return args;
+}
 
 function renderButtons(buttons) {
   grid.replaceChildren(...buttons.map((button) => {
@@ -717,10 +781,15 @@ async function createButton(body) {
 
 btnForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  // El texto va tal cual: el servidor lo entiende (clave=valor o JSON) y convierte cada valor según el esquema.
-  const args = btnArgs.value.trim();
+  let args;
+  try {
+    args = collectArgs();
+  } catch (error) {
+    btnError.textContent = error instanceof SyntaxError ? "Un argumento JSON no se entiende." : error.message;
+    return;
+  }
   const ok = await createButton({ label: btnLabel.value.trim(), connector: btnConnector.value, tool: btnTool.value, args });
-  if (ok) { btnLabel.value = ""; btnArgs.value = ""; }
+  if (ok) { btnLabel.value = ""; fillParams(); }
 });
 
 btnSuggest.addEventListener("click", async () => {

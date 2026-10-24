@@ -235,6 +235,23 @@ def split_command(command: str) -> list[str]:
     return argv
 
 
+def tool_params(schema: dict) -> list[dict]:
+    """Los argumentos que acepta una herramienta, para armar el formulario de un botón (un campo por argumento)."""
+    required = schema.get("required") if isinstance(schema.get("required"), list) else []
+    found = []
+    for key, spec in bridge._props(schema).items():
+        spec = spec if isinstance(spec, dict) else {}
+        enum = spec.get("enum")
+        found.append({
+            "name": str(key)[:60],
+            "type": bridge._kind(spec) or "string",
+            "required": key in required,
+            "description": config.redact(" ".join(str(spec.get("description") or "").split()))[:160],
+            "enum": [v for v in enum if isinstance(v, (str, int, float)) and not isinstance(v, bool)][:30] if isinstance(enum, list) else [],
+        })
+    return found[:20]
+
+
 def connectors_view() -> dict:
     """Lo que la página de conectores dibuja. Nunca lleva los valores de `env`: solo si está cargada y su largo."""
     shown = []
@@ -250,7 +267,8 @@ def connectors_view() -> dict:
                 taken.add(action)
                 description = item.get("description") if isinstance(item.get("description"), str) else ""
                 # «changed»: sin hash guardado, o sin permiso decidido todavía: pendiente de que la revises.
-                found.append({"action": action, "description": config.redact(description)[:200],
+                schema = item.get("schema") if isinstance(item.get("schema"), dict) else {}
+                found.append({"action": action, "description": config.redact(description)[:200], "params": tool_params(schema),
                               "changed": not item.get("hash") or not permissions.is_saved(bridge.tool_id(entry["name"], action))})
             shown.append({
                 "name": entry["name"], "command": shlex.join(entry["argv"]), "enabled": bool(entry.get("enabled")),
