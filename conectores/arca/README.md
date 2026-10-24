@@ -36,6 +36,10 @@ Entrás con tu clave fiscal (de la persona física).
 2. En «Administrador de Relaciones de Clave Fiscal»: nueva relación → servicio `wsfe`, y como representante el
    alias del certificado.
 
+**Padrón (opcional, para `buscar_persona`):** en WSASS (homologación) o en «Administrador de Relaciones de Clave Fiscal»
+(producción), autorizá el servicio `ws_sr_padron_a13` («Consulta a Padrón Alcance 13») para el mismo certificado. Pide su propio
+ticket, que se guarda aparte en `cache/`.
+
 **Punto de venta:** el de «Comprobantes en línea» (el que usás en la web) **no sirve** para web services. Creá otro
 en «Administración de puntos de venta y domicilios» con el sistema **«RECE para aplicativo y web services»**.
 En homologación el punto de venta se crea desde la propia herramienta de pruebas de ARCA.
@@ -64,6 +68,7 @@ y por qué.
 | `ver_comprobante` | Fecha, importes, receptor, concepto y CAE de uno ya autorizado: `/c arca ver_comprobante numero=45` |
 | `actividades` | Las actividades del emisor que ARCA acepta asociar a un comprobante (el código va en `actividad`). En homologación suele no haber ninguna |
 | `condiciones_iva_receptor` | Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C |
+| `buscar_persona` | Nombre y domicilio fiscal de un DNI, CUIL o CUIT en el padrón de ARCA: `/c arca buscar_persona documento=12345678`. Con un DNI muestra todas las claves (si hay más de una, hay que elegir el CUIL). Necesita autorizar `ws_sr_padron_a13` (ver abajo) |
 | `emitir_factura` | Emite una Factura C. Ver la sección siguiente |
 
 Todas aceptan `cuenta=<nombre>` para cambiar de cuenta. Para que la IA **no** las use, poné `deny` en `/permisos`.

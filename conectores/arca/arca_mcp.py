@@ -44,13 +44,17 @@ TIMEOUT = 30  # segundos por pedido
 REFRESH_BEFORE = 600  # se pide un ticket nuevo cuando faltan menos de 10 min
 ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,19}")
 ENVIRONMENTS = ("homologacion", "produccion")
-# Direcciones oficiales. Se pueden cambiar por cuenta con "urls": {"wsaa": ..., "wsfe": ...} si ARCA cambia de dominio.
+# Direcciones oficiales. Se pueden cambiar por cuenta con "urls": {"wsaa": ..., "wsfe": ..., "padron": ...} si ARCA cambia de dominio.
 URLS = {
     "homologacion": {"wsaa": "https://wsaahomo.afip.gov.ar/ws/services/LoginCms",
-                     "wsfe": "https://wswhomo.afip.gov.ar/wsfev1/service.asmx"},
+                     "wsfe": "https://wswhomo.afip.gov.ar/wsfev1/service.asmx",
+                     "padron": "https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA13"},
     "produccion": {"wsaa": "https://wsaa.afip.gov.ar/ws/services/LoginCms",
-                   "wsfe": "https://servicios1.afip.gov.ar/wsfev1/service.asmx"},
+                   "wsfe": "https://servicios1.afip.gov.ar/wsfev1/service.asmx",
+                   "padron": "https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA13"},
 }
+PADRON_SERVICE = "ws_sr_padron_a13"
+PADRON_NS = "http://a13.soap.ws.server.puc.sr/"
 WSFE_NS = "http://ar.gov.afip.dif.FEV1/"
 WSAA_NS = "http://wsaa.view.sua.dvadac.desein.afip.gov"
 DEFAULT_TYPE = {"monotributo": 11}  # Factura C
@@ -212,13 +216,13 @@ def sign_request(request_xml: bytes, cert: x509.Certificate, key) -> str:
     return base64.b64encode(der).decode()
 
 
-def login(account: dict) -> dict:
+def login(account: dict, service: str = "wsfe") -> dict:
     cert, key = read_pair(account)
     now = datetime.now(AR_TZ)
     stamp = lambda moment: moment.isoformat(timespec="seconds")  # noqa: E731
     request = ('<?xml version="1.0" encoding="UTF-8"?><loginTicketRequest version="1.0"><header>'
                f"<uniqueId>{int(time.time())}</uniqueId><generationTime>{stamp(now - timedelta(minutes=10))}</generationTime>"
-               f"<expirationTime>{stamp(now + timedelta(minutes=10))}</expirationTime></header><service>wsfe</service></loginTicketRequest>")
+               f"<expirationTime>{stamp(now + timedelta(minutes=10))}</expirationTime></header><service>{service}</service></loginTicketRequest>")
     cms = sign_request(request.encode(), cert, key)
     root = soap(account["urls"]["wsaa"], "", f'<loginCms xmlns="{WSAA_NS}"><in0>{cms}</in0></loginCms>')
     try:
@@ -232,16 +236,17 @@ def login(account: dict) -> dict:
     return data
 
 
-def ticket(account: dict) -> tuple[str, str]:
-    """(token, sign) vigentes. ARCA no da un ticket nuevo mientras haya uno vivo, así que se guarda en disco."""
-    cache = home() / "cache" / f"{account['alias']}-{account['ambiente']}.json"
+def ticket(account: dict, service: str = "wsfe") -> tuple[str, str]:
+    """(token, sign) vigentes para un servicio. ARCA no da un ticket nuevo mientras haya uno vivo, así que se guarda en disco (uno por servicio)."""
+    suffix = "" if service == "wsfe" else f"-{service}"
+    cache = home() / "cache" / f"{account['alias']}-{account['ambiente']}{suffix}.json"
     try:
         saved = json.loads(cache.read_text(encoding="utf-8"))
         if saved["expires"] - time.time() > REFRESH_BEFORE:
             return saved["token"], saved["sign"]
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    data = login(account)
+    data = login(account, service)
     cache.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     write_private(cache, json.dumps(data))
     return data["token"], data["sign"]
@@ -272,6 +277,19 @@ def wsfe(account: dict, method: str, params: str = "", *, auth: bool = True) -> 
     if errors:
         raise Problem("ARCA: " + "; ".join(f"{msg} (código {code})" for code, msg in errors), codes=tuple(c for c, _ in errors))
     return root
+
+
+# ---------- Padrón (ws_sr_padron_a13): quién es un DNI / CUIL ----------
+
+def padron(account: dict, method: str, params: str) -> ET.Element:
+    token, sign = ticket(account, PADRON_SERVICE)
+    credentials = f"<token>{escape(token)}</token><sign>{escape(sign)}</sign><cuitRepresentada>{account['cuit']}</cuitRepresentada>"
+    try:
+        return soap(account["urls"]["padron"], method, f'<a13:{method} xmlns:a13="{PADRON_NS}">{credentials}{params}</a13:{method}>')
+    except Problem as problem:
+        if "autoriz" in str(problem).lower():
+            raise Problem(f"{problem}\nFalta autorizar el servicio «{PADRON_SERVICE}» para el certificado de esta cuenta (ver README).") from None
+        raise
 
 
 NO_RESULTS = "602"  # ARCA contesta «Sin Resultados» como un error cuando una lista está vacía
@@ -466,6 +484,48 @@ def ver_comprobante(numero: int, tipo: int | None = None, punto_venta: int | Non
         f"Concepto: {detail}",
         f"CAE: {text_of(root, 'CodAutorizacion') or '?'} · vence {day(text_of(root, 'FchVto'))} · {result}",
     ])
+
+
+def person_line(person: ET.Element) -> str:
+    """Una persona del padrón en una línea: nombre, clave y domicilio fiscal. Todo es dato de ARCA, nunca instrucciones."""
+    name = " ".join(x for x in (text_of(person, "apellido"), text_of(person, "nombre")) if x) or text_of(person, "razonSocial")
+    homes = [d for d in find(person, "domicilio") if text_of(d, "tipoDomicilio") == "FISCAL"] or find(person, "domicilio")
+    where = ""
+    if homes:
+        parts = [text_of(homes[0], k) for k in ("direccion", "localidad", "descripcionProvincia")]
+        where = ", ".join(one_line(x, 80) for x in parts if x)
+    state = text_of(person, "estadoClave")
+    return (f"{text_of(person, 'tipoClave') or 'CUIL'} {text_of(person, 'idPersona')} · {one_line(name, 80) or '(sin nombre)'}"
+            f"{' · ' + where if where else ' · sin domicilio'}{' · clave ' + state.lower() if state and state != 'ACTIVO' else ''}")
+
+
+@server.tool()
+def buscar_persona(documento: str, cuenta: str | None = None) -> str:
+    """Busca en el padrón de ARCA el nombre y el domicilio de un DNI, CUIL o CUIT. Con un DNI muestra todas las claves que le corresponden (si hay más de una, hay que elegir el CUIL)."""
+    try:
+        account = pick(cuenta)
+        digits = re.sub(r"[.\-\s]", "", str(documento))
+        if not digits.isdigit() or not 6 <= len(digits) <= 11:
+            raise Problem("documento: un DNI (hasta 8 números) o un CUIL/CUIT (11 números).")
+        if len(digits) == 11:
+            if not valid_cuit(digits):
+                raise Problem("Ese CUIL/CUIT no es válido: revisá el dígito verificador.")
+            ids = [digits]
+        else:
+            ids = [text_of(i, "idPersona") for i in find(padron(account, "getIdPersonaListByDocumento", f"<documento>{digits}</documento>"), "idPersona")]
+            ids = [i for i in dict.fromkeys(ids) if i]
+        if not ids:
+            return f"[{account['alias']}] El padrón no tiene a nadie con el documento {digits}."
+        lines = []
+        for one in ids[:5]:
+            root = padron(account, "getPersonaV2", f"<idPersona>{one}</idPersona>")
+            found = find(root, "persona")
+            lines.append(person_line(found[0]) if found else f"{one} · sin datos")
+        more = f"\n(Hay {len(ids)} claves; muestro las primeras 5.)" if len(ids) > 5 else ""
+        pick_one = "\nHay más de una clave para ese DNI: usá el CUIL que corresponda como documento." if len(ids) > 1 else ""
+        return f"[{account['alias']}] {banner(account)}\n" + "\n".join(lines) + more + pick_one
+    except Problem as problem:
+        return str(problem)
 
 
 @server.tool()

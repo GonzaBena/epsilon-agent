@@ -134,7 +134,7 @@ def test_server_defines_its_tools_and_the_buttons_fit_them(arca):
     found = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}
 
     assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante",
-                          "condiciones_iva_receptor", "actividades", "emitir_factura"}
+                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona"}
     for button in json.loads(arca.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -772,3 +772,62 @@ def test_the_summary_shows_payment_and_place_and_warns_that_arca_keeps_none_of_i
     assert logged["forma_pago"] == "Contado" and logged["localidad"] == "CABA"
     simulation = ready.emitir_factura(importe=500, concepto="productos", localidad="CABA")
     assert "Localidad: CABA" in simulation and "ARCA no guarda la descripción" in simulation
+
+
+def base64_request(calls):
+    """El pedido de ingreso (TRA) que viajó firmado dentro del primer loginCms."""
+    import base64
+    cms = re.search(r"<in0>(.*?)</in0>", next(c[2] for c in calls if "LoginCms" in c[0])).group(1)
+    return base64.b64decode(cms).decode("latin-1")
+
+
+def padron_answer(method, body):
+    return (f'<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>'
+            f'<ns2:{method}Response xmlns:ns2="http://a13.soap.ws.server.puc.sr/">{body}</ns2:{method}Response></soap:Body></soap:Envelope>')
+
+
+def person(cuil, last, first, state="ACTIVO"):
+    return padron_answer("getPersonaV2", (
+        f"<personaReturn><persona><apellido>{last}</apellido><nombre>{first}</nombre><idPersona>{cuil}</idPersona><tipoClave>CUIL</tipoClave>"
+        f"<estadoClave>{state}</estadoClave>"
+        "<domicilio><direccion>OTRA 1</direccion><localidad>LEGAL</localidad><tipoDomicilio>LEGAL/REAL</tipoDomicilio></domicilio>"
+        "<domicilio><direccion>SAN RAMON 415</direccion><localidad>CABA</localidad><descripcionProvincia>CAPITAL FEDERAL</descripcionProvincia>"
+        "<tipoDomicilio>FISCAL</tipoDomicilio></domicilio></persona></personaReturn>"))
+
+
+def test_the_padron_looks_a_dni_up_with_its_own_ticket_and_shows_the_fiscal_address(ready, monkeypatch):
+    ids = padron_answer("getIdPersonaListByDocumento", "<idPersonaListReturn><idPersona>20123456786</idPersona></idPersonaListReturn>")
+    calls = serve(ready, monkeypatch, {"getIdPersonaListByDocumento": ids, "getPersonaV2": person("20123456786", "PEREZ", "JUAN")})
+
+    text = ready.buscar_persona("12.345.678")
+
+    assert "CUIL 20123456786 · PEREZ JUAN · SAN RAMON 415, CABA, CAPITAL FEDERAL" in text and "OTRA 1" not in text
+    assert "HOMOLOGACIÓN" in text and "Hay más de una clave" not in text
+    assert "<service>ws_sr_padron_a13</service>" in base64_request(calls)
+    assert all(c[0] == "https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA13" for c in calls if "LoginCms" not in c[0])
+    assert (ready.home() / "cache" / "negocio-homologacion-ws_sr_padron_a13.json").is_file()  # un ticket por servicio
+    body = next(c[2] for c in calls if c[1].endswith("getIdPersonaListByDocumento"))
+    assert "<documento>12345678</documento>" in body and f"<cuitRepresentada>{CUIT}</cuitRepresentada>" in body
+
+
+def test_two_keys_for_one_dni_are_listed_so_the_cuil_can_be_chosen(ready, monkeypatch):
+    ids = padron_answer("getIdPersonaListByDocumento", "<idPersonaListReturn><idPersona>20123456786</idPersona><idPersona>27123456780</idPersona></idPersonaListReturn>")
+    serve(ready, monkeypatch, {"getIdPersonaListByDocumento": ids, "getPersonaV2": person("20123456786", "PEREZ", "JUAN")})
+    text = ready.buscar_persona("12345678")
+    assert text.count("CUIL 2") == 2 and "usá el CUIL que corresponda" in text
+
+
+def test_a_cuil_is_looked_up_directly_and_a_dni_nobody_has_says_so(ready, monkeypatch):
+    calls = serve(ready, monkeypatch, {"getPersonaV2": person("20123456786", "PEREZ", "JUAN", state="INACTIVO")})
+    assert "clave inactivo" in ready.buscar_persona("20-12345678-6")
+    assert not [c for c in calls if c[1].endswith("getIdPersonaListByDocumento")]
+    serve(ready, monkeypatch, {"getIdPersonaListByDocumento": padron_answer("getIdPersonaListByDocumento", "<idPersonaListReturn></idPersonaListReturn>")})
+    assert "no tiene a nadie" in ready.buscar_persona("12345678")
+
+
+def test_the_padron_validates_the_document_and_explains_a_missing_authorization(ready, monkeypatch):
+    serve(ready, monkeypatch, {})
+    assert "documento:" in ready.buscar_persona("abc") and "dígito verificador" in ready.buscar_persona("20123456780")
+    fault = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultstring>Computador no autorizado a acceder al servicio</faultstring></soap:Fault></soap:Body></soap:Envelope>'
+    serve(ready, monkeypatch, {"getIdPersonaListByDocumento": fault})
+    assert "Falta autorizar el servicio «ws_sr_padron_a13»" in ready.buscar_persona("12345678")
