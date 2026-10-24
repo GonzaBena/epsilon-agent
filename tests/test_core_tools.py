@@ -1100,11 +1100,12 @@ def test_the_question_lists_each_step_numbered(script, at_1430):
     assert core.routine_store.rules() == []
 
 
-def test_a_confirmed_chain_is_saved_with_every_step(script, at_1430):
-    allow("rutina_crear")
+def test_a_confirmed_chain_is_saved_with_every_step(script, at_1430, monkeypatch):
+    monkeypatch.setattr(core.navegador, "resolve_target", lambda text: "https://music.youtube.com/" if text == "yt" else text)
     script.steps = [step(calls=[("rutinas.crear", "08:00 | volumen 15 > abrir yt > esperar 5 > musica play")]), step("ok")]
 
     say("armame un despertador")
+    press("perm:si")
 
     saved = core.routine_store.rules()[0]
     assert [s["tool"] for s in saved["steps"]] == ["volumen", "nav_abrir", "esperar", "musica"]
@@ -1128,6 +1129,28 @@ def test_a_forward_reference_is_refused(script, at_1430):
     assert "no es anterior" in reply.text and core.routine_store.rules() == []
 
 
+def test_creating_a_routine_always_asks_even_if_the_permission_is_allow_or_granted_for_the_chat(script, at_1430):
+    allow("rutina_crear")
+    script.steps = [step(calls=[("rutinas.crear", "08:00 | avisar uno")]), step("ok"), step(calls=[("rutinas.crear", "09:00 | avisar dos")])]
+
+    first = say("programá una")
+    assert "Se guardaría como:" in first.text and core.routine_store.rules() == []
+
+    press("perm:siempre")  # «por el resto de la conversación»
+    assert len(core.routine_store.rules()) == 1
+
+    second = say("programá otra")
+    assert "Se guardaría como:" in second.text and len(core.routine_store.rules()) == 1
+
+
+def test_the_question_marks_the_steps_that_change_or_delete_data(script, at_1430):
+    script.steps = [step(calls=[("rutinas.crear", "08:00 | nota_editar todo 1 hecho")])]
+
+    reply = say("programá")
+
+    assert "⚠" in reply.text and "nota_editar" in reply.text
+
+
 def test_a_refused_routine_is_not_saved(script, at_1430):
     script.steps = [step(calls=[("rutinas.crear", "23:00 | volumen 20")])]
     say("programá algo")
@@ -1146,11 +1169,11 @@ def test_the_question_says_when_the_routine_makes_no_sense(script, at_1430):
 
 
 def test_the_create_tool_cannot_pause_or_delete_other_routines(script, at_1430):
-    allow("rutina_crear")
     core.routine_store.add(core.routine_rules.build("23:00 | volumen 20", core._local_now()))
     script.steps = [step(calls=[("rutinas.crear", "borrar 1")]), step("no pude")]
 
     say("borrá la rutina 1")
+    press("perm:si")
 
     assert len(core.routine_store.rules()) == 1  # sigue ahí: crear solo crea
 
@@ -1164,10 +1187,10 @@ def test_the_notice_text_is_shown_inside_a_code_block(script, at_1430):
 
 
 def test_a_copied_command_prefix_is_removed(script, at_1430):
-    allow("rutina_crear")
     script.steps = [step(calls=[("rutinas.crear", "/rutina 23:00 | volumen 20")]), step("ok")]
 
     say("programá")
+    press("perm:si")
 
     assert len(core.routine_store.rules()) == 1
 
