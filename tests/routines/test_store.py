@@ -30,7 +30,7 @@ def test_starts_empty_and_ids_grow():
 def test_it_lives_in_a_fixed_file_inside_the_data_folder():
     store.add(make())
 
-    assert json.loads((notes.DATA_DIR / store.FILE).read_text(encoding="utf-8"))["rules"][0]["do"] == {"kind": "volumen", "arg": "20"}
+    assert json.loads((notes.DATA_DIR / store.FILE).read_text(encoding="utf-8"))["rules"][0]["steps"] == [{"tool": "volumen", "args": "20"}]
     assert not list(notes.DATA_DIR.glob("*.tmp"))
 
 
@@ -54,7 +54,7 @@ def test_the_notice_text_is_redacted(monkeypatch):
 
     saved = store.add(make("en 5m | avisar la clave es " + "k" * 30))
 
-    assert "k" * 30 not in saved["do"]["arg"]
+    assert "k" * 30 not in saved["steps"][0]["args"]
 
 
 def test_a_broken_file_reads_as_no_rules():
@@ -89,3 +89,22 @@ def test_pausing_and_resuming_a_condition_never_deletes_it():
     assert store.set_enabled(1, False, NOW)["enabled"] is False
     assert store.set_enabled(1, True, NOW)["enabled"] is True
     assert len(store.rules()) == 1
+
+
+def test_an_old_file_is_migrated_when_read():
+    (notes.DATA_DIR / store.FILE).write_text(json.dumps({"rules": [
+        {"id": 3, "when": {"kind": "daily", "time": "23:00", "days": [0]}, "do": {"kind": "avisar", "arg": "hola"}, "enabled": True, "next_run": "2026-10-23T23:00:00"}]}), encoding="utf-8")
+
+    assert store.rules()[0]["steps"] == [{"tool": "avisar", "args": "hola"}]
+
+
+def test_replace_keeps_id_and_enabled_and_recomputes_next_run():
+    saved = store.add(make())
+    store.set_enabled(saved["id"], False, NOW)
+
+    new = rules.build_from("Otra", "07:00", [{"tool": "musica", "args": "play"}], NOW, {"musica"})
+    result = store.replace(saved["id"], new)
+
+    assert result["id"] == saved["id"] and result["enabled"] is False
+    assert store.rules()[0]["name"] == "Otra" and store.rules()[0]["next_run"] == "2026-10-23T07:00:00"
+    assert store.replace(99, new) is None

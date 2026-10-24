@@ -27,7 +27,7 @@ def _read() -> dict:
     except (OSError, ValueError):
         return {"rules": []}
     found = data.get("rules", []) if isinstance(data, dict) else []
-    return {"rules": [r for r in found if isinstance(r, dict) and isinstance(r.get("id"), int)]}
+    return {"rules": [rules_mod.migrate(r) for r in found if isinstance(r, dict) and isinstance(r.get("id"), int)]}
 
 
 def _write(data: dict) -> None:
@@ -56,7 +56,7 @@ def update(change) -> object:
 
 def add(rule: dict) -> dict:
     """Guarda una regla nueva (de `rules.build`) y le pone el id. StoreError si ya hay demasiadas."""
-    rule = {**rule, "do": {**rule["do"], "arg": config.redact(rule["do"]["arg"])}}
+    rule = {**rule, "steps": [{**step, "args": config.redact(step["args"])} for step in rule["steps"]]}
 
     def change(all_rules: list[dict]) -> dict:
         if len(all_rules) >= MAX_RULES:
@@ -64,6 +64,21 @@ def add(rule: dict) -> dict:
         rule["id"] = max([r["id"] for r in all_rules] + [0]) + 1
         all_rules.append(rule)
         return rule
+
+    return update(change)
+
+
+def replace(rule_id: int, new: dict) -> dict | None:
+    """Cambia nombre, cuándo y pasos de una regla (de `rules.build_from`) conservando su id y si está activa; None si no
+    existe. Una condición vuelve a armarse (`tripped`) y un horario recalcula su próxima vez."""
+    new = {**new, "steps": [{**step, "args": config.redact(step["args"])} for step in new["steps"]]}
+
+    def change(all_rules: list[dict]) -> dict | None:
+        for index, rule in enumerate(all_rules):
+            if rule["id"] == rule_id:
+                all_rules[index] = {**new, "id": rule_id, "enabled": rule.get("enabled", True)}
+                return all_rules[index]
+        return None
 
     return update(change)
 

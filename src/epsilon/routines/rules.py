@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import re
 import unicodedata
 
+from epsilon.routines import steps as steps_mod
 from epsilon.utils import clock, multimedia
 
 # Las rutinas: reglas «cuándo | qué» que Epsilon cumple solo. Este módulo es PURO: entiende el texto, lo valida y calcula
@@ -9,7 +10,10 @@ from epsilon.utils import clock, multimedia
 # lista fija (`ACTIONS`) y sus argumentos se validan acá, al crearla, con las mismas reglas que los comandos. Las
 # horas son locales y sin zona («naive»): una rutina de las 23:00 es a las 23:00 del reloj de la pared.
 
-ACTIONS = ("avisar", "volumen", "musica")
+ACTIONS = ("avisar", "volumen", "musica")  # las acciones de las rutinas de antes (hoy son los primeros pasos posibles)
+DEFAULT_KNOWN = frozenset({"volumen", "musica"})  # herramientas que `build` acepta si quien llama no dice cuáles hay
+MAX_NAME = 60
+MAX_COORD = 5000
 MAX_TEXT = 200  # largo de un aviso
 MAX_IN_MINUTES = 7 * 24 * 60  # «en 30m» como mucho una semana adelante
 COOLDOWN = timedelta(hours=1)  # una condición no se cumple dos veces dentro de esta hora, aunque el valor suba y baje
@@ -109,15 +113,76 @@ def next_after(when: dict, after: datetime) -> datetime | None:
     return None  # inalcanzable: `days` nunca está vacío
 
 
-def build(text: str, now: datetime) -> dict:
-    """El texto «cuándo | qué» -> una regla lista para guardar (sin id). ValueError con el motivo si no se entiende."""
+def _check_step(step: dict) -> dict:
+    """Valida los argumentos de los pasos que Epsilon conoce de antemano (con las mismas reglas de siempre); el resto
+    se valida al ejecutarse. Devuelve el paso normalizado."""
+    tool, args = step["tool"], str(step.get("args", "")).strip()
+    if tool in ACTIONS:
+        args = parse_do(f"{tool} {args}")["arg"]
+    elif tool == "esperar":
+        if not args.isdigit() or not 1 <= int(args) <= steps_mod.MAX_WAIT:
+            raise ValueError(f"«esperar» lleva los segundos a esperar, de 1 a {steps_mod.MAX_WAIT}.")
+    return {"tool": tool, "args": args}
+
+
+def _layout(layout: dict) -> dict:
+    """{"1": {"x": 10, "y": 20}} -> lo mismo, o ValueError si no vale (solo posiciones de la pizarra)."""
+    if not isinstance(layout, dict) or len(layout) > steps_mod.MAX_STEPS + 1:
+        raise ValueError("La posición de los nodos no es válida.")
+    clean = {}
+    for key, pos in layout.items():
+        if (not isinstance(key, str) or not key.isdigit() or not isinstance(pos, dict) or set(pos) != {"x", "y"}
+                or any(isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= MAX_COORD for v in pos.values())):
+            raise ValueError("La posición de los nodos no es válida.")
+        clean[key] = {"x": pos["x"], "y": pos["y"]}
+    return clean
+
+
+def _assemble(name: str, when: dict, chain: list[dict], now: datetime, known: set[str] | frozenset[str],
+              layout: dict | None) -> dict:
+    steps_mod.validate_chain(chain, set(known))
+    chain = [_check_step(step) for step in chain]
+    name = " ".join(name.split()) or describe_chain(chain)[:MAX_NAME]
+    if len(name) > MAX_NAME:
+        raise ValueError(f"El nombre es largo: como mucho {MAX_NAME} caracteres.")
+    rule = {"when": when, "name": name, "steps": chain, "enabled": True}
+    if when["kind"] == "cond":
+        rule.update(tripped=False, last_run=None)
+    else:
+        rule["next_run"] = next_after(when, now).isoformat()
+    if layout:
+        rule["layout"] = _layout(layout)
+    return rule
+
+
+def build(text: str, now: datetime, known: set[str] | frozenset[str] = DEFAULT_KNOWN) -> dict:
+    """El texto «cuándo | paso > paso» -> una regla lista para guardar (sin id). ValueError con el motivo si no se entiende."""
     when_text, bar, do_text = text.partition("|")
     if not bar or not when_text.strip() or not do_text.strip():
         raise ValueError(USAGE)
-    when, do = parse_when(when_text.strip(), now), parse_do(do_text.strip())
-    if when["kind"] == "cond":
-        return {"when": when, "do": do, "enabled": True, "tripped": False, "last_run": None}
-    return {"when": when, "do": do, "enabled": True, "next_run": next_after(when, now).isoformat()}
+    return _assemble("", parse_when(when_text.strip(), now), steps_mod.parse_chain(do_text.strip(), set(known)), now, known, None)
+
+
+def build_from(name: str, when_text: str, chain: list[dict], now: datetime, known: set[str] | frozenset[str] = DEFAULT_KNOWN,
+               layout: dict | None = None) -> dict:
+    """La forma estructurada (la que manda la web): nombre, «cuándo» en texto y lista de pasos."""
+    if not isinstance(chain, list) or not all(isinstance(s, dict) and isinstance(s.get("tool"), str) for s in chain):
+        raise ValueError("Los pasos no son válidos.")
+    if not name.strip():
+        raise ValueError("Ponele un nombre a la rutina.")
+    return _assemble(name, parse_when(when_text.strip(), now), [{"tool": s["tool"], "args": str(s.get("args", ""))} for s in chain],
+                     now, known, layout)
+
+
+def migrate(rule: dict) -> dict:
+    """Una regla de antes (`do`) -> la de ahora (`steps`). Idempotente; una regla rota se devuelve tal cual."""
+    if "steps" in rule or "do" not in rule:
+        return rule
+    try:
+        step = {"tool": rule["do"]["kind"], "args": rule["do"].get("arg", "")}
+        return {**{k: v for k, v in rule.items() if k != "do"}, "name": describe_step(step), "steps": [step]}
+    except (KeyError, TypeError, AttributeError):
+        return rule
 
 
 def check_condition(rule: dict, reading: float | None, now: datetime) -> bool:
@@ -155,13 +220,17 @@ def describe_when(when: dict) -> str:
     return f"{label} a las {when['time']}"
 
 
-def describe_do(do: dict) -> str:
-    return f"avisar: {do['arg']}" if do["kind"] == "avisar" else f"{do['kind']} {do['arg']}".strip()
+describe_step = steps_mod.describe_step
+
+
+def describe_chain(chain: list[dict]) -> str:
+    """«volumen 15 > nav_abrir https://… > avisar: hola»."""
+    return " > ".join(describe_step(step) for step in chain)
 
 
 def describe(rule: dict) -> str:
     """«todos los días a las 23:00 → volumen 20»."""
-    return f"{describe_when(rule['when'])} → {describe_do(rule['do'])}"
+    return f"{describe_when(rule['when'])} → {describe_chain(rule['steps'])}"
 
 
 def next_text(rule: dict) -> str:
@@ -180,7 +249,10 @@ def view(rule: dict) -> dict:
         "id": rule["id"],
         "kind": rule["when"]["kind"],
         "when": when[:1].upper() + when[1:],
-        "do": {"kind": rule["do"]["kind"], "arg": rule["do"]["arg"]},
+        "name": rule["name"],
+        "steps": [{"tool": s["tool"], "args": s["args"], "text": describe_step(s)} for s in rule["steps"]],
+        "do": {"kind": rule["steps"][0]["tool"], "arg": rule["steps"][0]["args"]},  # compatibilidad: el primer paso
+        "layout": rule.get("layout", {}),
         "active": bool(rule.get("enabled", True)),
         "next": rule.get("next_run"),  # ISO sin zona (hora de la pared), para que la página cuente cuánto falta
         "next_text": next_text(rule),
