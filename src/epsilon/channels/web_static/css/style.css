@@ -3420,9 +3420,6 @@ a.ghost {
   border-bottom: 1px solid var(--line);
   align-items: center;
 }
-.claude-table-header-btns {
-  grid-template-columns: minmax(0, 1.5fr) 1.5fr 140px;
-}
 
 /* Lista de filas */
 .claude-list {
