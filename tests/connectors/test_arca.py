@@ -961,7 +961,7 @@ def test_pdf_comprobante_rebuilds_it_from_the_local_log_and_says_when_it_does_no
     ready.emitir_factura(importe=500, concepto="productos", pdf=False, confirmar=the_code(simulation))
 
     rebuilt = ready.pdf_comprobante(46)
-    assert rebuilt.startswith("PDF: ") and Path(rebuilt[5:]).read_bytes().startswith(b"%PDF")
+    assert rebuilt.startswith("PDF: ") and Path(rebuilt.splitlines()[0][5:]).read_bytes().startswith(b"%PDF")
     assert "No tengo en el registro local" in ready.pdf_comprobante(99)
 
 
@@ -1112,3 +1112,21 @@ def test_a_production_account_in_read_only_refuses_the_batch_even_with_a_valid_c
     path = write_csv(tmp_path, "ID,nombre,dni,precio\nA,Juan Perez,12345678,100\n")
     refused = arca.emitir_lote(path, confirmar=the_code(arca.emitir_lote(path)))
     assert "PRODUCCIÓN y está en solo lectura" in refused and not sent(calls, "FECAESolicitar")
+
+
+def test_pdf_comprobante_asks_the_padron_for_an_invoice_that_was_issued_without_the_client_and_leaves_the_log_alone(ready, monkeypatch):
+    serve_batch(ready, monkeypatch, people={})  # al emitir el padrón no sabía nada
+    simulation = ready.emitir_factura(importe=500, concepto="productos", documento="12345678", pdf=False)
+    ready.emitir_factura(importe=500, concepto="productos", documento="12345678", pdf=False, confirmar=the_code(simulation))
+    log = (ready.home() / "emitidas.jsonl").read_text()
+    assert '"cliente": ""' in log
+
+    serve_batch(ready, monkeypatch)  # ahora sí lo conoce
+    seen = []
+    original = ready.render_pdf
+    monkeypatch.setattr(ready, "render_pdf", lambda account, entry: seen.append(entry) or original(account, entry))
+    assert ready.pdf_comprobante(46).startswith("PDF: ") and seen[0]["cliente"] == "PEREZ JUAN CARLOS"
+    assert (ready.home() / "emitidas.jsonl").read_text() == log
+
+    serve_batch(ready, monkeypatch, people={})  # sigue sin conocerlo: el PDF sale igual, con aviso
+    assert "⚠ El padrón no tiene a nadie" in ready.pdf_comprobante(46)

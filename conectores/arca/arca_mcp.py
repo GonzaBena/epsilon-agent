@@ -899,7 +899,15 @@ def pdf_comprobante(numero: int, punto_venta: int | None = None, cuenta: str | N
         if not found:
             return (f"No tengo en el registro local la factura {number_text(point, int(numero))} de «{account['alias']}»: "
                     "solo puedo armar el PDF de las que se emitieron con emitir_factura en esta máquina.")
-        return f"PDF: {render_pdf(account, found)}"
+        note = ""
+        doc_type, doc_number = (int(x) for x in str(found["receptor"]).split(":"))
+        if not found.get("cliente") and doc_type != 99:  # salió sin el padrón: se intenta ahora (el registro no se toca)
+            name, address, warning = identify_client(account, str(doc_number))
+            if name:
+                found = {**found, "cliente": name, "domicilio": address}
+            else:
+                note = f"\n⚠ {warning}"
+        return f"PDF: {render_pdf(account, found)}{note}"
     except Problem as problem:
         return str(problem)
     except Exception as error:
