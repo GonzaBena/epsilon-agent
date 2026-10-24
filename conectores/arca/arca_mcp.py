@@ -903,82 +903,76 @@ def pdf_comprobante(numero: int, punto_venta: int | None = None, cuenta: str | N
         return f"No pude armar el PDF: {one_line(error, 200)}"
 
 
-@server.tool()
-def emitir_factura(importe: float, concepto: str | None = None, documento: str | None = None, tipo_documento: str | None = None,
-                   condicion_receptor: str | None = None, descripcion: str | None = None, fecha: str | None = None,
-                   servicio_desde: str | None = None, servicio_hasta: str | None = None, vencimiento_pago: str | None = None,
-                   punto_venta: int | None = None, localidad: str | None = None, sin_identificar: bool = False,
-                   pdf: bool | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
-    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. documento (DNI, CUIL o CUIT), descripcion y localidad son opcionales salvo que la cuenta los exija; con sin_identificar=true se confirma un consumidor final sin documento. El pago es siempre contado. Al emitir genera el PDF del comprobante (pdf=false para no hacerlo)."""
-    try:
-        account = pick(cuenta)
-        what = descripcion if descripcion is not None else account.get("descripcion")
-        required = required_fields(account)
-        if "descripcion" in required and not (what and str(what).strip()):
-            raise Problem("Falta la descripción de lo vendido: descripcion=«Repuestos y reparaciones» (o guardala en la cuenta con «descripcion»). "
-                          "Esta cuenta la exige («obligatorios» en cuentas.json).")
-        if sin_identificar and documento:
-            raise Problem("Pediste «sin_identificar» y también un documento: dejá solo uno.")
-        if "documento" in required and not sin_identificar and not (documento and str(documento).strip()):
-            raise Problem("Falta el documento del cliente: documento=<DNI, CUIL o CUIT>. Si de verdad es un consumidor final sin identificar, "
-                          "agregá sin_identificar=true. Esta cuenta lo exige («obligatorios» en cuentas.json).")
-        place = str(localidad if localidad is not None else account.get("localidad") or "").strip()
-        if "localidad" in required and not place:
-            raise Problem("Falta la localidad: localidad=CABA (o guardala en la cuenta con «localidad»). Esta cuenta la exige («obligatorios» en cuentas.json).")
-        point = sale_point(account, punto_venta)
-        concept_name = (concepto or account.get("concepto") or "").strip().lower()
-        if concept_name not in CONCEPT_IDS:
-            raise Problem("Decime el concepto: concepto=productos, servicios o productos_y_servicios (o guardalo en la cuenta con «concepto»).")
-        concept = CONCEPT_IDS[concept_name]
-        amount = parse_amount(importe)
-        doc_type, doc_number, receiver = parse_receiver(tipo_documento, documento)
-        wanted = str(condicion_receptor or "consumidor_final").strip().lower()
-        condition = int(wanted) if wanted.isdigit() else RECEIVER_CONDITIONS.get(wanted)
-        if condition is None:
-            raise Problem(f"condicion_receptor: uno de {', '.join(RECEIVER_CONDITIONS)} (o el número, ver condiciones_iva_receptor).")
-        today = datetime.now(AR_TZ).date()
-        issued = parse_day(fecha, "fecha", today)
-        if abs((issued - today).days) > DATE_WINDOW[concept]:
-            raise Problem(f"Con {concept_name.replace('_', ' ')}, la fecha puede ser hasta {DATE_WINDOW[concept]} días antes o después de hoy ({today}).")
-        service = (parse_day(servicio_desde, "servicio_desde", issued), parse_day(servicio_hasta, "servicio_hasta", issued),
-                   parse_day(vencimiento_pago, "vencimiento_pago", issued))
-        if service[1] < service[0]:
-            raise Problem("«servicio_hasta» no puede ser anterior a «servicio_desde».")
-        if service[2] < issued:
-            raise Problem("«vencimiento_pago» no puede ser anterior a la fecha del comprobante.")
-        client = identify_client(account, str(doc_number)) if doc_type != 99 else ("", "", "")  # (nombre, domicilio, aviso)
-        number = last_number(account, point) + 1
-        request = build_invoice(account, point, number, concept, (doc_type, doc_number), issued, amount, condition, service)
-        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request, what, place)
-        summary = [f"[{account['alias']}] {banner(account)}",
-                   f"Factura C {number_text(point, number)} · {issued.isoformat()}",
-                   f"Total: {money(amount, 'ARS')} · Concepto: {concept_name.replace('_', ' ')}",
-                   f"Receptor: {receiver} · condición {wanted}"]
-        if client[0]:
-            summary.append(f"Cliente (padrón): {client[0]} · {client[1] or 'sin domicilio'}")
-        elif client[2]:
-            summary.append(f"⚠ {client[2]}")
-        summary.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado" + (f" · Localidad: {one_line(place, 60)}" if place else ""))
-        missing = [name for name, value in (("descripción", what), ("documento del cliente", documento)) if not (value and str(value).strip())]
-        if missing:
-            summary.append("⚠ Sin " + " ni ".join(missing) + ": ARCA lo acepta, pero el comprobante que entregues quedaría incompleto.")
-        make_pdf = pdf if pdf is not None else account.get("pdf", True)
-        summary.append("ARCA no guarda la descripción, el nombre, el domicilio ni la forma de pago: quedan en el registro local y "
-                       + (f"en el PDF ({pdf_folder(account)})." if make_pdf else "NO habrá PDF (pdf=false): no tendrás el comprobante para entregar."))
-        if confirmar is None:
-            return "\n".join(summary + [f"No se emitió nada. Para emitir, repetí el mismo pedido agregando confirmar={code}"])
-        if confirmar.strip().lower() != code:
-            return "\n".join(["El código no coincide con este comprobante: algo cambió (el número que le toca, algún dato) o ya se emitió.",
-                              "No se emitió nada. Esto es lo que se emitiría ahora:"] + summary + [f"Para emitir, agregá confirmar={code}"])
-        if not may_issue(account):
-            raise Problem(f"La cuenta «{account['alias']}» es de PRODUCCIÓN y está en solo lectura. Para habilitar la emisión agregá "
-                          f'"emision": true a esa cuenta en {home() / "cuentas.json"} (a propósito, y solo si querés emitir de verdad).')
-        entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
-                 "punto_venta": point, "tipo": INVOICE_C, "numero": number, "fecha": issued.isoformat(), "importe": f"{amount:.2f}",
-                 "receptor": f"{doc_type}:{doc_number}", "concepto": concept_name, "descripcion": what or "", "forma_pago": "Contado",
-                 "localidad": place, "cliente": client[0], "domicilio": client[1], "condicion_receptor": wanted}
-    except Problem as problem:
-        return str(problem)
+def plan_invoice(account: dict, *, importe, concepto, documento, tipo_documento, condicion_receptor, descripcion, fecha, servicio_desde,
+                 servicio_hasta, vencimiento_pago, punto_venta, localidad, sin_identificar, referencia: str = "") -> dict:
+    """Todo lo que se decide ANTES de hablar con ARCA para emitir: valida el pedido con las reglas de la cuenta y consulta el padrón
+    (solo lectura). Levanta Problem si algo no está bien. El número de comprobante se asigna después."""
+    what = descripcion if descripcion is not None else account.get("descripcion")
+    required = required_fields(account)
+    if "descripcion" in required and not (what and str(what).strip()):
+        raise Problem("Falta la descripción de lo vendido: descripcion=«Repuestos y reparaciones» (o guardala en la cuenta con «descripcion»). "
+                      "Esta cuenta la exige («obligatorios» en cuentas.json).")
+    if sin_identificar and documento:
+        raise Problem("Pediste «sin_identificar» y también un documento: dejá solo uno.")
+    if "documento" in required and not sin_identificar and not (documento and str(documento).strip()):
+        raise Problem("Falta el documento del cliente: documento=<DNI, CUIL o CUIT>. Si de verdad es un consumidor final sin identificar, "
+                      "agregá sin_identificar=true. Esta cuenta lo exige («obligatorios» en cuentas.json).")
+    place = str(localidad if localidad is not None else account.get("localidad") or "").strip()
+    if "localidad" in required and not place:
+        raise Problem("Falta la localidad: localidad=CABA (o guardala en la cuenta con «localidad»). Esta cuenta la exige («obligatorios» en cuentas.json).")
+    point = sale_point(account, punto_venta)
+    concept_name = (concepto or account.get("concepto") or "").strip().lower()
+    if concept_name not in CONCEPT_IDS:
+        raise Problem("Decime el concepto: concepto=productos, servicios o productos_y_servicios (o guardalo en la cuenta con «concepto»).")
+    concept = CONCEPT_IDS[concept_name]
+    amount = parse_amount(importe)
+    doc_type, doc_number, receiver = parse_receiver(tipo_documento, documento)
+    wanted = str(condicion_receptor or "consumidor_final").strip().lower()
+    condition = int(wanted) if wanted.isdigit() else RECEIVER_CONDITIONS.get(wanted)
+    if condition is None:
+        raise Problem(f"condicion_receptor: uno de {', '.join(RECEIVER_CONDITIONS)} (o el número, ver condiciones_iva_receptor).")
+    today = datetime.now(AR_TZ).date()
+    issued = parse_day(fecha, "fecha", today)
+    if abs((issued - today).days) > DATE_WINDOW[concept]:
+        raise Problem(f"Con {concept_name.replace('_', ' ')}, la fecha puede ser hasta {DATE_WINDOW[concept]} días antes o después de hoy ({today}).")
+    service = (parse_day(servicio_desde, "servicio_desde", issued), parse_day(servicio_hasta, "servicio_hasta", issued),
+               parse_day(vencimiento_pago, "vencimiento_pago", issued))
+    if service[1] < service[0]:
+        raise Problem("«servicio_hasta» no puede ser anterior a «servicio_desde».")
+    if service[2] < issued:
+        raise Problem("«vencimiento_pago» no puede ser anterior a la fecha del comprobante.")
+    client = identify_client(account, str(doc_number)) if doc_type != 99 else ("", "", "")  # (nombre, domicilio, aviso)
+    return {"point": point, "concept": concept, "concept_name": concept_name, "amount": amount, "doc_type": doc_type, "doc_number": doc_number,
+            "receiver": receiver, "wanted": wanted, "condition": condition, "issued": issued, "service": service, "what": what, "place": place,
+            "client": client, "documento": documento, "referencia": referencia}
+
+
+def invoice_request(account: dict, plan: dict, number: int) -> str:
+    return build_invoice(account, plan["point"], number, plan["concept"], (plan["doc_type"], plan["doc_number"]), plan["issued"], plan["amount"],
+                         plan["condition"], plan["service"])
+
+
+def invoice_entry(account: dict, plan: dict, number: int) -> dict:
+    """La línea del registro local de esta emisión (se completa con el resultado)."""
+    entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
+             "punto_venta": plan["point"], "tipo": INVOICE_C, "numero": number, "fecha": plan["issued"].isoformat(), "importe": f"{plan['amount']:.2f}",
+             "receptor": f"{plan['doc_type']}:{plan['doc_number']}", "concepto": plan["concept_name"], "descripcion": plan["what"] or "",
+             "forma_pago": "Contado", "localidad": plan["place"], "cliente": plan["client"][0], "domicilio": plan["client"][1],
+             "condicion_receptor": plan["wanted"]}
+    if plan["referencia"]:
+        entry["referencia"] = plan["referencia"]
+    return entry
+
+
+def refuse_production_without_emission(account: dict) -> None:
+    if not may_issue(account):
+        raise Problem(f"La cuenta «{account['alias']}» es de PRODUCCIÓN y está en solo lectura. Para habilitar la emisión agregá "
+                      f'"emision": true a esa cuenta en {home() / "cuentas.json"} (a propósito, y solo si querés emitir de verdad).')
+
+
+def send_invoice(account: dict, plan: dict, number: int, request: str, entry: dict, make_pdf: bool) -> str:
+    """Manda el pedido a ARCA y cuenta qué pasó; la línea del registro queda con su `resultado`. NUNCA repite un pedido enviado."""
+    point = plan["point"]
     try:
         root = wsfe(account, "FECAESolicitar", request)
     except Problem as problem:
@@ -1002,8 +996,9 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
         return f"✗ ARCA rechazó el comprobante: {reasons}\nNo se emitió nada." + record(entry)
     cae, expires = text_of(detail[0], "CAE"), day(text_of(detail[0], "CAEFchVto"))
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
-    done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {issued.isoformat()}",
-            f"Total: {money(amount, 'ARS')} · Receptor: {receiver}" + (f" · {client[0]}" if client[0] else ""), f"CAE: {cae} · vence {expires}"]
+    client, what = plan["client"], plan["what"]
+    done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {plan['issued'].isoformat()}",
+            f"Total: {money(plan['amount'], 'ARS')} · Receptor: {plan['receiver']}" + (f" · {client[0]}" if client[0] else ""), f"CAE: {cae} · vence {expires}"]
     done.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado")
     if make_pdf:
         try:
@@ -1014,6 +1009,50 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
     if notes:
         done.append("Observaciones de ARCA: " + "; ".join(notes))
     return "\n".join(done) + record(entry)
+
+
+@server.tool()
+def emitir_factura(importe: float, concepto: str | None = None, documento: str | None = None, tipo_documento: str | None = None,
+                   condicion_receptor: str | None = None, descripcion: str | None = None, fecha: str | None = None,
+                   servicio_desde: str | None = None, servicio_hasta: str | None = None, vencimiento_pago: str | None = None,
+                   punto_venta: int | None = None, localidad: str | None = None, sin_identificar: bool = False,
+                   pdf: bool | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
+    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. documento (DNI, CUIL o CUIT), descripcion y localidad son opcionales salvo que la cuenta los exija; con sin_identificar=true se confirma un consumidor final sin documento. El pago es siempre contado. Al emitir genera el PDF del comprobante (pdf=false para no hacerlo)."""
+    try:
+        account = pick(cuenta)
+        plan = plan_invoice(account, importe=importe, concepto=concepto, documento=documento, tipo_documento=tipo_documento,
+                            condicion_receptor=condicion_receptor, descripcion=descripcion, fecha=fecha, servicio_desde=servicio_desde,
+                            servicio_hasta=servicio_hasta, vencimiento_pago=vencimiento_pago, punto_venta=punto_venta, localidad=localidad,
+                            sin_identificar=sin_identificar)
+        point, what, place, client = plan["point"], plan["what"], plan["place"], plan["client"]
+        number = last_number(account, point) + 1
+        request = invoice_request(account, plan, number)
+        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request, what, place)
+        summary = [f"[{account['alias']}] {banner(account)}",
+                   f"Factura C {number_text(point, number)} · {plan['issued'].isoformat()}",
+                   f"Total: {money(plan['amount'], 'ARS')} · Concepto: {plan['concept_name'].replace('_', ' ')}",
+                   f"Receptor: {plan['receiver']} · condición {plan['wanted']}"]
+        if client[0]:
+            summary.append(f"Cliente (padrón): {client[0]} · {client[1] or 'sin domicilio'}")
+        elif client[2]:
+            summary.append(f"⚠ {client[2]}")
+        summary.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado" + (f" · Localidad: {one_line(place, 60)}" if place else ""))
+        missing = [name for name, value in (("descripción", what), ("documento del cliente", documento)) if not (value and str(value).strip())]
+        if missing:
+            summary.append("⚠ Sin " + " ni ".join(missing) + ": ARCA lo acepta, pero el comprobante que entregues quedaría incompleto.")
+        make_pdf = pdf if pdf is not None else account.get("pdf", True)
+        summary.append("ARCA no guarda la descripción, el nombre, el domicilio ni la forma de pago: quedan en el registro local y "
+                       + (f"en el PDF ({pdf_folder(account)})." if make_pdf else "NO habrá PDF (pdf=false): no tendrás el comprobante para entregar."))
+        if confirmar is None:
+            return "\n".join(summary + [f"No se emitió nada. Para emitir, repetí el mismo pedido agregando confirmar={code}"])
+        if confirmar.strip().lower() != code:
+            return "\n".join(["El código no coincide con este comprobante: algo cambió (el número que le toca, algún dato) o ya se emitió.",
+                              "No se emitió nada. Esto es lo que se emitiría ahora:"] + summary + [f"Para emitir, agregá confirmar={code}"])
+        refuse_production_without_emission(account)
+        entry = invoice_entry(account, plan, number)
+    except Problem as problem:
+        return str(problem)
+    return send_invoice(account, plan, number, request, entry, make_pdf)
 
 
 @server.resource("epsilon://buttons")
