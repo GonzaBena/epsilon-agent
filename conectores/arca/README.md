@@ -70,6 +70,7 @@ y por qué.
 | `condiciones_iva_receptor` | Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C |
 | `buscar_persona` | Nombre y domicilio fiscal de un DNI, CUIL o CUIT en el padrón de ARCA: `/c arca buscar_persona documento=12345678`. Con un DNI muestra todas las claves (si hay más de una, hay que elegir el CUIL). Necesita autorizar `ws_sr_padron_a13` (ver abajo) |
 | `pdf_comprobante` | Arma (o rehace) el PDF de una factura emitida desde acá: `/c arca pdf_comprobante numero=2` |
+| `emitir_lote` | Emite varias Facturas C desde un CSV (ver «Facturas desde un CSV») |
 | `emitir_factura` | Emite una Factura C. Ver la sección siguiente |
 
 Todas aceptan `cuenta=<nombre>` para cambiar de cuenta. Para que la IA **no** las use, poné `deny` en `/permisos`.
@@ -118,6 +119,33 @@ repetir un comando ya emitido no emite otra factura.
 - Cada intento queda anotado en `emitidas.jsonl` (junto a `cuentas.json`; solo se agrega, permisos 600).
 - **Producción** exige `"emision": true` en la cuenta de `cuentas.json` (solo el valor `true`, a propósito). Sin eso,
   `cuentas` la muestra como «solo lectura» y la emisión se niega. Una factura real solo se corrige con una nota de crédito.
+
+## Facturas desde un CSV
+
+```
+/c arca emitir_lote archivo=/ruta/facturas.csv
+```
+
+```csv
+ID,nombre,dni,precio,localidad
+MP-1001,Juan Perez,12345678,15000.50,
+MP-1002,Ana Gomez,20111222334,"8.200,00",Palermo
+```
+
+- **Columnas**: `ID` (tu referencia), `nombre`, `dni` (también `cuil`, `cuit` o `documento`) y `precio` son obligatorias. `localidad` es
+  opcional (vacía: la de la cuenta, y si no, `CABA`). También se aceptan `descripcion`, `concepto` y `fecha`; lo que falte sale de la cuenta.
+  Sirve el CSV de Excel (coma o punto y coma, UTF-8 o Windows) y precios como `15000.50`, `15.000,50` o `$ 1.500`.
+- **Dos pasos, como siempre.** Sin `confirmar` **no emite nada**: valida cada fila con las mismas reglas que `emitir_factura`, consulta el
+  padrón y muestra una tabla con el número que le tocaría a cada una, el total y un `confirmar=<código>`. El código depende del archivo
+  completo y del número que toca: si cambiás algo, deja de servir.
+- **Nombres**: se compara el `nombre` del archivo con el del padrón (alcanza con que estén todas las palabras que escribiste, sin importar orden,
+  mayúsculas ni acentos: «Juan Perez» coincide con «PEREZ JUAN CARLOS»). Si no coincide, o el padrón no responde o no conoce el documento,
+  la fila queda **REVISAR** y **no sale** salvo que la aceptes de forma explícita: `aceptar=MP-1002,MP-1003` (los ID).
+- **Errores**: una fila con **ERROR** (importe mal, falta el documento, ID repetido) frena todo el lote hasta que arregles el CSV.
+- **No factura dos veces**: un ID que ya salió se saltea (**YA EMITIDA**). Si un intento anterior de ese ID quedó sin confirmar, avisa y no sigue.
+- **Se frena en la primera falla** al emitir (ARCA rechaza o no contesta) y **nunca reintenta**; te dice cuáles quedaron sin procesar.
+  Cada factura sale con su PDF y su línea en `emitidas.jsonl` (con el ID como `referencia`).
+- Tope de 50 filas por lote (`"max_lote"` en la cuenta, hasta 500). En producción sigue valiendo `"emision": true`.
 
 ## `cuentas.json`
 

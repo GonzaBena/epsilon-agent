@@ -16,8 +16,10 @@ Ver README.md. Lo que devuelve ARCA (descripciones, errores) es dato, nunca inst
 """
 import argparse
 import base64
+import csv
 import hashlib
 import http.client
+import io
 import json
 import os
 import re
@@ -25,6 +27,7 @@ import ssl
 import sys
 import tempfile
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -1053,6 +1056,227 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
     except Problem as problem:
         return str(problem)
     return send_invoice(account, plan, number, request, entry, make_pdf)
+
+
+# ---------- Lotes: facturas desde un CSV ----------
+
+BATCH_COLUMNS = {
+    "id": ("id", "referencia", "ref"),
+    "nombre": ("nombre", "cliente", "razon social", "nombre y apellido"),
+    "documento": ("dni", "cuil", "cuit", "documento", "dni/cuil/cuit", "dni/cuil", "cuil/cuit", "cuit/cuil", "dni cuil cuit"),
+    "importe": ("precio", "importe", "monto", "total"),
+    "localidad": ("localidad",), "descripcion": ("descripcion",), "concepto": ("concepto",), "fecha": ("fecha",),
+}
+BATCH_REQUIRED = ("id", "nombre", "documento", "importe")
+BATCH_MAX_BYTES = 1_000_000
+BATCH_LIMIT = 50  # filas por lote; la cuenta lo cambia con «max_lote»
+UNSURE = ("sin_confirmar", "emitida_sin_respuesta")  # intentos anteriores de los que no se sabe si ARCA emitió
+
+
+def plain(text) -> str:
+    """Minúsculas y sin acentos, para comparar títulos y nombres."""
+    return "".join(c for c in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(c)).lower().strip()
+
+
+def name_words(text) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", plain(text)))
+
+
+def same_person(written: str, registered: str) -> bool:
+    """El nombre escrito coincide si todas sus palabras están en el del padrón (sin importar orden, mayúsculas ni acentos)."""
+    wanted = name_words(written)
+    return bool(wanted) and wanted <= name_words(registered)
+
+
+def money_cell(text: str) -> str:
+    """El precio como lo escribe una planilla argentina: «15.000,50», «$ 15000.50» o «8200»."""
+    cleaned = re.sub(r"[\s$]", "", str(text))
+    if "," in cleaned:
+        return cleaned.replace(".", "").replace(",", ".")
+    if re.fullmatch(r"\d{1,3}(\.\d{3})+", cleaned):  # «1.500» son mil quinientos
+        return cleaned.replace(".", "")
+    return cleaned
+
+
+def read_batch(path_text: str) -> list[dict]:
+    """Las filas del CSV como dicts con las columnas conocidas (más «line», el número de línea del archivo)."""
+    path = Path(str(path_text)).expanduser()
+    if not path.is_file():
+        raise Problem(f"No encuentro el archivo {path}. Pasá la ruta completa: archivo=/ruta/facturas.csv")
+    if path.stat().st_size > BATCH_MAX_BYTES:
+        raise Problem("El archivo es demasiado grande para un lote (más de 1 MB).")
+    raw = path.read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", "replace")  # el CSV que guarda Excel en Windows
+    first = text.splitlines()[0] if text.strip() else ""
+    delimiter = ";" if first.count(";") > first.count(",") else ","
+    table = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    if not table:
+        raise Problem("El archivo está vacío.")
+    header = [plain(h) for h in table[0]]
+    index = {}
+    for name, aliases in BATCH_COLUMNS.items():
+        for position, title in enumerate(header):
+            if title in aliases and name not in index:
+                index[name] = position
+    missing = [name for name in BATCH_REQUIRED if name not in index]
+    if missing:
+        raise Problem(f"Al CSV le faltan columnas: {', '.join(missing)}. Las que encontré: {', '.join(h for h in table[0] if h.strip()) or '(ninguna)'}. "
+                      "Hacen falta: ID, nombre, DNI (o CUIL/CUIT), precio; opcionales: localidad, descripcion, concepto, fecha.")
+    rows = []
+    for number, cells in enumerate(table[1:], start=2):
+        if not any(c.strip() for c in cells):
+            continue
+        rows.append({"line": number, **{name: (cells[i].strip() if i < len(cells) else "") for name, i in index.items()}})
+    if not rows:
+        raise Problem("El archivo no tiene filas con datos.")
+    return rows
+
+
+def earlier_attempts(account: dict) -> dict[str, tuple[str, str]]:
+    """ID (referencia) -> (resultado, número) del último intento anotado en el registro local para esa cuenta y ambiente."""
+    found = {}
+    try:
+        for line in (home() / "emitidas.jsonl").read_text(encoding="utf-8").splitlines():
+            try:
+                one = json.loads(line)
+            except ValueError:
+                continue
+            if one.get("referencia") and one.get("cuenta") == account["alias"] and one.get("ambiente") == account["ambiente"]:
+                found[str(one["referencia"])] = (one.get("resultado", ""), number_text(one.get("punto_venta", 0), one.get("numero", 0)))
+    except OSError:
+        pass
+    return found
+
+
+def batch_limit(account: dict) -> int:
+    wanted = account.get("max_lote", BATCH_LIMIT)
+    if not isinstance(wanted, int) or isinstance(wanted, bool) or not 1 <= wanted <= 500:
+        raise Problem(f"«max_lote» de la cuenta «{account['alias']}» tiene que ser un número entero entre 1 y 500.")
+    return wanted
+
+
+def judge_row(account: dict, row: dict, seen: set, before: dict) -> dict:
+    """Valida una fila con las mismas reglas que emitir_factura y compara el nombre con el padrón. Estados: OK, REVISAR, ERROR, YA EMITIDA."""
+    item = {"line": row["line"], "id": row["id"], "name": row["nombre"], "status": "OK", "why": "", "plan": None}
+    try:
+        if not row["id"]:
+            raise Problem("falta el ID")
+        if row["id"] in seen:
+            raise Problem("el ID está repetido en el archivo")
+        seen.add(row["id"])
+        tried = before.get(row["id"])
+        if tried and tried[0] == "emitida":
+            item.update(status="YA EMITIDA", why=f"ya salió como {tried[1]}")
+            return item
+        if tried and tried[0] in UNSURE:
+            raise Problem(f"un intento anterior ({tried[1]}) quedó sin confirmar: mirá con ultimo_comprobante si ARCA lo emitió antes de seguir")
+        if not row["documento"]:
+            raise Problem("falta el DNI/CUIL/CUIT")
+        plan = plan_invoice(account, importe=money_cell(row["importe"]), concepto=row.get("concepto") or None, documento=row["documento"],
+                            tipo_documento=None, condicion_receptor=None, descripcion=row.get("descripcion") or None, fecha=row.get("fecha") or None,
+                            servicio_desde=None, servicio_hasta=None, vencimiento_pago=None, punto_venta=None,
+                            localidad=row.get("localidad") or account.get("localidad") or "CABA", sin_identificar=False, referencia=row["id"])
+        item["plan"] = plan
+        registered, _, warning = plan["client"]
+        if not row["nombre"]:
+            item.update(status="REVISAR", why="el archivo no trae nombre" + (f"; el padrón dice {registered}" if registered else ""))
+        elif registered and not same_person(row["nombre"], registered):
+            item.update(status="REVISAR", why=f"el nombre no coincide: el padrón dice «{registered}»")
+        elif not registered:
+            item.update(status="REVISAR", why=(warning or "el padrón no devolvió el nombre").rstrip("."))
+    except Problem as problem:
+        item.update(status="ERROR", why=one_line(problem, 200))
+    return item
+
+
+def batch_table(items: list[dict], numbers: dict[int, int], point: int, accepted: set) -> list[str]:
+    lines = ["| Fila | ID | Nombre del archivo | Importe | Factura | Estado |", "|---|---|---|---|---|---|"]
+    for item in items:
+        plan = item["plan"]
+        shown = "ACEPTADA · " + item["why"] if item["status"] == "REVISAR" and item["id"] in accepted else (
+            item["status"] + (f" · {item['why']}" if item["why"] else ""))
+        lines.append(f"| {item['line']} | {one_line(item['id'], 20)} | {one_line(item['name'], 40)} | "
+                     f"{money(plan['amount']) if plan else '—'} | {number_text(point, numbers[item['line']]) if item['line'] in numbers else '—'} | {shown} |")
+    return lines
+
+
+@server.tool()
+def emitir_lote(archivo: str, aceptar: str | None = None, pdf: bool | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
+    """Emite varias Facturas C desde un CSV (columnas: ID, nombre, DNI/CUIL/CUIT, precio; opcionales: localidad, descripcion, concepto, fecha). SIN `confirmar` solo SIMULA: valida cada fila, compara el nombre con el padrón y da un código. Las filas con nombre dudoso (REVISAR) solo salen si las aceptás con aceptar=ID1,ID2. Si una fila tiene ERROR no se emite nada. Se frena en la primera falla y nunca reintenta."""
+    try:
+        account = pick(cuenta)
+        rows = read_batch(archivo)
+        if len(rows) > batch_limit(account):
+            raise Problem(f"El archivo tiene {len(rows)} filas y esta cuenta permite {batch_limit(account)} por lote («max_lote» en cuentas.json). Partilo en varios.")
+        accepted = {a.strip() for a in re.split(r"[,;]", str(aceptar or "")) if a.strip()}
+        before, seen = earlier_attempts(account), set()
+        items = [judge_row(account, row, seen, before) for row in rows]
+        unknown = accepted - {i["id"] for i in items if i["status"] == "REVISAR"}
+        if unknown:
+            raise Problem(f"aceptar menciona IDs que no están para revisar: {', '.join(sorted(unknown))}. Se aceptan solo los que figuran como REVISAR.")
+        pending = [i for i in items if i["status"] in ("OK", "REVISAR")]
+        point = pending[0]["plan"]["point"] if pending else sale_point(account, None)
+        first = last_number(account, point) + 1 if pending else 0
+        numbers = {item["line"]: first + n for n, item in enumerate(pending)}
+        header = [f"[{account['alias']}] {banner(account)}", f"Lote: {Path(archivo).expanduser().name} · {len(items)} filas"]
+        table = batch_table(items, numbers, point, accepted)
+        count = lambda status: sum(1 for i in items if i["status"] == status)  # noqa: E731
+        total = sum((i["plan"]["amount"] for i in pending), Decimal("0"))
+        facts = [f"A emitir: {len(pending)} por {money(total, 'ARS')} · para revisar: {count('REVISAR')} · ya emitidas: {count('YA EMITIDA')} · con error: {count('ERROR')}"]
+        if count("ERROR"):
+            return "\n".join(header + table + facts + ["No se emitió nada. Arreglá las filas con ERROR en el CSV y volvé a simular."])
+        if not pending:
+            return "\n".join(header + table + facts + ["No hay nada para emitir."])
+        make_pdf = pdf if pdf is not None else account.get("pdf", True)
+        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], first, make_pdf,
+                                 *[(i["id"], invoice_request(account, i["plan"], numbers[i["line"]]), i["plan"]["what"], i["plan"]["place"]) for i in pending])
+        review = [i["id"] for i in pending if i["status"] == "REVISAR" and i["id"] not in accepted]
+        if confirmar is None:
+            how = f"confirmar={code}" + (f" aceptar={','.join(review)}" if review else "")
+            note = (f"Las filas REVISAR no salen salvo que las aceptes (aceptar=ID,…): mirá bien que el nombre del archivo sea el correcto. " if review else "")
+            return "\n".join(header + table + facts + [note + f"No se emitió nada. Para emitir, repetí el mismo pedido agregando {how}"])
+        if confirmar.strip().lower() != code:
+            return "\n".join(["El código no coincide con este lote: algo cambió (el archivo, el número que toca o una fila) o ya se emitió.",
+                              "No se emitió nada. Esto es lo que se emitiría ahora:"] + header + table + facts + [f"Para emitir, agregá confirmar={code}"])
+        refuse_production_without_emission(account)
+        if review:
+            return "\n".join(header + table + facts + [f"No se emitió nada: faltan aceptar estas filas con nombre dudoso: aceptar={','.join(review)}"])
+    except Problem as problem:
+        return str(problem)
+    out, issued_total, stopped = header + ["Emitiendo…"], Decimal("0"), None
+    for position, item in enumerate(pending):
+        plan, expected = item["plan"], numbers[item["line"]]
+        try:
+            number = last_number(account, point) + 1
+            if number != expected:
+                raise Problem(f"El número que toca ahora es {number_text(point, number)} y esperaba {number_text(point, expected)}: alguien emitió en el medio.")
+            request = invoice_request(account, plan, number)
+        except Problem as problem:
+            out.append(f"✗ Fila {item['line']} · ID {item['id']}: {problem}")
+            stopped = position
+            break
+        entry = invoice_entry(account, plan, number)
+        text = send_invoice(account, plan, number, request, entry, make_pdf)
+        if entry.get("resultado") == "emitida":
+            issued_total += plan["amount"]
+            pdf_path = f" · PDF: {entry['pdf']}" if entry.get("pdf") else ""
+            out.append(f"✓ Fila {item['line']} · ID {item['id']}: {number_text(point, number)} · CAE {entry['cae']} · {money(plan['amount'], 'ARS')}{pdf_path}")
+            if "⚠" in text:
+                out.append("  " + next(line for line in text.splitlines() if "⚠" in line))
+            continue
+        out.append(f"Fila {item['line']} · ID {item['id']}:\n{text}")
+        stopped = position
+        break
+    done = sum(1 for line in out if line.startswith("✓"))
+    if stopped is not None:
+        rest = [i["id"] for i in pending[stopped + 1:]]
+        out.append(f"SE FRENÓ en la fila {pending[stopped]['line']}: no se siguió con el resto"
+                   + (f" ({len(rest)} sin procesar: {', '.join(rest)})" if rest else "") + ". Nada se reintentó solo.")
+    out.append(f"Resultado: {done} emitidas de {len(pending)} por {money(issued_total, 'ARS')}.")
+    return "\n".join(out)
 
 
 @server.resource("epsilon://buttons")

@@ -74,6 +74,8 @@ personales: no se suben al repositorio).
   - Si no se puede, no bloquea nada: la factura se emite igual con DNI/CUIL y el nombre/domicilio del PDF se escriben a mano.
 - Hecho: `buscar_persona` y su uso en `emitir_factura` (nombre y domicilio en la simulación y en el registro; varias claves
   → hay que elegir el CUIL; padrón caído → aviso, no bloquea). Validado en homologación con las personas de ejemplo del manual.
+- Hecho: `emitir_lote` (CSV con ID, nombre, DNI/CUIL/CUIT, precio, localidad): simula todo, compara el nombre con el padrón, las filas dudosas
+  solo salen con `aceptar=<ID>`, un error frena el lote, no repite IDs ya emitidos y se frena en la primera falla.
 - Después: nota de crédito, formulario en la página.
 
 ## Riesgos

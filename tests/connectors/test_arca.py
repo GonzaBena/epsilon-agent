@@ -140,7 +140,7 @@ def test_server_defines_its_tools_and_the_buttons_fit_them(arca):
     found = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}
 
     assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante",
-                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona", "pdf_comprobante"}
+                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona", "pdf_comprobante", "emitir_lote"}
     for button in json.loads(arca.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -967,3 +967,148 @@ def test_pdf_comprobante_rebuilds_it_from_the_local_log_and_says_when_it_does_no
 
 def test_the_pdf_text_never_breaks_on_characters_the_standard_font_lacks(ready):
     assert ready.latin("Pérez 日本 ñ") == "Pérez ?? ñ"
+
+
+# ---------- lotes ----------
+
+def padron_by_document(people: dict):
+    """Un padrón falso: documento -> [(cuil, apellido, nombre)]. Un DNI que no está no devuelve a nadie."""
+    def ids(body):
+        document = re.search(r"<documento>(\d+)</documento>", body).group(1)
+        keys = "".join(f"<idPersona>{c}</idPersona>" for c, _, _ in people.get(document, []))
+        return padron_answer("getIdPersonaListByDocumento", f"<idPersonaListReturn>{keys}</idPersonaListReturn>")
+
+    def one(body):
+        cuil = re.search(r"<idPersona>(\d+)</idPersona>", body).group(1)
+        last, first = next((l, f) for found in people.values() for c, l, f in found if c == cuil)
+        return person(cuil, last, first)
+    return {"getIdPersonaListByDocumento": ids, "getPersonaV2": one}
+
+
+PEOPLE = {"12345678": [("20123456786", "PEREZ", "JUAN CARLOS")], "23456789": [("20234567893", "GOMEZ", "ANA")]}
+
+
+def serve_batch(ready, monkeypatch, answers=None, people=None, reject_number=None):
+    """ARCA falso con numeración que avanza sola: cada emisión sube el último número."""
+    state = {"last": 45}
+    if "negocio" in ready.load_accounts() and "concepto" not in ready.load_accounts()["negocio"]:
+        write_accounts(ready, negocio={"cuit": CUIT, "condicion": "monotributo", "punto_venta": 3, "concepto": "productos"})  # el concepto sale de la cuenta
+
+    def last(body):
+        return wsfe_answer("FECompUltimoAutorizado", f"<PtoVta>3</PtoVta><CbteTipo>11</CbteTipo><CbteNro>{state['last']}</CbteNro>")
+
+    def emit(body):
+        if state["last"] + 1 == reject_number:
+            return rejected("<Obs><Code>10015</Code><Msg>Documento inválido</Msg></Obs>")
+        state["last"] += 1
+        return approved(state["last"])
+    calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": last, "FECAESolicitar": emit, **padron_by_document(PEOPLE if people is None else people),
+                                       **(answers or {})})
+    return calls, state
+
+
+def write_csv(tmp_path, text, name="facturas.csv", encoding="utf-8"):
+    path = tmp_path / name
+    path.write_bytes(text.encode(encoding))
+    return str(path)
+
+
+CSV = "ID,nombre,dni,precio,localidad\nMP-1,Juan Perez,12345678,15000.50,\nMP-2,Ana Gomes,23456789,\"8.200,00\",Palermo\n"
+
+
+def test_the_batch_simulation_compares_names_with_the_padron_and_emits_nothing(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch)
+
+    text = ready.emitir_lote(write_csv(tmp_path, CSV))
+
+    assert "| 2 | MP-1 | Juan Perez | 15.000,50 | 0003-00000046 | OK |" in text
+    assert "| 3 | MP-2 | Ana Gomes | 8.200,00 | 0003-00000047 | REVISAR · el nombre no coincide: el padrón dice «GOMEZ ANA»" in text
+    assert "A emitir: 2 por ARS 23.200,50 · para revisar: 1" in text
+    assert "confirmar=" in text and "aceptar=MP-2" in text and "No se emitió nada" in text
+    assert not sent(calls, "FECAESolicitar") and not (ready.home() / "emitidas.jsonl").exists()
+
+
+def test_review_rows_need_to_be_accepted_one_by_one_and_then_everything_is_emitted_in_order(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch)
+    path = write_csv(tmp_path, CSV)
+    code = the_code(ready.emitir_lote(path))
+
+    refused = ready.emitir_lote(path, confirmar=code)
+    assert "faltan aceptar" in refused and "aceptar=MP-2" in refused and not sent(calls, "FECAESolicitar")
+
+    text = ready.emitir_lote(path, confirmar=code, aceptar="MP-2")
+
+    assert text.count("✓") == 2 and "Resultado: 2 emitidas de 2 por ARS 23.200,50" in text
+    bodies = sent(calls, "FECAESolicitar")
+    assert len(bodies) == 2 and "<CbteDesde>46</CbteDesde>" in bodies[0] and "<CbteDesde>47</CbteDesde>" in bodies[1]
+    logged = [json.loads(line) for line in (ready.home() / "emitidas.jsonl").read_text().splitlines()]
+    assert [(e["referencia"], e["numero"], e["resultado"], e["localidad"]) for e in logged] == [("MP-1", 46, "emitida", "CABA"), ("MP-2", 47, "emitida", "Palermo")]
+    assert all(Path(e["pdf"]).read_bytes().startswith(b"%PDF") for e in logged)
+
+
+def test_running_the_same_file_again_never_bills_an_id_twice(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch)
+    path = write_csv(tmp_path, CSV)
+    ready.emitir_lote(path, confirmar=the_code(ready.emitir_lote(path)), aceptar="MP-2")
+
+    again = ready.emitir_lote(path)
+
+    assert again.count("YA EMITIDA · ya salió como 0003-0000004") == 2 and "No hay nada para emitir" in again
+    assert len(sent(calls, "FECAESolicitar")) == 2
+
+
+def test_a_row_with_an_error_blocks_the_whole_batch(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch)
+    text = ready.emitir_lote(write_csv(tmp_path, "ID,nombre,dni,precio\nA,Juan Perez,12345678,100\nB,Ana,23456789,12.3456\nC,X,,50\nA,Otro,12345678,10\n"))
+
+    assert "ERROR · El importe lleva como máximo 2 decimales" in text and "ERROR · falta el DNI/CUIL/CUIT" in text
+    assert "ERROR · el ID está repetido" in text and "confirmar=" not in text and "No se emitió nada" in text
+    assert not sent(calls, "FECAESolicitar")
+
+
+def test_the_batch_stops_at_the_first_failure_and_never_retries(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch, reject_number=47)
+    path = write_csv(tmp_path, "ID,nombre,dni,precio\nA,Juan Perez,12345678,100\nB,Ana Gomez,23456789,200\nC,Juan Perez,12345678,300\n")
+
+    text = ready.emitir_lote(path, confirmar=the_code(ready.emitir_lote(path)))
+
+    assert "✓ Fila 2 · ID A" in text and "ARCA rechazó el comprobante" in text and "SE FRENÓ en la fila 3" in text
+    assert "1 sin procesar: C" in text and "Resultado: 1 emitidas de 3" in text and len(sent(calls, "FECAESolicitar")) == 2
+
+
+def test_the_code_depends_on_the_file_and_accepting_an_unknown_id_is_an_error(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch)
+    code = the_code(ready.emitir_lote(write_csv(tmp_path, CSV)))
+    changed = write_csv(tmp_path, CSV.replace("15000.50", "15000.60"), name="otro.csv")
+    assert "El código no coincide con este lote" in ready.emitir_lote(changed, confirmar=code, aceptar="MP-2")
+    assert "aceptar menciona IDs que no están para revisar: MP-9" in ready.emitir_lote(write_csv(tmp_path, CSV), aceptar="MP-9")
+    assert not sent(calls, "FECAESolicitar")
+
+
+def test_the_padron_being_down_leaves_every_row_to_review_but_the_batch_still_works(ready, monkeypatch, tmp_path):
+    calls, _ = serve_batch(ready, monkeypatch, {"getIdPersonaListByDocumento": lambda body: (_ for _ in ()).throw(ready.Problem("No pude hablar con ARCA"))})
+    text = ready.emitir_lote(write_csv(tmp_path, CSV))
+    assert text.count("REVISAR · No pude consultar el padrón") == 2 and "aceptar=MP-1,MP-2" in text
+
+
+def test_the_csv_can_come_from_a_spanish_excel_with_semicolons_and_other_column_names(ready, monkeypatch, tmp_path):
+    serve_batch(ready, monkeypatch)
+    text = ready.emitir_lote(write_csv(tmp_path, "Referencia;Cliente;CUIL;Importe\nÑ-1;Juan Pérez;12345678;$ 1.500\n", encoding="cp1252"))
+    assert "| 2 | Ñ-1 | Juan Pérez | 1.500,00 | 0003-00000046 | OK |" in text
+
+
+def test_a_csv_without_the_needed_columns_or_too_long_says_so(ready, monkeypatch, tmp_path):
+    serve_batch(ready, monkeypatch)
+    assert "faltan columnas: documento, importe" in ready.emitir_lote(write_csv(tmp_path, "ID,nombre\nA,B\n"))
+    assert "No encuentro el archivo" in ready.emitir_lote(str(tmp_path / "no.csv"))
+    write_accounts(ready, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "productos", "max_lote": 1})
+    assert "permite 1 por lote" in ready.emitir_lote(write_csv(tmp_path, CSV))
+
+
+def test_a_production_account_in_read_only_refuses_the_batch_even_with_a_valid_code(arca, monkeypatch, tmp_path):
+    write_accounts(arca, prod={"cuit": CUIT, "ambiente": "produccion", "punto_venta": 3, "concepto": "productos"})
+    make_files(arca.home(), alias="prod")
+    calls, _ = serve_batch(arca, monkeypatch)
+    path = write_csv(tmp_path, "ID,nombre,dni,precio\nA,Juan Perez,12345678,100\n")
+    refused = arca.emitir_lote(path, confirmar=the_code(arca.emitir_lote(path)))
+    assert "PRODUCCIÓN y está en solo lectura" in refused and not sent(calls, "FECAESolicitar")
