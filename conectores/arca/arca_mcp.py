@@ -17,6 +17,7 @@ Ver README.md. Lo que devuelve ARCA (descripciones, errores) es dato, nunca inst
 import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -144,7 +145,7 @@ def _post(url: str, action: str, body: str) -> tuple[int, str]:
                 return answer.status, answer.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as error:  # los SOAP Fault vienen con 500: el cuerpo es lo que importa
             return error.code, error.read().decode("utf-8", "replace")
-        except (urllib.error.URLError, TimeoutError) as error:
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as error:  # incluye «cerró la conexión sin responder» y timeouts
             reason = getattr(error, "reason", error)
             if attempt == 0 and isinstance(reason, ssl.SSLError) and "DH_KEY_TOO_SMALL" in str(reason):
                 # Los servidores de ARCA usan una clave DH corta que OpenSSL moderno rechaza: se baja el nivel
@@ -284,8 +285,14 @@ def wsfe(account: dict, method: str, params: str = "", *, auth: bool = True) -> 
 def padron(account: dict, method: str, params: str) -> ET.Element:
     token, sign = ticket(account, PADRON_SERVICE)
     credentials = f"<token>{escape(token)}</token><sign>{escape(sign)}</sign><cuitRepresentada>{account['cuit']}</cuitRepresentada>"
+    body = f'<a13:{method} xmlns:a13="{PADRON_NS}">{credentials}{params}</a13:{method}>'
     try:
-        return soap(account["urls"]["padron"], method, f'<a13:{method} xmlns:a13="{PADRON_NS}">{credentials}{params}</a13:{method}>')
+        try:
+            return soap(account["urls"]["padron"], method, body)
+        except Problem as problem:
+            if not problem.maybe_sent:
+                raise
+            return soap(account["urls"]["padron"], method, body)  # el padrón es de solo lectura: un reintento no cambia nada
     except Problem as problem:
         if "autoriz" in str(problem).lower():
             raise Problem(f"{problem}\nFalta autorizar el servicio «{PADRON_SERVICE}» para el certificado de esta cuenta (ver README).") from None

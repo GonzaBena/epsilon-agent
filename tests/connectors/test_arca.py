@@ -877,3 +877,43 @@ def test_an_anonymous_consumer_never_asks_the_padron(ready, monkeypatch):
     calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
     ready.emitir_factura(importe=500, concepto="productos", documento=None, sin_identificar=True)
     assert not [c for c in calls if "sr-padron" in c[0]]
+
+
+def test_a_connection_closed_without_an_answer_is_a_clear_error_not_a_crash(arca, monkeypatch):
+    import http.client
+    import urllib.request
+
+    # la fixture reemplazó _post: se carga el módulo de nuevo para probar el de verdad
+    spec = importlib.util.spec_from_file_location("arca_mcp_real", SCRIPT)
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+
+    def closed(*args, **kwargs):
+        raise http.client.RemoteDisconnected("Remote end closed connection without response")
+
+    monkeypatch.setattr(urllib.request, "urlopen", closed)
+    with pytest.raises(fresh.Problem) as raised:
+        fresh._post("https://awshomo.afip.gov.ar/x", "a", "<x/>")
+    assert "No pude hablar con ARCA" in str(raised.value) and raised.value.maybe_sent
+
+
+def test_the_padron_retries_once_when_the_connection_drops_but_never_more(ready, monkeypatch):
+    ok = padron_answer("getIdPersonaListByDocumento", "<idPersonaListReturn><idPersona>20123456786</idPersona></idPersonaListReturn>")
+    attempts = []
+    serve(ready, monkeypatch, {"getPersonaV2": person("20123456786", "PEREZ", "JUAN"), "FECompUltimoAutorizado": LAST})
+    inner = ready._post
+
+    def flaky(url, action, body):
+        if action.endswith("getIdPersonaListByDocumento"):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise ready.Problem("No pude hablar con ARCA", maybe_sent=True)
+            return 200, ok
+        return inner(url, action, body)
+
+    monkeypatch.setattr(ready, "_post", flaky)
+    assert "PEREZ JUAN" in ready.buscar_persona("12345678") and len(attempts) == 2
+    attempts.clear()
+    monkeypatch.setattr(ready, "_post", lambda *a: (_ for _ in ()).throw(ready.Problem("No pude hablar con ARCA", maybe_sent=True)) if a[1].endswith("getIdPersonaListByDocumento") else inner(*a))
+    simulation = ready.emitir_factura(importe=1, concepto="productos", documento="12345678")
+    assert "⚠ No pude consultar el padrón" in simulation
