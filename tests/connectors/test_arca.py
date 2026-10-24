@@ -38,6 +38,15 @@ def arca(monkeypatch, tmp_path):
         raise RuntimeError("Un test intentó hablar con ARCA de verdad")
 
     monkeypatch.setattr(module, "_post", forbidden)  # el ÚNICO punto de red
+    original = module.emitir_factura
+
+    def with_required_data(*args, **kwargs):
+        """La mayoría de los tests no se ocupan de los datos obligatorios: se completan, salvo que el test los pase (aunque sea None)."""
+        kwargs.setdefault("documento", "12345678")
+        kwargs.setdefault("descripcion", "Repuestos y reparaciones")
+        return original(*args, **kwargs)
+
+    module.emitir_factura = with_required_data
     return module
 
 
@@ -392,7 +401,7 @@ def issue(ready, monkeypatch, answer=None, **fields):
 def test_simulating_shows_what_would_be_issued_and_sends_nothing(ready, monkeypatch):
     calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})  # FECAESolicitar no está: llamarlo daría KeyError
 
-    text = ready.emitir_factura(importe=500, concepto="productos_y_servicios")
+    text = ready.emitir_factura(importe=500, concepto="productos_y_servicios", documento=None, sin_identificar=True)
 
     for expected in ["HOMOLOGACIÓN", "Factura C 0003-00000046", "Total: ARS 500,00", "productos y servicios",
                      "Consumidor final (sin identificar)", "condición consumidor_final", "No se emitió nada"]:
@@ -443,14 +452,14 @@ def test_the_activity_goes_last_and_only_when_the_account_has_one(arca, monkeypa
 
     assert "<CondicionIVAReceptorId>5</CondicionIVAReceptorId><Actividades><Actividad><Id>479900</Id></Actividad></Actividades>" in sent(calls, "FECAESolicitar")[0]
     write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "productos", "actividad": "venta minorista"})
-    assert "hasta 6 números" in arca.emitir_factura(importe=10)
+    assert "hasta 6 números" in arca.emitir_factura(importe=10, documento=None, sin_identificar=True)
 
 
 def test_the_code_only_works_once_for_exactly_that_invoice(ready, monkeypatch):
     serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})  # sin FECAESolicitar: ninguna de estas confirmaciones puede emitir
     code = the_code(ready.emitir_factura(importe=500, concepto="productos"))
 
-    for changed in [{"importe": 501}, {"importe": 500, "documento": "12345678"}, {"importe": 500, "fecha": "2026-10-22"}]:
+    for changed in [{"importe": 501}, {"importe": 500, "documento": "87654321"}, {"importe": 500, "fecha": "2026-10-22"}]:
         refused = ready.emitir_factura(concepto="productos", confirmar=code, **changed)
         assert "El código no coincide" in refused and "No se emitió nada" in refused
     assert "El código no coincide" in ready.emitir_factura(importe=500, concepto="productos", confirmar="true")
@@ -722,3 +731,44 @@ def test_verify_checks_the_configured_activity_against_the_ones_of_the_issuer(ar
     write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3})  # sin actividad configurada no se pregunta nada
     serve(arca, monkeypatch, {"FEDummy": DUMMY, "FEParamGetPtosVenta": POINTS})  # FEParamGetActividades ausente: llamarlo daría KeyError
     assert "actividad" not in arca.verificar()
+
+
+def required_account(arca, *fields, **more):
+    write_accounts(arca, negocio={"cuit": CUIT, "punto_venta": 3, "concepto": "productos", "obligatorios": list(fields), **more})
+
+
+def test_without_the_list_only_what_arca_needs_is_required_but_missing_data_is_warned(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
+    text = ready.emitir_factura(importe=10, concepto="productos", documento=None, descripcion=None)
+    assert "confirmar=" in text and "⚠ Sin descripción ni documento del cliente" in text
+
+
+def test_an_account_can_require_the_description_the_document_and_the_place(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
+    required_account(ready, "descripcion", "documento", "localidad")
+    refused = ready.emitir_factura(importe=10, descripcion=None)
+    assert "Falta la descripción" in refused and "confirmar=" not in refused
+    assert "Falta la descripción" in ready.emitir_factura(importe=10, descripcion="   ")
+    refused = ready.emitir_factura(importe=10, documento=None)
+    assert "Falta el documento" in refused and "sin_identificar=true" in refused and "confirmar=" not in refused
+    assert "Falta la localidad" in ready.emitir_factura(importe=10)
+    assert "confirmar=" in ready.emitir_factura(importe=10, localidad="CABA")
+    assert "confirmar=" in ready.emitir_factura(importe=10, localidad="CABA", documento=None, sin_identificar=True)
+    assert "dejá solo uno" in ready.emitir_factura(importe=10, localidad="CABA", sin_identificar=True)
+    required_account(ready, "descripcion", localidad="CABA", descripcion="Repuestos y reparaciones")  # lo guardado en la cuenta cuenta
+    assert "confirmar=" in ready.emitir_factura(importe=10, descripcion=None)
+
+
+def test_a_wrong_list_of_required_fields_says_which_names_exist(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
+    required_account(ready, "domicilio")
+    assert "documento, descripcion, localidad" in ready.emitir_factura(importe=10)
+
+
+def test_the_summary_shows_payment_and_place_and_warns_that_arca_keeps_none_of_it(ready, monkeypatch):
+    text, calls = issue(ready, monkeypatch, localidad="CABA")
+    assert "Pago: Contado" in text and "todavía no se generó el comprobante" in text
+    logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
+    assert logged["forma_pago"] == "Contado" and logged["localidad"] == "CABA"
+    simulation = ready.emitir_factura(importe=500, concepto="productos", localidad="CABA")
+    assert "Localidad: CABA" in simulation and "ARCA no guarda la descripción" in simulation

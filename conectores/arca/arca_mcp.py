@@ -601,6 +601,17 @@ def last_number(account: dict, point: int) -> int:
         raise Problem("ARCA no devolvió un número de comprobante válido.") from None
 
 
+REQUIRABLE = ("documento", "descripcion", "localidad")  # lo que una cuenta puede exigir además de lo que exige ARCA
+
+
+def required_fields(account: dict) -> set[str]:
+    """Datos que ESTA cuenta exige al emitir (`obligatorios` en cuentas.json). Sin la clave: solo lo que pide ARCA."""
+    wanted = account.get("obligatorios", [])
+    if not isinstance(wanted, list) or any(w not in REQUIRABLE for w in wanted):
+        raise Problem(f"«obligatorios» en la cuenta «{account['alias']}» tiene que ser una lista con estos nombres: {', '.join(REQUIRABLE)}.")
+    return set(wanted)
+
+
 def confirmation_code(*parts) -> str:
     """Código corto atado a TODO lo que se va a emitir, incluido el número que le toca: no sirve dos veces."""
     return hashlib.sha256("|".join(map(str, parts)).encode("utf-8")).hexdigest()[:6]
@@ -645,10 +656,24 @@ def settle_after_silence(account: dict, point: int, number: int, problem: Proble
 def emitir_factura(importe: float, concepto: str | None = None, documento: str | None = None, tipo_documento: str | None = None,
                    condicion_receptor: str | None = None, descripcion: str | None = None, fecha: str | None = None,
                    servicio_desde: str | None = None, servicio_hasta: str | None = None, vencimiento_pago: str | None = None,
-                   punto_venta: int | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
-    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. Sin documento es consumidor final sin identificar."""
+                   punto_venta: int | None = None, localidad: str | None = None, sin_identificar: bool = False,
+                   cuenta: str | None = None, confirmar: str | None = None) -> str:
+    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. documento (DNI, CUIL o CUIT), descripcion y localidad son opcionales salvo que la cuenta los exija; con sin_identificar=true se confirma un consumidor final sin documento. El pago es siempre contado."""
     try:
         account = pick(cuenta)
+        what = descripcion if descripcion is not None else account.get("descripcion")
+        required = required_fields(account)
+        if "descripcion" in required and not (what and str(what).strip()):
+            raise Problem("Falta la descripción de lo vendido: descripcion=«Repuestos y reparaciones» (o guardala en la cuenta con «descripcion»). "
+                          "Esta cuenta la exige («obligatorios» en cuentas.json).")
+        if sin_identificar and documento:
+            raise Problem("Pediste «sin_identificar» y también un documento: dejá solo uno.")
+        if "documento" in required and not sin_identificar and not (documento and str(documento).strip()):
+            raise Problem("Falta el documento del cliente: documento=<DNI, CUIL o CUIT>. Si de verdad es un consumidor final sin identificar, "
+                          "agregá sin_identificar=true. Esta cuenta lo exige («obligatorios» en cuentas.json).")
+        place = str(localidad if localidad is not None else account.get("localidad") or "").strip()
+        if "localidad" in required and not place:
+            raise Problem("Falta la localidad: localidad=CABA (o guardala en la cuenta con «localidad»). Esta cuenta la exige («obligatorios» en cuentas.json).")
         point = sale_point(account, punto_venta)
         concept_name = (concepto or account.get("concepto") or "").strip().lower()
         if concept_name not in CONCEPT_IDS:
@@ -672,14 +697,17 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
             raise Problem("«vencimiento_pago» no puede ser anterior a la fecha del comprobante.")
         number = last_number(account, point) + 1
         request = build_invoice(account, point, number, concept, (doc_type, doc_number), issued, amount, condition, service)
-        what = descripcion if descripcion is not None else account.get("descripcion")
-        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request)
+        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request, what, place)
         summary = [f"[{account['alias']}] {banner(account)}",
                    f"Factura C {number_text(point, number)} · {issued.isoformat()}",
                    f"Total: {money(amount, 'ARS')} · Concepto: {concept_name.replace('_', ' ')}",
                    f"Receptor: {receiver} · condición {wanted}"]
-        if what:
-            summary.append(f"Descripción: {one_line(what, 120)} (solo queda en el registro local; ARCA no la guarda)")
+        summary.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado" + (f" · Localidad: {one_line(place, 60)}" if place else ""))
+        missing = [name for name, value in (("descripción", what), ("documento del cliente", documento)) if not (value and str(value).strip())]
+        if missing:
+            summary.append("⚠ Sin " + " ni ".join(missing) + ": ARCA lo acepta, pero el comprobante que entregues quedaría incompleto.")
+        summary.append("Ojo: ARCA no guarda la descripción, el nombre, el domicilio ni la forma de pago; hoy solo quedan en el registro local "
+                       "y todavía no se genera el comprobante para entregar.")
         if confirmar is None:
             return "\n".join(summary + [f"No se emitió nada. Para emitir, repetí el mismo pedido agregando confirmar={code}"])
         if confirmar.strip().lower() != code:
@@ -690,7 +718,8 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
                           f'"emision": true a esa cuenta en {home() / "cuentas.json"} (a propósito, y solo si querés emitir de verdad).')
         entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
                  "punto_venta": point, "tipo": INVOICE_C, "numero": number, "fecha": issued.isoformat(), "importe": f"{amount:.2f}",
-                 "receptor": f"{doc_type}:{doc_number}", "concepto": concept_name, "descripcion": what or ""}
+                 "receptor": f"{doc_type}:{doc_number}", "concepto": concept_name, "descripcion": what or "", "forma_pago": "Contado",
+                 "localidad": place}
     except Problem as problem:
         return str(problem)
     try:
@@ -718,6 +747,7 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
     done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {issued.isoformat()}",
             f"Total: {money(amount, 'ARS')} · Receptor: {receiver}", f"CAE: {cae} · vence {expires}"]
+    done.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado. Ojo: todavía no se generó el comprobante (PDF) para entregar.")
     if notes:
         done.append("Observaciones de ARCA: " + "; ".join(notes))
     return "\n".join(done) + record(entry)

@@ -73,13 +73,17 @@ Todas aceptan `cuenta=<nombre>` para cambiar de cuenta. Para que la IA **no** la
 Siempre en **dos pasos**, para no emitir nada por error:
 
 ```
-/c arca emitir_factura importe=1500.50 concepto=productos_y_servicios documento=12345678
+/c arca emitir_factura importe=1500.50 concepto=productos_y_servicios documento=12345678 descripcion="Repuestos y reparaciones"
 ```
+
+Por defecto solo se exige lo que pide ARCA (más el concepto). Si faltan el documento o la descripción, la simulación
+avisa con ⚠. Para que **no se pueda emitir sin ellos**, como en el facturador web, la cuenta lo exige en `cuentas.json`:
+`"obligatorios": ["documento", "descripcion", "localidad"]` (los tres nombres posibles; ponés los que quieras). El pago es siempre contado.
 
 1. **Simula**: muestra la cuenta, el ambiente, el número que le tocaría, el receptor y el importe, y **no emite nada**.
    Termina con un código: `confirmar=7f3a9c`.
 2. **Emite** si repetís el mismo pedido agregando ese código:
-   `/c arca emitir_factura importe=1500.50 concepto=productos_y_servicios documento=12345678 confirmar=7f3a9c`
+   `/c arca emitir_factura importe=1500.50 concepto=productos_y_servicios documento=12345678 descripcion="Repuestos y reparaciones" confirmar=7f3a9c`
 
 El código depende de todos los datos **y del número que le toca**, así que no sirve dos veces ni si cambiás algo:
 repetir un comando ya emitido no emite otra factura.
@@ -88,11 +92,12 @@ repetir un comando ya emitido no emite otra factura.
 |---|---|
 | `importe` | Total, hasta 2 decimales (no redondea por su cuenta). En Factura C no hay IVA |
 | `concepto` | `productos`, `servicios` o `productos_y_servicios` (o guardalo en la cuenta) |
-| `documento`, `tipo_documento` | DNI, CUIL o CUIT del receptor, con puntos o guiones si querés. Sin documento: consumidor final sin identificar. El tipo se deduce (hasta 8 números: DNI; 11 que empiezan con 20/23/24/27: CUIL; otros: CUIT) y se puede forzar con `tipo_documento=dni\|cuil\|cuit`. Se revisa el dígito verificador |
+| `documento`, `tipo_documento` | DNI, CUIL o CUIT del receptor, con puntos o guiones si querés. Si la cuenta exige `documento`, sin él hace falta `sin_identificar=true` para emitir a un consumidor final sin identificar. El tipo se deduce (hasta 8 números: DNI; 11 que empiezan con 20/23/24/27: CUIL; otros: CUIT) y se puede forzar con `tipo_documento=dni\|cuil\|cuit`. Se revisa el dígito verificador |
 | `condicion_receptor` | `consumidor_final` (por defecto), `monotributo`, `responsable_inscripto`, `exento`, `no_categorizado`, `monotributo_social`, o el número (ver `condiciones_iva_receptor`) |
 | `fecha` | AAAA-MM-DD, por defecto hoy. ARCA acepta hasta 5 días antes o después con productos y 10 con servicios |
 | `servicio_desde`, `servicio_hasta`, `vencimiento_pago` | Para servicios, por defecto la fecha del comprobante |
-| `descripcion` | Solo queda en el registro local: **ARCA no guarda la descripción** (existirá en el PDF) |
+| `descripcion` | Opcional salvo que la cuenta la exija (o `descripcion` en la cuenta). Queda en el registro local: **ARCA no guarda la descripción** (existirá en el PDF) |
+| `localidad` | Opcional salvo que la cuenta la exija (o `localidad` en la cuenta), p. ej. «CABA»: queda en el registro local, para el PDF |
 | `punto_venta` | Por defecto el de la cuenta |
 
 - **Si ARCA no responde después de recibir el pedido**, el conector **no lo repite**: mira el último número autorizado y
@@ -115,7 +120,9 @@ Solo datos, sin secretos (las claves son archivos aparte con permisos 600):
 - `actividad` (opcional): código de actividad que ARCA debe asociar al comprobante, por ejemplo `"479900"`. Solo se
   envía si lo ponés; ARCA exige que sea una de las actividades activas del emisor (se ven con `actividades`, y
   `verificar` lo comprueba). **En homologación el emisor de pruebas casi nunca las tiene: probá sin `actividad`.**
-- `descripcion` (opcional): texto por defecto del registro, por ejemplo `"Repuestos y reparaciones"`.
+- `descripcion` (opcional): texto por defecto, por ejemplo `"Repuestos y reparaciones"`; si no está, hay que pasarla en cada emisión.
+- `obligatorios` (opcional): datos que esta cuenta exige además de lo de ARCA: `"documento"`, `"descripcion"`, `"localidad"`.
+- `localidad` (opcional): por ejemplo `"CABA"`, para el domicilio del comprobante cuando no se tiene el del cliente.
 - `emision` (solo producción): `true` para permitir emitir de verdad.
 - `cert` y `key` (opcionales): rutas a otros archivos; por defecto `<cuenta>.crt` y `<cuenta>.key` en la misma carpeta.
 - `urls` (opcional): `{"wsaa": "https://…", "wsfe": "https://…"}`, por si ARCA cambia las direcciones. Siempre `https://`.

@@ -49,8 +49,12 @@ personales: no se suben al repositorio).
   frente al IVA (obligatoria desde la RG 5616; consumidor final = 5), y, si el manual lo confirma, la actividad
   (`Actividades`, p. ej. 479900). Con servicios: período y vencimiento del pago, por defecto la fecha de emisión.
   **No viajan**: descripción, domicilio, nombre del receptor ni forma de pago; solo existen en el PDF.
-- Por cuenta, en `cuentas.json`: `actividad`, `descripcion` (por defecto «Repuestos y reparaciones»), `domicilio`
-  (por defecto «CABA») y `emision`.
+- Por cuenta, en `cuentas.json`: `actividad`, `descripcion`, `localidad` (p. ej. «CABA») y `emision`.
+- **Datos obligatorios configurables**: por defecto solo lo que pide ARCA (y avisa con ⚠ si falta documento o descripción).
+  Cada cuenta puede exigir más con `"obligatorios": ["documento", "descripcion", "localidad"]` (como el facturador web);
+  quien no lo toca usa lo básico. `sin_identificar=true` confirma un consumidor final sin documento. El pago es siempre
+  «Contado». Nombre y domicilio saldrán del padrón (fase 4) o de la localidad; sin PDF, cada emisión avisa que el comprobante
+  para entregar no se generó.
 - **Seguridad**: homologación emite siempre; **producción solo con `"emision": true`** en la cuenta. Sin reintentos
   automáticos: si la red falla tras enviar, primero consulta el último número autorizado y recién ahí dice qué pasó.
   Siempre pide el último y usa el siguiente. Cada emisión se anota en un registro local que solo se agrega.
