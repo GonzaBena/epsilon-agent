@@ -62,8 +62,8 @@ personales: no se suben al repositorio).
 
 ## Fase 4: PDF y padrón
 
-- **PDF** con QR (opcional: `pdf=true` o fijado en la cuenta; el detalle de lo vendido solo queda ahí). Hace falta una
-  librería de QR chica (`segno`, sin dependencias) declarada en el script.
+- **PDF** con QR (**hecho**, versión simple): `fpdf2` + `segno` declarados en el script; se arma al emitir
+  (`pdf=false` o `"pdf": false` en la cuenta para omitirlo) y se rehace con `pdf_comprobante`. Falta, si hace falta, el formato idéntico al de ARCA.
 - **Padrón** (nombre y domicilio del cliente, y elegir entre dos CUIL con el mismo DNI, como hace la web):
   - Servicio `ws_sr_padron_a13` (manual oficial v1.4): `getIdPersonaListByDocumento` devuelve las claves (CUIL/CUIT)
     de un DNI y `getPersona` da nombre y domicilio. Se habilita en ARCA creando una relación «Consulta a Padrón

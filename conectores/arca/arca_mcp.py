@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["mcp>=2.3.0", "cryptography>=43"]
+# dependencies = ["mcp>=2.3.0", "cryptography>=43", "fpdf2>=2.8", "segno>=1.6"]
 # ///
 """Conector de ARCA (ex AFIP) para Epsilon, solo lectura: puntos de venta, tipos de comprobante, último comprobante,
 ver un comprobante y verificar que todo esté bien configurado.
@@ -39,6 +39,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.x509.oid import NameOID
+import segno
+from fpdf import FPDF
 from mcp.server.mcpserver import MCPServer
 
 TIMEOUT = 30  # segundos por pedido
@@ -726,6 +728,130 @@ def record(entry: dict) -> str:
     return ""
 
 
+# ---------- PDF del comprobante ----------
+
+QR_URL = "https://www.afip.gob.ar/fe/qr/?p="
+RECEIVER_LABEL = {"consumidor_final": "Consumidor Final", "responsable_inscripto": "IVA Responsable Inscripto", "exento": "IVA Sujeto Exento",
+                  "monotributo": "Responsable Monotributo", "no_categorizado": "Sujeto No Categorizado", "monotributo_social": "Monotributista Social"}
+ISSUER_LABEL = {"monotributo": "Responsable Monotributo", "responsable_inscripto": "IVA Responsable Inscripto", "exento": "IVA Sujeto Exento"}
+
+
+def pdf_folder(account: dict) -> Path:
+    return Path(os.environ.get("ARCA_PDF_DIR") or account.get("pdf_dir") or home() / "comprobantes").expanduser()
+
+
+def qr_link(account: dict, entry: dict) -> str:
+    """El enlace del QR que ARCA pide en las facturas: sus datos en JSON, en base64, tras una dirección fija."""
+    doc_type, doc_number = (int(x) for x in str(entry["receptor"]).split(":"))
+    data = {"ver": 1, "fecha": entry["fecha"], "cuit": int(account["cuit"]), "ptoVta": entry["punto_venta"], "tipoCmp": entry["tipo"],
+            "nroCmp": entry["numero"], "importe": float(entry["importe"]), "moneda": "PES", "ctz": 1, "tipoDocRec": doc_type,
+            "nroDocRec": doc_number, "tipoCodAut": "E", "codAut": int(entry["cae"])}
+    return QR_URL + base64.b64encode(json.dumps(data, separators=(",", ":")).encode()).decode()
+
+
+def latin(value) -> str:
+    """El PDF usa la letra estándar (latin-1): lo que no entra se cambia por «?» en vez de romper."""
+    return str(value).encode("latin-1", "replace").decode("latin-1")
+
+
+def render_pdf(account: dict, entry: dict) -> Path:
+    """Arma el comprobante simple (A4) de una factura ya emitida, con su QR. Lo que viene de ARCA o del padrón es dato, solo se dibuja."""
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(False)
+    pdf.set_margins(15, 15, 15)
+    pdf.add_page()
+    point, number = int(entry["punto_venta"]), int(entry["numero"])
+    test = entry.get("ambiente") == "homologacion"
+
+    if test:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(190, 30, 30)
+        pdf.cell(0, 6, latin("HOMOLOGACIÓN · COMPROBANTE DE PRUEBA, SIN VALIDEZ FISCAL"), align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+    top = pdf.get_y() + 2
+    pdf.rect(15, top, 180, 38)
+    pdf.line(105, top + 14, 105, top + 38)  # separa emisor y datos del comprobante
+    pdf.rect(97, top, 16, 14)  # la letra
+    pdf.set_font("Helvetica", "B", 26)
+    pdf.set_xy(97, top + 1)
+    pdf.cell(16, 8, "C", align="C")
+    pdf.set_font("Helvetica", "", 7)
+    pdf.set_xy(97, top + 9)
+    pdf.cell(16, 4, "COD. 011", align="C")
+
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(18, top + 4)
+    pdf.cell(76, 6, latin(one_line(account.get("nombre") or f"CUIT {account['cuit']}", 40)))
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(18, top + 18)
+    pdf.multi_cell(84, 5, latin(f"{one_line(account.get('domicilio_emisor') or '', 70)}\nCUIT: {account['cuit']}\n"
+                                f"Condición frente al IVA: {ISSUER_LABEL.get(account.get('condicion', 'monotributo'), 'Monotributo')}"))
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_xy(116, top + 3)
+    pdf.cell(76, 8, "FACTURA")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(116, top + 18)
+    pdf.multi_cell(76, 5.5, latin(f"Nº {number_text(point, number)}\nFecha de emisión: {entry['fecha']}"))
+
+    y = top + 44
+    pdf.set_xy(15, y)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, "Cliente", new_x="LMARGIN", new_y="NEXT")
+    doc_type, doc_number = (int(x) for x in str(entry["receptor"]).split(":"))
+    who = entry.get("cliente") or ("Consumidor final" if doc_type == 99 else "")
+    where = entry.get("domicilio") or entry.get("localidad") or ""
+    pdf.set_font("Helvetica", "", 10)
+    lines = [f"Nombre: {who or '(sin dato)'}"]
+    if doc_type != 99:
+        lines.append(f"{DOC_TYPES.get(doc_type, 'Documento')}: {doc_number}")
+    lines += [f"Domicilio: {where or '(sin dato)'}",
+              f"Condición frente al IVA: {RECEIVER_LABEL.get(entry.get('condicion_receptor', 'consumidor_final'), 'Consumidor Final')}",
+              f"Condición de venta: {entry.get('forma_pago') or 'Contado'}"]
+    for line in lines:
+        pdf.set_x(15)
+        pdf.cell(0, 5.5, latin(one_line(line, 110)), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_y(pdf.get_y() + 6)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(235, 235, 235)
+    for width, text, align in ((100, "Descripción", "L"), (20, "Cant.", "R"), (30, "Precio unit.", "R"), (30, "Subtotal", "R")):
+        pdf.cell(width, 7, text, border=1, align=align, fill=True)
+    pdf.ln()
+    pdf.set_font("Helvetica", "", 9)
+    amount = money(entry["importe"])
+    start = pdf.get_y()
+    pdf.set_xy(15, start)
+    pdf.multi_cell(100, 6, latin(one_line(entry.get("descripcion") or "", 300)), border=1, new_x="RIGHT", new_y="TOP", max_line_height=6)
+    height = pdf.get_y() - start if pdf.get_y() > start else 6
+    pdf.set_xy(115, start)
+    for width, text in ((20, "1"), (30, amount), (30, amount)):
+        pdf.cell(width, max(height, 6), text, border=1, align="R")
+    pdf.ln(max(height, 6) + 4)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, latin(f"Importe total: $ {amount}"), align="R", new_x="LMARGIN", new_y="NEXT")
+
+    base = 232
+    code = segno.make(qr_link(account, entry), error="m")
+    cell = 34 / (len(code.matrix) + 8)  # 34 mm con 4 módulos de margen a cada lado
+    for row_number, row in enumerate(code.matrix):
+        for column_number, dark in enumerate(row):
+            if dark:
+                pdf.rect(15 + (column_number + 4) * cell, base + (row_number + 4) * cell, cell, cell, style="F")
+    pdf.set_xy(55, base + 8)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.multi_cell(0, 6, latin(f"CAE Nº: {entry['cae']}\nFecha de vencimiento del CAE: {entry.get('cae_vencimiento') or '?'}"))
+    pdf.set_x(55)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.multi_cell(0, 4.5, latin("Comprobante autorizado por ARCA. Escaneá el QR para verificarlo."
+                                 + (" Es de PRUEBA: no tiene validez fiscal." if test else "")))
+
+    folder = pdf_folder(account)
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = folder / f"{account['alias']}-{number_text(point, number)}.pdf"
+    write_private(path, bytes(pdf.output()))
+    return path
+
+
 def observations(detail: ET.Element) -> list[str]:
     """Observaciones de un comprobante. El manual las muestra como Obs/Observaciones y ARCA las manda al revés: vale cualquiera."""
     found = [o for o in detail.iter() if local(o.tag) in ("Obs", "Observaciones") and any(local(c.tag) == "Code" for c in o)]
@@ -749,12 +875,41 @@ def settle_after_silence(account: dict, point: int, number: int, problem: Proble
 
 
 @server.tool()
+def pdf_comprobante(numero: int, punto_venta: int | None = None, cuenta: str | None = None) -> str:
+    """Arma (o rehace) el PDF de una factura C que se emitió desde acá, con los datos del registro local. Sirve si al emitir falló el PDF."""
+    try:
+        account = pick(cuenta)
+        point = sale_point(account, punto_venta)
+        path = home() / "emitidas.jsonl"
+        found = None
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    one = json.loads(line)
+                except ValueError:
+                    continue
+                if (one.get("cuenta"), one.get("ambiente"), one.get("punto_venta"), one.get("numero"), one.get("resultado")) == (
+                        account["alias"], account["ambiente"], point, int(numero), "emitida"):
+                    found = one
+        except OSError:
+            pass
+        if not found:
+            return (f"No tengo en el registro local la factura {number_text(point, int(numero))} de «{account['alias']}»: "
+                    "solo puedo armar el PDF de las que se emitieron con emitir_factura en esta máquina.")
+        return f"PDF: {render_pdf(account, found)}"
+    except Problem as problem:
+        return str(problem)
+    except Exception as error:
+        return f"No pude armar el PDF: {one_line(error, 200)}"
+
+
+@server.tool()
 def emitir_factura(importe: float, concepto: str | None = None, documento: str | None = None, tipo_documento: str | None = None,
                    condicion_receptor: str | None = None, descripcion: str | None = None, fecha: str | None = None,
                    servicio_desde: str | None = None, servicio_hasta: str | None = None, vencimiento_pago: str | None = None,
                    punto_venta: int | None = None, localidad: str | None = None, sin_identificar: bool = False,
-                   cuenta: str | None = None, confirmar: str | None = None) -> str:
-    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. documento (DNI, CUIL o CUIT), descripcion y localidad son opcionales salvo que la cuenta los exija; con sin_identificar=true se confirma un consumidor final sin documento. El pago es siempre contado."""
+                   pdf: bool | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
+    """Emite una Factura C. SIN `confirmar` solo SIMULA (no emite nada) y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. concepto: productos, servicios o productos_y_servicios. documento (DNI, CUIL o CUIT), descripcion y localidad son opcionales salvo que la cuenta los exija; con sin_identificar=true se confirma un consumidor final sin documento. El pago es siempre contado. Al emitir genera el PDF del comprobante (pdf=false para no hacerlo)."""
     try:
         account = pick(cuenta)
         what = descripcion if descripcion is not None else account.get("descripcion")
@@ -807,8 +962,9 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
         missing = [name for name, value in (("descripción", what), ("documento del cliente", documento)) if not (value and str(value).strip())]
         if missing:
             summary.append("⚠ Sin " + " ni ".join(missing) + ": ARCA lo acepta, pero el comprobante que entregues quedaría incompleto.")
-        summary.append("Ojo: ARCA no guarda la descripción, el nombre, el domicilio ni la forma de pago; hoy solo quedan en el registro local "
-                       "y todavía no se genera el comprobante para entregar.")
+        make_pdf = pdf if pdf is not None else account.get("pdf", True)
+        summary.append("ARCA no guarda la descripción, el nombre, el domicilio ni la forma de pago: quedan en el registro local y "
+                       + (f"en el PDF ({pdf_folder(account)})." if make_pdf else "NO habrá PDF (pdf=false): no tendrás el comprobante para entregar."))
         if confirmar is None:
             return "\n".join(summary + [f"No se emitió nada. Para emitir, repetí el mismo pedido agregando confirmar={code}"])
         if confirmar.strip().lower() != code:
@@ -820,7 +976,7 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
         entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
                  "punto_venta": point, "tipo": INVOICE_C, "numero": number, "fecha": issued.isoformat(), "importe": f"{amount:.2f}",
                  "receptor": f"{doc_type}:{doc_number}", "concepto": concept_name, "descripcion": what or "", "forma_pago": "Contado",
-                 "localidad": place, "cliente": client[0], "domicilio": client[1]}
+                 "localidad": place, "cliente": client[0], "domicilio": client[1], "condicion_receptor": wanted}
     except Problem as problem:
         return str(problem)
     try:
@@ -848,7 +1004,13 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
     done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {issued.isoformat()}",
             f"Total: {money(amount, 'ARS')} · Receptor: {receiver}" + (f" · {client[0]}" if client[0] else ""), f"CAE: {cae} · vence {expires}"]
-    done.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado. Ojo: todavía no se generó el comprobante (PDF) para entregar.")
+    done.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado")
+    if make_pdf:
+        try:
+            entry["pdf"] = str(render_pdf(account, entry))
+            done.append(f"PDF: {entry['pdf']}")
+        except Exception as error:  # la factura YA está emitida: un problema con el PDF nunca la esconde
+            done.append(f"⚠ La factura se emitió, pero no pude armar el PDF ({one_line(error, 150)}). Probá de nuevo con pdf_comprobante numero={number}.")
     if notes:
         done.append("Observaciones de ARCA: " + "; ".join(notes))
     return "\n".join(done) + record(entry)
@@ -889,7 +1051,7 @@ def create_account(alias: str, cuit: str, name: str, environment: str, condition
     write_private(key_path, key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL,
                                               serialization.NoEncryption()))
     csr_path.write_bytes(csr.public_bytes(serialization.Encoding.PEM))
-    accounts[alias] = {"cuit": cuit, "ambiente": environment, "condicion": condition}
+    accounts[alias] = {"cuit": cuit, "ambiente": environment, "condicion": condition, **({"nombre": name} if name != "Epsilon" else {})}
     write_private(accounts_path, json.dumps(accounts, indent=2, ensure_ascii=False))
     wsass = "WSASS (certificados de testing)" if environment == "homologacion" else "«Administración de Certificados Digitales»"
     return (f"Listo. Cuenta «{alias}» creada en {folder}\n  clave privada: {key_path}  (no la compartas)\n  pedido de certificado: {csr_path}\n\n"

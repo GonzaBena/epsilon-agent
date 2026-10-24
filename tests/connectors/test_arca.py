@@ -140,7 +140,7 @@ def test_server_defines_its_tools_and_the_buttons_fit_them(arca):
     found = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}
 
     assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante",
-                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona"}
+                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona", "pdf_comprobante"}
     for button in json.loads(arca.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -154,7 +154,7 @@ def test_new_account_makes_a_private_key_a_csr_with_the_cuit_and_the_entry(arca)
     assert csr.is_signature_valid
     assert csr.subject.get_attributes_for_oid(NameOID.SERIAL_NUMBER)[0].value == f"CUIT {CUIT}"
     assert csr.subject.get_attributes_for_oid(NameOID.COUNTRY_NAME)[0].value == "AR"
-    assert json.loads((folder / "cuentas.json").read_text()) == {"negocio": {"cuit": CUIT, "ambiente": "homologacion", "condicion": "monotributo"}}
+    assert json.loads((folder / "cuentas.json").read_text()) == {"negocio": {"cuit": CUIT, "ambiente": "homologacion", "condicion": "monotributo", "nombre": "Mi Negocio"}}
     assert "WSASS" in text and "negocio.crt" in text
     key_before = (folder / "negocio.key").read_bytes()
     with pytest.raises(arca.Problem, match="ya existe"):
@@ -773,11 +773,11 @@ def test_a_wrong_list_of_required_fields_says_which_names_exist(ready, monkeypat
 
 def test_the_summary_shows_payment_and_place_and_warns_that_arca_keeps_none_of_it(ready, monkeypatch):
     text, calls = issue(ready, monkeypatch, localidad="CABA")
-    assert "Pago: Contado" in text and "todavía no se generó el comprobante" in text
+    assert "Pago: Contado" in text and "PDF: " in text
     logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
     assert logged["forma_pago"] == "Contado" and logged["localidad"] == "CABA"
     simulation = ready.emitir_factura(importe=500, concepto="productos", localidad="CABA")
-    assert "Localidad: CABA" in simulation and "ARCA no guarda la descripción" in simulation
+    assert "Localidad: CABA" in simulation and "ARCA no guarda la descripción" in simulation and "en el PDF" in simulation
 
 
 def base64_request(calls):
@@ -917,3 +917,53 @@ def test_the_padron_retries_once_when_the_connection_drops_but_never_more(ready,
     monkeypatch.setattr(ready, "_post", lambda *a: (_ for _ in ()).throw(ready.Problem("No pude hablar con ARCA", maybe_sent=True)) if a[1].endswith("getIdPersonaListByDocumento") else inner(*a))
     simulation = ready.emitir_factura(importe=1, concepto="productos", documento="12345678")
     assert "⚠ No pude consultar el padrón" in simulation
+
+
+def decoded_qr_link(link):
+    import base64
+    assert link.startswith("https://www.afip.gob.ar/fe/qr/?p=")
+    return json.loads(base64.b64decode(link.split("?p=", 1)[1]))
+
+
+def test_emitting_makes_a_simple_pdf_with_the_data_and_a_qr_that_follows_arcas_format(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "FECAESolicitar": approved(), **padron_for(("20123456786", "PEREZ", "JUAN"))})
+    simulation = ready.emitir_factura(importe=1500.5, concepto="productos", documento="12345678", descripcion="Repuestos y reparaciones")
+    text = ready.emitir_factura(importe=1500.5, concepto="productos", documento="12345678", descripcion="Repuestos y reparaciones",
+                                confirmar=the_code(simulation))
+
+    path = Path(re.search(r"PDF: (\S+\.pdf)", text).group(1))
+    assert path.parent == ready.home() / "comprobantes" and path.name == "negocio-0003-00000046.pdf"
+    assert path.read_bytes().startswith(b"%PDF") and stat.S_IMODE(path.stat().st_mode) == 0o600
+    logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
+    assert logged["pdf"] == str(path)
+    qr = decoded_qr_link(ready.qr_link(ready.pick(None), logged))
+    assert qr == {"ver": 1, "fecha": logged["fecha"], "cuit": int(CUIT), "ptoVta": 3, "tipoCmp": 11, "nroCmp": 46, "importe": 1500.5,
+                  "moneda": "PES", "ctz": 1, "tipoDocRec": 96, "nroDocRec": 12345678, "tipoCodAut": "E", "codAut": 74123456789012}
+
+
+def test_the_pdf_can_be_switched_off_and_a_pdf_failure_never_hides_an_issued_invoice(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "FECAESolicitar": approved()})
+    simulation = ready.emitir_factura(importe=500, concepto="productos", pdf=False)
+    assert "NO habrá PDF" in simulation
+    text = ready.emitir_factura(importe=500, concepto="productos", pdf=False, confirmar=the_code(simulation))
+    assert "✓" in text and "PDF:" not in text and not (ready.home() / "comprobantes").exists()
+
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "FECAESolicitar": approved()})
+    monkeypatch.setattr(ready, "render_pdf", lambda *a: (_ for _ in ()).throw(RuntimeError("boom")))
+    simulation = ready.emitir_factura(importe=500, concepto="productos")
+    text = ready.emitir_factura(importe=500, concepto="productos", confirmar=the_code(simulation))
+    assert text.startswith("✓") and "CAE:" in text and "no pude armar el PDF" in text and "pdf_comprobante numero=46" in text
+
+
+def test_pdf_comprobante_rebuilds_it_from_the_local_log_and_says_when_it_does_not_know_the_invoice(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "FECAESolicitar": approved()})
+    simulation = ready.emitir_factura(importe=500, concepto="productos", pdf=False)
+    ready.emitir_factura(importe=500, concepto="productos", pdf=False, confirmar=the_code(simulation))
+
+    rebuilt = ready.pdf_comprobante(46)
+    assert rebuilt.startswith("PDF: ") and Path(rebuilt[5:]).read_bytes().startswith(b"%PDF")
+    assert "No tengo en el registro local" in ready.pdf_comprobante(99)
+
+
+def test_the_pdf_text_never_breaks_on_characters_the_standard_font_lacks(ready):
+    assert ready.latin("Pérez 日本 ñ") == "Pérez ?? ñ"

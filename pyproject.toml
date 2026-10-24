@@ -40,8 +40,10 @@ build-backend = "uv_build"
 dev = [
     # Los tests de conectores/arca firman con ella (el conector la declara en su propio script).
     "cryptography>=43",
+    "fpdf2>=2.8",
     "httpx2>=2.14.0",
     "pytest>=9.1.1",
+    "segno>=1.6",
 ]
 
 [tool.pytest.ini_options]

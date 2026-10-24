@@ -69,6 +69,7 @@ y por qué.
 | `actividades` | Las actividades del emisor que ARCA acepta asociar a un comprobante (el código va en `actividad`). En homologación suele no haber ninguna |
 | `condiciones_iva_receptor` | Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C |
 | `buscar_persona` | Nombre y domicilio fiscal de un DNI, CUIL o CUIT en el padrón de ARCA: `/c arca buscar_persona documento=12345678`. Con un DNI muestra todas las claves (si hay más de una, hay que elegir el CUIL). Necesita autorizar `ws_sr_padron_a13` (ver abajo) |
+| `pdf_comprobante` | Arma (o rehace) el PDF de una factura emitida desde acá: `/c arca pdf_comprobante numero=2` |
 | `emitir_factura` | Emite una Factura C. Ver la sección siguiente |
 
 Todas aceptan `cuenta=<nombre>` para cambiar de cuenta. Para que la IA **no** las use, poné `deny` en `/permisos`.
@@ -105,6 +106,10 @@ repetir un comando ya emitido no emite otra factura.
 | `localidad` | Opcional salvo que la cuenta la exija (o `localidad` en la cuenta), p. ej. «CABA»: queda en el registro local, para el PDF |
 | `punto_venta` | Por defecto el de la cuenta |
 
+- **PDF**: al emitir se arma solo un comprobante simple (A4) con tus datos, el cliente, la descripción, «Contado», el total, el CAE
+  y su vencimiento, y el **QR de ARCA** (con el enlace oficial). Se guarda en `~/.config/epsilon-arca/comprobantes/` (o `ARCA_PDF_DIR`
+  / `pdf_dir` de la cuenta) como `<cuenta>-0002-00000002.pdf`, con permisos 600. En homologación dice que es de prueba. `pdf=false`
+  lo omite. Si el PDF falla, la factura igual queda emitida y el aviso dice cómo rehacerlo con `pdf_comprobante`.
 - **Cliente según el padrón**: con un documento, la simulación consulta el padrón (solo lectura) y muestra
   `Cliente (padrón): nombre · domicilio`; se anota en el registro. Si el DNI tiene varias claves, no deja seguir hasta que
   pases el CUIL como documento. Si el padrón no responde o no conoce a esa persona, avisa con ⚠ y la factura se puede emitir igual.
@@ -129,6 +134,8 @@ Solo datos, sin secretos (las claves son archivos aparte con permisos 600):
   envía si lo ponés; ARCA exige que sea una de las actividades activas del emisor (se ven con `actividades`, y
   `verificar` lo comprueba). **En homologación el emisor de pruebas casi nunca las tiene: probá sin `actividad`.**
 - `descripcion` (opcional): texto por defecto, por ejemplo `"Repuestos y reparaciones"`; si no está, hay que pasarla en cada emisión.
+- `nombre` y `domicilio_emisor` (opcionales): lo que sale arriba en el PDF (tu nombre o razón social y tu domicilio comercial).
+  `pdf` (`false` para no generarlo nunca) y `pdf_dir` (otra carpeta).
 - `obligatorios` (opcional): datos que esta cuenta exige además de lo de ARCA: `"documento"`, `"descripcion"`, `"localidad"`.
 - `localidad` (opcional): por ejemplo `"CABA"`, para el domicilio del comprobante cuando no se tiene el del cliente.
 - `emision` (solo producción): `true` para permitir emitir de verdad.
