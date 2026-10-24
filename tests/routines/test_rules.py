@@ -28,11 +28,11 @@ def test_daily_times(text, days):
 
 
 @pytest.mark.parametrize("text, minutes", [("en 30m", 30), ("en 2h", 120), ("en 1h30m", 90), ("EN 45 m", 45)])
-def test_in_a_while_is_a_single_run_with_the_seconds_dropped(text, minutes):
+def test_in_a_while_counts_exactly_from_now_without_dropping_seconds(text, minutes):
     when = rules.parse_when(text, NOW)
 
     assert when["kind"] == "once"
-    assert datetime.fromisoformat(when["at"]) == (NOW + timedelta(minutes=minutes)).replace(second=0)
+    assert datetime.fromisoformat(when["at"]) == (NOW + timedelta(minutes=minutes)).replace(microsecond=0)
 
 
 @pytest.mark.parametrize("text", ["", "mañana", "25:00", "23:60", "lun 9", "lun mar 09:00", "xyz-vie 09:00", "en", "en 0m", "en 99999m", "en 400h", "23:00; rm -rf /"])

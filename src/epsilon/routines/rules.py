@@ -72,7 +72,7 @@ def parse_when(text: str, now: datetime) -> dict:
         minutes = int(inside.group(1) or 0) * 60 + int(inside.group(2) or 0)
         if not 1 <= minutes <= MAX_IN_MINUTES:
             raise ValueError("«en» admite entre 1 minuto y 7 días.")
-        return {"kind": "once", "at": (now + timedelta(minutes=minutes)).replace(second=0, microsecond=0).isoformat()}
+        return {"kind": "once", "at": (now + timedelta(minutes=minutes)).replace(microsecond=0).isoformat()}
     *days, clock = text.split(" ")
     match = TIME.fullmatch(clock)
     if not match or len(days) > 1:
