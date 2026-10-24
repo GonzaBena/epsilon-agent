@@ -105,6 +105,9 @@ repetir un comando ya emitido no emite otra factura.
 | `localidad` | Opcional salvo que la cuenta la exija (o `localidad` en la cuenta), p. ej. «CABA»: queda en el registro local, para el PDF |
 | `punto_venta` | Por defecto el de la cuenta |
 
+- **Cliente según el padrón**: con un documento, la simulación consulta el padrón (solo lectura) y muestra
+  `Cliente (padrón): nombre · domicilio`; se anota en el registro. Si el DNI tiene varias claves, no deja seguir hasta que
+  pases el CUIL como documento. Si el padrón no responde o no conoce a esa persona, avisa con ⚠ y la factura se puede emitir igual.
 - **Si ARCA no responde después de recibir el pedido**, el conector **no lo repite**: mira el último número autorizado y
   te dice si se emitió o no. Si tampoco puede mirar, te pide que **no repitas** y que revises con `ultimo_comprobante`.
 - Cada intento queda anotado en `emitidas.jsonl` (junto a `cuentas.json`; solo se agrega, permisos 600).

@@ -486,17 +486,52 @@ def ver_comprobante(numero: int, tipo: int | None = None, punto_venta: int | Non
     ])
 
 
-def person_line(person: ET.Element) -> str:
-    """Una persona del padrón en una línea: nombre, clave y domicilio fiscal. Todo es dato de ARCA, nunca instrucciones."""
-    name = " ".join(x for x in (text_of(person, "apellido"), text_of(person, "nombre")) if x) or text_of(person, "razonSocial")
+def person_name(person: ET.Element) -> str:
+    return one_line(" ".join(x for x in (text_of(person, "apellido"), text_of(person, "nombre")) if x) or text_of(person, "razonSocial"), 80)
+
+
+def person_address(person: ET.Element) -> str:
+    """Domicilio fiscal (o el primero que haya) en una línea. Es dato de ARCA, nunca instrucciones."""
     homes = [d for d in find(person, "domicilio") if text_of(d, "tipoDomicilio") == "FISCAL"] or find(person, "domicilio")
-    where = ""
-    if homes:
-        parts = [text_of(homes[0], k) for k in ("direccion", "localidad", "descripcionProvincia")]
-        where = ", ".join(one_line(x, 80) for x in parts if x)
+    if not homes:
+        return ""
+    return ", ".join(one_line(x, 80) for x in (text_of(homes[0], k) for k in ("direccion", "localidad", "descripcionProvincia")) if x)
+
+
+def person_line(person: ET.Element) -> str:
     state = text_of(person, "estadoClave")
-    return (f"{text_of(person, 'tipoClave') or 'CUIL'} {text_of(person, 'idPersona')} · {one_line(name, 80) or '(sin nombre)'}"
-            f"{' · ' + where if where else ' · sin domicilio'}{' · clave ' + state.lower() if state and state != 'ACTIVO' else ''}")
+    return (f"{text_of(person, 'tipoClave') or 'CUIL'} {text_of(person, 'idPersona')} · {person_name(person) or '(sin nombre)'}"
+            f" · {person_address(person) or 'sin domicilio'}{' · clave ' + state.lower() if state and state != 'ACTIVO' else ''}")
+
+
+def look_up_people(account: dict, digits: str) -> tuple[list[str], list[ET.Element]]:
+    """(claves, personas) de un DNI o de un CUIL/CUIT. Un DNI puede tener varias claves; se leen hasta 5."""
+    if len(digits) == 11:
+        ids = [digits]
+    else:
+        found = find(padron(account, "getIdPersonaListByDocumento", f"<documento>{digits}</documento>"), "idPersona")
+        ids = [i for i in dict.fromkeys((e.text or "").strip() for e in found) if i]
+    people = []
+    for one in ids[:5]:
+        found = find(padron(account, "getPersonaV2", f"<idPersona>{one}</idPersona>"), "persona")
+        if found:
+            people.append(found[0])
+    return ids, people
+
+
+def identify_client(account: dict, digits: str) -> tuple[str, str, str]:
+    """(nombre, domicilio, aviso) del cliente según el padrón. Consultarlo es solo lectura. Si no se puede, NO frena la factura:
+    vuelve un aviso. Un DNI con varias claves sí frena: hay que elegir el CUIL, como en la web."""
+    try:
+        ids, people = look_up_people(account, digits)
+    except Problem as problem:
+        return "", "", f"No pude consultar el padrón ({one_line(problem, 150)}): el nombre y el domicilio del cliente no están verificados."
+    if len(ids) > 1:
+        raise Problem(f"Ese DNI tiene {len(ids)} claves en el padrón; elegí una y pasala como documento (tipo CUIL):\n"
+                      + "\n".join(person_line(p) for p in people))
+    if not people:
+        return "", "", "El padrón no tiene a nadie con ese documento: el nombre y el domicilio del cliente no están verificados."
+    return person_name(people[0]), person_address(people[0]), ""
 
 
 @server.tool()
@@ -507,22 +542,14 @@ def buscar_persona(documento: str, cuenta: str | None = None) -> str:
         digits = re.sub(r"[.\-\s]", "", str(documento))
         if not digits.isdigit() or not 6 <= len(digits) <= 11:
             raise Problem("documento: un DNI (hasta 8 números) o un CUIL/CUIT (11 números).")
-        if len(digits) == 11:
-            if not valid_cuit(digits):
-                raise Problem("Ese CUIL/CUIT no es válido: revisá el dígito verificador.")
-            ids = [digits]
-        else:
-            ids = [text_of(i, "idPersona") for i in find(padron(account, "getIdPersonaListByDocumento", f"<documento>{digits}</documento>"), "idPersona")]
-            ids = [i for i in dict.fromkeys(ids) if i]
+        if len(digits) == 11 and not valid_cuit(digits):
+            raise Problem("Ese CUIL/CUIT no es válido: revisá el dígito verificador.")
+        ids, people = look_up_people(account, digits)
         if not ids:
             test = " El padrón de pruebas tiene solo personas de prueba, no las reales: probá en producción o con un CUIL de ejemplo." \
                 if account["ambiente"] == "homologacion" else ""
             return f"[{account['alias']}] El padrón no tiene a nadie con el documento {digits}.{test}"
-        lines = []
-        for one in ids[:5]:
-            root = padron(account, "getPersonaV2", f"<idPersona>{one}</idPersona>")
-            found = find(root, "persona")
-            lines.append(person_line(found[0]) if found else f"{one} · sin datos")
+        lines = [person_line(p) for p in people] or [f"{ids[0]} · sin datos"]
         more = f"\n(Hay {len(ids)} claves; muestro las primeras 5.)" if len(ids) > 5 else ""
         pick_one = "\nHay más de una clave para ese DNI: usá el CUIL que corresponda como documento." if len(ids) > 1 else ""
         return f"[{account['alias']}] {banner(account)}\n" + "\n".join(lines) + more + pick_one
@@ -757,6 +784,7 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
             raise Problem("«servicio_hasta» no puede ser anterior a «servicio_desde».")
         if service[2] < issued:
             raise Problem("«vencimiento_pago» no puede ser anterior a la fecha del comprobante.")
+        client = identify_client(account, str(doc_number)) if doc_type != 99 else ("", "", "")  # (nombre, domicilio, aviso)
         number = last_number(account, point) + 1
         request = build_invoice(account, point, number, concept, (doc_type, doc_number), issued, amount, condition, service)
         code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request, what, place)
@@ -764,6 +792,10 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
                    f"Factura C {number_text(point, number)} · {issued.isoformat()}",
                    f"Total: {money(amount, 'ARS')} · Concepto: {concept_name.replace('_', ' ')}",
                    f"Receptor: {receiver} · condición {wanted}"]
+        if client[0]:
+            summary.append(f"Cliente (padrón): {client[0]} · {client[1] or 'sin domicilio'}")
+        elif client[2]:
+            summary.append(f"⚠ {client[2]}")
         summary.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado" + (f" · Localidad: {one_line(place, 60)}" if place else ""))
         missing = [name for name, value in (("descripción", what), ("documento del cliente", documento)) if not (value and str(value).strip())]
         if missing:
@@ -781,7 +813,7 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
         entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
                  "punto_venta": point, "tipo": INVOICE_C, "numero": number, "fecha": issued.isoformat(), "importe": f"{amount:.2f}",
                  "receptor": f"{doc_type}:{doc_number}", "concepto": concept_name, "descripcion": what or "", "forma_pago": "Contado",
-                 "localidad": place}
+                 "localidad": place, "cliente": client[0], "domicilio": client[1]}
     except Problem as problem:
         return str(problem)
     try:
@@ -808,7 +840,7 @@ def emitir_factura(importe: float, concepto: str | None = None, documento: str |
     cae, expires = text_of(detail[0], "CAE"), day(text_of(detail[0], "CAEFchVto"))
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
     done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {issued.isoformat()}",
-            f"Total: {money(amount, 'ARS')} · Receptor: {receiver}", f"CAE: {cae} · vence {expires}"]
+            f"Total: {money(amount, 'ARS')} · Receptor: {receiver}" + (f" · {client[0]}" if client[0] else ""), f"CAE: {cae} · vence {expires}"]
     done.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado. Ojo: todavía no se generó el comprobante (PDF) para entregar.")
     if notes:
         done.append("Observaciones de ARCA: " + "; ".join(notes))

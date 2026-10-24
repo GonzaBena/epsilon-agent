@@ -93,6 +93,10 @@ def wsfe_answer(method: str, result: str) -> str:
     return envelope(f'<{method}Response xmlns="http://ar.gov.afip.dif.FEV1/"><{method}Result>{result}</{method}Result></{method}Response>')
 
 
+NOBODY = {"getIdPersonaListByDocumento": '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><r><idPersonaListReturn/></r></soap:Body></soap:Envelope>',
+          "getPersonaV2": '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><r><personaReturn/></r></soap:Body></soap:Envelope>'}
+
+
 def serve(arca, monkeypatch, wsfe: dict, wsaa=None):
     """Instala un ARCA falso: devuelve la lista de pedidos (url, acción, cuerpo)."""
     calls = []
@@ -102,6 +106,8 @@ def serve(arca, monkeypatch, wsfe: dict, wsaa=None):
         if "LoginCms" in url:
             return (wsaa or (200, wsaa_answer()))
         method = action.rsplit("/", 1)[-1]
+        if method not in wsfe and method in NOBODY:
+            return 200, NOBODY[method]  # el padrón, si el test no dijo nada, no conoce a nadie
         answer = wsfe[method]  # un método que el test no esperaba llamar da KeyError: falla fuerte
         return 200, (answer(body) if callable(answer) else answer)
 
@@ -831,3 +837,43 @@ def test_the_padron_validates_the_document_and_explains_a_missing_authorization(
     fault = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultstring>Computador no autorizado a acceder al servicio</faultstring></soap:Fault></soap:Body></soap:Envelope>'
     serve(ready, monkeypatch, {"getIdPersonaListByDocumento": fault})
     assert "Falta autorizar el servicio «ws_sr_padron_a13»" in ready.buscar_persona("12345678")
+
+
+def padron_for(*people):
+    """Un padrón falso con esas personas (cuil, apellido, nombre): el DNI de 8 números devuelve todas sus claves."""
+    ids = "".join(f"<idPersona>{c}</idPersona>" for c, _, _ in people)
+    by_id = {c: person(c, last, first) for c, last, first in people}
+
+    def one(body):
+        return by_id[re.search(r"<idPersona>(\d+)</idPersona>", body).group(1)]
+    return {"getIdPersonaListByDocumento": padron_answer("getIdPersonaListByDocumento", f"<idPersonaListReturn>{ids}</idPersonaListReturn>"),
+            "getPersonaV2": one}
+
+
+def test_emitting_shows_and_logs_the_name_and_address_from_the_padron(ready, monkeypatch):
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "FECAESolicitar": approved(), **padron_for(("20123456786", "PEREZ", "JUAN"))})
+    simulation = ready.emitir_factura(importe=500, concepto="productos", documento="12345678")
+    assert "Cliente (padrón): PEREZ JUAN · SAN RAMON 415, CABA, CAPITAL FEDERAL" in simulation
+    done = ready.emitir_factura(importe=500, concepto="productos", documento="12345678", confirmar=the_code(simulation))
+    assert "Receptor: DNI 12345678 · PEREZ JUAN" in done
+    logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
+    assert logged["cliente"] == "PEREZ JUAN" and logged["domicilio"].startswith("SAN RAMON 415")
+
+
+def test_a_dni_with_several_keys_makes_you_choose_the_cuil_and_emits_nothing(ready, monkeypatch):
+    calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, **padron_for(("20123456786", "PEREZ", "JUAN"), ("27123456780", "PEREZ", "ANA"))})
+    refused = ready.emitir_factura(importe=500, concepto="productos", documento="12345678")
+    assert "tiene 2 claves" in refused and "PEREZ ANA" in refused and "confirmar=" not in refused
+
+
+def test_when_the_padron_cannot_answer_the_invoice_still_goes_with_a_warning(ready, monkeypatch):
+    fault = '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultstring>Computador no autorizado a acceder al servicio</faultstring></soap:Fault></soap:Body></soap:Envelope>'
+    serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST, "getIdPersonaListByDocumento": fault})
+    simulation = ready.emitir_factura(importe=500, concepto="productos", documento="12345678")
+    assert "⚠ No pude consultar el padrón" in simulation and "confirmar=" in simulation
+
+
+def test_an_anonymous_consumer_never_asks_the_padron(ready, monkeypatch):
+    calls = serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})
+    ready.emitir_factura(importe=500, concepto="productos", documento=None, sin_identificar=True)
+    assert not [c for c in calls if "sr-padron" in c[0]]

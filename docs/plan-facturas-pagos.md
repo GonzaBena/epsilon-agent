@@ -72,6 +72,8 @@ personales: no se suben al repositorio).
     suelen traer datos de prueba. **Se decide con una prueba real y de solo lectura**: habilitar la relación junto con el
     certificado de producción y consultar el propio DNI/CUIL.
   - Si no se puede, no bloquea nada: la factura se emite igual con DNI/CUIL y el nombre/domicilio del PDF se escriben a mano.
+- Hecho: `buscar_persona` y su uso en `emitir_factura` (nombre y domicilio en la simulación y en el registro; varias claves
+  → hay que elegir el CUIL; padrón caído → aviso, no bloquea). Validado en homologación con las personas de ejemplo del manual.
 - Después: nota de crédito, formulario en la página.
 
 ## Riesgos
