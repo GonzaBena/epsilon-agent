@@ -1021,8 +1021,8 @@ def test_the_batch_simulation_compares_names_with_the_padron_and_emits_nothing(r
 
     text = ready.emitir_lote(write_csv(tmp_path, CSV))
 
-    assert "| 2 | MP-1 | Juan Perez | 15.000,50 | 0003-00000046 | OK |" in text
-    assert "| 3 | MP-2 | Ana Gomes | 8.200,00 | 0003-00000047 | REVISAR · el nombre no coincide: el padrón dice «GOMEZ ANA»" in text
+    assert "- ✓ Fila 2 · MP-1 · Juan Perez · ARS 15.000,50 · 0003-00000046 — OK" in text
+    assert "- ⚠ Fila 3 · MP-2 · Ana Gomes · ARS 8.200,00 · 0003-00000047 — REVISAR: el nombre no coincide: el padrón dice «GOMEZ ANA»" in text
     assert "A emitir: 2 por ARS 23.200,50 · para revisar: 1" in text
     assert "confirmar=" in text and "aceptar=MP-2" in text and "No se emitió nada" in text
     assert not sent(calls, "FECAESolicitar") and not (ready.home() / "emitidas.jsonl").exists()
@@ -1053,7 +1053,7 @@ def test_running_the_same_file_again_never_bills_an_id_twice(ready, monkeypatch,
 
     again = ready.emitir_lote(path)
 
-    assert again.count("YA EMITIDA · ya salió como 0003-0000004") == 2 and "No hay nada para emitir" in again
+    assert again.count("— YA EMITIDA: ya salió como 0003-0000004") == 2 and "No hay nada para emitir" in again
     assert len(sent(calls, "FECAESolicitar")) == 2
 
 
@@ -1061,8 +1061,8 @@ def test_a_row_with_an_error_blocks_the_whole_batch(ready, monkeypatch, tmp_path
     calls, _ = serve_batch(ready, monkeypatch)
     text = ready.emitir_lote(write_csv(tmp_path, "ID,nombre,dni,precio\nA,Juan Perez,12345678,100\nB,Ana,23456789,12.3456\nC,X,,50\nA,Otro,12345678,10\n"))
 
-    assert "ERROR · El importe lleva como máximo 2 decimales" in text and "ERROR · falta el DNI/CUIL/CUIT" in text
-    assert "ERROR · el ID está repetido" in text and "confirmar=" not in text and "No se emitió nada" in text
+    assert "— ERROR: El importe lleva como máximo 2 decimales" in text and "— ERROR: falta el DNI/CUIL/CUIT" in text
+    assert "— ERROR: el ID está repetido" in text and "confirmar=" not in text and "No se emitió nada" in text
     assert not sent(calls, "FECAESolicitar")
 
 
@@ -1088,13 +1088,13 @@ def test_the_code_depends_on_the_file_and_accepting_an_unknown_id_is_an_error(re
 def test_the_padron_being_down_leaves_every_row_to_review_but_the_batch_still_works(ready, monkeypatch, tmp_path):
     calls, _ = serve_batch(ready, monkeypatch, {"getIdPersonaListByDocumento": lambda body: (_ for _ in ()).throw(ready.Problem("No pude hablar con ARCA"))})
     text = ready.emitir_lote(write_csv(tmp_path, CSV))
-    assert text.count("REVISAR · No pude consultar el padrón") == 2 and "aceptar=MP-1,MP-2" in text
+    assert text.count("— REVISAR: el padrón no respondió: nombre sin verificar") == 2 and "aceptar=MP-1,MP-2" in text
 
 
 def test_the_csv_can_come_from_a_spanish_excel_with_semicolons_and_other_column_names(ready, monkeypatch, tmp_path):
     serve_batch(ready, monkeypatch)
     text = ready.emitir_lote(write_csv(tmp_path, "Referencia;Cliente;CUIL;Importe\nÑ-1;Juan Pérez;12345678;$ 1.500\n", encoding="cp1252"))
-    assert "| 2 | Ñ-1 | Juan Pérez | 1.500,00 | 0003-00000046 | OK |" in text
+    assert "- ✓ Fila 2 · Ñ-1 · Juan Pérez · ARS 1.500,00 · 0003-00000046 — OK" in text
 
 
 def test_a_csv_without_the_needed_columns_or_too_long_says_so(ready, monkeypatch, tmp_path):

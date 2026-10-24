@@ -1186,20 +1186,30 @@ def judge_row(account: dict, row: dict, seen: set, before: dict) -> dict:
         elif registered and not same_person(row["nombre"], registered):
             item.update(status="REVISAR", why=f"el nombre no coincide: el padrón dice «{registered}»")
         elif not registered:
-            item.update(status="REVISAR", why=(warning or "el padrón no devolvió el nombre").rstrip("."))
+            item.update(status="REVISAR", why="el padrón no respondió: nombre sin verificar" if warning.startswith("No pude consultar")
+                        else "el padrón no conoce ese documento")
     except Problem as problem:
         item.update(status="ERROR", why=one_line(problem, 200))
     return item
 
 
+MARKS = {"OK": "✓", "REVISAR": "⚠", "ERROR": "✗", "YA EMITIDA": "↺"}
+
+
 def batch_table(items: list[dict], numbers: dict[int, int], point: int, accepted: set) -> list[str]:
-    lines = ["| Fila | ID | Nombre del archivo | Importe | Factura | Estado |", "|---|---|---|---|---|---|"]
+    """Una línea por fila (una tabla se rompe en pantallas angostas): marca, fila, ID, nombre, importe, número de factura y el motivo."""
+    lines = []
     for item in items:
         plan = item["plan"]
-        shown = "ACEPTADA · " + item["why"] if item["status"] == "REVISAR" and item["id"] in accepted else (
-            item["status"] + (f" · {item['why']}" if item["why"] else ""))
-        lines.append(f"| {item['line']} | {one_line(item['id'], 20)} | {one_line(item['name'], 40)} | "
-                     f"{money(plan['amount']) if plan else '—'} | {number_text(point, numbers[item['line']]) if item['line'] in numbers else '—'} | {shown} |")
+        status = "ACEPTADA" if item["status"] == "REVISAR" and item["id"] in accepted else item["status"]
+        mark = "✓" if status == "ACEPTADA" else MARKS[item["status"]]
+        parts = [f"Fila {item['line']}", one_line(item["id"], 20), one_line(item["name"], 40) or "(sin nombre)"]
+        if plan:
+            parts.append(money(plan["amount"], "ARS"))
+        if item["line"] in numbers:
+            parts.append(number_text(point, numbers[item["line"]]))
+        reason = f"{status}: {item['why']}" if item["why"] else status
+        lines.append(f"- {mark} {' · '.join(parts)} — {reason}")
     return lines
 
 
