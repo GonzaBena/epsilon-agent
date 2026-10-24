@@ -691,8 +691,12 @@ function renderButtons(buttons) {
     head.append(titleRow);
 
     if (button.args && Object.keys(button.args).length) {
-      const argsText = typeof button.args === "object" ? JSON.stringify(button.args) : String(button.args);
-      const argsTag = make("span", "button-args-tag", `args: ${argsText}`);
+      // «clave: valor · clave: valor»; lo que no es texto simple (listas, objetos) va como JSON
+      const show = (v) => (typeof v === "object" && v !== null ? JSON.stringify(v) : String(v));
+      const argsText = typeof button.args === "object"
+        ? Object.entries(button.args).map(([k, v]) => `${k}: ${show(v)}`).join(" · ")
+        : String(button.args);
+      const argsTag = make("span", "button-args-tag", argsText);
       head.append(argsTag);
     }
 
