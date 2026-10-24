@@ -4265,3 +4265,134 @@ button.claude-icon-wrap {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Editor de rutinas (modal): nombre, cuándo y una cadena de pasos. Reusa .claude-dialog, .conn-field y los botones de la app. */
+.routine-top {
+  margin: 0 0 1rem;
+}
+.routine-name {
+  font-size: 1.05rem;
+}
+.rt-dialog {
+  max-width: 44rem;
+  color-scheme: dark; /* la hora y los números se dibujan con los controles oscuros del navegador */
+}
+.rt-trigger-row input {
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.rt-trigger {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.75rem;
+}
+.rt-trigger legend {
+  padding: 0 0.4rem;
+  font-weight: 600;
+}
+.rt-trigger-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.rt-trigger-row[hidden],
+.rt-confirm[hidden],
+#rt-editor[hidden] {
+  display: none;
+}
+.rt-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.rt-day {
+  min-width: 2.6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.rt-day[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.rt-heading {
+  margin: 1rem 0 0.25rem;
+}
+.rt-steps {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  list-style: none;
+}
+.rt-step {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+}
+.rt-step.is-selected {
+  border-color: var(--accent);
+}
+.rt-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.rt-step-title {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.2rem 0;
+  text-align: left;
+}
+.rt-step-tools {
+  display: flex;
+  gap: 0.35rem;
+}
+.rt-step-body {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.rt-warn {
+  color: var(--danger);
+}
+.rt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.rt-chip {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+.rt-results {
+  margin-top: 0.75rem;
+}
+.rt-confirm-steps {
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+}

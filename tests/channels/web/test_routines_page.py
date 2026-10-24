@@ -21,7 +21,7 @@ def test_it_loads_its_own_script_and_the_shell_and_marks_itself_as_current_in_th
     assert "/static/js/permisos.js" not in html and "/static/js/config.js" not in html
     assert re.search(r'<a class="nav-item" href="/rutinas" aria-current="page">', html)
     assert 'href="/permisos" aria-current' not in html  # la barra de arriba no marca nada acá
-    assert "<dialog" not in html  # se guarda cada acción al instante: no hay «cambios sin guardar»
+    assert 'id="routine-dialog"' in html  # el editor de pasos es un modal; pausar, reanudar y borrar siguen guardándose al instante
 
 
 def test_the_script_uses_text_content_and_never_builds_html():
@@ -36,7 +36,7 @@ def test_every_button_is_a_real_button_and_the_form_has_a_label_and_live_regions
     html, script = page("rutinas.html"), page("rutinas.js")
 
     assert not re.search(r"<button(?![^>]*type=\"(?:button|submit)\")", html)
-    assert '<label for="routine-text">Nueva rutina</label>' in html
+    assert '<label for="routine-text">Crear con una frase</label>' in html
     assert 'id="routine-error" role="alert"' in html and 'id="routine-status" role="status"' in html
     assert 'type = "button"' in script and '"role", "switch"' in script and "aria-checked" in script
 
@@ -89,3 +89,47 @@ def test_the_page_css_exists_and_respects_what_the_rest_of_the_app_uses():
         assert selector in css
     block = css[css.index(".routines-page"):css.index("/* La paleta de modelos")]
     assert "!important" not in block and "transition" not in block and "animation" not in block
+
+
+# --- el editor de rutinas (modal con lista de pasos) -----------------------------------------------------------------
+
+
+def test_the_page_has_the_new_routine_button_and_the_editor_dialog_with_its_parts():
+    html = page("rutinas.html")
+
+    assert re.search(r'<button type="button" class="send" id="routine-open">Nueva rutina</button>', html)
+    assert "/static/js/rutinas-editor.js" in html
+    for part in ('id="routine-dialog"', 'id="rt-name"', 'id="rt-steps"', 'id="rt-add-step"', 'id="rt-test"', 'id="rt-save"',
+                 'id="rt-confirm"', 'id="rt-error"', 'id="rt-results"'):
+        assert part in html
+
+
+def test_the_editor_never_builds_html_or_inline_styles_or_loads_from_outside():
+    code = code_of("rutinas-editor.js")
+
+    assert "textContent" in code
+    for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "confirm(", "alert(", ".style.", 'setAttribute("style"', "http://", "https://"):
+        assert forbidden not in code
+    assert "style=" not in page("rutinas.html")
+
+
+def test_the_editor_asks_for_confirmation_before_saving_or_testing_and_uses_the_api():
+    script = page("rutinas-editor.js")
+
+    assert "confirmed: true" in script
+    for path in ('"/api/routines/steps"', '"/api/routines/test"', "`/api/routines/${", "/edit"):
+        assert path in script
+
+
+def test_the_editor_button_labels_match_the_confirmation_panel():
+    html = page("rutinas.html")
+
+    for label in ("Probar ahora", "Guardar", "Cancelar", "Confirmar y guardar", "Confirmar y probar", "Volver"):
+        assert label in html or label in page("rutinas-editor.js")
+
+
+def test_the_editor_css_exists():
+    css = page("style.css")
+
+    for selector in (".rt-step", ".rt-chip", ".rt-confirm", ".rt-dialog"):
+        assert selector in css

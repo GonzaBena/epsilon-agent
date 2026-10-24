@@ -257,6 +257,7 @@ def view(rule: dict) -> dict:
         "steps": [{"tool": s["tool"], "args": s["args"], "text": describe_step(s)} for s in rule["steps"]],
         "do": {"kind": rule["steps"][0]["tool"], "arg": rule["steps"][0]["args"]},  # compatibilidad: el primer paso
         "layout": rule.get("layout", {}),
+        "trigger": rule["when"],  # el activador tal cual, para que el editor lo vuelva a armar
         "active": bool(rule.get("enabled", True)),
         "next": rule.get("next_run"),  # ISO sin zona (hora de la pared), para que la página cuente cuánto falta
         "next_text": next_text(rule),

@@ -27,7 +27,7 @@ def test_post_creates_and_returns_the_list_the_page_draws(client):
     assert reply.json()["rules"] == [{
         "id": 1, "kind": "daily", "when": "Todos los días a las 23:00", "do": {"kind": "volumen", "arg": "20"},
         "name": "volumen 20", "steps": [{"tool": "volumen", "args": "20", "text": "volumen 20"}], "layout": {},
-        "active": True, "next": "2026-10-22T23:00:00", "next_text": "jue 22/10 23:00",
+        "trigger": {"kind": "daily", "time": "23:00", "days": [0, 1, 2, 3, 4, 5, 6]}, "active": True, "next": "2026-10-22T23:00:00", "next_text": "jue 22/10 23:00",
     }]
     assert client.get("/api/routines").json() == reply.json()
 

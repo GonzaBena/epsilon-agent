@@ -53,11 +53,9 @@ function untilText(iso) {
   return `en ${Math.floor(hours / 24)} d`;
 }
 
+// Lo que hace, como frase: el nombre y los pasos en fila («volumen 15 > nav_abrir … > avisar: Arriba»).
 function whatText(rule) {
-  const { kind, arg } = rule.do;
-  if (kind === "avisar") return `Avisar: ${arg}`;
-  if (kind === "volumen") return `Volumen: ${arg}`;
-  return `Música: ${arg || "alternar play y pausa"}`;
+  return rule.steps.map((step) => step.text).join(" > ");
 }
 
 function nextText(rule) {
@@ -78,6 +76,7 @@ function renderRow(rule) {
   title.append(make("span", "perm-kind", KIND_LABELS[rule.kind] || rule.kind));
   const next = make("p", "routine-next", nextText(rule));
   timeNodes.push({ node: next, rule });
+  title.prepend(make("strong", "routine-name", rule.name));
   info.append(title, make("p", "routine-what", whatText(rule)), next);
 
   const actions = make("div", "routine-actions");
@@ -96,7 +95,13 @@ function renderRow(rule) {
   remove.setAttribute("aria-label", `Borrar: ${rule.when}. ${whatText(rule)}`);
   remove.addEventListener("click", () => change("DELETE", rule.id, undefined, "Rutina borrada."));
 
-  actions.append(toggle, remove);
+  const edit = make("button", "secondary routine-edit", "Editar");
+  edit.type = "button";
+  edit.dataset.focus = `edit-${rule.id}`;
+  edit.setAttribute("aria-label", `Editar: ${rule.name}`);
+  edit.addEventListener("click", () => window.routineEditor && window.routineEditor.open(rule));
+
+  actions.append(toggle, edit, remove);
   item.append(info, actions);
   return item;
 }
@@ -238,3 +243,6 @@ setInterval(() => {
 }, REFRESH_MS);
 
 load();
+
+// Lo que comparte con el editor de rutinas (rutinas-editor.js), que se carga después.
+window.routinesPage = { adopt, request, make, showStatus, showError };

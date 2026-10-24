@@ -15,6 +15,7 @@
   <script src="/static/js/palette.js" defer></script>
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/rutinas.js" defer></script>
+  <script src="/static/js/rutinas-editor.js" defer></script>
 </head>
 <body class="settings-page">
 
@@ -92,18 +93,22 @@
     <div class="stage">
       <main class="settings routines-page">
         <h2 class="page-title">Rutinas</h2>
-        <p class="help">Lo que Epsilon hace solo: avisarte algo, cambiar el volumen o controlar la música. Funciona mientras la PC esté encendida y no usa IA.</p>
+        <p class="help">Lo que Epsilon hace solo: una hora (o una condición) y una cadena de pasos, como avisarte algo, cambiar el volumen, abrir un sitio o controlar la música. Funciona mientras la PC esté encendida y no usa IA.</p>
 
         <p class="routine-banner" id="routine-off" role="status" hidden>Las rutinas están apagadas, así que ninguna se cumple. Prendelas en <a href="/config">Configuración</a>.</p>
 
+        <div class="routine-top">
+          <button type="button" class="send" id="routine-open">Nueva rutina</button>
+        </div>
+
         <form class="routine-new" id="routine-form" autocomplete="off">
-          <label for="routine-text">Nueva rutina</label>
+          <label for="routine-text">Crear con una frase</label>
           <div class="routine-new-row">
             <input id="routine-text" type="text" maxlength="300" spellcheck="false" placeholder="23:00 | volumen 20"
                    aria-describedby="routine-hint routine-error">
             <button type="submit" class="send" id="routine-add">Crear rutina</button>
           </div>
-          <p class="hint" id="routine-hint">Se escribe «cuándo | qué». Tocá un ejemplo para empezar:</p>
+          <p class="hint" id="routine-hint">Se escribe «cuándo | qué» (los pasos se encadenan con « &gt; »). Tocá un ejemplo para empezar:</p>
           <ul class="routine-examples" aria-label="Ejemplos">
             <li><button type="button" class="secondary routine-example" data-text="23:00 | volumen 20">Bajar el volumen a las 23:00</button></li>
             <li><button type="button" class="secondary routine-example" data-text="lun-vie 09:00 | avisar Standup">Avisarme de lunes a viernes a las 09:00</button></li>
@@ -117,6 +122,83 @@
 
         <ul class="routine-list" id="routine-list"></ul>
         <p class="routine-empty" id="routine-empty" hidden>No hay rutinas todavía. Escribí una arriba, por ejemplo «23:00 | volumen 20».</p>
+
+        <!-- Editor de rutinas: nombre, cuándo y una cadena de pasos. Lo dibuja rutinas-editor.js; antes de guardar o probar
+             muestra la lista exacta de pasos y pide confirmar (esa confirmación es el permiso de la rutina). -->
+        <dialog class="claude-dialog rt-dialog" id="routine-dialog" aria-labelledby="rt-title">
+          <div class="claude-modal-box">
+            <div class="claude-modal-header">
+              <h3 class="claude-modal-title" id="rt-title">Nueva rutina</h3>
+              <button type="button" class="claude-modal-close" id="rt-close" aria-label="Cerrar">✕</button>
+            </div>
+
+            <div id="rt-editor">
+              <div class="conn-field">
+                <label for="rt-name">Nombre</label>
+                <input id="rt-name" type="text" maxlength="60" placeholder="Ej: Despertador" autocomplete="off">
+              </div>
+
+              <fieldset class="rt-trigger">
+                <legend>Cuándo</legend>
+                <select id="rt-kind" aria-label="Tipo de activador">
+                  <option value="daily">A una hora</option>
+                  <option value="once">Dentro de un rato (una sola vez)</option>
+                  <option value="cond">Cuando el disco o la memoria pasen de un %</option>
+                </select>
+                <div id="rt-daily" class="rt-trigger-row">
+                  <label for="rt-time">Hora</label>
+                  <input id="rt-time" type="time" value="08:00">
+                  <div class="rt-days" id="rt-days" role="group" aria-label="Días de la semana"></div>
+                </div>
+                <div id="rt-once" class="rt-trigger-row" hidden>
+                  <label for="rt-every">En</label>
+                  <input id="rt-every" type="number" min="1" max="9999" value="30">
+                  <select id="rt-unit" aria-label="Unidad">
+                    <option value="m">minutos</option>
+                    <option value="h">horas</option>
+                  </select>
+                </div>
+                <div id="rt-cond" class="rt-trigger-row" hidden>
+                  <select id="rt-metric" aria-label="Qué vigilar">
+                    <option value="disco">El disco</option>
+                    <option value="ram">La memoria</option>
+                  </select>
+                  <label for="rt-limit">pasa del</label>
+                  <input id="rt-limit" type="number" min="1" max="99" value="90">
+                  <span>%</span>
+                </div>
+              </fieldset>
+
+              <h4 class="rt-heading">Pasos</h4>
+              <p class="hint">Se hacen en orden. Un paso puede usar lo que devolvió uno anterior (botones «Usar»).</p>
+              <ol class="rt-steps" id="rt-steps"></ol>
+              <div class="routine-new-row">
+                <select id="rt-pick" aria-label="Paso a agregar"></select>
+                <button type="button" class="secondary" id="rt-add-step">＋ Agregar paso</button>
+                <button type="button" class="secondary" id="rt-example">Empezar con un despertador</button>
+              </div>
+
+              <p class="result fail" id="rt-error" role="alert"></p>
+              <div class="routine-new-row">
+                <button type="button" class="secondary" id="rt-test">Probar ahora</button>
+                <button type="button" class="send" id="rt-save">Guardar</button>
+                <button type="button" class="secondary" id="rt-cancel">Cancelar</button>
+              </div>
+              <ul class="routine-list rt-results" id="rt-results" aria-live="polite"></ul>
+            </div>
+
+            <div class="rt-confirm" id="rt-confirm" hidden>
+              <h4 class="rt-heading" id="rt-confirm-title">Revisá lo que va a hacer</h4>
+              <p id="rt-confirm-when"></p>
+              <ol class="rt-confirm-steps" id="rt-confirm-steps"></ol>
+              <p class="hint">La rutina corre sola, sin preguntarte, con exactamente estos pasos. Si no ves algo que esperabas, volvé y revisalo.</p>
+              <div class="routine-new-row">
+                <button type="button" class="send" id="rt-confirm-ok">Confirmar</button>
+                <button type="button" class="secondary" id="rt-confirm-back">Volver</button>
+              </div>
+            </div>
+          </div>
+        </dialog>
       </main>
     </div>
 
