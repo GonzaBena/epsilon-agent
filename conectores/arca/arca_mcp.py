@@ -601,6 +601,7 @@ def condiciones_iva_receptor(cuenta: str | None = None) -> str:
 # importes, el receptor y las fechas; la descripción, el domicilio y la forma de pago NO (solo existen en el PDF).
 
 INVOICE_C = 11
+CREDIT_C = 13  # nota de crédito C
 CONCEPT_IDS = {"productos": 1, "servicios": 2, "productos_y_servicios": 3}
 RECEIVER_CONDITIONS = {"consumidor_final": 5, "responsable_inscripto": 1, "exento": 4, "monotributo": 6,
                        "no_categorizado": 7, "monotributo_social": 13}
@@ -674,7 +675,8 @@ def parse_day(value: str | None, name: str, default: date) -> date:
 
 
 def build_invoice(account: dict, point: int, number: int, concept: int, doc: tuple[int, int], issued: date,
-                  amount: Decimal, condition: int, service: tuple[date, date, date]) -> str:
+                  amount: Decimal, condition: int, service: tuple[date, date, date], kind: int = INVOICE_C,
+                  associated: tuple[int, int, int, date] | None = None) -> str:
     """El pedido FECAESolicitar. ARCA valida el XML EN ORDEN: es el del manual (ver docs/plan-facturas-pagos.md)."""
     day_text = lambda d: d.strftime("%Y%m%d")  # noqa: E731
     total = f"{amount:.2f}"
@@ -685,17 +687,20 @@ def build_invoice(account: dict, point: int, number: int, concept: int, doc: tup
         fields += [("FchServDesde", day_text(service[0])), ("FchServHasta", day_text(service[1])), ("FchVtoPago", day_text(service[2]))]
     fields += [("MonId", "PES"), ("MonCotiz", "1"), ("CondicionIVAReceptorId", condition)]
     detail = "".join(f"<{name}>{escape(str(value))}</{name}>" for name, value in fields)
+    if associated:  # nota de crédito: la factura que corrige (va después de la condición del receptor y antes de Actividades)
+        detail += (f"<CbtesAsoc><CbteAsoc><Tipo>{associated[0]}</Tipo><PtoVta>{associated[1]}</PtoVta><Nro>{associated[2]}</Nro>"
+                   f"<Cuit>{account['cuit']}</Cuit><CbteFch>{day_text(associated[3])}</CbteFch></CbteAsoc></CbtesAsoc>")
     activity = str(account.get("actividad") or "")
     if activity:
         if not re.fullmatch(r"\d{1,6}", activity):
             raise Problem(f"Cuenta «{account['alias']}»: «actividad» son hasta 6 números (por ejemplo 479900).")
         detail += f"<Actividades><Actividad><Id>{activity}</Id></Actividad></Actividades>"
-    return (f"<FeCAEReq><FeCabReq><CantReg>1</CantReg><PtoVta>{point}</PtoVta><CbteTipo>{INVOICE_C}</CbteTipo></FeCabReq>"
+    return (f"<FeCAEReq><FeCabReq><CantReg>1</CantReg><PtoVta>{point}</PtoVta><CbteTipo>{kind}</CbteTipo></FeCabReq>"
             f"<FeDetReq><FECAEDetRequest>{detail}</FECAEDetRequest></FeDetReq></FeCAEReq>")
 
 
-def last_number(account: dict, point: int) -> int:
-    root = wsfe(account, "FECompUltimoAutorizado", f"<PtoVta>{point}</PtoVta><CbteTipo>{INVOICE_C}</CbteTipo>")
+def last_number(account: dict, point: int, kind: int = INVOICE_C) -> int:
+    root = wsfe(account, "FECompUltimoAutorizado", f"<PtoVta>{point}</PtoVta><CbteTipo>{kind}</CbteTipo>")
     try:
         return int(text_of(root, "CbteNro") or 0)
     except ValueError:
@@ -780,7 +785,7 @@ def render_pdf(account: dict, entry: dict) -> Path:
     pdf.cell(16, 8, "C", align="C")
     pdf.set_font("Helvetica", "", 7)
     pdf.set_xy(97, top + 9)
-    pdf.cell(16, 4, "COD. 011", align="C")
+    pdf.cell(16, 4, f"COD. {int(entry.get('tipo', INVOICE_C)):03d}", align="C")
 
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_xy(18, top + 4)
@@ -791,10 +796,11 @@ def render_pdf(account: dict, entry: dict) -> Path:
                                 f"Condición frente al IVA: {ISSUER_LABEL.get(account.get('condicion', 'monotributo'), 'Monotributo')}"))
     pdf.set_font("Helvetica", "B", 15)
     pdf.set_xy(116, top + 3)
-    pdf.cell(76, 8, "FACTURA")
+    pdf.cell(76, 8, "NOTA DE CRÉDITO" if int(entry.get("tipo", INVOICE_C)) == CREDIT_C else "FACTURA")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_xy(116, top + 18)
-    pdf.multi_cell(76, 5.5, latin(f"Nº {number_text(point, number)}\nFecha de emisión: {entry['fecha']}"))
+    pdf.multi_cell(76, 5.5, latin(f"Nº {number_text(point, number)}\nFecha de emisión: {entry['fecha']}"
+                                  + (f"\nAsociada a la Factura C Nº {entry['asociada']}" if entry.get("asociada") else "")))
 
     y = top + 44
     pdf.set_xy(15, y)
@@ -850,7 +856,8 @@ def render_pdf(account: dict, entry: dict) -> Path:
 
     folder = pdf_folder(account)
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path = folder / f"{account['alias']}-{number_text(point, number)}.pdf"
+    prefix = "NC-" if int(entry.get("tipo", INVOICE_C)) == CREDIT_C else ""  # una nota y una factura pueden tener el mismo número
+    path = folder / f"{account['alias']}-{prefix}{number_text(point, number)}.pdf"
     write_private(path, bytes(pdf.output()))
     return path
 
@@ -864,7 +871,7 @@ def observations(detail: ET.Element) -> list[str]:
 def settle_after_silence(account: dict, point: int, number: int, problem: Problem, entry: dict) -> str:
     """El pedido salió pero no hubo respuesta: no se sabe si ARCA emitió. Se mira antes de decir nada, y NUNCA se repite solo."""
     try:
-        now_last = last_number(account, point)
+        now_last = last_number(account, point, entry.get("tipo", INVOICE_C))
     except Problem:
         entry["resultado"] = "sin_confirmar"
         return (f"✗ {problem}\nNo pude comprobar si ARCA emitió el comprobante {number_text(point, number)}. **No repitas el comando**: "
@@ -878,11 +885,12 @@ def settle_after_silence(account: dict, point: int, number: int, problem: Proble
 
 
 @server.tool()
-def pdf_comprobante(numero: int, punto_venta: int | None = None, cuenta: str | None = None) -> str:
-    """Arma (o rehace) el PDF de una factura C que se emitió desde acá, con los datos del registro local. Sirve si al emitir falló el PDF."""
+def pdf_comprobante(numero: int, tipo: int | None = None, punto_venta: int | None = None, cuenta: str | None = None) -> str:
+    """Arma (o rehace) el PDF de una factura C (o de una nota de crédito C con tipo=13) que se emitió desde acá, con los datos del registro local. Sirve si al emitir falló el PDF."""
     try:
         account = pick(cuenta)
         point = sale_point(account, punto_venta)
+        kind = int(tipo or INVOICE_C)
         path = home() / "emitidas.jsonl"
         found = None
         try:
@@ -891,14 +899,14 @@ def pdf_comprobante(numero: int, punto_venta: int | None = None, cuenta: str | N
                     one = json.loads(line)
                 except ValueError:
                     continue
-                if (one.get("cuenta"), one.get("ambiente"), one.get("punto_venta"), one.get("numero"), one.get("resultado")) == (
-                        account["alias"], account["ambiente"], point, int(numero), "emitida"):
+                if (one.get("cuenta"), one.get("ambiente"), one.get("punto_venta"), one.get("numero"), one.get("resultado"), one.get("tipo", INVOICE_C)) == (
+                        account["alias"], account["ambiente"], point, int(numero), "emitida", kind):
                     found = one
         except OSError:
             pass
         if not found:
-            return (f"No tengo en el registro local la factura {number_text(point, int(numero))} de «{account['alias']}»: "
-                    "solo puedo armar el PDF de las que se emitieron con emitir_factura en esta máquina.")
+            return (f"No tengo en el registro local el comprobante {label(kind)} {number_text(point, int(numero))} de «{account['alias']}»: "
+                    "solo puedo armar el PDF de los que se emitieron desde acá (emitir_factura, emitir_lote o emitir_nota_credito).")
         note = ""
         doc_type, doc_number = (int(x) for x in str(found["receptor"]).split(":"))
         if not found.get("cliente") and doc_type != 99:  # salió sin el padrón: se intenta ahora (el registro no se toca)
@@ -960,18 +968,20 @@ def plan_invoice(account: dict, *, importe, concepto, documento, tipo_documento,
 
 def invoice_request(account: dict, plan: dict, number: int) -> str:
     return build_invoice(account, plan["point"], number, plan["concept"], (plan["doc_type"], plan["doc_number"]), plan["issued"], plan["amount"],
-                         plan["condition"], plan["service"])
+                         plan["condition"], plan["service"], plan.get("kind", INVOICE_C), plan.get("associated"))
 
 
 def invoice_entry(account: dict, plan: dict, number: int) -> dict:
     """La línea del registro local de esta emisión (se completa con el resultado)."""
     entry = {"fecha_registro": datetime.now(AR_TZ).isoformat(timespec="seconds"), "cuenta": account["alias"], "ambiente": account["ambiente"],
-             "punto_venta": plan["point"], "tipo": INVOICE_C, "numero": number, "fecha": plan["issued"].isoformat(), "importe": f"{plan['amount']:.2f}",
+             "punto_venta": plan["point"], "tipo": plan.get("kind", INVOICE_C), "numero": number, "fecha": plan["issued"].isoformat(), "importe": f"{plan['amount']:.2f}",
              "receptor": f"{plan['doc_type']}:{plan['doc_number']}", "concepto": plan["concept_name"], "descripcion": plan["what"] or "",
              "forma_pago": "Contado", "localidad": plan["place"], "cliente": plan["client"][0], "domicilio": plan["client"][1],
              "condicion_receptor": plan["wanted"]}
-    if plan["referencia"]:
+    if plan.get("referencia"):
         entry["referencia"] = plan["referencia"]
+    if plan.get("associated"):
+        entry["asociada"] = number_text(plan["associated"][1], plan["associated"][2])
     return entry
 
 
@@ -1008,7 +1018,7 @@ def send_invoice(account: dict, plan: dict, number: int, request: str, entry: di
     cae, expires = text_of(detail[0], "CAE"), day(text_of(detail[0], "CAEFchVto"))
     entry.update(resultado="emitida", cae=cae, cae_vencimiento=expires, observaciones=notes)
     client, what = plan["client"], plan["what"]
-    done = [f"✓ [{account['alias']}] {banner(account)}", f"Factura C {number_text(point, number)} emitida · {plan['issued'].isoformat()}",
+    done = [f"✓ [{account['alias']}] {banner(account)}", f"{label(plan.get('kind', INVOICE_C))} {number_text(point, number)} emitida · {plan['issued'].isoformat()}",
             f"Total: {money(plan['amount'], 'ARS')} · Receptor: {plan['receiver']}" + (f" · {client[0]}" if client[0] else ""), f"CAE: {cae} · vence {expires}"]
     done.append(f"Descripción: {one_line(what, 120) if what else '(ninguna)'} · Pago: Contado")
     if make_pdf:
@@ -1295,6 +1305,137 @@ def emitir_lote(archivo: str, aceptar: str | None = None, pdf: bool | None = Non
                    + (f" ({len(rest)} sin procesar: {', '.join(rest)})" if rest else "") + ". Nada se reintentó solo.")
     out.append(f"Resultado: {done} emitidas de {len(pending)} por {money(issued_total, 'ARS')}.")
     return "\n".join(out)
+
+
+# ---------- Nota de crédito C: corregir una factura ya emitida ----------
+
+CONCEPT_NAMES = {number: name for name, number in CONCEPT_IDS.items()}
+
+
+def log_entries(account: dict) -> list[dict]:
+    """Las líneas del registro local de esta cuenta y ambiente."""
+    found = []
+    try:
+        for line in (home() / "emitidas.jsonl").read_text(encoding="utf-8").splitlines():
+            try:
+                one = json.loads(line)
+            except ValueError:
+                continue
+            if one.get("cuenta") == account["alias"] and one.get("ambiente") == account["ambiente"]:
+                found.append(one)
+    except OSError:
+        pass
+    return found
+
+
+def original_voucher(account: dict, point: int, number: int) -> dict:
+    """La factura C a corregir: del registro local (con descripción y cliente) o, si salió por otro lado (la web de ARCA), de ARCA."""
+    for one in reversed(log_entries(account)):
+        if (one.get("punto_venta"), one.get("numero"), one.get("tipo", INVOICE_C), one.get("resultado")) == (point, number, INVOICE_C, "emitida"):
+            return {"fecha": one["fecha"], "importe": Decimal(str(one["importe"])), "receptor": one["receptor"], "concepto": one["concepto"],
+                    "cliente": one.get("cliente", ""), "domicilio": one.get("domicilio", ""), "localidad": one.get("localidad", ""),
+                    "condicion": one.get("condicion_receptor", "consumidor_final"), "descripcion": one.get("descripcion", ""), "local": True}
+    try:
+        root = wsfe(account, "FECompConsultar", f"<FeCompConsReq><CbteTipo>{INVOICE_C}</CbteTipo><CbteNro>{number}</CbteNro><PtoVta>{point}</PtoVta></FeCompConsReq>")
+    except Problem as problem:
+        if NO_RESULTS in problem.codes:
+            raise Problem(f"No encuentro la Factura C {number_text(point, number)} en ARCA (¿el número o el punto de venta son correctos?).") from None
+        raise
+    if text_of(root, "Resultado") != "A" or not text_of(root, "CbteFch"):
+        raise Problem(f"La Factura C {number_text(point, number)} no figura aprobada en ARCA: no se le puede hacer una nota de crédito.")
+    condition = text_of(root, "CondicionIVAReceptorId")
+    names = {v: k for k, v in RECEIVER_CONDITIONS.items()}
+    return {"fecha": f"{day(text_of(root, 'CbteFch'))}", "importe": Decimal(text_of(root, "ImpTotal") or "0"),
+            "receptor": f"{text_of(root, 'DocTipo') or 99}:{text_of(root, 'DocNro') or 0}",
+            "concepto": CONCEPT_NAMES.get(int(text_of(root, "Concepto") or 1), "productos"), "cliente": "", "domicilio": "", "localidad": "",
+            "condicion": names.get(int(condition), condition) if condition.isdigit() else "consumidor_final", "descripcion": "", "local": False}
+
+
+def already_credited(account: dict, point: int, number: int) -> tuple[Decimal, list[str]]:
+    """(importe ya acreditado, intentos sin confirmar) de las notas de crédito anotadas acá para esa factura."""
+    wanted, total, unsure = number_text(point, number), Decimal("0"), []
+    for one in log_entries(account):
+        if one.get("tipo") == CREDIT_C and one.get("asociada") == wanted:
+            if one.get("resultado") == "emitida":
+                total += Decimal(str(one["importe"]))
+            elif one.get("resultado") in UNSURE:
+                unsure.append(number_text(one.get("punto_venta", 0), one.get("numero", 0)))
+    return total, unsure
+
+
+def plan_credit_note(account: dict, number: int, importe, motivo: str | None, fecha: str | None, punto_venta: int | None) -> dict:
+    if not 1 <= int(number) <= 99999999:
+        raise Problem("El número de la factura es un entero positivo (hasta 8 cifras).")
+    point, number = sale_point(account, punto_venta), int(number)
+    original = original_voucher(account, point, number)
+    credited, unsure = already_credited(account, point, number)
+    if unsure:
+        raise Problem(f"Un intento anterior de nota de crédito para esta factura ({', '.join(unsure)}) quedó sin confirmar: mirá con ultimo_comprobante "
+                      "tipo=13 si ARCA lo emitió antes de seguir.")
+    left = original["importe"] - credited
+    if left <= 0:
+        raise Problem(f"La Factura C {number_text(point, number)} ya está anulada por completo ({money(credited, 'ARS')} acreditados).")
+    amount = parse_amount(importe) if importe is not None else left
+    if amount > left:
+        raise Problem(f"El importe ({money(amount, 'ARS')}) supera lo que queda por acreditar de la factura: {money(left, 'ARS')} "
+                      f"(factura {money(original['importe'], 'ARS')}, ya acreditado {money(credited, 'ARS')}).")
+    concept_name = original["concepto"]
+    concept = CONCEPT_IDS[concept_name]
+    today = datetime.now(AR_TZ).date()
+    issued = parse_day(fecha, "fecha", today)
+    if abs((issued - today).days) > DATE_WINDOW[concept]:
+        raise Problem(f"Con {concept_name.replace('_', ' ')}, la fecha puede ser hasta {DATE_WINDOW[concept]} días antes o después de hoy ({today}).")
+    doc_type, doc_number = (int(x) for x in original["receptor"].split(":"))
+    wanted = str(original["condicion"])
+    condition = int(wanted) if wanted.isdigit() else RECEIVER_CONDITIONS.get(wanted, 5)
+    if original["cliente"] or doc_type == 99:
+        client = (original["cliente"], original["domicilio"], "")
+    else:
+        client = identify_client(account, str(doc_number))
+    why = f"Nota de crédito de la Factura C Nº {number_text(point, number)}" + (f": {one_line(motivo, 150)}" if motivo and motivo.strip() else "")
+    receiver = "Consumidor final (sin identificar)" if doc_type == 99 else f"{DOC_TYPES.get(doc_type, 'Documento')} {doc_number}"
+    return {"point": point, "concept": concept, "concept_name": concept_name, "amount": amount, "doc_type": doc_type, "doc_number": doc_number,
+            "receiver": receiver, "wanted": wanted, "condition": condition, "issued": issued, "service": (issued, issued, issued), "what": why,
+            "place": original["localidad"], "client": client, "documento": str(doc_number), "referencia": "", "kind": CREDIT_C,
+            "associated": (INVOICE_C, point, number, date.fromisoformat(original["fecha"])), "original": original, "credited": credited}
+
+
+@server.tool()
+def emitir_nota_credito(numero: int, importe: float | None = None, motivo: str | None = None, fecha: str | None = None, punto_venta: int | None = None,
+                        pdf: bool | None = None, cuenta: str | None = None, confirmar: str | None = None) -> str:
+    """Corrige una Factura C ya emitida con una nota de crédito C (la anula entera, o en parte con importe=). numero: el de la factura. SIN `confirmar` solo SIMULA y da un código; para emitir, repetir el mismo pedido con confirmar=<código>. Una nota emitida no se puede deshacer."""
+    try:
+        account = pick(cuenta)
+        plan = plan_credit_note(account, numero, importe, motivo, fecha, punto_venta)
+        point, original, client = plan["point"], plan["original"], plan["client"]
+        number = last_number(account, point, CREDIT_C) + 1
+        request = invoice_request(account, plan, number)
+        code = confirmation_code(account["alias"], account["ambiente"], account["cuit"], request, plan["what"])
+        before = number_text(point, plan["associated"][2])
+        whole = plan["amount"] == original["importe"] - plan["credited"] and plan["credited"] == 0
+        make_pdf = pdf if pdf is not None else account.get("pdf", True)
+        summary = [f"[{account['alias']}] {banner(account)}",
+                   f"Nota de crédito C {number_text(point, number)} · {plan['issued'].isoformat()}",
+                   f"Corrige la Factura C {before} de {money(original['importe'], 'ARS')}"
+                   + (f" (ya acreditado {money(plan['credited'], 'ARS')})" if plan["credited"] else "")
+                   + ("" if original["local"] else " (la factura no está en el registro local: datos tomados de ARCA)"),
+                   f"Importe de la nota: {money(plan['amount'], 'ARS')} · " + ("anula la factura entera" if whole else "anulación PARCIAL"),
+                   f"Receptor: {plan['receiver']}" + (f" · {client[0]}" if client[0] else ""),
+                   f"Detalle: {one_line(plan['what'], 160)}",
+                   "Una nota de crédito emitida NO se puede deshacer."
+                   + ("" if not make_pdf else f" Se generará el PDF en {pdf_folder(account)}.")]
+        if confirmar is None:
+            return "\n".join(summary + [f"No se emitió nada. Para emitir, repetí el mismo pedido agregando confirmar={code}"])
+        if confirmar.strip().lower() != code:
+            return "\n".join(["El código no coincide con esta nota: algo cambió (el número que le toca, algún dato) o ya se emitió.",
+                              "No se emitió nada. Esto es lo que se emitiría ahora:"] + summary + [f"Para emitir, agregá confirmar={code}"])
+        refuse_production_without_emission(account)
+        entry = invoice_entry(account, plan, number)
+        if motivo and motivo.strip():
+            entry["motivo"] = one_line(motivo, 150)
+    except Problem as problem:
+        return str(problem)
+    return send_invoice(account, plan, number, request, entry, make_pdf)
 
 
 @server.resource("epsilon://buttons")

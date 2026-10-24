@@ -140,7 +140,7 @@ def test_server_defines_its_tools_and_the_buttons_fit_them(arca):
     found = {t.name: t.input_schema for t in asyncio.run(arca.server.list_tools())}
 
     assert set(found) == {"cuentas", "verificar", "puntos_de_venta", "tipos_de_comprobante", "ultimo_comprobante", "ver_comprobante",
-                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona", "pdf_comprobante", "emitir_lote"}
+                          "condiciones_iva_receptor", "actividades", "emitir_factura", "buscar_persona", "pdf_comprobante", "emitir_lote", "emitir_nota_credito"}
     for button in json.loads(arca.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -1130,3 +1130,112 @@ def test_pdf_comprobante_asks_the_padron_for_an_invoice_that_was_issued_without_
 
     serve_batch(ready, monkeypatch, people={})  # sigue sin conocerlo: el PDF sale igual, con aviso
     assert "⚠ El padrón no tiene a nadie" in ready.pdf_comprobante(46)
+
+
+# ---------- nota de crédito ----------
+
+def issue_invoice(ready, monkeypatch, amount=500, answers=None):
+    """Emite una factura (la 46) y deja el ARCA falso listo para la nota: la última factura es 46 y la última nota, 7."""
+    calls, state = serve_batch(ready, monkeypatch)
+    simulation = ready.emitir_factura(importe=amount, concepto="productos", documento="12345678", descripcion="Repuestos y reparaciones", pdf=False)
+    ready.emitir_factura(importe=amount, concepto="productos", documento="12345678", descripcion="Repuestos y reparaciones", pdf=False, confirmar=the_code(simulation))
+    return serve_credit(ready, monkeypatch, answers)
+
+
+def serve_credit(ready, monkeypatch, answers=None, last_credit=7):
+    state = {"credit": last_credit}
+
+    def last(body):
+        kind = re.search(r"<CbteTipo>(\d+)</CbteTipo>", body).group(1)
+        number = state["credit"] if kind == "13" else 46
+        return wsfe_answer("FECompUltimoAutorizado", f"<PtoVta>3</PtoVta><CbteTipo>{kind}</CbteTipo><CbteNro>{number}</CbteNro>")
+
+    def emit(body):
+        state["credit"] += 1
+        return approved(state["credit"])
+    return serve(ready, monkeypatch, {"FECompUltimoAutorizado": last, "FECAESolicitar": emit, **padron_by_document(PEOPLE), **(answers or {})})
+
+
+def credit(ready, calls_holder=None, **fields):
+    simulation = ready.emitir_nota_credito(**fields)
+    return simulation, ready.emitir_nota_credito(confirmar=the_code(simulation), **fields)
+
+
+def test_a_credit_note_cancels_the_whole_invoice_and_sends_it_associated_in_the_order_the_manual_requires(ready, monkeypatch):
+    calls = issue_invoice(ready, monkeypatch)
+
+    simulation, text = credit(ready, numero=46, motivo="Devolución")
+
+    assert "Nota de crédito C 0003-00000008" in simulation and "Corrige la Factura C 0003-00000046 de ARS 500,00" in simulation
+    assert "anula la factura entera" in simulation and "NO se puede deshacer" in simulation and "Devolución" in simulation
+    assert text.startswith("✓") and "Nota de crédito C 0003-00000008 emitida" in text and "PDF: " in text
+    body = sent(calls, "FECAESolicitar")[0]
+    assert "<CbteTipo>13</CbteTipo>" in body and "<ImpTotal>500.00</ImpTotal>" in body
+    request = ET.fromstring(body)
+    detail = next(e for e in request.iter() if e.tag.endswith("FECAEDetRequest"))
+    names = [e.tag.rsplit("}", 1)[-1] for e in detail]
+    assert names[-2:] == ["CondicionIVAReceptorId", "CbtesAsoc"]
+    associated = {e.tag.rsplit("}", 1)[-1]: e.text for e in detail.iter() if e.text and e.text.strip()}
+    assert (associated["Tipo"], associated["PtoVta"], associated["Nro"], associated["Cuit"]) == ("11", "3", "46", CUIT)
+    assert associated["CbteFch"] == datetime.now(ready.AR_TZ).date().strftime("%Y%m%d")
+    logged = json.loads((ready.home() / "emitidas.jsonl").read_text().splitlines()[-1])
+    assert (logged["tipo"], logged["numero"], logged["asociada"], logged["resultado"], logged["motivo"]) == (13, 8, "0003-00000046", "emitida", "Devolución")
+    pdf = Path(logged["pdf"])
+    assert pdf.name == "negocio-NC-0003-00000008.pdf" and pdf.read_bytes().startswith(b"%PDF")
+
+
+def test_partial_credit_notes_add_up_and_never_exceed_the_invoice(ready, monkeypatch):
+    issue_invoice(ready, monkeypatch)
+
+    _, first = credit(ready, numero=46, importe=100, pdf=False)
+    assert first.startswith("✓")
+    simulation = ready.emitir_nota_credito(numero=46, pdf=False)
+    assert "(ya acreditado ARS 100,00)" in simulation and "Importe de la nota: ARS 400,00" in simulation and "anulación PARCIAL" in simulation
+    assert "supera lo que queda por acreditar de la factura: ARS 400,00" in ready.emitir_nota_credito(numero=46, importe=400.01)
+    _, rest = credit(ready, numero=46, pdf=False)
+    assert rest.startswith("✓")
+    assert "ya está anulada por completo" in ready.emitir_nota_credito(numero=46)
+
+
+def test_the_code_depends_on_the_amount_and_nothing_is_sent_without_it(ready, monkeypatch):
+    calls = issue_invoice(ready, monkeypatch)
+    code = the_code(ready.emitir_nota_credito(numero=46, importe=100))
+    assert "El código no coincide" in ready.emitir_nota_credito(numero=46, importe=101, confirmar=code)
+    assert "El código no coincide" in ready.emitir_nota_credito(numero=46, importe=100, confirmar="000000")
+    assert not sent(calls, "FECAESolicitar")
+
+
+def test_an_invoice_made_elsewhere_is_read_from_arca(ready, monkeypatch):
+    calls = serve_credit(ready, monkeypatch, {"FECompConsultar": CONSULT})
+
+    simulation, text = credit(ready, numero=45, pdf=False)
+
+    assert "datos tomados de ARCA" in simulation and "Corrige la Factura C 0003-00000045 de ARS 15.000,50" in simulation
+    assert text.startswith("✓") and "<Nro>45</Nro>" in sent(calls, "FECAESolicitar")[0] and "<DocTipo>96</DocTipo>" in sent(calls, "FECAESolicitar")[0]
+
+
+def test_an_unknown_invoice_and_an_unsure_earlier_attempt_stop_everything(ready, monkeypatch):
+    not_found = wsfe_answer("FECompConsultar", "<Errors><Err><Code>602</Code><Msg>No existen datos en nuestros registros</Msg></Err></Errors>")
+    calls = serve_credit(ready, monkeypatch, {"FECompConsultar": not_found})
+    assert "No encuentro la Factura C 0003-00000099" in ready.emitir_nota_credito(numero=99)
+
+    calls = issue_invoice(ready, monkeypatch)
+    (ready.home() / "emitidas.jsonl").open("a").write(json.dumps({"cuenta": "negocio", "ambiente": "homologacion", "punto_venta": 3, "numero": 8, "tipo": 13,
+                                                                    "asociada": "0003-00000046", "importe": "50.00", "resultado": "sin_confirmar"}) + "\n")
+    assert "quedó sin confirmar" in ready.emitir_nota_credito(numero=46) and not sent(calls, "FECAESolicitar")
+
+
+def test_credit_note_in_production_needs_emission_enabled_and_the_pdf_tool_tells_it_from_the_invoice(ready, monkeypatch):
+    issue_invoice(ready, monkeypatch)
+    credit(ready, numero=46)
+    invoice_pdf = ready.pdf_comprobante(46)
+    note_pdf = ready.pdf_comprobante(8, tipo=13)
+    assert invoice_pdf.startswith("PDF: ") and note_pdf.startswith("PDF: ") and invoice_pdf != note_pdf and "NC-" in note_pdf
+    assert "No tengo en el registro local el comprobante Nota de crédito C 0003-00000099" in ready.pdf_comprobante(99, tipo=13)
+
+    write_accounts(ready, prod={"cuit": CUIT, "ambiente": "produccion", "punto_venta": 3, "concepto": "productos"})
+    make_files(ready.home(), alias="prod")
+    serve_credit(ready, monkeypatch, {"FECompConsultar": CONSULT})
+    simulation = ready.emitir_nota_credito(numero=45)
+    assert "PRODUCCIÓN" in simulation
+    assert "PRODUCCIÓN y está en solo lectura" in ready.emitir_nota_credito(numero=45, confirmar=the_code(simulation))

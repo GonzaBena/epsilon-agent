@@ -69,7 +69,8 @@ y por qué.
 | `actividades` | Las actividades del emisor que ARCA acepta asociar a un comprobante (el código va en `actividad`). En homologación suele no haber ninguna |
 | `condiciones_iva_receptor` | Las condiciones frente al IVA del receptor que ARCA acepta en una Factura C |
 | `buscar_persona` | Nombre y domicilio fiscal de un DNI, CUIL o CUIT en el padrón de ARCA: `/c arca buscar_persona documento=12345678`. Con un DNI muestra todas las claves (si hay más de una, hay que elegir el CUIL). Necesita autorizar `ws_sr_padron_a13` (ver abajo) |
-| `pdf_comprobante` | Arma (o rehace) el PDF de una factura emitida desde acá: `/c arca pdf_comprobante numero=2` |
+| `pdf_comprobante` | Arma (o rehace) el PDF de una factura emitida desde acá: `/c arca pdf_comprobante numero=2` (una nota de crédito: `tipo=13`) |
+| `emitir_nota_credito` | Corrige una Factura C emitida con una nota de crédito C, total o parcial (ver «Corregir una factura») |
 | `emitir_lote` | Emite varias Facturas C desde un CSV (ver «Facturas desde un CSV») |
 | `emitir_factura` | Emite una Factura C. Ver la sección siguiente |
 
@@ -119,6 +120,24 @@ repetir un comando ya emitido no emite otra factura.
 - Cada intento queda anotado en `emitidas.jsonl` (junto a `cuentas.json`; solo se agrega, permisos 600).
 - **Producción** exige `"emision": true` en la cuenta de `cuentas.json` (solo el valor `true`, a propósito). Sin eso,
   `cuentas` la muestra como «solo lectura» y la emisión se niega. Una factura real solo se corrige con una nota de crédito.
+
+## Corregir una factura (nota de crédito C)
+
+Una factura emitida no se borra ni se edita: se corrige con una **nota de crédito** que la anula, entera o en parte.
+
+```
+/c arca emitir_nota_credito numero=46 motivo="Devolución"
+/c arca emitir_nota_credito numero=46 importe=100 motivo="Descuento"      (parcial)
+```
+
+- **Dos pasos**, como siempre: sin `confirmar` simula (muestra qué factura corrige, el importe, si es total o parcial y el número que le toca) y da un
+  código; para emitir, repetís con `confirmar=<código>`. Una nota emitida **no se puede deshacer**.
+- `numero` es el de la **factura** (mismo punto de venta de la cuenta, o `punto_venta=`). Sin `importe` anula lo que quede por acreditar.
+- Toma los datos (cliente, importe, concepto) del registro local; si la factura salió por la web de ARCA, los lee de ARCA y lo avisa.
+- **No deja acreditar de más**: suma las notas ya emitidas desde acá y rechaza un importe que supere lo que queda, o una factura ya anulada por completo.
+  (Solo conoce las notas hechas con este conector: si hiciste otra por la web, tenelo en cuenta.)
+- Se envía asociada a la factura (`CbtesAsoc`). Genera su PDF (`<cuenta>-NC-0003-00000008.pdf`, «NOTA DE CRÉDITO · COD. 013» y «Asociada a la Factura C Nº …»).
+- Igual que emitir: en producción hace falta `"emision": true`, y si ARCA no contesta mira el último número antes de decir nada y nunca reintenta.
 
 ## Facturas desde un CSV
 
