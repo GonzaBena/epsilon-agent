@@ -4,7 +4,7 @@ import threading
 import pytest
 
 from epsilon.data import notes
-from epsilon.routines import engine, notify, rules, store
+from epsilon.routines import engine, notify, rules, runner, store
 from epsilon.utils import multimedia
 
 REAL_VOLUME = multimedia.volume  # antes de que el fixture lo reemplace
@@ -19,7 +19,18 @@ def quiet(tmp_path, monkeypatch):
     monkeypatch.setattr(notify, "_notify_send", sent.append)
     monkeypatch.setattr(multimedia, "volume", lambda arg: done.append(("volumen", arg)) or f"Volumen: {arg} %")
     monkeypatch.setattr(multimedia, "music", lambda arg: done.append(("musica", arg)) or "Pausé. (chromium)")
-    return sent, done
+    monkeypatch.setattr(runner, "_launch", lambda job: job())  # las cadenas corren en el lugar
+    monkeypatch.setattr(runner, "_running", set())
+
+    def executor(tool, args):  # lo que hace el núcleo, con las funciones de siempre
+        try:
+            return runner.StepResult(True, multimedia.volume(args) if tool == "volumen" else multimedia.music(args))
+        except multimedia.MultimediaError as e:
+            return runner.StepResult(False, str(e))
+
+    runner.set_executor(executor)
+    yield sent, done
+    runner.set_executor(None)
 
 
 def add(text, created=datetime(2026, 10, 22, 8, 0)):
@@ -37,9 +48,9 @@ def test_a_due_rule_runs_with_the_normal_functions_tells_you_and_moves_to_tomorr
     engine.tick(NOW)
 
     assert done == [("volumen", "20")]
-    assert sent == ["Rutina 1: Volumen: 20 %"]
+    assert sent == []  # un volumen no avisa; solo se anota
     assert store.rules()[0]["next_run"] == "2026-10-23T23:00:00"
-    assert "ejecutada" in log()
+    assert "paso 1 volumen ok" in log()
 
 
 def test_it_does_nothing_before_the_time(quiet):
@@ -123,7 +134,7 @@ def test_a_failing_action_is_reported_and_does_not_stop_the_next_rule(quiet, mon
 
     assert done == [("volumen", "20")]
     assert sent[0].startswith("No pude cumplir la rutina 1") and "ningún reproductor" in sent[0]
-    assert "falló" in log()
+    assert "paso 1 musica falló" in log()
 
 
 def test_a_broken_rule_is_paused_instead_of_failing_every_pass(quiet):
@@ -138,29 +149,35 @@ def test_a_broken_rule_is_paused_instead_of_failing_every_pass(quiet):
 
 
 def test_a_failing_notification_is_logged_but_the_rule_still_counts(quiet, monkeypatch):
-    _, done = quiet
-
     def broken(text):
         raise RuntimeError("sin bus")
 
     monkeypatch.setattr(notify, "_notify_send", broken)
-    add("23:00 | volumen 20")
+    add("23:00 | avisar hola")
 
     engine.tick(NOW)
 
-    assert done == [("volumen", "20")] and "aviso falló" in log()
+    assert "aviso falló" in log() and store.rules()[0]["next_run"] == "2026-10-23T23:00:00"
 
 
-def test_a_hand_edited_rule_is_validated_again_by_the_real_function(quiet, monkeypatch):
-    sent, _ = quiet
-    monkeypatch.setattr(multimedia, "volume", REAL_VOLUME)  # sin el reemplazo del fixture
-    store.update(lambda all_rules: all_rules.append({
-        "id": 1, "when": {"kind": "daily", "time": "23:00", "days": list(range(7))},
-        "do": {"kind": "volumen", "arg": "40; reboot"}, "enabled": True, "next_run": "2026-10-22T23:00:00"}))
+def test_a_runner_that_raises_does_not_stop_the_next_rule(quiet, monkeypatch):
+    _, done = quiet
+    real = runner.start
+    monkeypatch.setattr(runner, "start", lambda rule, trigger="": (_ for _ in ()).throw(RuntimeError("boom")) if rule["id"] == 1 else real(rule, trigger))
+    add("23:00 | volumen 10"), add("23:00 | volumen 20")
 
     engine.tick(NOW)
 
-    assert sent and sent[0].startswith("No pude cumplir la rutina 1") and "Escribí un número" in sent[0]
+    assert done == [("volumen", "20")] and "error" in log()
+
+
+def test_a_chain_runs_all_its_steps(quiet):
+    _, done = quiet
+    add("23:00 | volumen 15 > musica play")
+
+    engine.tick(NOW)
+
+    assert done == [("volumen", "15"), ("musica", "play")]
 
 
 def test_start_and_stop_the_thread(monkeypatch):
@@ -209,7 +226,7 @@ def test_a_condition_fires_once_when_crossing_and_the_notice_says_why(quiet, rea
     engine.tick(NOW + timedelta(seconds=30)), engine.tick(NOW + timedelta(seconds=60))
 
     assert sent == ["⚠ poco espacio (el disco al 93 %)"]  # una sola vez aunque siga alto
-    assert "ejecutada" in log()
+    assert "paso 1 avisar ok" in log()
 
 
 def test_a_condition_can_also_run_an_action(quiet, readings):
@@ -219,7 +236,7 @@ def test_a_condition_can_also_run_an_action(quiet, readings):
 
     engine.tick(NOW)
 
-    assert done == [("musica", "pausa")] and sent == ["Rutina 1: Pausé. (chromium) (la memoria al 85 %)"]
+    assert done == [("musica", "pausa")] and sent == []
 
 
 def test_it_warns_again_after_dropping_and_rising_once_the_cooldown_passed(quiet, readings):
@@ -258,7 +275,7 @@ def test_an_unreadable_metric_does_not_fire_or_break_other_rules(quiet, readings
 
     engine.tick(NOW)
 
-    assert sent == ["Rutina 2: Volumen: 20 %"] and done == [("volumen", "20")]
+    assert sent == [] and done == [("volumen", "20")]
 
 
 def test_a_paused_condition_does_not_fire(quiet, readings):
