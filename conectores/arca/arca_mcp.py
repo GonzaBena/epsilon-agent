@@ -515,7 +515,9 @@ def buscar_persona(documento: str, cuenta: str | None = None) -> str:
             ids = [text_of(i, "idPersona") for i in find(padron(account, "getIdPersonaListByDocumento", f"<documento>{digits}</documento>"), "idPersona")]
             ids = [i for i in dict.fromkeys(ids) if i]
         if not ids:
-            return f"[{account['alias']}] El padrón no tiene a nadie con el documento {digits}."
+            test = " El padrón de pruebas tiene solo personas de prueba, no las reales: probá en producción o con un CUIL de ejemplo." \
+                if account["ambiente"] == "homologacion" else ""
+            return f"[{account['alias']}] El padrón no tiene a nadie con el documento {digits}.{test}"
         lines = []
         for one in ids[:5]:
             root = padron(account, "getPersonaV2", f"<idPersona>{one}</idPersona>")
