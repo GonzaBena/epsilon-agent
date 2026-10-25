@@ -456,3 +456,28 @@ def test_the_config_page_draws_plugin_fields_itself_with_text_content():
     assert "setting.group" in script and "plugin-settings" in script
     code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
     assert "innerHTML" not in code
+
+
+# --- Formulario de primera vez ------------------------------------------------
+
+
+def onboarding_html():
+    return re.search(r'<dialog id="onboarding".*?</dialog>', chat_html(), re.S).group(0)
+
+
+def test_onboarding_form_has_two_labelled_fields_and_a_skip():
+    section = onboarding_html()
+
+    assert "¿Cómo te llamo?" in section and "¿Cómo querés llamarme?" in section
+    assert re.search(r'<button[^>]*id="onboarding-save"[^>]*>\s*Continuar', section)
+    assert re.search(r'<button[^>]*id="onboarding-skip"[^>]*>\s*Saltar por ahora', section)
+    assert 'id="onboarding-user"' in section and 'id="onboarding-assistant"' in section
+    assert 'value="Epsilon"' in section
+    assert 'style="' not in section  # la CSP no deja estilos en línea
+
+
+def test_onboarding_is_driven_by_the_user_name_setting():
+    js = static_path("app.js").read_text(encoding="utf-8")
+
+    for needle in ("USER_NAME", "ASSISTANT_NAME", "epsilon_onboarding_skipped", "onboarding"):
+        assert needle in js, needle

@@ -1614,10 +1614,75 @@ async function checkSetup() {
     document.getElementById("setup").hidden = !key || key.set;
     voiceOff = state.voice === "apagada";
     refreshMic();
+    maybeOnboard(state.settings);
   } catch {
     // Sin conexión: el estado de arriba ya lo indica.
   }
 }
+
+// --- Primera vez: cómo te llamo y cómo me llamás ---------------------------------------
+// Se abre solo si no hay USER_NAME cargado y la persona no tocó «Saltar» (se recuerda en este navegador).
+const onboarding = document.getElementById("onboarding");
+const onboardingUser = document.getElementById("onboarding-user");
+const onboardingAssistant = document.getElementById("onboarding-assistant");
+const onboardingError = document.getElementById("onboarding-error");
+const ONBOARDING_SKIPPED = "epsilon_onboarding_skipped";
+
+function onboardingWasSkipped() {
+  try {
+    return localStorage.getItem(ONBOARDING_SKIPPED) === "1";
+  } catch {
+    return false; // sin almacenamiento: se vuelve a preguntar
+  }
+}
+
+function maybeOnboard(settings) {
+  const name = settings.find((setting) => setting.key === "USER_NAME");
+  if (!name || name.set || onboardingWasSkipped() || typeof onboarding.showModal !== "function") return;
+  onboarding.showModal();
+  onboardingUser.focus();
+}
+
+document.getElementById("onboarding-skip").addEventListener("click", () => {
+  try {
+    localStorage.setItem(ONBOARDING_SKIPPED, "1");
+  } catch {
+    // Sin almacenamiento, vuelve a preguntar en la próxima visita: no es grave.
+  }
+  onboarding.close();
+});
+
+document.getElementById("onboarding-save").addEventListener("click", async () => {
+  onboardingError.textContent = "";
+  const user = onboardingUser.value.trim();
+  const assistant = onboardingAssistant.value.trim();
+  if (!user) {
+    onboardingError.textContent = "Escribí tu nombre o tocá «Saltar por ahora».";
+    return;
+  }
+  const changes = { USER_NAME: user };
+  const clear = [];
+  if (assistant) changes.ASSISTANT_NAME = assistant;
+  else clear.push("ASSISTANT_NAME"); // vacío = el nombre de siempre
+  try {
+    const response = await fetch("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes, clear }),
+    });
+    if (response.status === 422) {
+      const data = await response.json();
+      const errors = (data && data.errors) || {};
+      onboardingError.textContent = errors.USER_NAME || errors.ASSISTANT_NAME || "Revisá los nombres.";
+      return;
+    }
+    if (!response.ok) throw new Error(String(response.status));
+  } catch {
+    onboardingError.textContent = "No pude guardar los nombres. Probá de nuevo.";
+    return;
+  }
+  onboarding.close();
+});
 
 // --- Arranque ---------------------------------------------------------------------
 start();

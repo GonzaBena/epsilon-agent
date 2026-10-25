@@ -3437,6 +3437,20 @@ a.ghost {
   padding: 0 1rem;
   color: var(--danger);
 }
+/* Formulario de primera vez: los campos de la config viven en .settings, acá hace falta el mismo aspecto. */
+.onboarding {
+  width: min(26rem, calc(100vw - 2rem));
+}
+.onboarding input[type="text"] {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.95rem;
+}
 .perm-dialog-actions {
   display: flex;
   flex-wrap: wrap;

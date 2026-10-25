@@ -125,6 +125,27 @@
         </section>
       </main>
 
+      <!-- Primera vez: cómo te llamo y cómo me llamás (app.js lo abre si falta USER_NAME). -->
+      <dialog id="onboarding" class="perm-dialog onboarding" aria-labelledby="onboarding-title">
+        <h3 id="onboarding-title">Antes de empezar</h3>
+        <p class="hint">Dos datos para que la charla sea tuya. Los podés cambiar después en Configuración.</p>
+        <div class="field">
+          <label for="onboarding-user">¿Cómo te llamo?</label>
+          <input id="onboarding-user" type="text" maxlength="40" autocomplete="off" spellcheck="false"
+                 aria-describedby="onboarding-error">
+        </div>
+        <div class="field">
+          <label for="onboarding-assistant">¿Cómo querés llamarme?</label>
+          <input id="onboarding-assistant" type="text" maxlength="40" autocomplete="off" spellcheck="false"
+                 value="Epsilon" aria-describedby="onboarding-error">
+        </div>
+        <p class="error" id="onboarding-error" role="alert"></p>
+        <div class="perm-dialog-actions">
+          <button type="button" class="send" id="onboarding-save">Continuar</button>
+          <button type="button" class="ghost" id="onboarding-skip">Saltar por ahora</button>
+        </div>
+      </dialog>
+
       <!-- Solo se ve en la conversación de Telegram: la web la lee, no escribe en ella (app.js). -->
       <p id="readonly-note" class="readonly-note" hidden>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
