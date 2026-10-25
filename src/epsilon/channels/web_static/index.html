@@ -125,14 +125,15 @@
         <div class="field">
           <label for="onboarding-user">¿Cómo te llamo?</label>
           <input id="onboarding-user" type="text" maxlength="40" autocomplete="off" spellcheck="false"
-                 aria-describedby="onboarding-error">
+                 aria-describedby="onboarding-user-error">
+          <p class="error" id="onboarding-user-error" role="alert"></p>
         </div>
         <div class="field">
           <label for="onboarding-assistant">¿Cómo querés llamarme?</label>
           <input id="onboarding-assistant" type="text" maxlength="40" autocomplete="off" spellcheck="false"
-                 value="Epsilon" aria-describedby="onboarding-error">
+                 value="Epsilon" aria-describedby="onboarding-assistant-error">
+          <p class="error" id="onboarding-assistant-error" role="alert"></p>
         </div>
-        <p class="error" id="onboarding-error" role="alert"></p>
         <div class="perm-dialog-actions">
           <button type="button" class="send" id="onboarding-save">Continuar</button>
           <button type="button" class="ghost" id="onboarding-skip">Saltar por ahora</button>

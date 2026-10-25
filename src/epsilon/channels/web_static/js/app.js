@@ -1792,7 +1792,8 @@ async function loadWelcome() {
 const onboarding = document.getElementById("onboarding");
 const onboardingUser = document.getElementById("onboarding-user");
 const onboardingAssistant = document.getElementById("onboarding-assistant");
-const onboardingError = document.getElementById("onboarding-error");
+const onboardingUserError = document.getElementById("onboarding-user-error");
+const onboardingAssistantError = document.getElementById("onboarding-assistant-error");
 const ONBOARDING_SKIPPED = "epsilon_onboarding_skipped";
 
 function onboardingWasSkipped() {
@@ -1820,11 +1821,12 @@ document.getElementById("onboarding-skip").addEventListener("click", () => {
 });
 
 document.getElementById("onboarding-save").addEventListener("click", async () => {
-  onboardingError.textContent = "";
+  onboardingUserError.textContent = "";
+  onboardingAssistantError.textContent = "";
   const user = onboardingUser.value.trim();
   const assistant = onboardingAssistant.value.trim();
   if (!user) {
-    onboardingError.textContent = "Escribí tu nombre o tocá «Saltar por ahora».";
+    onboardingUserError.textContent = "Escribí tu nombre o tocá «Saltar por ahora».";
     return;
   }
   const changes = { USER_NAME: user };
@@ -1840,12 +1842,14 @@ document.getElementById("onboarding-save").addEventListener("click", async () =>
     if (response.status === 422) {
       const data = await response.json();
       const errors = (data && data.errors) || {};
-      onboardingError.textContent = errors.USER_NAME || errors.AGENT_NAME || "Revisá los nombres.";
+      onboardingUserError.textContent = errors.USER_NAME || "";
+      onboardingAssistantError.textContent = errors.AGENT_NAME || "";
+      if (!errors.USER_NAME && !errors.AGENT_NAME) onboardingUserError.textContent = "Revisá los nombres.";
       return;
     }
     if (!response.ok) throw new Error(String(response.status));
   } catch {
-    onboardingError.textContent = "No pude guardar los nombres. Probá de nuevo.";
+    onboardingAssistantError.textContent = "No pude guardar los nombres. Probá de nuevo.";
     return;
   }
   onboarding.close();

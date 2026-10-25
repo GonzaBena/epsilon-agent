@@ -754,7 +754,8 @@ def test_app_updates_the_chip_when_the_mode_changes():
     fn = js[js.index("function showAiChip"):]
     fn = fn[: fn.index("\n}\n")]
 
-    assert 'getElementById("crumb-ai")' in js and "aiMode()" in fn
+    assert 'getElementById("crumb-ai")' in js
+    assert "crumbAi.hidden = !aiMode()" in fn
     for caller in ("function chooseMode", "function showMode", "function clearScreen"):
         body = js[js.index(caller):]
         assert "showAiChip()" in body[: body.index("\n}\n")], caller

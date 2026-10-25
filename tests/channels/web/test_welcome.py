@@ -100,14 +100,12 @@ def test_welcome_endpoint_keeps_host_and_origin_checks(client):
     assert client.get("/api/welcome", headers={"Origin": "http://evil.com:8765"}).status_code == 403
 
 
-def test_welcome_files_use_no_inner_html_and_the_avatar_exists():
+def test_welcome_avatar_file_exists_and_the_page_asks_the_server_for_the_welcome():
     import re
     from tests.channels.web.helpers import chat_html, static_path, web
 
-    html = chat_html()
-    src = re.search(r'class="welcome-avatar"[^>]*src="/static/([^"]+)"', html) or re.search(
-        r'src="/static/([^"]+)"[^>]*class="welcome-avatar"', html
-    )
-    assert src and (web.STATIC_DIR / src.group(1)).is_file()
-    js = static_path("app.js").read_text(encoding="utf-8")
-    assert "/api/welcome" in js
+    img = re.search(r'<img[^>]*class="welcome-avatar"[^>]*>', chat_html()).group(0)
+    src = re.search(r'src="/static/([^"]+)"', img).group(1)
+
+    assert (web.STATIC_DIR / src).is_file()
+    assert 'fetch("/api/welcome")' in static_path("app.js").read_text(encoding="utf-8")

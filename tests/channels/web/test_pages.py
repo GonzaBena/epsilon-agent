@@ -476,8 +476,47 @@ def test_onboarding_form_has_two_labelled_fields_and_a_skip():
     assert 'style="' not in section  # la CSP no deja estilos en línea
 
 
-def test_onboarding_is_driven_by_the_user_name_setting():
+def app_region(start, end="// --- Arranque"):
     js = static_path("app.js").read_text(encoding="utf-8")
+    return js[js.index(start):js.index(end, js.index(start))]
 
-    for needle in ("USER_NAME", "AGENT_NAME", "epsilon_onboarding_skipped", "onboarding"):
-        assert needle in js, needle
+
+def test_onboarding_has_one_error_line_per_field_wired_to_its_input():
+    section = onboarding_html()
+
+    for field in ("user", "assistant"):
+        assert re.search(rf'<p[^>]*class="error"[^>]*id="onboarding-{field}-error"[^>]*role="alert"', section)
+        assert re.search(rf'<input[^>]*id="onboarding-{field}"[^>]*aria-describedby="onboarding-{field}-error"', section)
+    assert 'id="onboarding-error"' not in section  # la línea compartida ya no existe
+
+
+def test_onboarding_saves_with_put_config_and_shows_each_error_under_its_field():
+    region = app_region("// --- Primera vez")
+    save = region[region.index('"onboarding-save"'):]
+
+    assert 'fetch("/api/config"' in save and 'method: "PUT"' in save
+    assert "USER_NAME: user" in save and "ASSISTANT_NAME" not in region
+    assert 'clear.push("AGENT_NAME")' in save  # nombre del asistente vacío = el de siempre
+    assert re.search(r"onboardingUserError\.textContent = errors\.USER_NAME", save)
+    assert re.search(r"onboardingAssistantError\.textContent = errors\.AGENT_NAME", save)
+    assert "response.status === 422" in save
+
+
+def test_onboarding_skip_is_remembered_in_the_browser_without_breaking_when_storage_fails():
+    region = app_region("// --- Primera vez")
+    skip = region[region.index('"onboarding-skip"'):region.index('"onboarding-save"')]
+
+    assert "localStorage.setItem(ONBOARDING_SKIPPED" in skip and "try {" in skip and "catch" in skip
+    assert "localStorage.getItem(ONBOARDING_SKIPPED" in region and "catch" in region
+
+
+def test_welcome_and_onboarding_code_never_build_html_from_server_text():
+    region = app_region("// --- Bienvenida")  # incluye el formulario de primera vez
+
+    assert "innerHTML" not in region and "insertAdjacentHTML" not in region and "outerHTML" not in region
+    assert "textContent = card.title" in region and "textContent = data.greeting" in region
+
+
+def test_no_page_uses_the_authors_name_as_a_placeholder():
+    for name in PAGES:
+        assert 'placeholder="Gonzalo"' not in page(name), name
