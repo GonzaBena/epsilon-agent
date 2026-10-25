@@ -520,3 +520,39 @@ def test_welcome_and_onboarding_code_never_build_html_from_server_text():
 def test_no_page_uses_the_authors_name_as_a_placeholder():
     for name in PAGES:
         assert 'placeholder="Gonzalo"' not in page(name), name
+
+
+# --- Disposición de la bienvenida y formulario a pantalla completa -------------
+
+
+def css_rule(selector):
+    css = static_path("style.css").read_text(encoding="utf-8")
+    match = re.search(rf"(?m)^{re.escape(selector)}\s*\{{(.*?)\}}", css, re.S)
+    assert match, selector
+    return match.group(1)
+
+
+def test_welcome_has_a_hero_with_the_greeting_and_the_big_picture_above_the_cards():
+    section = re.search(r'<section id="empty".*?</section>', chat_html(), re.S).group(0)
+    hero = re.search(r'<div class="welcome-hero">(.*?)</div>', section, re.S).group(1)
+
+    assert 'id="welcome-greeting"' in hero and 'class="welcome-avatar"' in hero
+    assert section.index("welcome-hero") < section.index('id="welcome-cards"')  # las ideas van debajo
+
+
+def test_welcome_hero_is_two_columns_and_stacks_on_narrow_screens():
+    assert "grid-template-columns" in css_rule(".welcome-hero")
+    css = static_path("style.css").read_text(encoding="utf-8")
+    narrow = css[css.index("@media (max-width: 36rem)"):]
+    assert ".welcome-hero" in narrow[: narrow.index("\n}\n\n") + 3] or ".welcome-hero" in narrow[:600]
+
+
+def test_onboarding_covers_the_whole_screen_with_a_background_and_a_centered_panel():
+    section = onboarding_html()
+    rule = css_rule(".onboarding[open]")
+
+    assert 'class="onboarding-panel"' in section and 'id="onboarding-save"' in section.split("onboarding-panel")[1]
+    assert "100vw" in css_rule(".onboarding") and ("100vh" in css_rule(".onboarding") or "100dvh" in css_rule(".onboarding"))
+    assert "display: flex" in rule and "align-items: center" in rule and "justify-content: center" in rule
+    assert "background" in css_rule(".onboarding")  # color de fondo propio, no el del cuadro flotante
+    assert "max-width" in css_rule(".onboarding-panel")

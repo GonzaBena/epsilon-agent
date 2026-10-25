@@ -913,29 +913,38 @@ body.booting .log {
 /* El saludo de Epsilon: se ve como uno de sus mensajes (la marca Ε y el texto). */
 .empty {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 8vh;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 4vh;
+}
+.welcome-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+  align-items: center;
+  gap: 1.5rem;
+}
+.welcome-greeting {
+  margin: 0;
+  font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+  font-weight: 500;
+  line-height: 1.3;
+  text-wrap: balance;
 }
 .welcome-avatar {
-  flex: none;
-  width: 2.75rem;
-  height: 2.75rem;
-  margin-top: 0.1rem;
+  width: 100%;
+  max-height: 20rem;
+  object-fit: contain;
 }
-.empty .body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-  max-width: 68ch;
-}
-.greeting {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-}
-.greeting.hint-line {
-  color: var(--muted);
+@media (max-width: 36rem) {
+  .welcome-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .welcome-avatar {
+    order: -1;
+    max-width: 10rem;
+    max-height: 10rem;
+    justify-self: center;
+  }
 }
 
 .welcome-cards {
@@ -3563,8 +3572,44 @@ a.ghost {
   color: var(--danger);
 }
 /* Formulario de primera vez: los campos de la config viven en .settings, acá hace falta el mismo aspecto. */
+/* Primera vez: toda la pantalla, con fondo propio, y el formulario en un panel al centro. */
 .onboarding {
-  width: min(26rem, calc(100vw - 2rem));
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 1rem;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 28%, var(--accent-soft), transparent 55%),
+    var(--bg);
+}
+.onboarding[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.onboarding::backdrop {
+  background: var(--bg);
+}
+.onboarding-panel {
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.5rem;
+  background: var(--side);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.onboarding-logo {
+  display: block;
+  margin: 0 auto 0.75rem;
+}
+.onboarding-panel h3,
+.onboarding-panel > .hint {
+  text-align: center;
 }
 .onboarding input[type="text"] {
   width: 100%;
