@@ -112,8 +112,15 @@ function setReadOnly(on) {
 }
 
 // --- Modo IA: selector, barra de contexto / costo / límite ------------------------------------
+// El chip «IA» del encabezado: se ve aunque la barra lateral esté contraída. Sigue a aiMode().
+const crumbAi = document.getElementById("crumb-ai");
+function showAiChip() {
+  crumbAi.hidden = !aiMode();
+}
+
 function chooseMode(mode) {
   chatMode = mode;
+  showAiChip();
   for (const [name, button] of Object.entries(modeButtons)) {
     button.setAttribute("aria-pressed", String(name === mode));
   }
@@ -144,6 +151,7 @@ function showChatBar(chat) {
 let viewMode = "normal"; // el modo de la conversación abierta
 function showMode(mode, chat) {
   viewMode = mode;
+  showAiChip();
   modePicker.hidden = started || readOnly;
   showChatBar(mode === "ai" ? chat : null);
 }
@@ -304,6 +312,7 @@ function clearScreen() {
   setReadOnly(false); // openConversation lo vuelve a poner si es de Telegram
   setContext([]); // lo guardado es de ESTA conversación
   started = false; // openConversation / showConversation lo corrigen si ya tiene mensajes
+  showAiChip();
   // Selector y barra escondidos: ya sabremos cuál mostrar (un chat nuevo, o lo que diga el servidor).
   modePicker.hidden = true;
   aiBar.hidden = true;
