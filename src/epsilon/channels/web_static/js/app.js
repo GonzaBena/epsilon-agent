@@ -362,6 +362,7 @@ async function startNewChat() {
 async function openNewChat() {
   const token = ++loadToken;
   clearScreen();
+  loadWelcome(); // otra frase cada vez
   chooseMode("normal");
   showMode("normal", null); // chat nuevo: se elige el tipo
   conversationId = null;
@@ -1620,6 +1621,47 @@ async function checkSetup() {
   }
 }
 
+// --- Bienvenida: el saludo y las ideas del chat vacío ---------------------------------------
+// Todo viene de /api/welcome y se dibuja con textContent. Si falla, queda el saludo fijo del HTML y sin ideas.
+const welcomeGreeting = document.getElementById("welcome-greeting");
+const welcomeCards = document.getElementById("welcome-cards");
+
+// Una idea abre un chat NUEVO con IA y deja su texto escrito en el cuadro, sin enviarlo, para editarlo.
+async function useCard(card) {
+  await startNewChat();
+  chooseMode("ai");
+  input.value = card.prompt;
+  input.dispatchEvent(new Event("input")); // el cuadro ajusta su alto
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+async function loadWelcome() {
+  try {
+    const response = await fetch("/api/welcome");
+    if (!response.ok) return;
+    const data = await response.json();
+    welcomeGreeting.textContent = data.greeting;
+    welcomeCards.replaceChildren();
+    for (const card of data.cards) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "welcome-card";
+      const title = document.createElement("span");
+      title.className = "welcome-card-title";
+      title.textContent = card.title;
+      const subtitle = document.createElement("span");
+      subtitle.className = "welcome-card-subtitle";
+      subtitle.textContent = card.subtitle;
+      button.append(title, subtitle);
+      button.addEventListener("click", () => useCard(card));
+      welcomeCards.append(button);
+    }
+  } catch {
+    // Sin conexión: queda el saludo del HTML.
+  }
+}
+
 // --- Primera vez: cómo te llamo y cómo me llamás ---------------------------------------
 // Se abre solo si no hay USER_NAME cargado y la persona no tocó «Saltar» (se recuerda en este navegador).
 const onboarding = document.getElementById("onboarding");
@@ -1682,10 +1724,12 @@ document.getElementById("onboarding-save").addEventListener("click", async () =>
     return;
   }
   onboarding.close();
+  loadWelcome(); // el saludo ya puede decir tu nombre
 });
 
 // --- Arranque ---------------------------------------------------------------------
 start();
+loadWelcome();
 checkHealth();
 checkSetup();
 input.focus();

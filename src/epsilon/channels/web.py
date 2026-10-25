@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from epsilon import core, state, tools
+from epsilon.channels import welcome
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.connectors import bridge, buttons as connector_buttons, manager as connector_manager, store as connector_store
 from epsilon.data import conversations, library, notes
@@ -423,6 +424,18 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"ok": True}
+
+    @app.get("/api/welcome")
+    def get_welcome():
+        """El saludo y las ideas de la pantalla de bienvenida (sin modelo). `needs_profile`: falta tu nombre."""
+        user = os.environ.get("USER_NAME", "").strip()
+        assistant = os.environ.get("ASSISTANT_NAME", "").strip() or "Epsilon"
+        first = not conversations.list_all(1)  # la primera vez es cuando todavía no hay ninguna conversación
+        return {
+            "greeting": welcome.greeting(user, assistant, clock.now().hour, first),
+            "cards": list(welcome.CARDS),
+            "needs_profile": not user,
+        }
 
     @app.get("/api/tools")
     def tools_list():

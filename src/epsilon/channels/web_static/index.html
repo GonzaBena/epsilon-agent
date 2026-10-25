@@ -110,17 +110,10 @@
         <!-- El primer mensaje de Epsilon. No lleva la clase msg a propósito: «Nuevo
              chat» borra todos los .msg, y este saludo tiene que quedar. -->
         <section id="empty" class="empty">
-          <span class="mark" aria-hidden="true">Ε</span>
+          <img class="welcome-avatar" src="/static/img/icon.svg" alt="" width="44" height="44">
           <div class="body">
-            <p class="greeting">Mandame un texto, una imagen o un PDF y lo guardo donde corresponda.
-              También puedo leer lo que ya tenés en tus notas.</p>
-            <p class="greeting hint-line">Probá con <code>+ comprar filamento</code> para guardar una nota,
-              o adjuntá una imagen con <code>gastos: fecha, total</code> para pasarla a CSV.</p>
-            <div class="starters">
-              <button class="starter" type="button" data-command="/ayuda">/ayuda</button>
-              <button class="starter" type="button" data-command="/archivos">/archivos</button>
-              <button class="starter" type="button" data-command="/uso">/uso</button>
-            </div>
+            <p id="welcome-greeting" class="greeting">Hola, soy Epsilon, tu nuevo asistente.</p>
+            <div id="welcome-cards" class="welcome-cards"></div>
           </div>
         </section>
       </main>

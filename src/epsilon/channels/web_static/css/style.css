@@ -916,8 +916,10 @@ body.booting .log {
   gap: 0.75rem;
   margin-top: 8vh;
 }
-.empty .mark {
+.welcome-avatar {
   flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
   margin-top: 0.1rem;
 }
 .empty .body {
@@ -936,24 +938,41 @@ body.booting .log {
   color: var(--muted);
 }
 
-.starters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.welcome-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
 }
-.starter {
+@media (max-width: 36rem) {
+  .welcome-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
   min-height: 2.75rem;
-  padding: 0 1rem;
+  padding: 0.7rem 0.9rem;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  font-family: var(--mono);
-  font-size: 0.9rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
-.starter:hover {
+.welcome-card:hover,
+.welcome-card:focus-visible {
   border-color: var(--accent);
-  color: var(--accent);
+}
+.welcome-card-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.welcome-card-subtitle {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 /* --- Mensajes -------------------------------------------------------------- */

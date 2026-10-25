@@ -170,11 +170,12 @@ def test_config_save_button_keeps_its_text_label():
     assert re.search(r'<button[^>]*id="save"[^>]*class="send"[^>]*>\s*Guardar cambios', html)
 
 
-def test_empty_state_is_a_greeting_from_epsilon_with_starters():
+def test_empty_state_is_a_welcome_with_an_avatar_a_greeting_and_a_place_for_the_ideas():
     section = re.search(r'<section id="empty".*?</section>', chat_html(), re.S).group(0)
 
-    assert 'class="mark"' in section and "Mandame" in section
-    assert section.count('class="starter"') == 3
+    assert 'class="welcome-avatar"' in section
+    assert 'id="welcome-greeting"' in section and 'id="welcome-cards"' in section
+    assert "starter" not in section
     assert "audio" not in section.lower()  # todavía no se puede mandar audio
 
 
@@ -197,10 +198,9 @@ def test_no_lowercase_epsilon_anywhere_in_the_web_files(name):
 
 
 def test_every_letter_mark_in_the_html_is_the_capital_epsilon():
-    # El header usa el logo (imagen); la letra queda en el saludo del chat. Las demás páginas no
-    # llevan ninguna letra suelta.
+    # El header y el saludo del chat usan una imagen; si alguna vez vuelve una letra suelta, tiene que ser
+    # la Ε mayúscula. Las demás páginas no llevan ninguna.
     marks = re.findall(r'class="mark"[^>]*>(.)<', page("index.html"))
-    assert marks
     assert all(m == BRAND for m in marks), [hex(ord(m)) for m in marks]
     for name in ("config.html", "canales.html", "uso.html", "permisos.html", "rutinas.html"):
         assert 'class="mark"' not in page(name), name
