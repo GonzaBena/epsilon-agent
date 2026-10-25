@@ -758,3 +758,24 @@ def test_app_updates_the_chip_when_the_mode_changes():
     for caller in ("function chooseMode", "function showMode", "function clearScreen"):
         body = js[js.index(caller):]
         assert "showAiChip()" in body[: body.index("\n}\n")], caller
+
+
+# --- Tocar una idea del saludo ---------------------------------------------------
+
+
+def test_a_welcome_card_does_nothing_if_another_conversation_was_opened_meanwhile():
+    # Si abrís otra conversación mientras se crea el chat nuevo, el texto de la idea no puede
+    # aparecer escrito en la que acabás de abrir: useCard compara el loadToken de después con el de antes.
+    js_text = static_path("app.js").read_text(encoding="utf-8")
+    body = js_text[js_text.index("async function useCard"):]
+    body = body[: body.index("\n}\n")]
+
+    assert body.index("loadToken") < body.index("await")
+    assert body.count("loadToken") >= 2 and "return" in body[body.index("await"):body.index("input.value")]
+
+
+def test_config_says_that_the_voice_names_live_in_the_voice_section():
+    html = page("config.html")
+    names = html[html.index('aria-labelledby="s-nombres"'):html.index('aria-labelledby="s-chat"')]
+
+    assert "Voz" in names and "hablarle por voz" in names

@@ -1637,7 +1637,10 @@ const welcomeCards = document.getElementById("welcome-cards");
 
 // Una idea abre un chat NUEVO con IA y deja su texto escrito en el cuadro, sin enviarlo, para editarlo.
 async function useCard(card) {
-  await startNewChat();
+  const pending = startNewChat(); // openNewChat sube loadToken antes de su primer await
+  const token = loadToken;
+  await pending;
+  if (token !== loadToken) return; // abriste otra conversación mientras tanto: el texto no va ahí
   chooseMode("ai");
   input.value = card.prompt;
   input.dispatchEvent(new Event("input")); // el cuadro ajusta su alto
