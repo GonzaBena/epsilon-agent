@@ -132,6 +132,13 @@ def _pick() -> str:
     return players[0]
 
 
+def _source(player: str, title: str) -> str:
+    """De dónde viene lo que suena: el nombre de la app, o «YouTube Music» si es el navegador y la pestaña de YouTube
+    Music muestra esa canción."""
+    app = _app(player)
+    return "YouTube Music" if app in WEB_BROWSERS and navegador.music_is_playing(title) else app
+
+
 def now_playing() -> str:
     player = _pick()
     status = _property(player, "PlaybackStatus")
@@ -141,7 +148,7 @@ def now_playing() -> str:
     artist = _clean(", ".join(str(a) for a in artists)) if isinstance(artists, list) else ""
     state = {"Playing": "Sonando", "Paused": "En pausa"}.get(status, "Detenido")
     track = " — ".join(part for part in (artist, title) if part) or "sin título"
-    return f"{state}: {track} ({_app(player)})"
+    return f"{state}: {track} ({_source(player, str(meta.get('xesam:title', {}).get('data', '')))})"
 
 
 def _mode(arg: str) -> tuple[str, str] | None:
@@ -172,14 +179,20 @@ def _read_mode(player: str, prop: str):
         raise MultimediaError(f"Este reproductor ({_app(player)}) no permite cambiar repetir ni aleatorio.") from None
 
 
-def _set_web_mode(kind: str, option: str) -> str:
-    """Repetir/aleatorio en la pestaña de YouTube Music del navegador, que no los expone por MPRIS."""
+def _title(player: str) -> str:
+    return str(_property(player, "Metadata").get("xesam:title", {}).get("data", ""))
+
+
+def _set_web_mode(player: str, kind: str, option: str) -> str:
+    """Repetir/aleatorio en la pestaña de YouTube Music del navegador, que no los expone por MPRIS. Solo si lo que suena
+    ES esa canción (el reproductor no dice de qué página viene): si no, se explica y no se toca ninguna pestaña."""
+    expect = _title(player) or "?"
     try:
         if kind == "repeat":
             want = None if option == "" else WEB_REPEAT[REPEAT_MODES[option]]
-            text = {"NONE": "Repetir apagado", "ONE": "Repitiendo la canción", "ALL": "Repitiendo la lista"}[navegador.music_repeat(want)]
+            text = {"NONE": "Repetir apagado", "ONE": "Repitiendo la canción", "ALL": "Repitiendo la lista"}[navegador.music_repeat(want, expect)]
         else:
-            text = "Aleatorio activado" if navegador.music_shuffle(SHUFFLE_MODES[option]) else "Aleatorio apagado"
+            text = "Aleatorio activado" if navegador.music_shuffle(SHUFFLE_MODES[option], expect) else "Aleatorio apagado"
     except navegador.NavegadorError as e:
         raise MultimediaError(str(e)) from None
     return f"{text}. (YouTube Music)"
@@ -191,7 +204,7 @@ def _set_mode(player: str, kind: str, option: str) -> str:
         try:
             _property(player, "LoopStatus" if kind == "repeat" else "Shuffle")
         except MultimediaError:
-            return _set_web_mode(kind, option)  # el navegador no lo expone: se usan los botones de YouTube Music
+            return _set_web_mode(player, kind, option)  # el navegador no lo expone: se usan los botones de YouTube Music
     if kind == "repeat":
         current = _read_mode(player, "LoopStatus")
         # sin opción alterna: si ya repite la canción lo apaga, si no la repite

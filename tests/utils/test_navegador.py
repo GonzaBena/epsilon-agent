@@ -457,7 +457,7 @@ class FakeMusicBar:
     def cdp(self, ws_url, method, params=None):
         if method == "Runtime.evaluate":
             assert params["expression"] == navegador.MUSIC_JS  # el único código que corre es el fijo
-            value = {**self.state, "repeatAt": {"x": 10, "y": 20}, "shuffleAt": {"x": 30, "y": 20}} if self.has_bar else None
+            value = {**self.state, "title": "Una  Canción", "repeatAt": {"x": 10, "y": 20}, "shuffleAt": {"x": 30, "y": 20}} if self.has_bar else None
             return {"result": {"type": "object", "value": value}}
         if method == "Input.dispatchMouseEvent" and params["type"] == "mousePressed":
             self.clicks.append((params["x"], params["y"]))
@@ -513,3 +513,24 @@ def test_music_controls_skip_a_blocked_music_site(monkeypatch):
 
     with pytest.raises(navegador.NavegadorError, match="abierta"):
         navegador.music_repeat(None)
+
+
+def test_music_controls_do_not_touch_the_tab_when_another_song_is_playing(monkeypatch):
+    bar = FakeMusicBar(monkeypatch)
+
+    with pytest.raises(navegador.NavegadorError, match="no es de YouTube Music"):
+        navegador.music_repeat(None, expect="Otro video")
+    with pytest.raises(navegador.NavegadorError, match="no es de YouTube Music"):
+        navegador.music_shuffle(None, expect="Otro video")
+    assert bar.clicks == []
+    assert navegador.music_shuffle(True, expect="una canción") is True  # mayúsculas y espacios no cuentan
+
+
+def test_music_is_playing_compares_titles_and_never_raises(monkeypatch):
+    FakeMusicBar(monkeypatch)
+    assert navegador.music_is_playing("UNA canción") is True
+    assert navegador.music_is_playing("Otra") is False
+    assert navegador.music_is_playing("") is False
+
+    FakeChromium(monkeypatch, [page("AAAA1111", "Banco", "https://mi-banco.com/")])
+    assert navegador.music_is_playing("Una canción") is False  # sin pestaña de YouTube Music

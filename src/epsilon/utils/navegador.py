@@ -93,8 +93,8 @@ READ_JS = """(() => {
 
 
 # El SEGUNDO (y último) código fijo que corre en una pestaña: lee el estado de repetir y aleatorio de la barra de
-# YouTube Music (atributos `repeat-mode` y `shuffle-on`; el rótulo de los botones se queda viejo, no sirve) y dónde
-# están. No toca nada de la página y no recibe nada del modelo.
+# YouTube Music (atributos `repeat-mode` y `shuffle-on`; el rótulo de los botones se queda viejo, no sirve), qué canción dice
+# y dónde están los botones. No toca nada de la página y no recibe nada del modelo.
 MUSIC_HOST = "music.youtube.com"
 MUSIC_REPEAT = ("NONE", "ALL", "ONE")
 MUSIC_JS = """(() => {
@@ -104,7 +104,8 @@ MUSIC_JS = """(() => {
     const r = el && el.getBoundingClientRect();
     return r && r.width > 0 && r.height > 0 && r.top >= 0 && r.top < innerHeight ? {x: r.left + r.width / 2, y: r.top + r.height / 2} : null;
   };
-  return {repeat: bar.getAttribute('repeat-mode'), shuffle: bar.hasAttribute('shuffle-on'),
+  const title = bar.querySelector('.title');
+  return {repeat: bar.getAttribute('repeat-mode'), shuffle: bar.hasAttribute('shuffle-on'), title: title ? title.textContent : '',
           repeatAt: center(bar.querySelector('.repeat')), shuffleAt: center(bar.querySelector('.shuffle'))};
 })()"""
 MUSIC_TRIES = 3  # clics máximos para llegar al modo de repetir pedido (son tres modos)
@@ -595,13 +596,33 @@ def _music_tab() -> Tab:
     return tab
 
 
-def music_repeat(want: str | None) -> str:
+def _same_song(a: str, b: str) -> bool:
+    return bool(a.strip()) and " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
+
+
+def music_is_playing(title: str) -> bool:
+    """¿La pestaña de YouTube Music muestra esta canción? MPRIS no dice de qué página viene lo que suena en Chromium,
+    así que se compara el título. Cualquier problema (navegador apagado o cerrado, sin pestaña) es simplemente «no»."""
+    try:
+        return _same_song(_music_state(_music_tab()).get("title", ""), title)
+    except NavegadorError:
+        return False
+
+
+def _music_check(state: dict, expect: str | None) -> None:
+    if expect is not None and not _same_song(str(state.get("title", "")), expect):
+        raise NavegadorError("Lo que suena no es de YouTube Music (la pestaña muestra otra canción): no toco sus botones.")
+
+
+def music_repeat(want: str | None, expect: str | None = None) -> str:
     """Pone repetir de YouTube Music en NONE, ALL u ONE; con None alterna canción (ONE) y apagado. Solo clics en el
-    botón de la barra: nada de texto ni código que venga de afuera. Devuelve el modo en que quedó."""
+    botón de la barra: nada de texto ni código que venga de afuera. Con `expect` (el título de lo que suena según el
+    reproductor), no actúa si la pestaña muestra otra canción. Devuelve el modo en que quedó."""
     if want is not None and want not in MUSIC_REPEAT:
         raise NavegadorError("Modo de repetir desconocido.")
     tab = _music_tab()
     state = _music_state(tab)
+    _music_check(state, expect)
     target = want or ("NONE" if state["repeat"] == "ONE" else "ONE")
     for _ in range(MUSIC_TRIES):
         if state["repeat"] == target:
@@ -614,10 +635,11 @@ def music_repeat(want: str | None) -> str:
     return target
 
 
-def music_shuffle(want: bool | None) -> bool:
-    """Prende o apaga el aleatorio de YouTube Music; con None alterna. Devuelve cómo quedó."""
+def music_shuffle(want: bool | None, expect: str | None = None) -> bool:
+    """Prende o apaga el aleatorio de YouTube Music; con None alterna. `expect` como en `music_repeat`. Devuelve cómo quedó."""
     tab = _music_tab()
     state = _music_state(tab)
+    _music_check(state, expect)
     target = (not state["shuffle"]) if want is None else want
     if bool(state["shuffle"]) != target:
         state = _music_click(tab, state.get("shuffleAt"), lambda s: bool(s.get("shuffle")) == target)

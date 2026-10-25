@@ -28,6 +28,7 @@ def fake_system(monkeypatch, players=None, volume="Volume: 0.30\n"):
         return ""
 
     monkeypatch.setattr(multimedia, "_run", run)
+    monkeypatch.setattr(multimedia.navegador, "music_is_playing", lambda title: False)  # sin Chromium de verdad
     return seen
 
 
@@ -126,9 +127,9 @@ def test_music_refuses_other_options_without_running_anything(monkeypatch):
 # --- repetir y aleatorio -----------------------------------------------------------
 
 
-def fake_modes(monkeypatch, loop="None", shuffle=False, supported=True):
+def fake_modes(monkeypatch, loop="None", shuffle=False, supported=True, players=None):
     """Como `fake_system`, pero también contesta LoopStatus y Shuffle y anota los set-property."""
-    base = fake_system(monkeypatch, {SPOTIFY: ("Playing", [], "t")})
+    base = fake_system(monkeypatch, players or {SPOTIFY: ("Playing", [], "t")})
     original = multimedia._run
 
     def run(argv):
@@ -180,26 +181,36 @@ def test_modes_reject_made_up_options_and_are_valid_for_routines():
 
 
 def test_chromium_without_mpris_modes_falls_back_to_the_youtube_music_tab(monkeypatch):
-    fake_modes(monkeypatch, supported=False)
-    monkeypatch.setattr(multimedia, "_players", lambda: [CHROMIUM])
-    monkeypatch.setattr(multimedia, "_pick", lambda: CHROMIUM)
+    fake_modes(monkeypatch, supported=False, players={CHROMIUM: ("Playing", [], "t")})
     seen = []
-    monkeypatch.setattr(multimedia.navegador, "music_repeat", lambda want: seen.append(("repeat", want)) or (want or "ONE"))
-    monkeypatch.setattr(multimedia.navegador, "music_shuffle", lambda want: seen.append(("shuffle", want)) or True)
+    monkeypatch.setattr(multimedia.navegador, "music_repeat", lambda want, expect: seen.append(("repeat", want, expect)) or (want or "ONE"))
+    monkeypatch.setattr(multimedia.navegador, "music_shuffle", lambda want, expect: seen.append(("shuffle", want, expect)) or True)
 
     assert multimedia.music("repetir") == "Repitiendo la canción. (YouTube Music)"
     assert multimedia.music("repetir lista") == "Repitiendo la lista. (YouTube Music)"
     assert multimedia.music("aleatorio") == "Aleatorio activado. (YouTube Music)"
-    assert seen == [("repeat", None), ("repeat", "ALL"), ("shuffle", None)]
+    assert seen == [("repeat", None, "t"), ("repeat", "ALL", "t"), ("shuffle", None, "t")]  # "t": el título que reporta el reproductor
 
 
 def test_web_fallback_errors_become_readable_multimedia_errors(monkeypatch):
-    fake_modes(monkeypatch, supported=False)
-    monkeypatch.setattr(multimedia, "_pick", lambda: CHROMIUM)
+    fake_modes(monkeypatch, supported=False, players={CHROMIUM: ("Playing", [], "t")})
 
-    def boom(want):
+    def boom(want, expect):
         raise multimedia.navegador.NavegadorError("No hay una pestaña de YouTube Music abierta.")
 
     monkeypatch.setattr(multimedia.navegador, "music_repeat", boom)
     with pytest.raises(multimedia.MultimediaError, match="YouTube Music abierta"):
         multimedia.music("repetir")
+
+
+def test_now_playing_names_youtube_music_when_the_tab_shows_that_song(monkeypatch):
+    fake_system(monkeypatch, {CHROMIUM: ("Playing", ["A"], "Una canción")})
+    monkeypatch.setattr(multimedia.navegador, "music_is_playing", lambda title: title == "Una canción")
+
+    assert multimedia.now_playing() == "Sonando: A — Una canción (YouTube Music)"
+
+
+def test_now_playing_keeps_the_app_name_when_the_tab_shows_something_else(monkeypatch):
+    fake_system(monkeypatch, {CHROMIUM: ("Playing", ["A"], "Un video")})
+
+    assert multimedia.now_playing().endswith("(chromium)")
