@@ -10,49 +10,63 @@ def last(options):
     return options[-1]  # la frase propia de la franja horaria va al final de la lista
 
 
-def test_first_greeting_names_the_user_and_the_assistant():
+TIPS_FIRST = "aquí hay algunos consejos sobre lo que podemos hacer:"
+TIPS_LATER = "Aquí hay algunos consejos sobre lo que podemos hacer:"
+
+
+def test_first_greeting_is_three_lines_with_the_name_and_the_assistant():
     text = welcome.greeting("Gonzalo", "Luna", 10, first=True)
 
-    assert text == "Hola, Gonzalo. Soy Luna, tu nueva asistente. Estas son algunas ideas para empezar:"
+    assert text.split("\n") == ["Hola Gonzalo,", "soy Luna, tu nueva asistente,", TIPS_FIRST]
 
 
 def test_first_greeting_without_a_name_has_no_gap():
     text = welcome.greeting("", "Epsilon", 10, first=True)
 
-    assert text == "Hola, soy Epsilon, tu nueva asistente. Estas son algunas ideas para empezar:"
+    assert text.split("\n") == ["Hola,", "soy Epsilon, tu nueva asistente,", TIPS_FIRST]
 
 
 @pytest.mark.parametrize(
-    "hour, expected",
+    "hour, salute",
     [
-        (4, "noche"), (5, "mañana"), (11, "mañana"), (12, "tarde"), (19, "tarde"), (20, "noche"), (0, "noche"),
+        (4, "Buenas noches"), (5, "Buen día"), (11, "Buen día"), (12, "Buenas tardes"), (19, "Buenas tardes"),
+        (20, "Buenas noches"), (0, "Buenas noches"),
     ],
 )
-def test_later_greetings_come_from_the_hour_band(hour, expected):
-    text = welcome.greeting("Ana", "Epsilon", hour, first=False, pick=last)
+def test_later_greetings_salute_according_to_the_hour(hour, salute):
+    first_line, phrase, tips = welcome.greeting("Ana", "Epsilon", hour, first=False, pick=last).split("\n")
 
-    assert {"mañana": "Buen día, Ana.", "tarde": "Buenas tardes, Ana.", "noche": "Buenas noches, Ana."}[expected] in text
+    assert first_line == f"{salute} Ana,"
+    assert phrase in welcome.pool(hour) and tips == TIPS_LATER
 
 
 def test_a_band_phrase_never_shows_up_in_another_band():
     for hour in range(24):
         pool = welcome.pool(hour)
-        assert sum("Buen día" in p for p in pool) == (1 if 5 <= hour <= 11 else 0)
-        assert sum("Buenas tardes" in p for p in pool) == (1 if 12 <= hour <= 19 else 0)
-        assert sum("Buenas noches" in p for p in pool) == (1 if hour >= 20 or hour <= 4 else 0)
+        assert sum("la mañana" in p for p in pool) == (1 if 5 <= hour <= 11 else 0)
+        assert sum("esta tarde" in p for p in pool) == (1 if 12 <= hour <= 19 else 0)
+        assert sum("cerrar el día" in p for p in pool) == (1 if hour >= 20 or hour <= 4 else 0)
 
 
 @pytest.mark.parametrize("hour", range(24))
-def test_later_greeting_without_a_name_drops_the_comma_part(hour):
-    for template in welcome.pool(hour):
-        text = welcome.greeting("", "Epsilon", hour, first=False, pick=lambda _options, t=template: t)
-        assert "{name}" not in text and ", ." not in text and ",?" not in text and "  " not in text
+def test_later_greeting_without_a_name_has_no_gap_for_any_phrase(hour):
+    for phrase in welcome.pool(hour):
+        text = welcome.greeting("", "Epsilon", hour, first=False, pick=lambda _options, t=phrase: t)
+        first_line = text.split("\n")[0]
+        assert first_line in ("Buen día,", "Buenas tardes,", "Buenas noches,")
+        assert "{" not in text and "  " not in text and " ," not in text
 
 
-def test_later_greeting_picks_with_the_given_function():
+def test_later_greeting_picks_the_phrase_with_the_given_function():
     text = welcome.greeting("Ana", "Epsilon", 15, first=False, pick=lambda options: options[0])
 
-    assert text == "¿En qué vamos a trabajar hoy?"
+    assert text.split("\n")[1] == "¿En qué vamos a trabajar hoy?"
+
+
+def test_phrases_do_not_repeat_the_salute_or_the_name():
+    for hour in range(24):
+        for phrase in welcome.pool(hour):
+            assert "Buen" not in phrase and "{name}" not in phrase and "Hola" not in phrase
 
 
 def test_cards_are_six_with_title_subtitle_and_prompt():
@@ -77,7 +91,7 @@ def test_welcome_endpoint_reports_first_time_and_profile(cfg):
     data = cfg.get("/api/welcome").json()
 
     assert data["needs_profile"] is True
-    assert data["greeting"].startswith("Hola, soy Epsilon")
+    assert data["greeting"].startswith("Hola,\nsoy Epsilon, tu nueva asistente,")
     assert len(data["cards"]) == 6
 
 
@@ -85,7 +99,7 @@ def test_welcome_endpoint_uses_the_names_and_the_first_greeting_until_there_is_a
     data = cfg.get("/api/welcome").json()
 
     assert data["needs_profile"] is False
-    assert data["greeting"] == "Hola, Gonzalo. Soy Luna, tu nueva asistente. Estas son algunas ideas para empezar:"
+    assert data["greeting"].split("\n")[:2] == ["Hola Gonzalo,", "soy Luna, tu nueva asistente,"]
 
 
 def test_welcome_endpoint_greets_differently_once_there_is_a_conversation(cfg, named):

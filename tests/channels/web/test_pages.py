@@ -556,3 +556,10 @@ def test_onboarding_covers_the_whole_screen_with_a_background_and_a_centered_pan
     assert "display: flex" in rule and "align-items: center" in rule and "justify-content: center" in rule
     assert "background" in css_rule(".onboarding")  # color de fondo propio, no el del cuadro flotante
     assert "max-width" in css_rule(".onboarding-panel")
+
+
+def test_welcome_greeting_keeps_its_line_breaks_and_the_picture_is_big():
+    assert "white-space: pre-line" in css_rule(".welcome-greeting")
+    columns = css_rule(".welcome-hero")
+    assert re.search(r"minmax\(0, (1[8-9]|2\d)rem\)", columns)  # columna de la imagen: 18 rem o más
+    assert re.search(r"max-height: (2[6-9]|3\d)rem", css_rule(".welcome-avatar"))
