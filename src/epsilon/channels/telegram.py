@@ -29,7 +29,7 @@ from epsilon.channels import telegram_format
 from epsilon.data import conversations, library
 from epsilon.routines import notify
 from epsilon.settings import config
-from epsilon.voice import transcribe
+from epsilon.voice import tts, transcribe
 
 # Este archivo solo TRADUCE entre Telegram y el núcleo (core.py): convierte lo
 # que llega en un core.Message y dibuja el core.Reply. No decide nada.
@@ -316,9 +316,37 @@ async def send_files(context: ContextTypes.DEFAULT_TYPE, chat_id: int, files: li
             await context.bot.send_message(chat_id, f"No pude enviar {rel}.")
 
 
+def should_speak(said: str | None) -> bool:
+    """¿Corresponde responder con una nota de voz sintetizada?"""
+    if not config.enabled("TTS_ENABLED"):
+        return False
+    mode = os.environ.get("TTS_MODE", "siempre").strip().lower()
+    if mode == "solo_voz":
+        return bool(said and "🎙" in said)
+    return True
+
+
+async def send_voice_reply(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
+    """Sintetiza la respuesta a audio y la manda como nota de voz."""
+    send_fn = getattr(context.bot, "send_voice", None)
+    if not send_fn:
+        return
+    try:
+        audio_path = await asyncio.to_thread(tts.synthesize, text)
+        try:
+            with open(audio_path, "rb") as f:
+                await send_fn(chat_id=chat_id, voice=f)
+        finally:
+            audio_path.unlink(missing_ok=True)
+    except Exception as e:
+        print(f"No pude enviar la nota de voz en Telegram: {config.redact(repr(e))}")
+
+
 async def respond(message, context, chat_id: int, msg: core.Message, said: str | None) -> None:
     """Le pasa el mensaje al núcleo, muestra la respuesta y la anota (con lo que dijiste)."""
     reply = await ask_core(chat_id, context, msg)
+    if should_speak(said) and reply.text:
+        await send_voice_reply(context, chat_id, reply.text)
     sent = await deliver(reply.text, message.reply_text, message.reply_text, keyboard(reply.actions, reply.stacked))
     log_turn(chat_id, said, reply, getattr(sent, "message_id", None))
     await send_files(context, chat_id, reply.files)

@@ -12,8 +12,8 @@ from epsilon.channels import telegram
 
 @pytest.fixture(autouse=True)
 def voice_settings(monkeypatch, tmp_path):
-    # Los dos ajustes de voz empiezan en su valor por defecto y el .env es uno temporal.
-    for key in ("VOICE_ENABLED", "VOICE_CONFIRM"):
+    # Los ajustes de voz empiezan en su valor por defecto y el .env es uno temporal.
+    for key in ("VOICE_ENABLED", "VOICE_CONFIRM", "TTS_ENABLED"):
         monkeypatch.setenv(key, config.BY_KEY[key].default)
     env = tmp_path / "menu.env"
     monkeypatch.setattr(config, "ENV_FILE", env)
@@ -43,6 +43,7 @@ def test_the_voice_screen_shows_the_current_state_of_each_setting():
     assert labels(reply) == [
         "Voz (web y Telegram): sí ✅",
         "Confirmar antes de ejecutar: no ⬜",
+        "Responder con audio: no ⬜",
         "‹ Volver",
     ]
 

@@ -64,22 +64,133 @@ function nextText(rule) {
   return `Próxima: ${rule.next_text} (${untilText(rule.next)})`;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function makeSvg(paths, viewBox = "0 0 24 24", width = 16, height = 16) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", viewBox);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.7");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  for (const { tag = "path", ...attrs } of paths) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    svg.append(el);
+  }
+  return svg;
+}
+
+function triggerIcon(kind) {
+  if (kind === "once") {
+    return makeSvg([
+      { tag: "circle", cx: "12", cy: "13", r: "8" },
+      { tag: "path", d: "M12 9v4l2 2" },
+      { tag: "path", d: "M10 2h4" },
+    ]);
+  }
+  if (kind === "cond") {
+    return makeSvg([{ tag: "path", d: "M22 12h-4l-3 9L9 3l-3 9H2" }]);
+  }
+  return makeSvg([
+    { tag: "circle", cx: "12", cy: "12", r: "9" },
+    { tag: "path", d: "M12 7v5l3 2" },
+  ]);
+}
+
+function stepIcon(tool) {
+  const t = String(tool || "").toLowerCase();
+  if (t.includes("volumen") || t.includes("audio") || t.includes("sonido")) {
+    return makeSvg([
+      { tag: "polygon", points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" },
+      { tag: "path", d: "M15.54 8.46a5 5 0 0 1 0 7.07" },
+    ]);
+  }
+  if (t.includes("avisar") || t.includes("notif") || t.includes("alarma")) {
+    return makeSvg([
+      { tag: "path", d: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" },
+      { tag: "path", d: "M13.73 21a2 2 0 0 1-3.46 0" },
+    ]);
+  }
+  if (t.includes("nav") || t.includes("web") || t.includes("abrir") || t.includes("url")) {
+    return makeSvg([
+      { tag: "circle", cx: "12", cy: "12", r: "9" },
+      { tag: "line", x1: "2", y1: "12", x2: "22", y2: "12" },
+      { tag: "path", d: "M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z" },
+    ]);
+  }
+  if (t.includes("musica") || t.includes("play") || t.includes("reproducir")) {
+    return makeSvg([
+      { tag: "circle", cx: "5.5", cy: "17.5", r: "2.5" },
+      { tag: "circle", cx: "17.5", cy: "15.5", r: "2.5" },
+      { tag: "path", d: "M8 17V5l12-2v12" },
+    ]);
+  }
+  return makeSvg([{ tag: "polygon", points: "13 2 3 14 12 14 11 22 21 10 12 10 13 2" }]);
+}
+
+function arrowIcon() {
+  return makeSvg([
+    { tag: "line", x1: "4", y1: "12", x2: "20", y2: "12" },
+    { tag: "polyline", points: "14 6 20 12 14 18" },
+  ], "0 0 24 24", 12, 12);
+}
+
+function timeIcon() {
+  return makeSvg([
+    { tag: "circle", cx: "12", cy: "12", r: "9" },
+    { tag: "path", d: "M12 7v5l3 2" },
+  ], "0 0 24 24", 13, 13);
+}
+
+function updateKpis(allRules) {
+  const activeCountEl = document.getElementById("kpi-active-count");
+  const pausedCountEl = document.getElementById("kpi-paused-count");
+  const nextTextEl = document.getElementById("kpi-next-text");
+  if (!activeCountEl || !pausedCountEl || !nextTextEl) return;
+
+  const active = allRules.filter((r) => r.active).length;
+  const paused = allRules.filter((r) => !r.active).length;
+  activeCountEl.textContent = `${active} ${active === 1 ? "activa" : "activas"}`;
+  pausedCountEl.textContent = `${paused} en pausa`;
+
+  const upcoming = allRules
+    .filter((r) => r.active && r.next)
+    .sort((a, b) => new Date(a.next).getTime() - new Date(b.next).getTime())[0];
+  if (upcoming) {
+    nextTextEl.textContent = `Próxima: ${upcoming.next_text} (${untilText(upcoming.next)})`;
+  } else if (active > 0 && allRules.some((r) => r.active && r.kind === "cond")) {
+    nextTextEl.textContent = "Vigilando condiciones del sistema";
+  } else {
+    nextTextEl.textContent = "Sin próximas ejecuciones";
+  }
+}
+
 function refreshTimes() {
   for (const { node, rule } of timeNodes) node.textContent = nextText(rule);
+  updateKpis(rules);
 }
 
 function renderRow(rule) {
   const item = make("li", `routine-row${rule.active ? "" : " is-paused"}`);
-  const info = make("div", "routine-info");
-  const title = make("div", "routine-title");
-  title.append(make("strong", "routine-when", rule.when));
-  title.append(make("span", "perm-kind", KIND_LABELS[rule.kind] || rule.kind));
-  const next = make("p", "routine-next", nextText(rule));
-  timeNodes.push({ node: next, rule });
-  title.prepend(make("strong", "routine-name", rule.name));
-  info.append(title, make("p", "routine-what", whatText(rule)), next);
 
-  const actions = make("div", "routine-actions");
+  // Cabecera: Disparador + Nombre + Tipo + Switch
+  const header = make("div", "routine-card-header");
+  const headerLeft = make("div", "routine-header-left");
+
+  const triggerBadge = make("div", "routine-trigger-badge");
+  triggerBadge.append(triggerIcon(rule.kind));
+  triggerBadge.append(make("strong", "routine-when", rule.when));
+
+  const kindBadge = make("span", "perm-kind", KIND_LABELS[rule.kind] || rule.kind);
+  const nameEl = make("strong", "routine-name", rule.name);
+
+  headerLeft.append(triggerBadge, kindBadge, nameEl);
+
   const toggle = make("button", "switch");
   toggle.type = "button";
   toggle.dataset.focus = `switch-${rule.id}`;
@@ -89,20 +200,51 @@ function renderRow(rule) {
   toggle.append(make("span", "knob"));
   toggle.addEventListener("click", () => change("PUT", rule.id, { enabled: !rule.active }, rule.active ? "Rutina pausada." : "Rutina reanudada."));
 
-  const remove = make("button", "secondary routine-delete", "Borrar");
-  remove.type = "button";
-  remove.dataset.focus = `delete-${rule.id}`;
-  remove.setAttribute("aria-label", `Borrar: ${rule.when}. ${whatText(rule)}`);
-  remove.addEventListener("click", () => change("DELETE", rule.id, undefined, "Rutina borrada."));
+  header.append(headerLeft, toggle);
 
+  // Pipeline de pasos
+  const pipeline = make("div", "routine-pipeline");
+  const stepItems = rule.steps && rule.steps.length ? rule.steps : [{ tool: "", text: whatText(rule) }];
+  stepItems.forEach((step, idx) => {
+    if (idx > 0) {
+      const arrow = make("span", "routine-flow-arrow");
+      arrow.append(arrowIcon());
+      pipeline.append(arrow);
+    }
+    const chip = make("div", "routine-step-chip");
+    chip.append(stepIcon(step.tool || ""));
+    chip.append(make("span", "routine-step-label", step.text || step.tool || "paso"));
+    pipeline.append(chip);
+  });
+
+  // Texto de respaldo accesible
+  const what = make("p", "routine-what", whatText(rule));
+
+  // Pie de tarjeta: Próxima ejecución + Botones Editar y Borrar
+  const footer = make("div", "routine-card-footer");
+  const nextWrap = make("div", "routine-next-wrap");
+  nextWrap.append(timeIcon());
+  const next = make("p", "routine-next", nextText(rule));
+  timeNodes.push({ node: next, rule });
+  nextWrap.append(next);
+
+  const actions = make("div", "routine-actions");
   const edit = make("button", "secondary routine-edit", "Editar");
   edit.type = "button";
   edit.dataset.focus = `edit-${rule.id}`;
   edit.setAttribute("aria-label", `Editar: ${rule.name}`);
   edit.addEventListener("click", () => window.routineEditor && window.routineEditor.open(rule));
 
-  actions.append(toggle, edit, remove);
-  item.append(info, actions);
+  const remove = make("button", "secondary routine-delete", "Borrar");
+  remove.type = "button";
+  remove.dataset.focus = `delete-${rule.id}`;
+  remove.setAttribute("aria-label", `Borrar: ${rule.when}. ${whatText(rule)}`);
+  remove.addEventListener("click", () => change("DELETE", rule.id, undefined, "Rutina borrada."));
+
+  actions.append(edit, remove);
+  footer.append(nextWrap, actions);
+
+  item.append(header, pipeline, what, footer);
   return item;
 }
 
@@ -115,6 +257,7 @@ function render(data) {
   list.replaceChildren(...rules.map(renderRow));
   empty.hidden = rules.length > 0;
   banner.hidden = data.enabled;
+  updateKpis(rules);
   if (focused) {
     const again = list.querySelector(`[data-focus="${focused}"]`);
     if (again) again.focus();
@@ -245,4 +388,4 @@ setInterval(() => {
 load();
 
 // Lo que comparte con el editor de rutinas (rutinas-editor.js), que se carga después.
-window.routinesPage = { adopt, request, make, showStatus, showError };
+window.routinesPage = { adopt, request, make, showStatus, showError, stepIcon };

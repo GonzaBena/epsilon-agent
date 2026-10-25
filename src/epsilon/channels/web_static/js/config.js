@@ -200,6 +200,7 @@ function render(state) {
   }
   voiceStatus.textContent = VOICE_TEXTS[state.voice] || "";
   renderVoiceModel(state);
+  renderTtsVoices(state.tts_voices);
   renderRestart(state.pending_restart);
   resetClear();
 }
@@ -213,6 +214,18 @@ function renderVoiceModel(state) {
   if (bytes) {
     const gigabytes = (bytes / 1024 ** 3).toFixed(1).replace(".", ",");
     voiceModelText.textContent = `El modelo de voz ocupa ${gigabytes} GB en el disco. Si lo borrás y volvés a prender la voz, se vuelve a bajar.`;
+  }
+}
+
+function renderTtsVoices(voices) {
+  const dl = document.getElementById("tts-voices-list");
+  if (!dl || !voices) return;
+  dl.replaceChildren();
+  for (const v of voices) {
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.label = v.name;
+    dl.appendChild(opt);
   }
 }
 

@@ -93,9 +93,9 @@ def parse_do(text: str) -> dict:
             raise ValueError(f"El aviso es largo: como mucho {MAX_TEXT} caracteres.")
     elif kind == "volumen":
         multimedia.parse_volume(arg)  # ValueError con su propio mensaje
-    elif arg.lower() not in multimedia.MUSIC_ACTIONS:
-        raise ValueError("Opciones de música: pausa, play, siguiente, anterior (sin opción, alterna).")
-    return {"kind": kind, "arg": arg if kind == "avisar" else arg.lower()}
+    elif not multimedia.is_music_action(arg):
+        raise ValueError("Opciones de música: pausa, play, siguiente, anterior, " + multimedia.MODES_USAGE + " (sin opción, alterna).")
+    return {"kind": kind, "arg": arg if kind == "avisar" else " ".join(arg.lower().split())}
 
 
 def next_after(when: dict, after: datetime) -> datetime | None:

@@ -57,6 +57,13 @@ def _language(value: str) -> str:
     return value
 
 
+def _tts_mode(value: str) -> str:
+    value = value.lower().replace("-", "_")
+    if value not in ("siempre", "solo_voz"):
+        raise ValueError("Elegí «siempre» (para todo mensaje) o «solo_voz» (solo cuando te hablen por voz).")
+    return value
+
+
 def _plain(name: str) -> str:
     """Minúsculas y sin tilde (la ñ se queda): son más fáciles de decir y de reconocer por voz."""
     name = name.lower().replace("ñ", "\0")  # la ñ no es una tilde: se guarda aparte del resto
@@ -355,6 +362,35 @@ SETTINGS = (
         live=True,
         default="no",
         validate=_yes_no,
+    ),
+    # Respuestas con audio mediante Piper TTS
+    Setting(
+        "TTS_ENABLED",
+        "Responder con audio (notas de voz y reproductor web con Piper)",
+        live=True,
+        default="no",
+        validate=_yes_no,
+    ),
+    Setting(
+        "TTS_VOICE",
+        "Voz de Piper para responder con audio",
+        live=True,
+        default="es_AR-daniela-high",
+        validate=_matching(r"[\w.\-]+", "Escribí el nombre del modelo de voz (por ejemplo es_AR-daniela-high)."),
+    ),
+    Setting(
+        "TTS_MODE",
+        "Cuándo responder con audio",
+        live=True,
+        default="siempre",
+        validate=_tts_mode,
+    ),
+    Setting(
+        "TTS_MAX_CHARS",
+        "Largo máximo del texto a sintetizar",
+        live=True,
+        default="600",
+        validate=_whole(50, 5000, "El largo de audio"),
     ),
     # El navegador de la IA (utils/navegador.py y ai/browser_guard.py los leen en cada uso).
     Setting(

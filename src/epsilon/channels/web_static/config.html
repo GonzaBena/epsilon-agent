@@ -365,6 +365,46 @@
                 <p class="error" id="err-WHISPER_DEVICE" role="alert"></p>
               </div>
             </div>
+            <div class="sub" aria-labelledby="s-tts">
+              <h4 id="s-tts">Respuestas con audio (Piper TTS)</h4>
+              <div class="field switch-field">
+                <div class="switch-row">
+                  <span class="switch-label" id="label-TTS_ENABLED">Responder con audio (notas de voz y reproductor web)</span>
+                  <button type="button" class="switch" role="switch" id="f-TTS_ENABLED" data-key="TTS_ENABLED"
+                          value="no" aria-checked="false"
+                          aria-labelledby="label-TTS_ENABLED" aria-describedby="hint-TTS_ENABLED err-TTS_ENABLED"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-TTS_ENABLED"></p>
+                <p class="error" id="err-TTS_ENABLED" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-TTS_VOICE">Voz de Piper</label>
+                <input id="f-TTS_VOICE" data-key="TTS_VOICE" type="text" placeholder="es_AR-daniela-high"
+                       list="tts-voices-list" autocomplete="off" spellcheck="false"
+                       aria-describedby="hint-TTS_VOICE err-TTS_VOICE">
+                <datalist id="tts-voices-list"></datalist>
+                <p class="hint" id="hint-TTS_VOICE"></p>
+                <p class="error" id="err-TTS_VOICE" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-TTS_MODE">Cuándo responder con audio</label>
+                <select id="f-TTS_MODE" data-key="TTS_MODE"
+                        aria-describedby="hint-TTS_MODE err-TTS_MODE">
+                  <option value="siempre">Siempre (en todo mensaje)</option>
+                  <option value="solo_voz">Solo cuando te hablen por voz</option>
+                </select>
+                <p class="hint" id="hint-TTS_MODE"></p>
+                <p class="error" id="err-TTS_MODE" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-TTS_MAX_CHARS">Largo máximo del texto a sintetizar</label>
+                <input id="f-TTS_MAX_CHARS" data-key="TTS_MAX_CHARS" type="text" placeholder="600"
+                       inputmode="numeric" autocomplete="off" spellcheck="false"
+                       aria-describedby="hint-TTS_MAX_CHARS err-TTS_MAX_CHARS">
+                <p class="hint" id="hint-TTS_MAX_CHARS"></p>
+                <p class="error" id="err-TTS_MAX_CHARS" role="alert"></p>
+              </div>
+            </div>
           </section>
 
           <section class="panel" data-panel="canales" aria-labelledby="h-canales" hidden>

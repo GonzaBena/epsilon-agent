@@ -179,3 +179,43 @@ def test_deleting_the_model_is_blocked_for_foreign_origins(client):
     reply = client.post("/api/voice/delete-model", headers={"Origin": "http://evil.example"})
 
     assert reply.status_code == 403
+
+
+# --- Salida de voz (TTS con Piper): /api/audio/:token ------------------------
+
+
+def test_get_audio_serves_cached_file(client, tmp_path):
+    ogg = tmp_path / "habla.ogg"
+    ogg.write_bytes(b"OGG OPUS DATA")
+    token = web.tts.cache_audio(ogg)
+
+    res = client.get(f"/api/audio/{token}")
+    assert res.status_code == 200
+    assert "audio/ogg" in res.headers["content-type"]
+    assert res.content == b"OGG OPUS DATA"
+
+
+def test_get_audio_404_for_missing_or_expired(client):
+    res = client.get("/api/audio/token_que_no_existe")
+    assert res.status_code == 404
+
+
+def test_message_endpoint_attaches_audio_url_when_tts_enabled(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("TTS_ENABLED", "si")
+    fake_ogg = tmp_path / "tts.ogg"
+    fake_ogg.write_bytes(b"AUDIO")
+    monkeypatch.setattr(web.tts, "synthesize", lambda text: fake_ogg)
+
+    res = client.post("/api/message", json={"text": "hola"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "audio_url" in data
+    assert data["audio_url"].startswith("/api/audio/")
+
+
+def test_message_endpoint_no_audio_url_when_tts_disabled(client, monkeypatch):
+    monkeypatch.setenv("TTS_ENABLED", "no")
+    res = client.post("/api/message", json={"text": "hola"})
+    assert res.status_code == 200
+    assert "audio_url" not in res.json()
+

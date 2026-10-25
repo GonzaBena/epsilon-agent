@@ -139,9 +139,21 @@ def block_real_whisper(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_piper(monkeypatch):
+    """Ningún test ejecuta piper-tts de verdad."""
+    from epsilon.voice import tts
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar Piper-TTS de verdad")
+
+    monkeypatch.setattr(tts, "_run_piper", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def voice_on_by_default(monkeypatch):
     """La voz de la PC real (su .env) no cuenta: cada test parte con la voz prendida."""
     monkeypatch.setenv("VOICE_ENABLED", "si")
+    monkeypatch.setenv("TTS_ENABLED", "no")
     monkeypatch.setenv("TELEGRAM_ENABLED", "si")
     monkeypatch.setenv("USD_ARS", "")  # la cotización de la PC real tampoco cuenta  # (y se restauran solos si un test los cambia)
     # Tampoco el modelo elegido en la PC real (p. ej. uno de Ollama): los tests parten con el de siempre, Gemini.

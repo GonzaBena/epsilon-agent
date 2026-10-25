@@ -121,3 +121,59 @@ def test_music_refuses_other_options_without_running_anything(monkeypatch):
     with pytest.raises(ValueError):
         multimedia.music("Quit")
     assert seen == []
+
+
+# --- repetir y aleatorio -----------------------------------------------------------
+
+
+def fake_modes(monkeypatch, loop="None", shuffle=False, supported=True):
+    """Como `fake_system`, pero también contesta LoopStatus y Shuffle y anota los set-property."""
+    base = fake_system(monkeypatch, {SPOTIFY: ("Playing", [], "t")})
+    original = multimedia._run
+
+    def run(argv):
+        if "get-property" in argv and argv[-1] in ("LoopStatus", "Shuffle"):
+            if not supported:
+                raise multimedia.MultimediaError("El sistema de audio no respondió.")
+            return json.dumps({"data": loop if argv[-1] == "LoopStatus" else shuffle})
+        return original(argv)
+
+    monkeypatch.setattr(multimedia, "_run", run)
+    return base
+
+
+@pytest.mark.parametrize("text, loop, value, said", [
+    ("repetir", "None", "Track", "Repitiendo la canción"),
+    ("repetir", "Track", "None", "Repetir apagado"),  # sin opción alterna
+    ("repetir canción", "None", "Track", "Repitiendo la canción"),
+    ("Repetir  lista", "None", "Playlist", "Repitiendo la lista"),
+    ("repetir no", "Track", "None", "Repetir apagado"),
+])
+def test_repeat_sets_loop_status_with_fixed_values(monkeypatch, text, loop, value, said):
+    seen = fake_modes(monkeypatch, loop=loop)
+
+    assert multimedia.music(text).startswith(said)
+    assert seen[-1] == ["busctl", "--user", "set-property", SPOTIFY, multimedia.MPRIS_PATH, multimedia.PLAYER_IFACE, "LoopStatus", "s", value]
+
+
+@pytest.mark.parametrize("text, now, value", [("aleatorio", False, "true"), ("aleatorio", True, "false"), ("shuffle sí", False, "true"), ("aleatorio no", True, "false")])
+def test_shuffle_sets_the_boolean(monkeypatch, text, now, value):
+    seen = fake_modes(monkeypatch, shuffle=now)
+
+    multimedia.music(text)
+    assert seen[-1][-3:] == ["Shuffle", "b", value]
+
+
+def test_modes_say_so_when_the_player_does_not_support_them(monkeypatch):
+    seen = fake_modes(monkeypatch, supported=False)
+
+    with pytest.raises(multimedia.MultimediaError, match="no permite cambiar repetir"):
+        multimedia.music("repetir")
+    assert not any("set-property" in argv for argv in seen)
+
+
+def test_modes_reject_made_up_options_and_are_valid_for_routines():
+    assert multimedia.is_music_action("repetir lista") and multimedia.is_music_action("aleatorio")
+    assert not multimedia.is_music_action("repetir x; reboot")
+    with pytest.raises(ValueError):
+        multimedia.music("aleatorio quizás")

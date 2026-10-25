@@ -120,6 +120,7 @@
   svg.addEventListener("pointerdown", (event) => {
     const group = event.target instanceof Element ? event.target.closest(".rt-node") : null;
     if (!group) return;
+    event.preventDefault();
     const key = group.dataset.key;
     const at = toBoard(event);
     const pos = position(key);

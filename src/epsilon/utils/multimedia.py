@@ -28,6 +28,14 @@ MUSIC_ACTIONS = {
 }
 MUSIC_DONE = {"PlayPause": "Alterné play/pausa.", "Pause": "Pausé.", "Play": "Reproduciendo.",
               "Next": "Pasé a la siguiente.", "Previous": "Volví a la anterior."}
+# repetir y aleatorio: propiedades LoopStatus (None|Track|Playlist) y Shuffle (bool) de MPRIS. No todo reproductor las
+# expone (Spotify y mpv sí; YouTube en Chromium no): si falta, se dice claro. Valor None = alternar.
+REPEAT_MODES = {"": "Track", "cancion": "Track", "canción": "Track", "una": "Track", "lista": "Playlist", "todo": "Playlist",
+                "todas": "Playlist", "no": "None", "off": "None", "apagar": "None"}
+SHUFFLE_MODES = {"": None, "si": True, "sí": True, "on": True, "no": False, "off": False}
+REPEAT_WORDS = ("repetir", "repeat")
+SHUFFLE_WORDS = ("aleatorio", "shuffle")
+MODES_USAGE = "repetir [canción|lista|no] y aleatorio [sí|no]"
 VOLUME_USAGE = "Escribí un número (40), una subida o bajada (+5, -10), «silenciar» o «activar»."
 
 
@@ -134,11 +142,54 @@ def now_playing() -> str:
     return f"{state}: {track} ({_app(player)})"
 
 
+def _mode(arg: str) -> tuple[str, str] | None:
+    """«repetir lista» -> ("repeat", "lista"); None si no es de repetir ni de aleatorio o la opción no existe."""
+    word, _, rest = arg.partition(" ")
+    rest = rest.strip()
+    if word in REPEAT_WORDS and rest in REPEAT_MODES:
+        return "repeat", rest
+    if word in SHUFFLE_WORDS and rest in SHUFFLE_MODES:
+        return "shuffle", rest
+    return None
+
+
+def is_music_action(arg: str) -> bool:
+    """¿Es algo que `music` entiende? (lo usan las rutinas para validar sin tocar el sistema)."""
+    arg = " ".join(arg.lower().split())
+    return arg in MUSIC_ACTIONS or _mode(arg) is not None
+
+
+def _read_mode(player: str, prop: str):
+    try:
+        return _property(player, prop)
+    except MultimediaError:
+        raise MultimediaError(f"Este reproductor ({_app(player)}) no permite cambiar repetir ni aleatorio.") from None
+
+
+def _set_mode(player: str, kind: str, option: str) -> str:
+    """Cambia repetir o aleatorio en el reproductor y dice cómo quedó. Valores fijos, nunca texto de la persona."""
+    if kind == "repeat":
+        current = _read_mode(player, "LoopStatus")
+        # sin opción alterna: si ya repite la canción lo apaga, si no la repite
+        value = "None" if option == "" and current == "Track" else REPEAT_MODES[option]
+        _run(["busctl", "--user", "set-property", player, MPRIS_PATH, PLAYER_IFACE, "LoopStatus", "s", value])
+        text = {"None": "Repetir apagado", "Track": "Repitiendo la canción", "Playlist": "Repitiendo la lista"}[value]
+    else:
+        current = _read_mode(player, "Shuffle")
+        value = (not current) if SHUFFLE_MODES[option] is None else SHUFFLE_MODES[option]
+        _run(["busctl", "--user", "set-property", player, MPRIS_PATH, PLAYER_IFACE, "Shuffle", "b", "true" if value else "false"])
+        text = "Aleatorio activado" if value else "Aleatorio apagado"
+    return f"{text}. ({_app(player)})"
+
+
 def music(arg: str) -> str:
-    """Play, pausa, siguiente o anterior en el reproductor activo. ValueError si no es una opción."""
-    arg = arg.strip().lower()
+    """Play, pausa, siguiente, anterior, repetir o aleatorio en el reproductor activo. ValueError si no es una opción."""
+    arg = " ".join(arg.lower().split())
+    mode = _mode(arg)
+    if mode:
+        return _set_mode(_pick(), *mode)
     if arg not in MUSIC_ACTIONS:
-        raise ValueError("Opciones: pausa, play, siguiente, anterior (sin opción, alterna play/pausa).")
+        raise ValueError("Opciones: pausa, play, siguiente, anterior, " + MODES_USAGE + " (sin opción, alterna play/pausa).")
     method = MUSIC_ACTIONS[arg]
     player = _pick()
     _run(["busctl", "--user", "call", player, MPRIS_PATH, PLAYER_IFACE, method])

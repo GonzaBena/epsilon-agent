@@ -7,7 +7,7 @@
 "use strict";
 
 (() => {
-  const { adopt, request, make, showStatus, showError: showPageError } = window.routinesPage;
+  const { adopt, request, make, showStatus, showError: showPageError, stepIcon } = window.routinesPage;
 
   const dialog = document.getElementById("routine-dialog");
   const el = (id) => document.getElementById(id);
@@ -197,6 +197,7 @@
     input.value = current === undefined ? "" : typeof current === "object" ? JSON.stringify(current) : String(current);
     input.addEventListener("focus", () => remember(input));
     input.addEventListener("input", () => {
+      showError("");
       const out = {};
       for (const item of fields) {
         const raw = item.input.value.trim();
@@ -220,14 +221,29 @@
       lastField = input;
     };
 
+    item.addEventListener("click", (event) => {
+      if (event.target instanceof Element && event.target.closest(".rt-step-tools")) return;
+      if (index === selected && event.target instanceof Element && event.target.closest(".rt-step-body")) return;
+      select(index);
+    });
+
     const head = make("div", "rt-step-head");
-    const title = make("button", "rt-step-title", `Paso ${index + 1} · ${labelOf(step.tool)}`);
+    const title = make("button", "rt-step-title");
     title.type = "button";
     title.addEventListener("click", () => select(index));
+
+    const numBadge = make("span", "rt-step-num", String(index + 1).padStart(2, "0"));
+    const titleLabel = make("span", "rt-step-text", `Paso ${index + 1} · ${labelOf(step.tool)}`);
+    if (typeof stepIcon === "function") {
+      title.append(numBadge, stepIcon(step.tool), titleLabel);
+    } else {
+      title.append(numBadge, titleLabel);
+    }
+
     const tools = make("div", "rt-step-tools");
-    const up = make("button", "secondary", "↑");
-    const down = make("button", "secondary", "↓");
-    const remove = make("button", "secondary", "Quitar");
+    const up = make("button", "secondary rt-tool-btn", "↑");
+    const down = make("button", "secondary rt-tool-btn", "↓");
+    const remove = make("button", "secondary rt-tool-btn rt-remove-btn", "Quitar");
     for (const [button, text] of [[up, `Subir el paso ${index + 1}`], [down, `Bajar el paso ${index + 1}`], [remove, `Quitar el paso ${index + 1}`]]) {
       button.type = "button";
       button.setAttribute("aria-label", text);
@@ -251,20 +267,10 @@
       body.append(group);
     } else {
       const field = make("div", "conn-field");
-      const input = make("input");
-      input.type = "text";
-      input.maxLength = 3000;
-      input.spellcheck = false;
-      input.value = step.args;
-      input.placeholder = info ? info.hint : "";
-      input.setAttribute("aria-label", `Argumento del paso ${index + 1}`);
-      input.addEventListener("focus", () => remember(input));
-      input.addEventListener("input", () => {
-        step.args = input.value;
+      renderToolControl(step.tool, step.args, (val) => {
+        step.args = val;
         changed();
-      });
-      lastField = input;
-      field.append(input);
+      }, remember, field, false);
       body.append(field);
     }
 
@@ -341,14 +347,230 @@
     renderSteps();
   }
 
-  function fillPick() {
-    pick.replaceChildren(...catalog.map((item) => Object.assign(make("option", "", item.label), { value: item.id })));
+  const TOOL_OPTIONS = {
+    musica: [
+      { value: "play", label: "▶ Reproducir (play)" },
+      { value: "pausa", label: "⏸ Pausar" },
+      { value: "siguiente", label: "⏭ Siguiente canción" },
+      { value: "anterior", label: "⏮ Canción anterior" },
+      { value: "", label: "⏯ Alternar (play / pausa)" },
+      { value: "repetir", label: "🔂 Repetir la canción (alterna)" },
+      { value: "repetir lista", label: "🔁 Repetir la lista" },
+      { value: "aleatorio", label: "🔀 Aleatorio (alterna)" },
+    ],
+    sistema: [
+      { value: "", label: "📊 Ver todo el sistema" },
+      { value: "disco", label: "💾 Uso de disco" },
+      { value: "ram", label: "🧠 Uso de memoria RAM" },
+      { value: "uptime", label: "⏱ Tiempo encendido (uptime)" },
+      { value: "servicio", label: "⚙ Estado del servicio" },
+    ],
+    ventanas: [
+      { value: "", label: "🪟 Todas las ventanas" },
+      { value: "activa", label: "🪟 Solo la ventana activa" },
+    ],
+  };
+
+  const NO_ARG_TOOLS = new Set(["sonando", "fecha", "dolar", "memoria"]);
+
+  function renderToolControl(tool, initialValue, onChange, remember, container, isStaging) {
+    const info = toolInfo(tool);
+    const labelText = cleanLabel(info ? info.label : tool);
+    const safeRemember = (inp) => {
+      if (typeof remember === "function") remember(inp);
+    };
+
+    if (tool === "esperar") {
+      const field = make("div", "rt-arg-row");
+      const label = make("label", "", isStaging ? "Tiempo de espera:" : "Esperar:");
+      const input = make("input");
+      input.type = "number";
+      input.min = "1";
+      input.max = "60";
+      input.value = initialValue || "5";
+      input.setAttribute("aria-label", "Segundos a esperar (1 a 60)");
+      input.addEventListener("focus", () => safeRemember(input));
+      input.addEventListener("input", () => {
+        showError("");
+        onChange(input.value);
+      });
+      const suffix = make("span", "rt-unit-suffix", "segundos (1 a 60 s)");
+      field.append(label, input, suffix);
+      container.append(field);
+      onChange(input.value);
+      safeRemember(input);
+      return;
+    }
+
+    if (TOOL_OPTIONS[tool]) {
+      const field = make("div", "rt-arg-row");
+      const label = make("label", "", isStaging ? `Acción de ${labelText}:` : "Acción:");
+      const select = make("select");
+      select.setAttribute("aria-label", `Opción para ${labelText}`);
+      for (const opt of TOOL_OPTIONS[tool]) {
+        const optionEl = make("option", "", opt.label);
+        optionEl.value = opt.value;
+        if (opt.value === (initialValue || "")) optionEl.selected = true;
+        select.append(optionEl);
+      }
+      select.addEventListener("change", () => {
+        showError("");
+        onChange(select.value);
+      });
+      field.append(label, select);
+      container.append(field);
+      onChange(select.value);
+      return;
+    }
+
+    if (NO_ARG_TOOLS.has(tool)) {
+      const hint = make("p", "hint", "ℹ Esta acción no requiere argumentos adicionales.");
+      container.append(hint);
+      onChange("");
+      return;
+    }
+
+    // Default / general tools (volumen, avisar, nav_abrir, etc.)
+    const field = make("div", "rt-stage-field");
+    const label = make("label", "", isStaging ? `Parámetro para ${labelText}:` : `Argumento:`);
+    const input = make("input");
+    input.type = "text";
+    input.maxLength = 3000;
+    input.spellcheck = false;
+    input.value = initialValue || "";
+    input.placeholder = info ? info.hint : "";
+    input.setAttribute("aria-label", `Argumento para ${labelText}`);
+    input.addEventListener("focus", () => safeRemember(input));
+    input.addEventListener("input", () => {
+      showError("");
+      onChange(input.value);
+    });
+    field.append(label, input);
+
+    if (tool === "volumen") {
+      const presets = make("div", "rt-presets-row");
+      presets.append(make("span", "hint", "Rápido:"));
+      const volLevels = [
+        ["Silenciar", "silenciar"],
+        ["10%", "10"],
+        ["25%", "25"],
+        ["50%", "50"],
+        ["75%", "75"],
+        ["100%", "100"],
+      ];
+      for (const [lvlLabel, lvlVal] of volLevels) {
+        const chip = make("button", "rt-preset-chip", lvlLabel);
+        chip.type = "button";
+        chip.addEventListener("click", () => {
+          showError("");
+          input.value = lvlVal;
+          onChange(lvlVal);
+          input.focus();
+        });
+        presets.append(chip);
+      }
+      field.append(presets);
+    }
+
+    container.append(field);
+    onChange(input.value);
+    safeRemember(input);
   }
+
+  const GROUP_NAMES = {
+    pc: "💻 Control de PC",
+    rutinas: "⚡ Acciones de Rutina",
+    navegador: "🌐 Navegador Web",
+    consultar: "📊 Consultas del Sistema",
+    notas: "📝 Notas y Tareas",
+    memoria: "🧠 Memoria",
+  };
+
+  function cleanLabel(raw) {
+    if (!raw) return "";
+    if (raw === "+ texto") return "Nueva nota (+ texto)";
+    if (raw.startsWith("/")) return raw.slice(1).charAt(0).toUpperCase() + raw.slice(2);
+    return raw;
+  }
+
+  const stageConfigBox = el("rt-stage-config");
+  let stagedFields = [];
+  let stagedSimpleValue = "";
+
+  function getStagedArgs() {
+    const tool = pick.value;
+    const info = toolInfo(tool);
+    if (!info) return "";
+    if (info.schema && stagedFields.length) {
+      const out = {};
+      for (const item of stagedFields) {
+        const raw = item.input.value.trim();
+        if (raw) out[item.param.name] = coerce(item.param, raw);
+      }
+      return JSON.stringify(out);
+    }
+    return stagedSimpleValue;
+  }
+
+  function renderStagedConfig() {
+    if (!stageConfigBox) return;
+    stageConfigBox.replaceChildren();
+    stagedFields = [];
+    stagedSimpleValue = "";
+    const tool = pick.value;
+    const info = toolInfo(tool);
+    if (!info) return;
+
+    if (info.hint) {
+      stageConfigBox.append(make("p", "rt-stage-hint", `ℹ ${info.hint}`));
+    }
+
+    const params = info.schema ? schemaParams(info.schema) : [];
+    if (params.length) {
+      const dummyStep = { tool, args: "{}" };
+      const group = make("div", "conn-fields");
+      for (const param of params) {
+        group.append(schemaField(dummyStep, param, stagedFields, () => {}));
+      }
+      stageConfigBox.append(group);
+    } else {
+      renderToolControl(tool, "", (val) => {
+        stagedSimpleValue = val;
+      }, () => {}, stageConfigBox, true);
+    }
+  }
+
+  function fillPick() {
+    const groups = new Map();
+    for (const item of catalog) {
+      const g = item.group || "otros";
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(item);
+    }
+    const elements = [];
+    for (const [groupKey, items] of groups.entries()) {
+      const groupLabel = GROUP_NAMES[groupKey] || (groupKey.startsWith("mcp_") ? `🔌 Conector: ${groupKey.slice(4)}` : `🔌 ${groupKey}`);
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = groupLabel;
+      for (const item of items) {
+        const opt = make("option", "", cleanLabel(item.label));
+        opt.value = item.id;
+        optgroup.append(opt);
+      }
+      elements.push(optgroup);
+    }
+    pick.replaceChildren(...elements);
+    renderStagedConfig();
+  }
+
+  pick.addEventListener("change", renderStagedConfig);
 
   el("rt-add-step").addEventListener("click", () => {
     if (!pick.value) return;
     showError("");
-    addStep(pick.value);
+    const args = getStagedArgs();
+    addStep(pick.value, args);
+    renderStagedConfig();
   });
 
   el("rt-example").addEventListener("click", () => {
@@ -360,7 +582,8 @@
       .map(([tool, args]) => ({ tool, args }));
     state.layout = {};
     nameInput.value = state.name;
-    selected = 0;
+    selected = 1;
+    el("rt-example").hidden = true;
     showTrigger();
     renderSteps();
     showError("Pegá en «Abrir» el link de tu canción o playlist.");
@@ -472,6 +695,24 @@
   el("rt-cancel").addEventListener("click", () => dialog.close());
   el("rt-close").addEventListener("click", () => dialog.close());
 
+  // Light dismiss fallback para navegadores sin closedby nativo
+  if (!("closedBy" in HTMLDialogElement.prototype)) {
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      const isInside =
+        rect.top <= event.clientY &&
+        event.clientY <= rect.top + rect.height &&
+        rect.left <= event.clientX &&
+        event.clientX <= rect.left + rect.width;
+      if (!isInside) dialog.close();
+    });
+  }
+
+  // Cualquier cambio o pegado en el modal limpia los mensajes de ayuda / error viejos
+  dialog.addEventListener("input", () => showError(""));
+  dialog.addEventListener("paste", () => setTimeout(() => showError(""), 0));
+
   // --- abrir ---------------------------------------------------------------------------------------------------------
 
   async function open(rule) {
@@ -492,6 +733,7 @@
     }
     selected = 0;
     el("rt-title").textContent = rule ? "Editar rutina" : "Nueva rutina";
+    el("rt-example").hidden = Boolean(rule);
     nameInput.value = state.name;
     results.replaceChildren();
     showError("");

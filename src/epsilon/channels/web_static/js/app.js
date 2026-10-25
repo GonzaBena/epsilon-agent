@@ -187,6 +187,13 @@ function render(message) {
   if (message.role === "bot") row.append(make("span", "mark", "Ε"));
 
   const body = make("div", "body");
+  if (message.audio_url) {
+    const audio = make("audio", "audio-player");
+    audio.controls = true;
+    audio.preload = "auto";
+    audio.src = message.audio_url;
+    body.append(audio);
+  }
   if (message.role === "bot" && !message.error) {
     // Respuestas del bot: markdown (js/markdown.js). Lo tuyo y los errores, texto plano.
     const text = make("div", "text md");
@@ -496,7 +503,13 @@ async function ask(request) {
     if (target === conversationId) {
       // message_id: el id con el que el servidor guardó este mensaje; hace falta para
       // decirle después cuál de sus botones tocaste.
-      addMessage({ role: "bot", text: data.text, actions: data.actions, id: data.message_id });
+      addMessage({
+        role: "bot",
+        text: data.text,
+        actions: data.actions,
+        id: data.message_id,
+        audio_url: data.audio_url,
+      });
       addToContext(data.artifacts || []);
       started = true;
       showMode(data.mode, data.chat);

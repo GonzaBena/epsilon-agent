@@ -45,6 +45,7 @@ SCREENS: dict[str, Screen] = {
         (
             Toggle("VOICE_ENABLED", "Voz (web y Telegram)"),
             Toggle("VOICE_CONFIRM", "Confirmar antes de ejecutar"),
+            Toggle("TTS_ENABLED", "Responder con audio"),
         ),
         back=MAIN,
     ),

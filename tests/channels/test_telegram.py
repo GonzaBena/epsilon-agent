@@ -256,10 +256,17 @@ class FakeUpdate:
 class FakeContext:
     def __init__(self):
         self.actions = []
-        self.bot = SimpleNamespace(send_chat_action=self.send_chat_action)
+        self.voices = []
+        self.bot = SimpleNamespace(
+            send_chat_action=self.send_chat_action,
+            send_voice=self.send_voice,
+        )
 
     async def send_chat_action(self, chat_id, action):
         self.actions.append(action)
+
+    async def send_voice(self, chat_id, voice, **kwargs):
+        self.voices.append((chat_id, voice.read() if hasattr(voice, "read") else voice))
 
 
 @pytest.fixture
@@ -1471,3 +1478,52 @@ def test_the_formatter_is_independent_of_the_rest_of_the_program():
     for path in root.rglob("*.py"):
         if path.name not in ("telegram.py", "telegram_format.py"):
             assert "telegram_format" not in path.read_text(encoding="utf-8"), path
+
+
+def test_telegram_sends_voice_note_when_tts_enabled(core_says, monkeypatch, tmp_path):
+    monkeypatch.setenv("TTS_ENABLED", "si")
+    monkeypatch.setenv("TTS_MODE", "siempre")
+
+    fake_ogg = tmp_path / "tts.ogg"
+    fake_ogg.write_bytes(b"fake ogg voice")
+    monkeypatch.setattr(telegram.tts, "synthesize", lambda text, **kw: fake_ogg)
+
+    core_says.append(core.Reply("Hola desde el bot"))
+
+    context = FakeContext()
+    update = FakeUpdate(chat_id=7)
+    update.message.text = "hola"
+    asyncio.run(telegram.on_text(update, context))
+
+    # Se envió la nota de voz primero
+    assert len(context.voices) == 1
+    assert context.voices[0][0] == 7
+    assert context.voices[0][1] == b"fake ogg voice"
+
+    # Y la transcripción/mensaje de texto va abajo
+    assert update.replies == ["Hola desde el bot"]
+
+
+def test_telegram_tts_mode_solo_voz(core_says, monkeypatch, tmp_path):
+    monkeypatch.setenv("TTS_ENABLED", "si")
+    monkeypatch.setenv("TTS_MODE", "solo_voz")
+
+    fake_ogg = tmp_path / "tts.ogg"
+    fake_ogg.write_bytes(b"voice data")
+    monkeypatch.setattr(telegram.tts, "synthesize", lambda text, **kw: fake_ogg)
+
+    core_says.append(core.Reply("Respuesta"))
+
+    # Mensaje de texto normal: no debe generar audio en modo solo_voz
+    context = FakeContext()
+    update = FakeUpdate(chat_id=7)
+    update.message.text = "hola escrito"
+    asyncio.run(telegram.on_text(update, context))
+    assert len(context.voices) == 0
+
+    # Mensaje de voz (said tiene 🎙): sí genera audio
+    core_says.append(core.Reply("Respuesta a audio"))
+    msg = telegram.new_message(7, text="hola por voz")
+    asyncio.run(telegram.respond(update.message, context, 7, msg, said="🎙 hola por voz"))
+    assert len(context.voices) == 1
+

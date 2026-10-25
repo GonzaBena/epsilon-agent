@@ -3,10 +3,11 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import asdict
 import json
 import os
-import shlex
 from pathlib import Path
-import socket
 from queue import Queue
+import shlex
+import shutil
+import socket
 import tempfile
 import threading
 import time
@@ -24,7 +25,7 @@ from epsilon.data import conversations, library, notes
 from epsilon.routines import rules as routine_rules, runner as routine_runner, store as routine_store
 from epsilon.settings import checks, config
 from epsilon.utils import clock
-from epsilon.voice import transcribe
+from epsilon.voice import tts, transcribe
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
 # solo en 127.0.0.1 y no tiene login. Como no hay login, cualquier página que
@@ -357,6 +358,13 @@ def mode_json(conversation_id: str) -> dict:
 def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
     """La respuesta para el navegador; si hay conversación, también la guarda."""
     data = to_json(reply)
+    if config.enabled("TTS_ENABLED") and reply.text:
+        try:
+            audio_path = tts.synthesize(reply.text)
+            token = tts.cache_audio(audio_path)
+            data["audio_url"] = f"/api/audio/{token}"
+        except Exception as e:
+            print(f"No pude sintetizar el audio web: {config.redact(repr(e))}")
     if conversation_id:
         # El cliente necesita el id del mensaje para decir después qué botón tocó.
         data["message_id"] = conversations.add_message(
@@ -581,6 +589,15 @@ def create_app() -> FastAPI:
         finally:
             if path:
                 path.unlink(missing_ok=True)
+
+    @app.get("/api/audio/{token}")
+    def get_audio(token: str):
+        """Devuelve un audio sintetizado temporal para reproducir en la web."""
+        path = tts.get_cached_audio(token)
+        if not path or not path.is_file():
+            raise HTTPException(404, "Audio no encontrado o vencido.")
+        media_type = "audio/ogg; codecs=opus" if path.suffix == ".ogg" else "audio/wav"
+        return FileResponse(path, media_type=media_type)
 
     # --- Conversaciones guardadas ---------------------------------------------
     # Un id que no tiene la forma exacta (o que no existe) es siempre un 404:
@@ -939,6 +956,9 @@ def create_app() -> FastAPI:
             "voice": transcribe.status(),  # apagada / cargado / descargado / descargando / sin descargar / no instalado
             # Bytes del modelo que Epsilon bajó y se puede borrar; None si no hay.
             "voice_model_bytes": transcribe.deletable_model(),
+            "tts_installed": bool(shutil.which("piper-tts") or shutil.which("piper")),
+            "tts_voices": tts.list_voices(),
+            "tts_default_voice": tts.default_voice(),
             "model": llm.default_model(),  # el predeterminado («proveedor:modelo»), para el botón del encabezado
         }
 
