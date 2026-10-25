@@ -68,7 +68,7 @@ def test_cards_are_six_with_title_subtitle_and_prompt():
 @pytest.fixture
 def named(monkeypatch):
     monkeypatch.setenv("USER_NAME", "Gonzalo")
-    monkeypatch.setenv("ASSISTANT_NAME", "Luna")
+    monkeypatch.setenv("AGENT_NAME", "Luna")
 
 
 def test_welcome_endpoint_reports_first_time_and_profile(cfg):

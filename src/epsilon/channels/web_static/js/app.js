@@ -1713,8 +1713,8 @@ document.getElementById("onboarding-save").addEventListener("click", async () =>
   }
   const changes = { USER_NAME: user };
   const clear = [];
-  if (assistant) changes.ASSISTANT_NAME = assistant;
-  else clear.push("ASSISTANT_NAME"); // vacío = el nombre de siempre
+  if (assistant) changes.AGENT_NAME = assistant;
+  else clear.push("AGENT_NAME"); // vacío = el nombre de siempre
   try {
     const response = await fetch("/api/config", {
       method: "PUT",
@@ -1724,7 +1724,7 @@ document.getElementById("onboarding-save").addEventListener("click", async () =>
     if (response.status === 422) {
       const data = await response.json();
       const errors = (data && data.errors) || {};
-      onboardingError.textContent = errors.USER_NAME || errors.ASSISTANT_NAME || "Revisá los nombres.";
+      onboardingError.textContent = errors.USER_NAME || errors.AGENT_NAME || "Revisá los nombres.";
       return;
     }
     if (!response.ok) throw new Error(String(response.status));

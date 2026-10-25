@@ -500,7 +500,7 @@ def test_a_message_that_used_the_browser_gets_more_steps():
 
 def test_system_prompt_names_the_user_and_the_assistant_as_data(monkeypatch):
     monkeypatch.setenv("USER_NAME", "Gonzalo")
-    monkeypatch.setenv("ASSISTANT_NAME", "Luna")
+    monkeypatch.setenv("AGENT_NAME", "Luna")
 
     prompt = chat.system_prompt()
 
@@ -510,7 +510,7 @@ def test_system_prompt_names_the_user_and_the_assistant_as_data(monkeypatch):
 
 def test_system_prompt_leaves_out_default_or_missing_names(monkeypatch):
     monkeypatch.delenv("USER_NAME", raising=False)
-    monkeypatch.setenv("ASSISTANT_NAME", "Epsilon")
+    monkeypatch.setenv("AGENT_NAME", "Epsilon")
 
     prompt = chat.system_prompt()
 

@@ -429,7 +429,7 @@ def create_app() -> FastAPI:
     def get_welcome():
         """El saludo y las ideas de la pantalla de bienvenida (sin modelo). `needs_profile`: falta tu nombre."""
         user = os.environ.get("USER_NAME", "").strip()
-        assistant = os.environ.get("ASSISTANT_NAME", "").strip() or "Epsilon"
+        assistant = os.environ.get("AGENT_NAME", "").strip() or "Epsilon"
         first = not conversations.list_all(1)  # la primera vez es cuando todavía no hay ninguna conversación
         return {
             "greeting": welcome.greeting(user, assistant, clock.now().hour, first),

@@ -479,5 +479,5 @@ def test_onboarding_form_has_two_labelled_fields_and_a_skip():
 def test_onboarding_is_driven_by_the_user_name_setting():
     js = static_path("app.js").read_text(encoding="utf-8")
 
-    for needle in ("USER_NAME", "ASSISTANT_NAME", "epsilon_onboarding_skipped", "onboarding"):
+    for needle in ("USER_NAME", "AGENT_NAME", "epsilon_onboarding_skipped", "onboarding"):
         assert needle in js, needle

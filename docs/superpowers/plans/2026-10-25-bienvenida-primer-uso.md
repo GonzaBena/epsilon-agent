@@ -4,7 +4,7 @@
 
 **Meta:** que alguien que instala Epsilon por primera vez diga cómo se llama, le ponga nombre al asistente y vea un saludo con ideas para empezar, en vez del texto de «imagen → CSV» de hoy.
 
-**Arquitectura:** dos ajustes nuevos en `settings/config.py` (`USER_NAME`, `ASSISTANT_NAME`) que también llegan al prompt del modelo. Un módulo web nuevo, `channels/welcome.py`, elige el saludo y las cards (puro, sin modelo ni reloj propio) y lo expone `GET /api/welcome`. El estado vacío de `index.html` se dibuja con eso, un formulario de primera vez guarda los nombres con el `PUT /api/config` que ya existe, y un chip «IA» junto al título muestra el modo del chat.
+**Arquitectura:** dos ajustes nuevos en `settings/config.py` (`USER_NAME`, `AGENT_NAME`) que también llegan al prompt del modelo. Un módulo web nuevo, `channels/welcome.py`, elige el saludo y las cards (puro, sin modelo ni reloj propio) y lo expone `GET /api/welcome`. El estado vacío de `index.html` se dibuja con eso, un formulario de primera vez guarda los nombres con el `PUT /api/config` que ya existe, y un chip «IA» junto al título muestra el modo del chat.
 
 **Tecnología:** Python/FastAPI, JS plano sin módulos (`textContent`, nunca HTML), pytest. Sin dependencias nuevas.
 
@@ -43,7 +43,7 @@ Cosas que la spec implica y ninguna tarea cubriría sola; cada una tiene su test
 
 | Archivo | Qué hace |
 |---|---|
-| `src/epsilon/settings/config.py` (modificar) | Ajustes `USER_NAME`, `ASSISTANT_NAME` y su validador. |
+| `src/epsilon/settings/config.py` (modificar) | Ajustes `USER_NAME`, `AGENT_NAME` y su validador. |
 | `src/epsilon/ai/chat.py` (modificar) | `system_prompt()` suma los nombres. |
 | `src/epsilon/channels/welcome.py` (crear) | `greeting(...)` y `CARDS`: puro, sin red ni archivos. |
 | `src/epsilon/channels/web.py` (modificar) | `GET /api/welcome`. |
@@ -90,7 +90,7 @@ Cosas que la spec implica y ninguna tarea cubriría sola; cada una tiene su test
 
 - [ ] **Paso 1: tests que fallan** (de contenido, como los de esta carpeta, sin navegador):
   - `test_onboarding_form_has_two_labelled_fields_and_a_skip`: en `chat_html()` hay `id="onboarding"` con las etiquetas «¿Cómo te llamo?» y «¿Cómo querés llamarme?», un botón «Continuar» y otro «Saltar por ahora»; ningún `style=` en línea.
-  - `test_onboarding_is_driven_by_the_user_name_setting`: `app.js` contiene `USER_NAME`, `ASSISTANT_NAME` y `epsilon_onboarding_skipped`, y pone los nombres con `textContent`/`value`, nunca `innerHTML`.
+  - `test_onboarding_is_driven_by_the_user_name_setting`: `app.js` contiene `USER_NAME`, `AGENT_NAME` y `epsilon_onboarding_skipped`, y pone los nombres con `textContent`/`value`, nunca `innerHTML`.
 - [ ] **Paso 2:** correrlos. Esperado: FALLAN.
 - [ ] **Paso 3:** HTML + CSS del diálogo (campo del asistente con «Epsilon» de valor inicial). En `app.js`, al arrancar: si `GET /api/config` no trae `USER_NAME` cargado y no hay `epsilon_onboarding_skipped`, abrir el diálogo. «Continuar» hace el `PUT` (mostrar el error 422 bajo el campo, en español, con `role="alert"`), cierra y recarga el saludo (Tarea 3 lo usa; hasta entonces, solo cierra). «Saltar» guarda la marca y cierra. Foco en el primer campo, Esc = saltar, visible al teclado.
 - [ ] **Paso 4:** `uv run pytest`. Esperado: verde.

@@ -774,7 +774,14 @@ def test_person_name_rejects_markup_newlines_and_long_values(env_file, monkeypat
     assert not env_file.exists() or "USER_NAME" not in env_file.read_text(encoding="utf-8")
 
 
-def test_assistant_name_defaults_to_epsilon(env_file, monkeypatch):
-    monkeypatch.delenv("ASSISTANT_NAME", raising=False)
+def test_agent_name_defaults_to_epsilon(env_file, monkeypatch):
+    monkeypatch.delenv("AGENT_NAME", raising=False)
 
-    assert entry("ASSISTANT_NAME", env_file)["value"] == "Epsilon"
+    assert entry("AGENT_NAME", env_file)["value"] == "Epsilon"
+
+
+def test_every_setting_key_is_unique():
+    # BY_KEY se arma con un diccionario: una clave repetida deja que la segunda pise a la primera sin avisar.
+    keys = [s.key for s in config.SETTINGS]
+
+    assert len(keys) == len(set(keys)), sorted({k for k in keys if keys.count(k) > 1})

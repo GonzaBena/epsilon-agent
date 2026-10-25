@@ -47,7 +47,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `CHAT_LIMIT_USD`                                             | Opcional: límite de costo (US$) con el que nace cada chat con IA; se cambia en cada conversación. Por defecto 0.50.     |
 | `WEATHER_CITY`                                               | Opcional: la ciudad que usa `/clima` cuando no escribís otra.                                                           |
 | `USER_NAME`                                                  | Opcional: tu nombre, para el saludo y el chat con IA.                                                                   |
-| `ASSISTANT_NAME`                                             | Opcional: cómo querés llamar al asistente (por defecto Epsilon).                                                        |
+| `AGENT_NAME`                                                 | Opcional: cómo querés llamar al asistente (por defecto Epsilon).                                                        |
 | `CHAT_MAX_FILES`                                             | Opcional: archivos que se pueden mencionar con `@` en un mensaje del chat con IA. Por defecto 5.                        |
 | `CHAT_MAX_TURNS`                                             | Opcional: cuántos pares (tu mensaje y la respuesta) de la charla se reenvían a la IA en cada mensaje; lo anterior sigue guardado pero no viaja. Por defecto 10. |
 | `CHAT_MAX_TURNS_TELEGRAM`                                    | Opcional: lo mismo que `CHAT_MAX_TURNS` pero para la charla con IA de Telegram. Por defecto 5.                          |

@@ -258,7 +258,7 @@ SETTINGS = (
     ),
     # Cómo se llama la persona y cómo quiere llamar al asistente: el saludo de la web y el prompt del modelo.
     Setting("USER_NAME", "Tu nombre", live=True, validate=_person_name),
-    Setting("ASSISTANT_NAME", "Nombre del asistente", live=True, default="Epsilon", validate=_person_name),
+    Setting("AGENT_NAME", "Nombre del asistente", live=True, default="Epsilon", validate=_person_name),
     # Tope de costo (US$) con el que nace cada conversación de modo IA; después se cambia en cada una.
     Setting(
         "CHAT_LIMIT_USD",
