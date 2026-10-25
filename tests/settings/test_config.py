@@ -747,3 +747,34 @@ def test_weather_city_is_saved_and_applied_live(env_file, monkeypatch):
 def test_weather_city_rejects_anything_else(value, env_file):
     with pytest.raises(config.ConfigError):
         config.update({"WEATHER_CITY": value}, [], env_file)
+
+
+# --- Nombres de la persona y del asistente ------------------------------------
+
+
+def test_person_name_accepts_accents_and_spaces(env_file, monkeypatch):
+    monkeypatch.delenv("USER_NAME", raising=False)
+
+    config.update({"USER_NAME": "  José   Núñez "}, [], env_file)
+
+    assert os.environ["USER_NAME"] == "José Núñez"
+    assert "USER_NAME='José Núñez'" in env_file.read_text(encoding="utf-8")
+    monkeypatch.delenv("USER_NAME")
+
+
+@pytest.mark.parametrize("value", ["<b>x</b>", "a\nb", "x" * 41, "1abc", "a;b"])
+def test_person_name_rejects_markup_newlines_and_long_values(env_file, monkeypatch, value):
+    monkeypatch.delenv("USER_NAME", raising=False)
+
+    with pytest.raises(config.ConfigError) as error:
+        config.update({"USER_NAME": value}, [], env_file)
+
+    assert "nombre" in error.value.errors["USER_NAME"].lower()
+    assert "USER_NAME" not in os.environ
+    assert not env_file.exists() or "USER_NAME" not in env_file.read_text(encoding="utf-8")
+
+
+def test_assistant_name_defaults_to_epsilon(env_file, monkeypatch):
+    monkeypatch.delenv("ASSISTANT_NAME", raising=False)
+
+    assert entry("ASSISTANT_NAME", env_file)["value"] == "Epsilon"

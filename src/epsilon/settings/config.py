@@ -44,6 +44,18 @@ def _matching(pattern: str, message: str):
     return validate
 
 
+def _person_name(value: str) -> str:
+    """Un nombre de persona o de asistente: letras (con acentos), espacios, punto, apóstrofo y guion."""
+    if any(not c.isprintable() for c in value):  # saltos de línea y otros caracteres de control
+        raise ValueError("El nombre no puede tener saltos de línea ni caracteres de control.")
+    value = " ".join(value.split())
+    if not re.fullmatch(r"[^\W\d_][\w .'\-]{0,39}", value):
+        raise ValueError(
+            "El nombre tiene que tener hasta 40 letras (puede llevar espacios, punto, apóstrofo y guion)."
+        )
+    return value
+
+
 def _port(value: str) -> str:
     if not re.fullmatch(r"\d{1,5}", value, re.ASCII) or not 1 <= int(value) <= 65535:
         raise ValueError("El puerto tiene que ser un número entre 1 y 65535.")
@@ -244,6 +256,9 @@ SETTINGS = (
         live=True,
         validate=clima.valid_city,
     ),
+    # Cómo se llama la persona y cómo quiere llamar al asistente: el saludo de la web y el prompt del modelo.
+    Setting("USER_NAME", "Tu nombre", live=True, validate=_person_name),
+    Setting("ASSISTANT_NAME", "Nombre del asistente", live=True, default="Epsilon", validate=_person_name),
     # Tope de costo (US$) con el que nace cada conversación de modo IA; después se cambia en cada una.
     Setting(
         "CHAT_LIMIT_USD",
