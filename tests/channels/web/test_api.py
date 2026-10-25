@@ -241,3 +241,32 @@ def test_a_conversation_without_saves_has_no_artifacts(client):
     chat(client, cid, "/ayuda")
 
     assert client.get(f"/api/conversations/{cid}").json()["artifacts"] == []
+
+
+def test_multimedia_art_endpoint(client, tmp_path, monkeypatch):
+    from epsilon.utils import multimedia
+    # Sin reproductor
+    monkeypatch.setattr(multimedia, "now_playing_info", lambda: (_ for _ in ()).throw(multimedia.MultimediaError("boom")))
+    assert client.get("/api/multimedia/art").status_code == 404
+
+    # Con archivo local
+    cover = tmp_path / "cover.png"
+    cover.write_bytes(b"\x89PNG\r\n\x1a\nfakeimage")
+    monkeypatch.setattr(multimedia, "now_playing_info", lambda: {
+        "title": "Song", "artist": "Artist", "status": "Playing", "player": "mpv",
+        "art_url": f"file://{cover.as_posix()}"
+    })
+    res = client.get("/api/multimedia/art")
+    assert res.status_code == 200
+    assert res.content == b"\x89PNG\r\n\x1a\nfakeimage"
+    assert res.headers["content-type"] == "image/png"
+
+    # Con URL remota
+    monkeypatch.setattr(multimedia, "now_playing_info", lambda: {
+        "title": "Song", "artist": "Artist", "status": "Playing", "player": "spotify",
+        "art_url": "https://example.com/cover.jpg"
+    })
+    res_remote = client.get("/api/multimedia/art", follow_redirects=False)
+    assert res_remote.status_code in (307, 302)
+    assert res_remote.headers["location"] == "https://example.com/cover.jpg"
+

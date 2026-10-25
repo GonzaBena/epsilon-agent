@@ -152,6 +152,7 @@ def add_message(
     error: bool = False,
     artifacts: list[dict] | None = None,
     ai: bool = False,
+    media: dict | None = None,
 ) -> str:
     """Guarda un mensaje y devuelve su id. role: 'user' (lo que escribís) o 'bot' (lo que
     responde Epsilon). El id sirve para decir después, sin ambigüedad, en qué mensaje se
@@ -175,6 +176,8 @@ def add_message(
         entry["error"] = True
     if ai:
         entry["ai"] = True
+    if media and isinstance(media, dict):
+        entry["media"] = media
     _append(conversation_id, entry)
     return message_id
 
@@ -458,6 +461,7 @@ def messages(conversation_id: str) -> list[dict] | None:
                 "artifacts": _clean_artifacts(entry.get("artifacts")),
                 "error": bool(entry.get("error")),
                 "ai": bool(entry.get("ai")),
+                "media": entry.get("media"),
                 "ts": entry.get("ts", ""),
                 "used": False,
                 "chosen": None,
@@ -469,10 +473,13 @@ def messages(conversation_id: str) -> list[dict] | None:
         elif kind == "action":
             # La pulsación apunta a UN mensaje. Se ignora si ese mensaje no existe, si no
             # ofrecía ese botón, o si ya se había tocado otro (la primera pulsación gana).
+            # Para controles de música o volumen no bloqueamos el grupo de botones.
             message = by_id.get(entry.get("message"))
-            if message and not message["used"] and any(a.get("id") == entry.get("id") for a in message["actions"]):
-                message["used"] = True
-                message["chosen"] = entry["id"]
+            action_id = str(entry.get("id") or "")
+            if message and not message["used"] and any(a.get("id") == action_id for a in message["actions"]):
+                if not (action_id.startswith("musica:") or action_id.startswith("volumen:")):
+                    message["used"] = True
+                    message["chosen"] = action_id
     return result
 
 

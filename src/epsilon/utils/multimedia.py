@@ -139,16 +139,30 @@ def _source(player: str, title: str) -> str:
     return "YouTube Music" if app in WEB_BROWSERS and navegador.music_is_playing(title) else app
 
 
-def now_playing() -> str:
+def now_playing_info() -> dict:
     player = _pick()
     status = _property(player, "PlaybackStatus")
     meta = _property(player, "Metadata")
-    title = _clean(str(meta.get("xesam:title", {}).get("data", "")))
+    raw_title = str(meta.get("xesam:title", {}).get("data", ""))
+    title = _clean(raw_title)
     artists = meta.get("xesam:artist", {}).get("data", [])
     artist = _clean(", ".join(str(a) for a in artists)) if isinstance(artists, list) else ""
-    state = {"Playing": "Sonando", "Paused": "En pausa"}.get(status, "Detenido")
-    track = " — ".join(part for part in (artist, title) if part) or "sin título"
-    return f"{state}: {track} ({_source(player, str(meta.get('xesam:title', {}).get('data', '')))})"
+    source = _source(player, raw_title)
+    art_url = str(meta.get("mpris:artUrl", {}).get("data", "")).strip()
+    return {
+        "title": title,
+        "artist": artist,
+        "status": status,
+        "player": source,
+        "art_url": art_url,
+    }
+
+
+def now_playing() -> str:
+    info = now_playing_info()
+    state = {"Playing": "Sonando", "Paused": "En pausa"}.get(info["status"], "Detenido")
+    track = " — ".join(part for part in (info["artist"], info["title"]) if part) or "sin título"
+    return f"{state}: {track} ({info['player']})"
 
 
 def _mode(arg: str) -> tuple[str, str] | None:

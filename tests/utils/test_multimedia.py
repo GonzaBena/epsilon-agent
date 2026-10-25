@@ -214,3 +214,15 @@ def test_now_playing_keeps_the_app_name_when_the_tab_shows_something_else(monkey
     fake_system(monkeypatch, {CHROMIUM: ("Playing", ["A"], "Un video")})
 
     assert multimedia.now_playing().endswith("(chromium)")
+
+
+def test_now_playing_info_returns_structured_metadata(monkeypatch):
+    fake_system(monkeypatch, {SPOTIFY: ("Playing", ["Queen"], "Bohemian Rhapsody")})
+    info = multimedia.now_playing_info()
+
+    assert info["title"] == "Bohemian Rhapsody"
+    assert info["artist"] == "Queen"
+    assert info["status"] == "Playing"
+    assert info["player"] == "spotify"
+    assert isinstance(info["art_url"], str)
+

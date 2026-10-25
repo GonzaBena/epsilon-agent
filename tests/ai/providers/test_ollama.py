@@ -63,7 +63,7 @@ def test_generate_builds_the_request_and_returns_text_and_tokens(provider, serve
     method, path, body = server.sent[0]
     assert (method, path) == ("POST", "/api/chat")
     assert body["model"] == "qwen3" and body["stream"] is False
-    assert body["options"] == {"num_predict": 300, "temperature": 0}
+    assert body["options"] == {"num_predict": 300, "temperature": 0, "num_ctx": 8192}
     assert "format" not in body
     [user] = body["messages"]
     assert user["role"] == "user" and user["content"] == "texto\n\npedido"
@@ -132,6 +132,15 @@ def test_chat_without_calls_or_tools_sends_no_tools(provider, server):
     provider.chat("m", [Message("user", ["hola"])], "s", [], 100, True)
 
     assert all("tools" not in body for _, _, body in server.sent)
+
+
+def test_num_ctx_can_be_configured_with_env(provider, server, monkeypatch):
+    monkeypatch.setenv("OLLAMA_NUM_CTX", "4096")
+    server.replies[("POST", "/api/chat")] = chat_reply()
+
+    provider.chat("qwen3", [Message("user", ["hola"])], "s", [], 100, True)
+
+    assert server.sent[0][2]["options"]["num_ctx"] == 4096
 
 
 # --- check, list_models, capabilities ------------------------------------------------
@@ -203,6 +212,10 @@ def test_request_explains_http_errors_without_the_body(monkeypatch):
     with pytest.raises(ValueError, match="500") as error:
         real_request("GET", "/api/tags")
     assert "cuerpo con datos" not in str(error.value)
+
+    monkeypatch.setattr(ollama.httpx, "request", lambda *a, **k: FakeResponse(400, {"error": "context size exceeded"}))
+    with pytest.raises(ValueError, match="context size exceeded"):
+        real_request("POST", "/api/chat", {"model": "qwen3"})
 
     monkeypatch.setattr(ollama.httpx, "request", lambda *a, **k: FakeResponse(404))
     with pytest.raises(ValueError, match="ollama pull qwen3"):

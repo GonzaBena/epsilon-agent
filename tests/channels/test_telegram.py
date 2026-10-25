@@ -63,6 +63,24 @@ def test_actions_become_one_row_of_buttons():
     ]
 
 
+def test_music_and_volume_actions_become_two_rows():
+    markup = telegram.keyboard([
+        core.Action("musica:anterior", "⏮️ Anterior"),
+        core.Action("musica:alternar", "⏸️ Pausa"),
+        core.Action("musica:siguiente", "⏭️ Siguiente"),
+        core.Action("volumen:-5", "🔉 -5%"),
+        core.Action("volumen:+5", "🔊 +5%"),
+    ])
+    assert len(markup.inline_keyboard) == 2
+    assert [b.callback_data for b in markup.inline_keyboard[0]] == [
+        "musica:anterior", "musica:alternar", "musica:siguiente"
+    ]
+    assert [b.callback_data for b in markup.inline_keyboard[1]] == [
+        "volumen:-5", "volumen:+5"
+    ]
+
+
+
 # --- Menú de comandos --------------------------------------------------------
 
 

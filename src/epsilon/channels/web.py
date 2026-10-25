@@ -14,9 +14,10 @@ import time
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
+import urllib.parse
 
 from epsilon import core, state, tools
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
@@ -24,7 +25,7 @@ from epsilon.connectors import bridge, buttons as connector_buttons, manager as 
 from epsilon.data import conversations, library, notes
 from epsilon.routines import rules as routine_rules, runner as routine_runner, store as routine_store
 from epsilon.settings import checks, config
-from epsilon.utils import clock
+from epsilon.utils import clock, multimedia
 from epsilon.voice import tts, transcribe
 
 # La web es el canal por defecto de Epsilon y es de una sola persona: escucha
@@ -368,7 +369,8 @@ def reply_json(reply: core.Reply, conversation_id: str | None) -> dict:
     if conversation_id:
         # El cliente necesita el id del mensaje para decir después qué botón tocó.
         data["message_id"] = conversations.add_message(
-            conversation_id, "bot", reply.text, actions=data["actions"], artifacts=data["artifacts"], ai=reply.ai
+            conversation_id, "bot", reply.text, actions=data["actions"], artifacts=data["artifacts"], ai=reply.ai,
+            media=data.get("media"),
         )
         data.update(mode_json(conversation_id))
     return data
@@ -380,6 +382,8 @@ def to_json(reply: core.Reply) -> dict:
     data.pop("stacked")  # cómo se acomodan los botones es cosa de cada canal; la web no lo usa
     data.pop("files")  # archivos para ENVIAR: solo Telegram los envía; en la web todo está en la biblioteca
     data.pop("failed")  # solo lo mira una rutina
+    if data.get("media") is None:
+        data.pop("media", None)
     return data
 
 
@@ -423,6 +427,27 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"ok": True}
+
+    @app.get("/api/multimedia/art")
+    def multimedia_art():
+        try:
+            info = multimedia.now_playing_info()
+        except Exception:
+            raise HTTPException(status_code=404, detail="No hay reproductor activo")
+        art_url = str(info.get("art_url") or "").strip()
+        if art_url.startswith("file://"):
+            try:
+                path_str = urllib.parse.unquote(urllib.parse.urlsplit(art_url).path)
+                p = Path(path_str)
+                if p.is_file():
+                    suffix = p.suffix.lower()
+                    media_type = "image/png" if suffix == ".png" else ("image/webp" if suffix == ".webp" else "image/jpeg")
+                    return FileResponse(p, media_type=media_type)
+            except Exception:
+                pass
+        elif art_url.startswith(("http://", "https://")):
+            return RedirectResponse(art_url)
+        raise HTTPException(status_code=404, detail="Sin carátula disponible")
 
     @app.get("/api/tools")
     def tools_list():

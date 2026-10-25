@@ -96,6 +96,8 @@ class Reply:
     # True: lo que se pidió salió mal (opción rara, falta el programa, el navegador no responde). Solo lo mira una
     # rutina, que corta su cadena; el texto es el mismo que ve la persona o el modelo.
     failed: bool = False
+    # Datos multimedia opcionales (título, artista, miniatura...) para tarjetas ricas.
+    media: dict | None = None
 
 
 def _artifact(kind: str, path) -> Artifact:
@@ -509,7 +511,31 @@ def _pc(action: Callable[[str], str]) -> Callable[[str], Reply]:
 
 
 _volume_cmd = _pc(lambda args: multimedia.volume(args))
-_playing_cmd = _pc(lambda args: multimedia.now_playing())
+
+
+def _playing_cmd(args: str) -> Reply:
+    try:
+        text = multimedia.now_playing()
+    except (ValueError, multimedia.MultimediaError) as e:
+        return Reply(str(e), failed=True)
+
+    try:
+        info = multimedia.now_playing_info()
+    except Exception:
+        info = {}
+
+    play_label = "⏸️ Pausa" if info.get("status") == "Playing" else "▶️ Play"
+    actions = [
+        Action("musica:anterior", "⏮️ Anterior"),
+        Action("musica:alternar", play_label),
+        Action("musica:siguiente", "⏭️ Siguiente"),
+        Action("volumen:-5", "🔉 -5%"),
+        Action("volumen:+5", "🔊 +5%"),
+    ]
+    info["type"] = "music"
+    return Reply(config.redact(text), actions=actions, media=info)
+
+
 _music_cmd = _pc(lambda args: multimedia.music(args))
 _windows_cmd = _pc(lambda args: ventanas.report(args))
 
@@ -889,6 +915,22 @@ def _file_button(action: str, file_id: str, session: Session) -> Reply:
     return reply
 
 
+def _music_action(action: str) -> Reply:
+    try:
+        multimedia.music(action)
+    except (ValueError, multimedia.MultimediaError):
+        pass
+    return _playing_cmd("")
+
+
+def _volume_action(arg: str) -> Reply:
+    try:
+        multimedia.volume(arg)
+    except (ValueError, multimedia.MultimediaError):
+        pass
+    return _playing_cmd("")
+
+
 def _handle_action(msg: Message, session: Session) -> Reply:
     name, _, file_id = msg.action.partition(":")
     if name == "perm":
@@ -901,6 +943,10 @@ def _handle_action(msg: Message, session: Session) -> Reply:
         return _confirm_forget(name, session)
     if name in ("resumir", "nada"):
         return _file_button(name, file_id, session)
+    if name == "musica":
+        return _music_action(file_id)
+    if name == "volumen":
+        return _volume_action(file_id)
     return Reply("No entiendo esa acción.")
 
 

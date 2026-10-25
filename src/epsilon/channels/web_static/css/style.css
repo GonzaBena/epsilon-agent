@@ -1168,6 +1168,112 @@ body.booting .log {
   outline-offset: 2px;
 }
 
+/* --- Tarjeta de reproducción multimedia (/sonando) ----------------------- */
+.music-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 22rem;
+  margin: 0.35rem 0;
+  box-sizing: border-box;
+}
+
+.music-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.music-card-art {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.music-card-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.music-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.music-card-artist {
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.15rem;
+}
+
+.music-card-source {
+  font-size: 0.75rem;
+  color: var(--accent);
+  margin-top: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.music-card-controls {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.music-card-volume {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.music-card-btn,
+.music-card-vol-btn {
+  flex: 1;
+  min-height: 2.35rem;
+  padding: 0 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  color: var(--text);
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.music-card-btn:hover:not(:disabled),
+.music-card-vol-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--text);
+}
+
+.music-card-btn:disabled,
+.music-card-vol-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* --- "Pensando…" mientras el modelo trabaja -------------------------------- */
 .thinking .text {
   color: var(--muted);

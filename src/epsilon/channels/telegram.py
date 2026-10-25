@@ -2,6 +2,7 @@ import asyncio
 from collections import OrderedDict
 from dataclasses import asdict
 from datetime import datetime
+import html
 import itertools
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import re
 import tempfile
 import threading
 import time
+import urllib.parse
 
 from telegram import Bot, BotCommand, BotCommandScopeChat
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -129,8 +131,47 @@ def keyboard(actions: list[core.Action], stacked: bool = False) -> InlineKeyboar
     """Convierte las acciones del núcleo en botones: todos en una fila, o uno por fila (un menú)."""
     if not actions:
         return None
-    buttons = [InlineKeyboardButton(a.label, callback_data=a.id) for a in actions]
-    return InlineKeyboardMarkup([[b] for b in buttons] if stacked else [buttons])
+    if stacked:
+        return InlineKeyboardMarkup([[InlineKeyboardButton(a.label, callback_data=a.id)] for a in actions])
+    playback = [InlineKeyboardButton(a.label, callback_data=a.id) for a in actions if not a.id.startswith("volumen:")]
+    vols = [InlineKeyboardButton(a.label, callback_data=a.id) for a in actions if a.id.startswith("volumen:")]
+    rows = []
+    if playback:
+        rows.append(playback)
+    if vols:
+        rows.append(vols)
+    return InlineKeyboardMarkup(rows or [[InlineKeyboardButton(a.label, callback_data=a.id)] for a in actions])
+
+
+def _photo_data(art_url: str):
+    """Devuelve bytes o URL si hay una imagen utilizable, o None."""
+    if not art_url:
+        return None
+    if art_url.startswith("file://"):
+        try:
+            path_str = urllib.parse.unquote(urllib.parse.urlsplit(art_url).path)
+            p = Path(path_str)
+            if p.is_file():
+                return p.read_bytes()
+        except Exception:
+            return None
+    elif art_url.startswith(("http://", "https://")):
+        return art_url
+    return None
+
+
+def _media_caption(media: dict) -> str:
+    title = media.get("title") or "Sin título"
+    artist = media.get("artist")
+    player = media.get("player") or ""
+    status = media.get("status")
+    icon = "▶️" if status == "Playing" else ("⏸️" if status == "Paused" else "⏹️")
+    lines = [f"{icon} <b>{html.escape(title)}</b>"]
+    if artist:
+        lines.append(f"👤 <i>{html.escape(artist)}</i>")
+    if player:
+        lines.append(f"📻 <i>{html.escape(player)}</i>")
+    return "\n".join(lines)
 
 
 async def send_one(send, chunk: str, markup):
@@ -347,7 +388,26 @@ async def respond(message, context, chat_id: int, msg: core.Message, said: str |
     reply = await ask_core(chat_id, context, msg)
     if should_speak(said) and reply.text:
         await send_voice_reply(context, chat_id, reply.text)
-    sent = await deliver(reply.text, message.reply_text, message.reply_text, keyboard(reply.actions, reply.stacked))
+    markup = keyboard(reply.actions, reply.stacked)
+    sent = None
+    if reply.media and isinstance(reply.media, dict):
+        photo = _photo_data(reply.media.get("art_url") or "")
+        bot = getattr(context, "bot", None)
+        if photo is not None and bot is not None and hasattr(bot, "send_photo"):
+            try:
+                caption = _media_caption(reply.media)
+                sent = await bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=markup,
+                )
+            except Exception as e:
+                print(f"No pude enviar la carátula en Telegram: {config.redact(repr(e))}")
+                sent = None
+    if sent is None:
+        sent = await deliver(reply.text, message.reply_text, message.reply_text, markup)
     log_turn(chat_id, said, reply, getattr(sent, "message_id", None))
     await send_files(context, chat_id, reply.files)
 
@@ -547,8 +607,27 @@ def make_on_button(allowed_user_id: int):
         msg = new_message(chat_id, action=query.data)
         reply = await ask_core(chat_id, context, msg)
         log_action(chat_id, query.message.message_id, query.data)
+        markup = keyboard(reply.actions, reply.stacked)
+
+        is_photo_msg = bool(getattr(query.message, "photo", None))
+        if is_photo_msg and reply.media and hasattr(query, "edit_message_caption"):
+            try:
+                caption = _media_caption(reply.media)
+                sent = await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML, reply_markup=markup)
+                log_turn(chat_id, None, reply, getattr(sent, "message_id", None) or query.message.message_id)
+                await send_files(context, chat_id, reply.files)
+                return
+            except BadRequest as e:
+                if "not modified" in str(e).lower():
+                    return
+
         # El primer trozo edita el mensaje del botón; si la respuesta es larga, el resto va como mensajes nuevos.
-        sent = await deliver(reply.text, query.edit_message_text, query.message.reply_text, keyboard(reply.actions, reply.stacked))
+        try:
+            sent = await deliver(reply.text, query.edit_message_text, query.message.reply_text, markup)
+        except BadRequest as e:
+            if "not modified" not in str(e).lower():
+                raise
+            sent = query.message
         # La respuesta nueva queda anotada, en el mensaje que lleva los botones, para el siguiente toque.
         log_turn(chat_id, None, reply, getattr(sent, "message_id", None) or query.message.message_id)
         await send_files(context, chat_id, reply.files)

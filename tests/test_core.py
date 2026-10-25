@@ -208,9 +208,33 @@ def test_volume_and_music_commands_pass_their_argument_and_answer_as_text(monkey
     monkeypatch.setattr(core.multimedia, "music", lambda arg: seen.append(("musica", arg)) or "Pausé. (chromium)")
 
     assert say("/volumen 40").text == "Volumen: 40 %"
-    assert say("/sonando").text == "Sonando: A — B (chromium)"
+    sonando_reply = say("/sonando")
+    assert sonando_reply.text == "Sonando: A — B (chromium)"
+    assert [a.id for a in sonando_reply.actions] == [
+        "musica:anterior", "musica:alternar", "musica:siguiente", "volumen:-5", "volumen:+5"
+    ]
     assert say("/musica pausa").text == "Pausé. (chromium)"
     assert seen == [("volumen", "40"), ("musica", "pausa")]
+
+
+def test_multimedia_actions_dispatch_and_return_updated_playing_card(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.multimedia, "music", lambda arg: seen.append(("musica", arg)) or "ok")
+    monkeypatch.setattr(core.multimedia, "volume", lambda arg: seen.append(("volumen", arg)) or "ok")
+    monkeypatch.setattr(core.multimedia, "now_playing", lambda: "Sonando: Track 2 (spotify)")
+    monkeypatch.setattr(core.multimedia, "now_playing_info", lambda: {
+        "title": "Track 2", "artist": "Artist", "status": "Playing", "player": "spotify", "art_url": ""
+    })
+
+    reply = core.handle(core.Message(action="musica:siguiente"))
+    assert reply.text == "Sonando: Track 2 (spotify)"
+    assert ("musica", "siguiente") in seen
+    assert any(a.id == "musica:alternar" and "Pausa" in a.label for a in reply.actions)
+
+    vol_reply = core.handle(core.Message(action="volumen:+5"))
+    assert ("volumen", "+5") in seen
+    assert vol_reply.text == "Sonando: Track 2 (spotify)"
+
 
 
 def test_volume_and_music_errors_come_back_as_text_not_exceptions():

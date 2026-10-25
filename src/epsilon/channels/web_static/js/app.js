@@ -195,6 +195,114 @@ function botMark() {
   return mark;
 }
 
+function renderMusicCard(message, body, readOnly) {
+  const card = make("div", "music-card");
+
+  const header = make("div", "music-card-header");
+
+  const art = make("img", "music-card-art");
+  art.alt = "Carátula de " + (message.media.title || "reproducción");
+  art.src = `/api/multimedia/art?t=${Date.now()}`;
+  art.onerror = () => {
+    art.style.display = "none";
+  };
+  header.append(art);
+
+  const details = make("div", "music-card-details");
+  const title = make("div", "music-card-title", message.media.title || "Sin título");
+  title.title = message.media.title || "";
+  const artist = make("div", "music-card-artist", message.media.artist || "Artista desconocido");
+  const isPlaying = message.media.status === "Playing";
+  const statusText = isPlaying ? "Sonando" : (message.media.status === "Paused" ? "En pausa" : "Detenido");
+  const source = make("div", "music-card-source", `${isPlaying ? "▶️" : "⏸️"} ${statusText} · ${message.media.player || ""}`);
+  details.append(title, artist, source);
+  header.append(details);
+  card.append(header);
+
+  if (message.actions && message.actions.length) {
+    const controls = make("div", "music-card-controls");
+    const volBox = make("div", "music-card-volume");
+
+    for (const action of message.actions) {
+      const isVol = action.id.startsWith("volumen:");
+      const button = make("button", isVol ? "music-card-vol-btn" : "music-card-btn", action.label);
+      button.type = "button";
+      button.dataset.id = action.id;
+      if (readOnly) {
+        button.disabled = true;
+      }
+      button.addEventListener("click", () => pressMusicAction(message, card, action));
+      if (isVol) {
+        volBox.append(button);
+      } else {
+        controls.append(button);
+      }
+    }
+    card.append(controls);
+    if (volBox.children.length) card.append(volBox);
+  }
+
+  body.append(card);
+}
+
+async function pressMusicAction(message, card, action) {
+  if (busy || readOnly) return;
+  const clickedBtn = card.querySelector(`button[data-id="${action.id}"]`);
+  if (clickedBtn) clickedBtn.style.opacity = "0.5";
+
+  try {
+    const res = await fetch("/api/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: action.id,
+        message_id: message.id,
+        conversation_id: conversationId,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.media) {
+        message.media = data.media;
+        message.actions = data.actions;
+        message.text = data.text;
+
+        const titleEl = card.querySelector(".music-card-title");
+        if (titleEl) {
+          titleEl.textContent = data.media.title || "Sin título";
+          titleEl.title = data.media.title || "";
+        }
+        const artistEl = card.querySelector(".music-card-artist");
+        if (artistEl) artistEl.textContent = data.media.artist || "Artista desconocido";
+
+        const sourceEl = card.querySelector(".music-card-source");
+        if (sourceEl) {
+          const isPlaying = data.media.status === "Playing";
+          const statusText = isPlaying ? "Sonando" : (data.media.status === "Paused" ? "En pausa" : "Detenido");
+          sourceEl.textContent = `${isPlaying ? "▶️" : "⏸️"} ${statusText} · ${data.media.player || ""}`;
+        }
+
+        const artEl = card.querySelector(".music-card-art");
+        if (artEl) {
+          artEl.style.display = "";
+          artEl.src = `/api/multimedia/art?t=${Date.now()}`;
+        }
+
+        if (data.actions) {
+          for (const a of data.actions) {
+            const btn = card.querySelector(`button[data-id="${a.id}"]`);
+            if (btn) btn.textContent = a.label;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error al controlar música:", e);
+  } finally {
+    if (clickedBtn) clickedBtn.style.opacity = "";
+  }
+}
+
 // Dibuja un mensaje y lo agrega a la conversación. Devuelve el elemento.
 function render(message) {
   const row = make("article", `msg ${message.role}${message.error ? " error" : ""}`);
@@ -209,32 +317,36 @@ function render(message) {
     audio.src = message.audio_url;
     body.append(audio);
   }
-  if (message.role === "bot" && !message.error) {
-    // Respuestas del bot: markdown (js/markdown.js). Lo tuyo y los errores, texto plano.
-    const text = make("div", "text md");
-    text.append(window.renderMarkdown(message.text));
-    body.append(text);
+  if (message.media && message.media.type === "music") {
+    renderMusicCard(message, body, readOnly);
   } else {
-    body.append(make("p", "text", message.text));
-  }
-
-  // Los botones del núcleo (Guardar, Cancelar, Resumir...).
-  if (message.actions && message.actions.length) {
-    const box = make("div", "actions");
-    for (const action of message.actions) {
-      const button = make("button", "action", action.label);
-      button.type = "button";
-      button.dataset.id = action.id;
-      if (message.used || readOnly) {
-        // Grupo ya resuelto (por ejemplo, al recargar): ningún botón vuelve a funcionar.
-        button.dataset.locked = "1";
-        button.disabled = true;
-      }
-      if (message.chosen === action.id) button.classList.add("chosen");
-      button.addEventListener("click", () => pressAction(message, box, action));
-      box.append(button);
+    if (message.role === "bot" && !message.error) {
+      // Respuestas del bot: markdown (js/markdown.js). Lo tuyo y los errores, texto plano.
+      const text = make("div", "text md");
+      text.append(window.renderMarkdown(message.text));
+      body.append(text);
+    } else {
+      body.append(make("p", "text", message.text));
     }
-    body.append(box);
+
+    // Los botones del núcleo (Guardar, Cancelar, Resumir...).
+    if (message.actions && message.actions.length) {
+      const box = make("div", "actions");
+      for (const action of message.actions) {
+        const button = make("button", "action", action.label);
+        button.type = "button";
+        button.dataset.id = action.id;
+        if (message.used || readOnly) {
+          // Grupo ya resuelto (por ejemplo, al recargar): ningún botón vuelve a funcionar.
+          button.dataset.locked = "1";
+          button.disabled = true;
+        }
+        if (message.chosen === action.id) button.classList.add("chosen");
+        button.addEventListener("click", () => pressAction(message, box, action));
+        box.append(button);
+      }
+      body.append(box);
+    }
   }
 
   // La burbuja y, debajo (afuera de ella), el botón de copiar.
@@ -528,6 +640,7 @@ async function ask(request) {
         actions: data.actions,
         id: data.message_id,
         audio_url: data.audio_url,
+        media: data.media,
       });
       addToContext(data.artifacts || []);
       started = true;
