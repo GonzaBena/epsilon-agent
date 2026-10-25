@@ -1,9 +1,10 @@
 # Epsilon
 
-Agente personal que se usa desde una web local (y, opcional, un bot de Telegram) que guarda notas y archivos en una carpeta,
-extrae datos de imágenes a CSV y resume notas/PDF/imágenes con IA (Gemini u Ollama, a elección).
-La idea es que sea simple y barato de correr, y que otra persona pueda
-instalarlo, cargar sus claves y usarlo.
+Asistente personal local que actúa por vos, a costo mínimo: se usa desde una web local (y, opcional, un bot de Telegram),
+guarda notas y archivos, recuerda cosas, cumple rutinas a una hora sin gastar IA, maneja la PC y el navegador, se conecta a
+otras herramientas (MCP) y usa IA (Gemini u Ollama, a elección) para conversar, resumir y pasar imágenes a CSV. Siempre con
+control de la persona: permisos por herramienta y confirmación antes de escribir.
+La idea es que sea simple y barato de correr, y que otra persona pueda instalarlo, cargar su clave (si la tiene) y usarlo.
 
 ## Comandos
 
@@ -59,6 +60,7 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   motivo. `main.refresh_plugins()` mantiene `CHANNELS` y los ajustes de los plugins (`config.set_plugin_settings`)
   al día; un plugin nuevo aparece apagado. Prenderlo desde la web exige confirmar (corre dentro de Epsilon y ve
   tus claves). Memoria y voz NO son plugins; las integraciones son conectores MCP (`connectors/`). Ver `docs/plan-plugins.md`.
+- **Primer uso y bienvenida** (`channels/welcome.py`, `GET /api/welcome`): los ajustes `USER_NAME` y `AGENT_NAME` (por defecto «Epsilon»; los edita Configuración > General y también llegan al prompt del modelo, como datos). La primera vez que falta `USER_NAME` la web abre el formulario `#onboarding` (guarda con `PUT /api/config`; «Saltar» se recuerda solo en `localStorage`). El estado vacío del chat (`#empty`) muestra el avatar, un saludo (`welcome.greeting`: el de presentación mientras no haya ninguna conversación; después, una frase de una lista fija que cambia según la hora; sin modelo, cuesta cero) y 6 cards (`welcome.CARDS`). Tocar una abre un chat NUEVO con IA con su prompt escrito, sin enviar. El chip «IA» del encabezado (`#crumb-ai`, fuera de `#crumb` porque `shell.js` lo reescribe) sigue a `aiMode()`.
 - `channels/web.py` y `channels/web_static/` (las páginas `*.html` en la raíz, `css/style.css`,
   `js/` con app, config, canales, uso, biblioteca, permisos y shell, e `img/`; todo sale como `/static/...`): web local (FastAPI). Solo traduce
   HTTP <-> núcleo. Ver `docs/plan-web.md`. Arriba, en todas las páginas: Chat · Canales · Uso · Permisos; en el menú de la izquierda, Chat · Biblioteca · Permisos · Conectores (`conectores.html`, `js/conectores.js`: agregar con confirmación, prender/apagar, env, botones y sugerencias) · Rutinas y

@@ -170,11 +170,12 @@ def test_config_save_button_keeps_its_text_label():
     assert re.search(r'<button[^>]*id="save"[^>]*class="send"[^>]*>\s*Guardar cambios', html)
 
 
-def test_empty_state_is_a_greeting_from_epsilon_with_starters():
+def test_empty_state_is_a_welcome_with_an_avatar_a_greeting_and_a_place_for_the_ideas():
     section = re.search(r'<section id="empty".*?</section>', chat_html(), re.S).group(0)
 
-    assert 'class="mark"' in section and "Mandame" in section
-    assert section.count('class="starter"') == 3
+    assert 'class="welcome-avatar"' in section
+    assert 'id="welcome-greeting"' in section and 'id="welcome-cards"' in section
+    assert "starter" not in section
     assert "audio" not in section.lower()  # todavía no se puede mandar audio
 
 
@@ -197,10 +198,9 @@ def test_no_lowercase_epsilon_anywhere_in_the_web_files(name):
 
 
 def test_every_letter_mark_in_the_html_is_the_capital_epsilon():
-    # El header usa el logo (imagen); la letra queda en el saludo del chat. Las demás páginas no
-    # llevan ninguna letra suelta.
+    # El header y el saludo del chat usan una imagen; si alguna vez vuelve una letra suelta, tiene que ser
+    # la Ε mayúscula. Las demás páginas no llevan ninguna.
     marks = re.findall(r'class="mark"[^>]*>(.)<', page("index.html"))
-    assert marks
     assert all(m == BRAND for m in marks), [hex(ord(m)) for m in marks]
     for name in ("config.html", "canales.html", "uso.html", "permisos.html", "rutinas.html"):
         assert 'class="mark"' not in page(name), name
@@ -456,3 +456,28 @@ def test_the_config_page_draws_plugin_fields_itself_with_text_content():
     assert "setting.group" in script and "plugin-settings" in script
     code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
     assert "innerHTML" not in code
+
+
+# --- Formulario de primera vez ------------------------------------------------
+
+
+def onboarding_html():
+    return re.search(r'<dialog id="onboarding".*?</dialog>', chat_html(), re.S).group(0)
+
+
+def test_onboarding_form_has_two_labelled_fields_and_a_skip():
+    section = onboarding_html()
+
+    assert "¿Cómo te llamo?" in section and "¿Cómo querés llamarme?" in section
+    assert re.search(r'<button[^>]*id="onboarding-save"[^>]*>\s*Continuar', section)
+    assert re.search(r'<button[^>]*id="onboarding-skip"[^>]*>\s*Saltar por ahora', section)
+    assert 'id="onboarding-user"' in section and 'id="onboarding-assistant"' in section
+    assert 'value="Epsilon"' in section
+    assert 'style="' not in section  # la CSP no deja estilos en línea
+
+
+def test_onboarding_is_driven_by_the_user_name_setting():
+    js = static_path("app.js").read_text(encoding="utf-8")
+
+    for needle in ("USER_NAME", "AGENT_NAME", "epsilon_onboarding_skipped", "onboarding"):
+        assert needle in js, needle

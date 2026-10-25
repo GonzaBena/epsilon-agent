@@ -112,8 +112,15 @@ function setReadOnly(on) {
 }
 
 // --- Modo IA: selector, barra de contexto / costo / límite ------------------------------------
+// El chip «IA» del encabezado: se ve aunque la barra lateral esté contraída. Sigue a aiMode().
+const crumbAi = document.getElementById("crumb-ai");
+function showAiChip() {
+  crumbAi.hidden = !aiMode();
+}
+
 function chooseMode(mode) {
   chatMode = mode;
+  showAiChip();
   for (const [name, button] of Object.entries(modeButtons)) {
     button.setAttribute("aria-pressed", String(name === mode));
   }
@@ -144,6 +151,7 @@ function showChatBar(chat) {
 let viewMode = "normal"; // el modo de la conversación abierta
 function showMode(mode, chat) {
   viewMode = mode;
+  showAiChip();
   modePicker.hidden = started || readOnly;
   showChatBar(mode === "ai" ? chat : null);
 }
@@ -416,6 +424,7 @@ function clearScreen() {
   setReadOnly(false); // openConversation lo vuelve a poner si es de Telegram
   setContext([]); // lo guardado es de ESTA conversación
   started = false; // openConversation / showConversation lo corrigen si ya tiene mensajes
+  showAiChip();
   // Selector y barra escondidos: ya sabremos cuál mostrar (un chat nuevo, o lo que diga el servidor).
   modePicker.hidden = true;
   aiBar.hidden = true;
@@ -474,6 +483,7 @@ async function startNewChat() {
 async function openNewChat() {
   const token = ++loadToken;
   clearScreen();
+  loadWelcome(); // otra frase cada vez
   chooseMode("normal");
   showMode("normal", null); // chat nuevo: se elige el tipo
   conversationId = null;
@@ -1727,13 +1737,124 @@ async function checkSetup() {
     document.getElementById("setup").hidden = !key || key.set;
     voiceOff = state.voice === "apagada";
     refreshMic();
+    maybeOnboard(state.settings);
   } catch {
     // Sin conexión: el estado de arriba ya lo indica.
   }
 }
 
+// --- Bienvenida: el saludo y las ideas del chat vacío ---------------------------------------
+// Todo viene de /api/welcome y se dibuja con textContent. Si falla, queda el saludo fijo del HTML y sin ideas.
+const welcomeGreeting = document.getElementById("welcome-greeting");
+const welcomeCards = document.getElementById("welcome-cards");
+
+// Una idea abre un chat NUEVO con IA y deja su texto escrito en el cuadro, sin enviarlo, para editarlo.
+async function useCard(card) {
+  const pending = startNewChat(); // openNewChat sube loadToken antes de su primer await
+  const token = loadToken;
+  await pending;
+  if (token !== loadToken) return; // abriste otra conversación mientras tanto: el texto no va ahí
+  chooseMode("ai");
+  input.value = card.prompt;
+  input.dispatchEvent(new Event("input")); // el cuadro ajusta su alto
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+async function loadWelcome() {
+  try {
+    const response = await fetch("/api/welcome");
+    if (!response.ok) return;
+    const data = await response.json();
+    welcomeGreeting.textContent = data.greeting;
+    welcomeCards.replaceChildren();
+    for (const card of data.cards) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "welcome-card";
+      const title = document.createElement("span");
+      title.className = "welcome-card-title";
+      title.textContent = card.title;
+      const subtitle = document.createElement("span");
+      subtitle.className = "welcome-card-subtitle";
+      subtitle.textContent = card.subtitle;
+      button.append(title, subtitle);
+      button.addEventListener("click", () => useCard(card));
+      welcomeCards.append(button);
+    }
+  } catch {
+    // Sin conexión: queda el saludo del HTML.
+  }
+}
+
+// --- Primera vez: cómo te llamo y cómo me llamás ---------------------------------------
+// Se abre solo si no hay USER_NAME cargado y la persona no tocó «Saltar» (se recuerda en este navegador).
+const onboarding = document.getElementById("onboarding");
+const onboardingUser = document.getElementById("onboarding-user");
+const onboardingAssistant = document.getElementById("onboarding-assistant");
+const onboardingError = document.getElementById("onboarding-error");
+const ONBOARDING_SKIPPED = "epsilon_onboarding_skipped";
+
+function onboardingWasSkipped() {
+  try {
+    return localStorage.getItem(ONBOARDING_SKIPPED) === "1";
+  } catch {
+    return false; // sin almacenamiento: se vuelve a preguntar
+  }
+}
+
+function maybeOnboard(settings) {
+  const name = settings.find((setting) => setting.key === "USER_NAME");
+  if (!name || name.set || onboardingWasSkipped() || typeof onboarding.showModal !== "function") return;
+  onboarding.showModal();
+  onboardingUser.focus();
+}
+
+document.getElementById("onboarding-skip").addEventListener("click", () => {
+  try {
+    localStorage.setItem(ONBOARDING_SKIPPED, "1");
+  } catch {
+    // Sin almacenamiento, vuelve a preguntar en la próxima visita: no es grave.
+  }
+  onboarding.close();
+});
+
+document.getElementById("onboarding-save").addEventListener("click", async () => {
+  onboardingError.textContent = "";
+  const user = onboardingUser.value.trim();
+  const assistant = onboardingAssistant.value.trim();
+  if (!user) {
+    onboardingError.textContent = "Escribí tu nombre o tocá «Saltar por ahora».";
+    return;
+  }
+  const changes = { USER_NAME: user };
+  const clear = [];
+  if (assistant) changes.AGENT_NAME = assistant;
+  else clear.push("AGENT_NAME"); // vacío = el nombre de siempre
+  try {
+    const response = await fetch("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes, clear }),
+    });
+    if (response.status === 422) {
+      const data = await response.json();
+      const errors = (data && data.errors) || {};
+      onboardingError.textContent = errors.USER_NAME || errors.AGENT_NAME || "Revisá los nombres.";
+      return;
+    }
+    if (!response.ok) throw new Error(String(response.status));
+  } catch {
+    onboardingError.textContent = "No pude guardar los nombres. Probá de nuevo.";
+    return;
+  }
+  onboarding.close();
+  loadWelcome(); // el saludo ya puede decir tu nombre
+});
+
 // --- Arranque ---------------------------------------------------------------------
 start();
+loadWelcome();
 checkHealth();
 checkSetup();
 input.focus();

@@ -127,6 +127,26 @@
               <p class="help">Acá se guardan tus notas y archivos. Se cambia en el <code>.env</code> (DATA_DIR) y hace falta reiniciar.</p>
               <p><code id="data-dir" class="path"></code></p>
             </div>
+            <div class="sub" aria-labelledby="s-nombres">
+              <h4 id="s-nombres">Nombres</h4>
+              <p class="help">Cómo te llama el asistente y cómo lo llamás vos. Se usan en el saludo y en el chat con IA. Para hablarle por voz se usan los nombres de la sección Voz.</p>
+              <div class="field">
+                <label for="f-USER_NAME">Tu nombre</label>
+                <input id="f-USER_NAME" data-key="USER_NAME" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="Gonzalo"
+                       aria-describedby="hint-USER_NAME err-USER_NAME">
+                <p class="hint" id="hint-USER_NAME"></p>
+                <p class="error" id="err-USER_NAME" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-AGENT_NAME">Nombre del asistente</label>
+                <input id="f-AGENT_NAME" data-key="AGENT_NAME" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="Epsilon"
+                       aria-describedby="hint-AGENT_NAME err-AGENT_NAME">
+                <p class="hint" id="hint-AGENT_NAME"></p>
+                <p class="error" id="err-AGENT_NAME" role="alert"></p>
+              </div>
+            </div>
             <div class="sub" aria-labelledby="s-chat">
               <h4 id="s-chat">Chat con IA</h4>
               <p class="help">Topes de cada conversación en modo IA.</p>

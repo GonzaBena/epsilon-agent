@@ -735,3 +735,47 @@ def test_input_history_navigation_behavior_in_node():
     done = subprocess.run([node, "-e", script], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "OK"
+
+
+# --- Chip «IA» junto al título -------------------------------------------------
+
+
+def test_header_has_an_ia_chip_next_to_the_title_and_outside_of_it():
+    html = chat_html()
+    chip = re.search(r'<span id="crumb-ai"[^>]*>IA</span>', html).group(0)
+    crumb = re.search(r'<span id="crumb" data-dynamic>.*?</span>', html).group(0)
+
+    assert "hidden" in chip and 'class="ai-mark"' in chip
+    assert chip not in crumb  # shell.js reescribe el contenido de #crumb: el chip no puede vivir ahí
+
+
+def test_app_updates_the_chip_when_the_mode_changes():
+    js = static_path("app.js").read_text(encoding="utf-8")
+    fn = js[js.index("function showAiChip"):]
+    fn = fn[: fn.index("\n}\n")]
+
+    assert 'getElementById("crumb-ai")' in js and "aiMode()" in fn
+    for caller in ("function chooseMode", "function showMode", "function clearScreen"):
+        body = js[js.index(caller):]
+        assert "showAiChip()" in body[: body.index("\n}\n")], caller
+
+
+# --- Tocar una idea del saludo ---------------------------------------------------
+
+
+def test_a_welcome_card_does_nothing_if_another_conversation_was_opened_meanwhile():
+    # Si abrís otra conversación mientras se crea el chat nuevo, el texto de la idea no puede
+    # aparecer escrito en la que acabás de abrir: useCard compara el loadToken de después con el de antes.
+    js_text = static_path("app.js").read_text(encoding="utf-8")
+    body = js_text[js_text.index("async function useCard"):]
+    body = body[: body.index("\n}\n")]
+
+    assert body.index("loadToken") < body.index("await")
+    assert body.count("loadToken") >= 2 and "return" in body[body.index("await"):body.index("input.value")]
+
+
+def test_config_says_that_the_voice_names_live_in_the_voice_section():
+    html = page("config.html")
+    names = html[html.index('aria-labelledby="s-nombres"'):html.index('aria-labelledby="s-chat"')]
+
+    assert "Voz" in names and "hablarle por voz" in names
