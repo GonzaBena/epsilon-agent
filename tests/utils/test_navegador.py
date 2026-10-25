@@ -438,3 +438,78 @@ def test_history_reads_a_copy_in_read_only_mode(tmp_path):
 def test_history_without_the_file_says_so(tmp_path):
     with pytest.raises(navegador.NavegadorError, match="historial"):
         navegador.read_history(tmp_path / "nada")
+
+
+# --- YouTube Music: repetir y aleatorio --------------------------------------------
+
+
+class FakeMusicBar:
+    """La barra de YouTube Music: cada clic en un botón avanza su estado, como la de verdad."""
+
+    def __init__(self, monkeypatch, repeat="NONE", shuffle=False, has_bar=True):
+        self.state = {"repeat": repeat, "shuffle": shuffle}
+        self.clicks = []
+        self.has_bar = has_bar
+        chromium = FakeChromium(monkeypatch, [page("MUSIC1234", "YT Music", "https://music.youtube.com/watch?v=1")])
+        self.chromium = chromium
+        monkeypatch.setattr(navegador, "_cdp", self.cdp)
+
+    def cdp(self, ws_url, method, params=None):
+        if method == "Runtime.evaluate":
+            assert params["expression"] == navegador.MUSIC_JS  # el único código que corre es el fijo
+            value = {**self.state, "repeatAt": {"x": 10, "y": 20}, "shuffleAt": {"x": 30, "y": 20}} if self.has_bar else None
+            return {"result": {"type": "object", "value": value}}
+        if method == "Input.dispatchMouseEvent" and params["type"] == "mousePressed":
+            self.clicks.append((params["x"], params["y"]))
+            if params["x"] == 10:
+                order = navegador.MUSIC_REPEAT
+                self.state["repeat"] = order[(order.index(self.state["repeat"]) + 1) % 3]
+            else:
+                self.state["shuffle"] = not self.state["shuffle"]
+        return {}
+
+
+@pytest.mark.parametrize("start, want, clicks, end", [
+    ("NONE", "ONE", 2, "ONE"),  # el ciclo de YouTube Music es NONE -> ALL -> ONE
+    ("NONE", "ALL", 1, "ALL"),
+    ("ONE", "NONE", 1, "NONE"),
+    ("ALL", "ALL", 0, "ALL"),
+    ("NONE", None, 2, "ONE"),  # sin opción alterna canción / apagado
+    ("ONE", None, 1, "NONE"),
+])
+def test_music_repeat_clicks_until_the_wanted_mode(monkeypatch, start, want, clicks, end):
+    bar = FakeMusicBar(monkeypatch, repeat=start)
+
+    assert navegador.music_repeat(want) == end
+    assert len(bar.clicks) == clicks
+
+
+def test_music_shuffle_toggles_and_respects_the_wanted_state(monkeypatch):
+    bar = FakeMusicBar(monkeypatch, shuffle=False)
+
+    assert navegador.music_shuffle(None) is True
+    assert navegador.music_shuffle(True) is True  # ya estaba: no vuelve a tocar
+    assert len(bar.clicks) == 1
+    assert navegador.music_shuffle(False) is False
+
+
+def test_music_controls_explain_missing_tab_bar_and_disabled_browser(monkeypatch):
+    FakeChromium(monkeypatch, [page("AAAA1111", "Banco", "https://mi-banco.com/")])
+    with pytest.raises(navegador.NavegadorError, match="YouTube Music abierta"):
+        navegador.music_repeat(None)
+
+    FakeMusicBar(monkeypatch, has_bar=False)
+    with pytest.raises(navegador.NavegadorError, match="controles de YouTube Music"):
+        navegador.music_shuffle(None)
+
+    monkeypatch.setattr(navegador.config, "enabled", lambda key: False)
+    with pytest.raises(navegador.NavegadorError, match="apagado"):
+        navegador.music_repeat(None)
+
+
+def test_music_controls_skip_a_blocked_music_site(monkeypatch):
+    FakeMusicBar(monkeypatch)
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["music.youtube.com"] if key == "BROWSER_BLOCKED_SITES" else [])
+
+    with pytest.raises(navegador.NavegadorError, match="abierta"):
+        navegador.music_repeat(None)

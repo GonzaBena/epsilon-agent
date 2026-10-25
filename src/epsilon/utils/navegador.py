@@ -92,6 +92,25 @@ READ_JS = """(() => {
 })()"""
 
 
+# El SEGUNDO (y último) código fijo que corre en una pestaña: lee el estado de repetir y aleatorio de la barra de
+# YouTube Music (atributos `repeat-mode` y `shuffle-on`; el rótulo de los botones se queda viejo, no sirve) y dónde
+# están. No toca nada de la página y no recibe nada del modelo.
+MUSIC_HOST = "music.youtube.com"
+MUSIC_REPEAT = ("NONE", "ALL", "ONE")
+MUSIC_JS = """(() => {
+  const bar = document.querySelector('ytmusic-player-bar');
+  if (!bar) return null;
+  const center = (el) => {
+    const r = el && el.getBoundingClientRect();
+    return r && r.width > 0 && r.height > 0 && r.top >= 0 && r.top < innerHeight ? {x: r.left + r.width / 2, y: r.top + r.height / 2} : null;
+  };
+  return {repeat: bar.getAttribute('repeat-mode'), shuffle: bar.hasAttribute('shuffle-on'),
+          repeatAt: center(bar.querySelector('.repeat')), shuffleAt: center(bar.querySelector('.shuffle'))};
+})()"""
+MUSIC_TRIES = 3  # clics máximos para llegar al modo de repetir pedido (son tres modos)
+MUSIC_POLLS = 6  # cuántas veces se mira si el clic cambió el estado (de a 0,3 s)
+
+
 class NavegadorError(ValueError):
     """Algo no salió: el mensaje es para la persona (y para el modelo), en español."""
 
@@ -543,6 +562,69 @@ def type_text(tab_ref: str, n: int, text: str) -> str:
     now = _press(tab, n, saved, field=True)
     _cdp(tab.ws, "Input.insertText", {"text": text})
     return f"Escribí en «{now.label}»."
+
+
+def _music_state(tab: Tab) -> dict:
+    """El estado de la barra de YouTube Music de esa pestaña (ver MUSIC_JS)."""
+    data = _cdp(tab.ws, "Runtime.evaluate", {"expression": MUSIC_JS, "returnByValue": True}).get("result", {}).get("value")
+    if not isinstance(data, dict) or data.get("repeat") not in MUSIC_REPEAT:
+        raise NavegadorError("No encuentro los controles de YouTube Music: ¿hay algo reproduciéndose en esa pestaña?")
+    return data
+
+
+def _music_click(tab: Tab, spot: object, changed) -> dict:
+    """Un clic de verdad en el botón (donde lo ubicó MUSIC_JS) y espera a que el estado cambie. Devuelve el estado nuevo."""
+    if not isinstance(spot, dict) or not all(isinstance(spot.get(axis), (int, float)) for axis in ("x", "y")):
+        raise NavegadorError("No veo ese botón en la pestaña de YouTube Music (¿está la barra del reproductor a la vista?).")
+    for kind in ("mouseMoved", "mousePressed", "mouseReleased"):
+        _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": kind, "x": spot["x"], "y": spot["y"], "button": "left", "clickCount": 1})
+    for _ in range(MUSIC_POLLS):
+        time.sleep(0.3)
+        state = _music_state(tab)
+        if changed(state):
+            return state
+    return state
+
+
+def _music_tab() -> Tab:
+    if not config.enabled("BROWSER_ENABLED"):
+        raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    tab = next((t for t in tabs()[0] if t.host == MUSIC_HOST), None)  # tabs() ya deja afuera sitios bloqueados y pestañas personales
+    if tab is None:
+        raise NavegadorError("No hay una pestaña de YouTube Music abierta (o su sitio no es de confianza).")
+    return tab
+
+
+def music_repeat(want: str | None) -> str:
+    """Pone repetir de YouTube Music en NONE, ALL u ONE; con None alterna canción (ONE) y apagado. Solo clics en el
+    botón de la barra: nada de texto ni código que venga de afuera. Devuelve el modo en que quedó."""
+    if want is not None and want not in MUSIC_REPEAT:
+        raise NavegadorError("Modo de repetir desconocido.")
+    tab = _music_tab()
+    state = _music_state(tab)
+    target = want or ("NONE" if state["repeat"] == "ONE" else "ONE")
+    for _ in range(MUSIC_TRIES):
+        if state["repeat"] == target:
+            break
+        before = state["repeat"]
+        state = _music_click(tab, state.get("repeatAt"), lambda s: s.get("repeat") != before)
+    if state["repeat"] != target:
+        raise NavegadorError("No pude cambiar repetir en YouTube Music.")
+    audit("musica", tab.host, f"repetir {target}", asked=False)
+    return target
+
+
+def music_shuffle(want: bool | None) -> bool:
+    """Prende o apaga el aleatorio de YouTube Music; con None alterna. Devuelve cómo quedó."""
+    tab = _music_tab()
+    state = _music_state(tab)
+    target = (not state["shuffle"]) if want is None else want
+    if bool(state["shuffle"]) != target:
+        state = _music_click(tab, state.get("shuffleAt"), lambda s: bool(s.get("shuffle")) == target)
+        if bool(state["shuffle"]) != target:
+            raise NavegadorError("No pude cambiar el aleatorio en YouTube Music.")
+    audit("musica", tab.host, f"aleatorio {'sí' if target else 'no'}", asked=False)
+    return target
 
 
 def tab_host(tab_ref: str) -> str:

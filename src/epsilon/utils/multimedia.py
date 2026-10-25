@@ -3,6 +3,8 @@ import os
 import re
 import subprocess
 
+from epsilon.utils import navegador
+
 # Volumen y música de la máquina donde corre Epsilon. Sin modelo. NO ejecuta comandos que alguien escriba: cada
 # orden sale de una función fija con argumentos armados acá (el número se valida y se topa). El volumen va por
 # `wpctl` (PipeWire) y la música por MPRIS, que cualquier reproductor expone en el bus de la sesión (Spotify, mpv,
@@ -159,6 +161,10 @@ def is_music_action(arg: str) -> bool:
     return arg in MUSIC_ACTIONS or _mode(arg) is not None
 
 
+WEB_REPEAT = {"Track": "ONE", "Playlist": "ALL", "None": "NONE"}  # LoopStatus de MPRIS -> repeat-mode de YouTube Music
+WEB_BROWSERS = ("chromium", "chrome", "google-chrome", "brave", "vivaldi")
+
+
 def _read_mode(player: str, prop: str):
     try:
         return _property(player, prop)
@@ -166,8 +172,26 @@ def _read_mode(player: str, prop: str):
         raise MultimediaError(f"Este reproductor ({_app(player)}) no permite cambiar repetir ni aleatorio.") from None
 
 
+def _set_web_mode(kind: str, option: str) -> str:
+    """Repetir/aleatorio en la pestaña de YouTube Music del navegador, que no los expone por MPRIS."""
+    try:
+        if kind == "repeat":
+            want = None if option == "" else WEB_REPEAT[REPEAT_MODES[option]]
+            text = {"NONE": "Repetir apagado", "ONE": "Repitiendo la canción", "ALL": "Repitiendo la lista"}[navegador.music_repeat(want)]
+        else:
+            text = "Aleatorio activado" if navegador.music_shuffle(SHUFFLE_MODES[option]) else "Aleatorio apagado"
+    except navegador.NavegadorError as e:
+        raise MultimediaError(str(e)) from None
+    return f"{text}. (YouTube Music)"
+
+
 def _set_mode(player: str, kind: str, option: str) -> str:
     """Cambia repetir o aleatorio en el reproductor y dice cómo quedó. Valores fijos, nunca texto de la persona."""
+    if _app(player) in WEB_BROWSERS:
+        try:
+            _property(player, "LoopStatus" if kind == "repeat" else "Shuffle")
+        except MultimediaError:
+            return _set_web_mode(kind, option)  # el navegador no lo expone: se usan los botones de YouTube Music
     if kind == "repeat":
         current = _read_mode(player, "LoopStatus")
         # sin opción alterna: si ya repite la canción lo apaga, si no la repite

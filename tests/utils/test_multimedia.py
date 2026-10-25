@@ -177,3 +177,29 @@ def test_modes_reject_made_up_options_and_are_valid_for_routines():
     assert not multimedia.is_music_action("repetir x; reboot")
     with pytest.raises(ValueError):
         multimedia.music("aleatorio quizás")
+
+
+def test_chromium_without_mpris_modes_falls_back_to_the_youtube_music_tab(monkeypatch):
+    fake_modes(monkeypatch, supported=False)
+    monkeypatch.setattr(multimedia, "_players", lambda: [CHROMIUM])
+    monkeypatch.setattr(multimedia, "_pick", lambda: CHROMIUM)
+    seen = []
+    monkeypatch.setattr(multimedia.navegador, "music_repeat", lambda want: seen.append(("repeat", want)) or (want or "ONE"))
+    monkeypatch.setattr(multimedia.navegador, "music_shuffle", lambda want: seen.append(("shuffle", want)) or True)
+
+    assert multimedia.music("repetir") == "Repitiendo la canción. (YouTube Music)"
+    assert multimedia.music("repetir lista") == "Repitiendo la lista. (YouTube Music)"
+    assert multimedia.music("aleatorio") == "Aleatorio activado. (YouTube Music)"
+    assert seen == [("repeat", None), ("repeat", "ALL"), ("shuffle", None)]
+
+
+def test_web_fallback_errors_become_readable_multimedia_errors(monkeypatch):
+    fake_modes(monkeypatch, supported=False)
+    monkeypatch.setattr(multimedia, "_pick", lambda: CHROMIUM)
+
+    def boom(want):
+        raise multimedia.navegador.NavegadorError("No hay una pestaña de YouTube Music abierta.")
+
+    monkeypatch.setattr(multimedia.navegador, "music_repeat", boom)
+    with pytest.raises(multimedia.MultimediaError, match="YouTube Music abierta"):
+        multimedia.music("repetir")
