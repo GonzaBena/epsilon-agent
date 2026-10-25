@@ -68,7 +68,7 @@ def greeting(
     name = name.strip()
     if first:
         who = f"Hola, {name}. Soy {assistant}" if name else f"Hola, soy {assistant}"
-        return f"{who}, tu nuevo asistente. Estas son algunas ideas para empezar:"
+        return f"{who}, tu nueva asistente. Estas son algunas ideas para empezar:"
     phrase = pick(pool(hour))
     if name:
         return phrase.replace("{name}", name)

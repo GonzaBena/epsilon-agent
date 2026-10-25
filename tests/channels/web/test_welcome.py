@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from epsilon.channels import welcome
@@ -11,13 +13,13 @@ def last(options):
 def test_first_greeting_names_the_user_and_the_assistant():
     text = welcome.greeting("Gonzalo", "Luna", 10, first=True)
 
-    assert text == "Hola, Gonzalo. Soy Luna, tu nuevo asistente. Estas son algunas ideas para empezar:"
+    assert text == "Hola, Gonzalo. Soy Luna, tu nueva asistente. Estas son algunas ideas para empezar:"
 
 
 def test_first_greeting_without_a_name_has_no_gap():
     text = welcome.greeting("", "Epsilon", 10, first=True)
 
-    assert text == "Hola, soy Epsilon, tu nuevo asistente. Estas son algunas ideas para empezar:"
+    assert text == "Hola, soy Epsilon, tu nueva asistente. Estas son algunas ideas para empezar:"
 
 
 @pytest.mark.parametrize(
@@ -83,7 +85,7 @@ def test_welcome_endpoint_uses_the_names_and_the_first_greeting_until_there_is_a
     data = cfg.get("/api/welcome").json()
 
     assert data["needs_profile"] is False
-    assert data["greeting"] == "Hola, Gonzalo. Soy Luna, tu nuevo asistente. Estas son algunas ideas para empezar:"
+    assert data["greeting"] == "Hola, Gonzalo. Soy Luna, tu nueva asistente. Estas son algunas ideas para empezar:"
 
 
 def test_welcome_endpoint_greets_differently_once_there_is_a_conversation(cfg, named):
@@ -92,7 +94,7 @@ def test_welcome_endpoint_greets_differently_once_there_is_a_conversation(cfg, n
 
     data = cfg.get("/api/welcome").json()
 
-    assert "tu nuevo asistente" not in data["greeting"]
+    assert "tu nueva asistente" not in data["greeting"]
 
 
 def test_welcome_endpoint_keeps_host_and_origin_checks(client):
@@ -109,3 +111,13 @@ def test_welcome_avatar_file_exists_and_the_page_asks_the_server_for_the_welcome
 
     assert (web.STATIC_DIR / src).is_file()
     assert 'fetch("/api/welcome")' in static_path("app.js").read_text(encoding="utf-8")
+
+
+def test_welcome_picture_is_the_optimised_avatar_and_not_the_heavy_original():
+    from tests.channels.web.helpers import chat_html, web
+
+    img = re.search(r'<img[^>]*class="welcome-avatar"[^>]*>', chat_html()).group(0)
+    src = re.search(r'src="/static/img/([^"]+)"', img).group(1)
+
+    assert src == "welcome-avatar.webp"
+    assert (web.STATIC_DIR / "img" / src).stat().st_size < 400_000  # se carga en cada visita
