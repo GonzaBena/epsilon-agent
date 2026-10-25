@@ -151,6 +151,12 @@ code {
   font-size: 1.1rem;
   line-height: 1;
 }
+img.mark {
+  display: block;
+  border: none;
+  width: 30px;
+  height: 30px;
+}
 
 /* Los enlaces de arriba: Chat, Canales y Uso. */
 .top-nav {
@@ -981,6 +987,7 @@ body.booting .log {
 .msg.bot .mark {
   flex: none;
   margin-top: 0.1rem;
+  border: none;
 }
 .msg.bot .col {
   max-width: 68ch;
@@ -1213,7 +1220,7 @@ body.booting .log {
 
 .row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.5rem;
   background: var(--surface);
@@ -1418,7 +1425,9 @@ textarea::placeholder {
   border-radius: 10px;
   color: var(--on-accent);
   cursor: pointer;
-  transition: transform 0.1s ease, filter 0.12s ease;
+  transition:
+    transform 0.1s ease,
+    filter 0.12s ease;
 }
 .send-btn:hover:not(:disabled) {
   filter: brightness(1.08);
@@ -1476,7 +1485,9 @@ textarea::placeholder {
   border-radius: 8px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.12s ease, background-color 0.12s ease;
+  transition:
+    color 0.12s ease,
+    background-color 0.12s ease;
 }
 .composer-icon-btn:hover {
   color: var(--text);
@@ -1497,7 +1508,9 @@ textarea::placeholder {
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.12s ease, background-color 0.12s ease;
+  transition:
+    color 0.12s ease,
+    background-color 0.12s ease;
 }
 .composer-chip:hover {
   color: var(--text);
@@ -3566,7 +3579,10 @@ a.ghost {
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s ease, opacity 0.15s ease;
+  transition:
+    transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.16s ease,
+    opacity 0.15s ease;
 }
 .claude-add-btn:hover {
   transform: translateY(-1px);
@@ -3624,7 +3640,9 @@ a.ghost {
   cursor: pointer;
   border-radius: 8px;
   user-select: none;
-  transition: background 0.16s ease, transform 0.16s ease;
+  transition:
+    background 0.16s ease,
+    transform 0.16s ease;
 }
 .claude-row-main:hover {
   background: color-mix(in srgb, var(--surface) 40%, transparent);
@@ -3658,7 +3676,10 @@ a.ghost {
   justify-content: center;
   color: var(--accent);
   flex-shrink: 0;
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 button.claude-icon-wrap {
   padding: 0;
@@ -3706,7 +3727,8 @@ button.claude-icon-wrap {
 
 /* Puntos de pulso animado */
 @keyframes dotPulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
@@ -3767,7 +3789,11 @@ button.claude-icon-wrap {
   font-weight: 500;
   color: var(--text);
   cursor: pointer;
-  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 .claude-connect-btn:hover {
   transform: translateY(-1px);
@@ -3816,7 +3842,9 @@ button.claude-icon-wrap {
 .claude-chevron {
   font-size: 1.25rem;
   color: var(--muted);
-  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease;
+  transition:
+    transform 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.18s ease;
   line-height: 1;
   user-select: none;
 }
@@ -4175,7 +4203,9 @@ button.claude-icon-wrap {
   cursor: pointer;
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
-  transition: color 0.15s ease, transform 0.15s ease;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
 }
 .claude-modal-close:hover {
   color: var(--text);
@@ -4319,7 +4349,10 @@ button.claude-icon-wrap {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.16s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.16s ease,
+    box-shadow 0.2s ease;
 }
 .conn-btn-card:hover {
   transform: translateY(-2px);
@@ -4364,7 +4397,9 @@ button.claude-icon-wrap {
   gap: 0.5rem;
 }
 .button-run-btn {
-  transition: transform 0.14s ease, opacity 0.14s ease;
+  transition:
+    transform 0.14s ease,
+    opacity 0.14s ease;
 }
 .button-run-btn:hover {
   transform: translateY(-1px);

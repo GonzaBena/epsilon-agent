@@ -615,3 +615,123 @@ def test_tapping_the_conversation_menu_does_not_close_the_drawer():
     # Y no se decide con closest() sobre el DOM vivo: «Cancelar» y los ítems del menú vuelven a dibujar la lista dentro de su
     # propio clic, el botón queda desconectado y ya no parece estar en la barra. composedPath() se fija al empezar el evento.
     assert "composedPath()" in handler and "closest(" not in handler
+
+
+# --- Historial de mensajes en el cuadro de texto y avatar del bot ----------------
+
+
+def test_input_history_navigation_structures():
+    app = js("app.js")
+
+    assert "let messageHistory = [];" in app
+    assert "let historyIndex = -1;" in app
+    assert "let historyDraft = \"\";" in app
+    assert "function initHistory(messages)" in app
+    assert "function handleHistoryKey(event)" in app
+    assert "handleHistoryKey(event)" in app
+    assert "initHistory(data.messages)" in app
+    assert "messageHistory.push(text)" in app
+
+
+def test_bot_responses_use_the_brand_logo_avatar():
+    app = js("app.js")
+    css = static_path("style.css").read_text(encoding="utf-8")
+
+    assert "function botMark()" in app
+    assert 'mark.src = "/static/img/apple-touch-icon.png"' in app
+    assert "row.append(botMark())" in app
+    # Tanto en render() como en showThinking()
+    assert app.count("row.append(botMark())") == 2
+
+    # En CSS no lleva borde de texto y mantiene el estilo de logo de marca
+    assert "img.mark" in css
+    assert ".msg.bot .mark" in css
+
+
+def test_input_history_navigation_behavior_in_node():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node no está instalado")
+
+    app = js("app.js")
+    block = app[app.index("function initHistory") : app.index('input.addEventListener("keydown"')]
+    script = f"""
+    let messageHistory = [];
+    let historyIndex = -1;
+    let historyDraft = "";
+    const input = {{ value: "", selectionStart: 0, selectionEnd: 0, setSelectionRange(s, e) {{ this.selectionStart = s; this.selectionEnd = e; }} }};
+    function resizeInput() {{}}
+    function closeSuggestions() {{}}
+
+    {block}
+
+    initHistory([
+        {{ role: "user", text: "primer mensaje" }},
+        {{ role: "bot", text: "respuesta" }},
+        {{ role: "user", text: "segundo mensaje" }},
+    ]);
+
+    if (messageHistory.length !== 2 || messageHistory[0] !== "primer mensaje" || messageHistory[1] !== "segundo mensaje") {{
+        throw new Error("initHistory falló: " + JSON.stringify(messageHistory));
+    }}
+
+    input.value = "";
+    input.selectionStart = 0;
+    input.selectionEnd = 0;
+    let evUp = {{ key: "ArrowUp", preventDefault() {{}} }};
+    let handled = handleHistoryKey(evUp);
+    if (!handled || input.value !== "segundo mensaje" || historyIndex !== 1) {{
+        throw new Error("ArrowUp no trajo el último mensaje: " + input.value);
+    }}
+
+    handled = handleHistoryKey(evUp);
+    if (!handled || input.value !== "primer mensaje" || historyIndex !== 0) {{
+        throw new Error("ArrowUp no trajo el mensaje anterior: " + input.value);
+    }}
+
+    handled = handleHistoryKey(evUp);
+    if (!handled || input.value !== "primer mensaje" || historyIndex !== 0) {{
+        throw new Error("ArrowUp al tope falló: " + input.value);
+    }}
+
+    let evDown = {{ key: "ArrowDown", preventDefault() {{}} }};
+    handled = handleHistoryKey(evDown);
+    if (!handled || input.value !== "segundo mensaje" || historyIndex !== 1) {{
+        throw new Error("ArrowDown no avanzó al segundo: " + input.value);
+    }}
+
+    handled = handleHistoryKey(evDown);
+    if (!handled || input.value !== "" || historyIndex !== -1) {{
+        throw new Error("ArrowDown no restauró borrador: " + input.value);
+    }}
+
+    input.value = "mi borrador";
+    input.selectionStart = input.value.length;
+    input.selectionEnd = input.value.length;
+    handled = handleHistoryKey(evUp);
+    if (!handled || input.value !== "segundo mensaje" || historyDraft !== "mi borrador") {{
+        throw new Error("ArrowUp no guardó el borrador escrito");
+    }}
+    handled = handleHistoryKey(evDown);
+    if (!handled || input.value !== "mi borrador" || historyIndex !== -1) {{
+        throw new Error("ArrowDown no restauró el borrador escrito");
+    }}
+
+    input.value = "borrador esc";
+    input.selectionStart = 0;
+    input.selectionEnd = 0;
+    handleHistoryKey(evUp);
+    let evEsc = {{ key: "Escape", preventDefault() {{}} }};
+    handled = handleHistoryKey(evEsc);
+    if (!handled || input.value !== "borrador esc" || historyIndex !== -1) {{
+        throw new Error("Escape no restauró el borrador");
+    }}
+
+    console.log("OK");
+    """
+    done = subprocess.run([node, "-e", script], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "OK"

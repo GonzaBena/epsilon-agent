@@ -59,6 +59,11 @@ let busy = false;            // true mientras esperamos una respuesta
 let chatMode = "normal";     // lo que está elegido en el selector (solo vale mientras !started)
 let started = false;
 
+// Historial de mensajes anteriores enviados por el usuario para navegar con flechas arriba/abajo.
+let messageHistory = [];
+let historyIndex = -1;
+let historyDraft = "";
+
 // Con un archivo adjunto, el texto que escribas se usa para pedir un CSV.
 // Esa función no se descubre sola, así que el placeholder la explica.
 const DEFAULT_PLACEHOLDER = input.placeholder; // el que trae el HTML
@@ -180,11 +185,21 @@ function make(tag, className, text) {
   return node;
 }
 
+// La marca de Epsilon en sus respuestas: el logo de la aplicación.
+function botMark() {
+  const mark = make("img", "mark brand-logo");
+  mark.src = "/static/img/apple-touch-icon.png";
+  mark.alt = "";
+  mark.width = 30;
+  mark.height = 30;
+  return mark;
+}
+
 // Dibuja un mensaje y lo agrega a la conversación. Devuelve el elemento.
 function render(message) {
   const row = make("article", `msg ${message.role}${message.error ? " error" : ""}`);
 
-  if (message.role === "bot") row.append(make("span", "mark", "Ε"));
+  if (message.role === "bot") row.append(botMark());
 
   const body = make("div", "body");
   if (message.audio_url) {
@@ -294,6 +309,9 @@ function clearScreen() {
   aiBar.hidden = true;
   clearFile(); // un archivo a medio adjuntar no tiene que irse a otra conversación
   empty.hidden = false;
+  messageHistory = [];
+  historyIndex = -1;
+  historyDraft = "";
 }
 
 // Abre una conversación: dibuja lo que el servidor tiene guardado.
@@ -307,6 +325,7 @@ function showConversation(data) {
   started = data.messages.length > 0;
   showMode(data.mode, data.chat);
   setContext(data.artifacts || []);
+  initHistory(data.messages);
   empty.hidden = data.messages.length > 0;
   scrollToEnd();
 }
@@ -375,7 +394,7 @@ async function syncMode() {
 // --- "Pensando…" mientras el modelo trabaja -----------------------------------
 function showThinking() {
   const row = make("article", "msg bot thinking");
-  row.append(make("span", "mark", "Ε"));
+  row.append(botMark());
   const body = make("div", "body");
   const text = make("p", "text", "Pensando");
   const dots = make("span", "dots");
@@ -842,6 +861,11 @@ async function submit() {
     resizeInput();
     ask(postJson({ text }));
   }
+  if (text && messageHistory[messageHistory.length - 1] !== text) {
+    messageHistory.push(text);
+  }
+  historyIndex = -1;
+  historyDraft = "";
 }
 
 composer.addEventListener("submit", (event) => {
@@ -850,14 +874,87 @@ composer.addEventListener("submit", (event) => {
   else submit();
 });
 
+// --- Navegación del historial de mensajes con flechas arriba/abajo -----------
+function initHistory(messages) {
+  messageHistory = [];
+  if (Array.isArray(messages)) {
+    for (const m of messages) {
+      if (m && m.role === "user" && typeof m.text === "string") {
+        const line = m.text.trim();
+        if (line && messageHistory[messageHistory.length - 1] !== line) {
+          messageHistory.push(line);
+        }
+      }
+    }
+  }
+  historyIndex = -1;
+  historyDraft = "";
+}
+
+function handleHistoryKey(event) {
+  if (event.isComposing || messageHistory.length === 0) return false;
+
+  if (event.key === "ArrowUp") {
+    if (historyIndex !== -1) {
+      if (historyIndex > 0) {
+        historyIndex--;
+        input.value = messageHistory[historyIndex];
+        resizeInput();
+      }
+      input.setSelectionRange(input.value.length, input.value.length);
+      event.preventDefault();
+      return true;
+    }
+    const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+    const singleLine = !input.value.includes("\n");
+    if (atStart || singleLine) {
+      closeSuggestions();
+      historyDraft = input.value;
+      historyIndex = messageHistory.length - 1;
+      input.value = messageHistory[historyIndex];
+      resizeInput();
+      input.setSelectionRange(input.value.length, input.value.length);
+      event.preventDefault();
+      return true;
+    }
+  } else if (event.key === "ArrowDown") {
+    if (historyIndex !== -1) {
+      if (historyIndex < messageHistory.length - 1) {
+        historyIndex++;
+        input.value = messageHistory[historyIndex];
+      } else {
+        historyIndex = -1;
+        input.value = historyDraft;
+      }
+      closeSuggestions();
+      resizeInput();
+      input.setSelectionRange(input.value.length, input.value.length);
+      event.preventDefault();
+      return true;
+    }
+  } else if (event.key === "Escape" && historyIndex !== -1) {
+    historyIndex = -1;
+    input.value = historyDraft;
+    resizeInput();
+    input.setSelectionRange(input.value.length, input.value.length);
+    event.preventDefault();
+    return true;
+  }
+
+  return false;
+}
+
 // Enter envía; Shift+Enter hace un salto de línea. Con las sugerencias abiertas, las flechas
 // eligen, Enter o Tab insertan y Escape cierra (ver «Sugerencias de comandos» más abajo).
+// Con las flechas arriba/abajo se puede recorrer el historial de mensajes anteriores.
 input.addEventListener("keydown", (event) => {
   if (handleSuggestKey(event)) return;
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     submit();
+    return;
   }
+  if (handleHistoryKey(event)) return;
 });
 
 // El cuadro de texto crece con lo que escribís (hasta el máximo del CSS).
@@ -866,6 +963,10 @@ function resizeInput() {
   input.style.height = `${input.scrollHeight}px`;
 }
 input.addEventListener("input", () => {
+  if (input.value === "" && historyIndex !== -1) {
+    historyIndex = -1;
+    historyDraft = "";
+  }
   resizeInput();
   updateSuggestions();
 });
@@ -1121,6 +1222,8 @@ function insertText(text) {
   resizeInput();
   input.focus();
   input.setSelectionRange(text.length, text.length); // el cursor, al final
+  historyIndex = -1;
+  historyDraft = "";
 }
 
 for (const element of document.querySelectorAll("[data-insert]")) {

@@ -206,12 +206,13 @@ def test_every_letter_mark_in_the_html_is_the_capital_epsilon():
         assert 'class="mark"' not in page(name), name
 
 
-def test_the_marks_drawn_by_the_scripts_are_the_capital_epsilon():
+def test_the_marks_drawn_by_the_scripts_use_the_brand_logo():
+    # Las respuestas de Epsilon y el «Pensando…» usan el logo de la marca (imagen), no el cuadrado con la letra.
     js = static_path("app.js").read_text(encoding="utf-8")
     drawn = re.findall(r'make\("span", "mark", "(.)"\)', js)
 
-    assert len(drawn) == 2  # cada respuesta de Epsilon y el «Pensando…»
-    assert all(m == BRAND for m in drawn), [hex(ord(m)) for m in drawn]
+    assert len(drawn) == 0
+    assert 'src = "/static/img/apple-touch-icon.png"' in js
 
 
 # --- Barra de arriba y página Canales ----------------------------------------
