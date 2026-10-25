@@ -121,3 +121,21 @@ def test_welcome_picture_is_the_optimised_avatar_and_not_the_heavy_original():
 
     assert src == "welcome-avatar.webp"
     assert (web.STATIC_DIR / "img" / src).stat().st_size < 400_000  # se carga en cada visita
+
+
+def brightest_channel(path):
+    """El valor más alto (0-255) que alcanza algún píxel visible: un dibujo oscurecido no llega ni a 200."""
+    import pytest
+
+    pil = pytest.importorskip("PIL.Image")
+    import numpy as np
+
+    pixels = np.asarray(pil.open(path).convert("RGBA"))
+    visible = pixels[..., 3] == 255
+    return int(pixels[..., :3].max(axis=-1)[visible].max())
+
+
+def test_welcome_picture_is_not_dimmed():
+    from tests.channels.web.helpers import web
+
+    assert brightest_channel(web.STATIC_DIR / "img" / "welcome-avatar.webp") >= 235
