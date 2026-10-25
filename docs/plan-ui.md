@@ -140,3 +140,4 @@ Rediseño a partir del canvas «Epsilon - Chat web» (páginas Chat y Uso de IA)
 - **Recientes:** el fondo de la conversación actual (y del hover) es de toda la fila; los botones de
   renombrar y eliminar flotan a la derecha, aparecen al pasar el mouse o con el foco, y no le quitan
   ancho al título mientras no se ven.
+- **Primer uso:** diálogo `#onboarding` (tu nombre y el del asistente; «Saltar por ahora» se recuerda en `localStorage`) y, en el chat vacío, avatar + saludo + 6 cards que abren un chat con IA con el texto listo para editar. El saludo es la primera vez de presentación y después rota según la hora (`channels/welcome.py`, sin IA). El chip «IA» junto al título del encabezado muestra el modo aunque el menú esté contraído. Plan: `docs/superpowers/plans/2026-10-25-bienvenida-primer-uso.md`.
