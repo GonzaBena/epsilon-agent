@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from epsilon import core, tools
-from epsilon.ai import llm, permissions, usage
+from epsilon.ai import chat, llm, permissions, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store as memory
 
@@ -504,7 +504,7 @@ def test_ia_sends_only_the_question_and_offers_the_tools(script):
     assert reply.text == "1260" and reply.ai
     (history, offered), = script.seen
     assert len(history) == 1 and history[0].role == "user"  # sin charla anterior
-    assert "notas" in offered and "buscar" not in offered  # los grupos del chat, con sus permisos
+    assert offered == [chat.GROUPS_TOOL] and "buscar" not in offered  # el índice de grupos, con sus permisos
 
 
 def test_ia_rejects_a_long_question_without_calling_the_model(script):
@@ -1224,9 +1224,63 @@ def test_deleting_a_routine_that_does_not_exist_says_so_in_the_question(script, 
 def test_the_routine_group_is_offered_with_its_three_actions(script, at_1430):
     script.steps = [step("hola")]
 
-    say("hola")
+    say("avisame a las 9")
 
     assert "rutinas" in script.seen[0][1]
+
+
+# --- Grupos a demanda -------------------------------------------------------------------------
+
+
+def test_the_model_asks_for_a_group_and_gets_it_in_the_next_call(script):
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [
+        step(calls=[("herramientas.notas", "")]),
+        step(calls=[("notas.buscar", "switch")]),
+        step("Lo encontré"),
+    ]
+
+    reply = say("¿qué tengo del switch?")
+
+    assert reply.text == "Lo encontré"
+    assert "notas" not in script.seen[0][1] and "notas" in script.seen[1][1]
+    assert "buscar" in results(script.seen[1][0])[0] and "switch" in results(script.seen[2][0])[-1]
+
+
+def test_a_group_written_in_the_argument_also_loads(script):
+    script.steps = [step(calls=[("herramientas", "pc, rutinas")]), step("ok")]
+
+    say("hola")
+
+    assert {"pc", "rutinas"} <= set(script.seen[1][1])
+
+
+def test_an_unknown_group_lists_the_ones_there_are(script):
+    script.steps = [step(calls=[("herramientas.correo", "")]), step("ok")]
+
+    say("hola")
+
+    assert "No hay ese grupo" in results(script.seen[1][0])[0] and "notas" in results(script.seen[1][0])[0]
+
+
+def test_a_blocked_group_cannot_be_asked_for(script):
+    states = permissions.load()
+    states.update({tid: "deny" for tid in ("volumen", "sonando", "musica", "ventanas")})
+    permissions.save(states)
+    script.steps = [step(calls=[("herramientas.pc", "")]), step("ok")]
+
+    say("hola")
+
+    assert "No hay ese grupo" in results(script.seen[1][0])[0] and "pc" not in script.seen[1][1]
+
+
+def test_a_direct_call_without_asking_still_runs_and_loads_the_group(script):
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
+
+    say("hola")  # nada preselecciona notas: un modelo chico la llama igual
+
+    assert "switch" in results(script.seen[1][0])[0] and "notas" in script.seen[1][1]
 
 
 # --- Actividad: lo que la IA hizo queda anotado -----------------------------------------------

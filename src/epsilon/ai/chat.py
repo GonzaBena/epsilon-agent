@@ -1,5 +1,7 @@
 import os
-from dataclasses import dataclass
+import re
+import unicodedata
+from dataclasses import dataclass, field
 
 from epsilon import tools
 from epsilon.ai import llm, permissions, usage
@@ -149,6 +151,8 @@ class Turn:
     tainted: bool = False  # leyó una página de un sitio de afuera: desde ahí toda acción pregunta (ai/browser_guard.py)
     browser_actions: int = 0  # acciones del navegador en este mensaje (tope en browser_guard)
     browser_tabs: int = 0  # pestañas nuevas abiertas en este mensaje (tope en browser_guard)
+    groups: set[str] = field(default_factory=set)  # grupos de herramientas que ya viajan enteros (ver `offer`)
+    asked_groups: bool = False  # ya usó `herramientas`: sigue declarada, porque el historial la nombra
 
 
 def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
@@ -159,9 +163,31 @@ def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
     history = [llm.text_turn(role, content) for role, content in pairs[:-1]]
     if parts:
         history.append(llm.parts_turn("user", [*parts, pairs[-1][1]]))
-        return Turn(conversation_id, history, label="Chat con archivos")
+        return preload(Turn(conversation_id, history, label="Chat con archivos"), text)
     history.append(llm.text_turn(*pairs[-1]))
-    return Turn(conversation_id, history)
+    return preload(Turn(conversation_id, history), text)
+
+
+def _plain(text: str) -> str:
+    """En minúsculas y sin tildes («Mañana» -> «manana»), para comparar con las palabras clave."""
+    return unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+
+
+def preload(turn: Turn, text: str) -> Turn:
+    """Suma al turno los grupos que el mensaje nombra (palabras clave de tools.AI_GROUP_INDEX, el nombre de un
+    conector o de una skill), así lo común sale en la primera llamada. Sin modelo: es comparar texto."""
+    plain = _plain(text)
+
+    def says(word: str) -> bool:  # al comienzo de una palabra: «nota» vale en «notas», no en «anotación»
+        return re.search(r"(?<![a-z0-9])" + re.escape(_plain(word)), plain) is not None
+
+    for group in groups():
+        words = tools.AI_GROUP_INDEX.get(group, ("", (group,)))[1]
+        if group == "skills":
+            words = (*words, *re.findall(r"^- ([^:]+):", skill_runtime.catalog(), re.M))
+        if any(says(word) for word in words):
+            turn.groups.add(group)
+    return turn
 
 
 def _describe(tool: tools.Tool) -> str:
@@ -190,6 +216,42 @@ def _specs() -> list[llm.ToolSpec]:
     return list(specs.values())
 
 
+# La herramienta con que el modelo pide un grupo entero (ver `offer`): no ejecuta nada ni necesita permiso.
+GROUPS_TOOL = "herramientas"
+
+
+def groups() -> list[str]:
+    """Los grupos que hoy se pueden ofrecer (con alguna acción permitida), en el orden de siempre."""
+    return [spec.name for spec in _specs() if spec.actions]
+
+
+def brief(group: str) -> str:
+    """La línea de un grupo en el índice: la de AI_GROUP_INDEX o, para un conector, el comienzo de su texto."""
+    if group in tools.AI_GROUP_INDEX:
+        return tools.AI_GROUP_INDEX[group][0]
+    text = tools.group_text(group).split(". ")[0]
+    return text if len(text) <= 120 else text[:117] + "…"
+
+
+def offer(turn: Turn) -> list[llm.ToolSpec]:
+    """Lo que viaja en esta llamada: las herramientas sueltas, los grupos ya cargados en el turno y, para pedir
+    los demás, `herramientas` con una línea por grupo. Así un «hola» no paga las descripciones de todo."""
+    specs = _specs()
+    shown = [spec for spec in specs if not spec.actions or spec.name in turn.groups]
+    rest = [spec.name for spec in specs if spec.actions and spec.name not in turn.groups]
+    if rest or turn.asked_groups:
+        rest = rest or [spec.name for spec in specs if spec.actions]
+        lines = "\n".join(f"- {name}: {brief(name)}" for name in rest)
+        shown.append(llm.ToolSpec(
+            GROUPS_TOOL,
+            "Para usar las herramientas de un grupo, primero pedilo acá (después lo llamás con la acción que "
+            f"necesites). Grupos:\n{lines}",
+            "vacío",
+            tuple(rest),
+        ))
+    return shown
+
+
 def step_limit(turn: Turn) -> int:
     """Cuántas llamadas al modelo de este mensaje pueden pedir herramientas."""
     return MAX_BROWSER_STEPS if turn.browser_actions else MAX_TOOL_STEPS
@@ -201,7 +263,7 @@ def step(turn: Turn) -> llm.Step:
     allow_calls = turn.steps < step_limit(turn)
     with usage.action(turn.label), llm.task(turn.task):
         # Un modelo que no usa herramientas (algunos locales) no las recibe: contesta solo con texto.
-        specs = _specs() if llm.capabilities().tools else []
+        specs = offer(turn) if llm.capabilities().tools else []
         result = llm.chat_tools(turn.history, system_prompt(), specs, MAX_TOKENS, allow_calls=allow_calls)
     turn.history.append(result.turn)
     turn.steps += 1

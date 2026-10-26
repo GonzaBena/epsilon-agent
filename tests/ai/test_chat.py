@@ -293,19 +293,59 @@ def captured(monkeypatch):
     return calls
 
 
-def test_step_offers_the_groups_without_the_denied_actions(captured):
+def test_the_groups_go_without_the_denied_actions():
     states = permissions.load()
     states["ver"] = "deny"
     permissions.save(states)
 
-    chat.step(chat.begin(CID, "hola"))
-
-    specs = {spec.name: spec for spec in captured[0]["tools"]}
+    specs = {spec.name: spec for spec in chat._specs()}
     assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "rutinas", "navegador"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
     assert sum(len(spec.actions) for spec in specs.values()) == 26
-    assert all(isinstance(s, llm.ToolSpec) for s in captured[0]["tools"])
+    assert all(isinstance(s, llm.ToolSpec) for s in specs.values())
+
+
+def test_a_plain_hello_gets_only_the_group_index(captured):
+    chat.step(chat.begin(CID, "hola"))
+
+    (index,) = captured[0]["tools"]
+    assert index.name == chat.GROUPS_TOOL
+    assert index.actions == ("notas", "archivos", "memoria", "consultar", "pc", "rutinas", "navegador")
+    assert "- navegador: " in index.description and "iniciar sesión" not in index.description  # solo la línea corta
+    full = sum(len(s.description) + len(s.arg_description) for s in chat._specs())
+    assert len(index.description) < full / 5  # lo que se ahorra un «hola»
+
+
+def test_the_message_preloads_the_groups_it_names(captured):
+    chat.step(chat.begin(CID, "Anotá en la lista de la compra: pan"))
+
+    names = [spec.name for spec in captured[0]["tools"]]
+    assert "notas" in names and "navegador" not in names
+    index = next(spec for spec in captured[0]["tools"] if spec.name == chat.GROUPS_TOOL)
+    assert "notas" not in index.actions  # lo que ya viaja no se vuelve a ofrecer
+
+
+def test_keywords_match_without_accents_and_only_at_the_start_of_a_word():
+    assert "consultar" in chat.preload(chat.Turn(CID, []), "¿Qué DÓLAR hay?").groups
+    assert "pc" in chat.preload(chat.Turn(CID, []), "poné música").groups
+    assert "notas" not in chat.preload(chat.Turn(CID, []), "una connotación").groups  # «nota» en medio de otra palabra
+
+
+def test_the_index_stays_declared_once_every_group_is_loaded(captured):
+    turn = chat.begin(CID, "hola")
+    turn.groups.update(chat.groups())
+    turn.asked_groups = True  # el historial ya trae una llamada a `herramientas`
+
+    chat.step(turn)
+
+    names = [spec.name for spec in captured[0]["tools"]]
+    assert names[-1] == chat.GROUPS_TOOL and "notas" in names
+
+
+def test_every_builtin_group_has_its_index_line():
+    assert set(tools.AI_GROUPS) == set(tools.AI_GROUP_INDEX)
+    assert all(line and words for line, words in tools.AI_GROUP_INDEX.values())
 
 
 def test_step_caps_the_output_tokens(captured):
@@ -471,7 +511,7 @@ def test_step_offers_a_group_as_one_tool_with_its_allowed_actions(captured, monk
     )
     monkeypatch.setattr(tools, "AI_GROUPS", {"mem": "Lo que recordás de la persona"})
 
-    chat.step(chat.begin(CID, "hola"))  # olvidar viene bloqueada por defecto: la acción no se ofrece
+    chat.step(chat.begin(CID, "hola mem"))  # olvidar viene bloqueada por defecto: la acción no se ofrece
 
     ver, mem = captured[0]["tools"]
     assert (ver.name, ver.actions) == ("ver", ())

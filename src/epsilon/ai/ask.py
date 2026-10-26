@@ -25,7 +25,7 @@ def begin(question: str) -> chat.Turn:
     if len(question) > MAX_QUESTION:
         raise ValueError(f"La pregunta es muy larga ({len(question)} de {MAX_QUESTION} caracteres).")
     history = [llm.text_turn("user", config.redact(question))]
-    return chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Pregunta", task="ask")
+    return chat.preload(chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Pregunta", task="ask"), question)
 
 
 def check_request(request: str) -> str:
@@ -39,5 +39,6 @@ def check_request(request: str) -> str:
 def begin_skill(skill: store.Skill, request: str) -> chat.Turn:
     """El turno de `/<skill> pedido` fuera de un chat de modo IA. El tope de MAX_QUESTION vale para el pedido
     (el cuerpo de la skill ya tiene el suyo)."""
-    history = [llm.text_turn("user", config.redact(runtime.compose(skill, check_request(request))))]
-    return chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Skill", task="ask")
+    text = runtime.compose(skill, check_request(request))
+    history = [llm.text_turn("user", config.redact(text))]
+    return chat.preload(chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Skill", task="ask"), text)

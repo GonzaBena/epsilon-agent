@@ -1107,7 +1107,12 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
         if index >= MAX_CALLS_PER_STEP:
             state.results.append((name, TOO_MANY))
             continue
+        if name == chat.GROUPS_TOOL:  # pide un grupo entero: no ejecuta nada, así que no pasa por permisos
+            state.results.append((name, _load_groups(state.turn, call_id, args)))
+            continue
         tool = tools.route(call_id)  # el código decide qué herramienta es: una acción inventada es «no disponible»
+        if tool and tool.ai_group:  # un modelo chico puede llamar directo a la acción sin pedir el grupo: vale igual
+            state.turn.groups.add(tool.ai_group)
         # De un conector: qué herramienta era AL DECIDIR (si cuando corre el conector cuenta otra, no se la llama).
         # Se lee ANTES del permiso: el manager vuelve a «preguntar» antes de mostrar el hash nuevo, así que un hash
         # leído primero nunca es más nuevo que el permiso que se lee después.
@@ -1142,6 +1147,22 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
             state.results.append((name, review.message or UNAVAILABLE))
     chat.add_results(state.turn, state.results)
     return None
+
+
+def _load_groups(turn: chat.Turn, call_id: str, args: str) -> str:
+    """`herramientas`: suma al turno los grupos pedidos (en la acción o, si un modelo chico los escribió ahí, en el
+    argumento) y le dice al modelo qué acciones tiene ahora. Un grupo que no se ofrece no se carga."""
+    turn.asked_groups = True
+    offered = chat.groups()
+    asked = [call_id.split(".", 1)[1]] if "." in call_id else []
+    asked += re.findall(r"[\w-]+", args.lower())
+    found = [group for group in dict.fromkeys(asked) if group in offered]
+    if not found:
+        return f"No hay ese grupo. Los que hay: {', '.join(offered)}."
+    turn.groups.update(found)
+    actions = {group: [t.ai_action for t in tools.ai_tools() if t.ai_group == group] for group in found}
+    listed = "; ".join(f"{group} ({', '.join(names)})" for group, names in actions.items())
+    return f"Listo, ya tenés: {listed}. Llamalo con la acción que necesites."
 
 
 def _run(state: PendingTool, tool: tools.Tool, name: str, args: str, asked: bool = False) -> Reply | None:
