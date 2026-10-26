@@ -216,8 +216,11 @@ def test_telegram_is_marked_running_only_after_it_connects(monkeypatch):
     assert state.snapshot()["telegram"]["state"] == "running"
 
 
-def test_contexto_is_in_the_telegram_menu():
-    assert "contexto" in [c.command for c in telegram.COMMANDS]
+def test_the_telegram_menu_shows_only_the_everyday_commands():
+    # El resto sigue andando y figura en /ayuda; el menú es solo lo de todos los días.
+    assert [c.command for c in telegram.COMMANDS] == [
+        "ver", "tareas", "recordar", "volumen", "musica", "rutinas", "ia", "nuevo", "chat", "ayuda"
+    ]
 
 
 # --- Notas de voz y audios ----------------------------------------------------
@@ -1331,8 +1334,9 @@ def test_send_files_does_not_trust_a_path_that_is_not_in_the_library(stored):
     assert len(context.messages) == 2
 
 
-def test_enviar_is_in_the_telegram_menu():
-    assert "enviar" in {c.command for c in telegram.COMMANDS}
+def test_enviar_and_sistema_still_work_in_telegram_and_are_in_its_help():
+    assert "/enviar nombre →" in core.HELP and "/sistema [qué] →" in core.HELP
+    assert {"enviar", "sistema"} <= tools.command_names()
 
 
 # --- Avisos de las rutinas -------------------------------------------------------

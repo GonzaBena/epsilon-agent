@@ -118,10 +118,11 @@ def test_uso_shows_today_and_total(tmp_path, monkeypatch):
     assert "Hoy: 1 llamada(s)" in text and "Total" in text
 
 
-def test_usage_alias_works(tmp_path, monkeypatch):
+def test_removed_commands_are_unknown(tmp_path, monkeypatch):
     use_tmp_data(tmp_path, monkeypatch)
 
-    assert "Hoy" in say("/usage").text
+    for command in ("/usage", "/fecha", "/hora", "/dolar", "/clima", "/ventanas", "/sonando", "/contexto", "/todo x", "/cancelar", "/olvidar 1", "/editar 1 x"):
+        assert say(command).text == core.HELP, command
 
 
 def test_help_aliases_return_help():
@@ -149,14 +150,13 @@ def test_command_with_bot_suffix_still_works(tmp_path, monkeypatch):
 def test_fecha_and_its_alias_answer_the_time_without_the_model(monkeypatch):
     monkeypatch.setattr(core.clock, "now_text", lambda moment=None: "miércoles 21 de octubre de 2026, 14:32 (UTC-03:00)")
 
-    assert "14:32" in say("/fecha").text
-    assert "14:32" in say("/hora").text
+    assert "14:32" in core.AI_RUNNERS["fecha"]("").text
 
 
 def test_dolar_answers_without_the_model(monkeypatch):
     monkeypatch.setattr(core.dolar, "text", lambda: "Dólar hoy: Blue $1.500")
 
-    assert say("/dolar").text == "Dólar hoy: Blue $1.500"
+    assert core.AI_RUNNERS["dolar"]("").text == "Dólar hoy: Blue $1.500"
 
 
 def test_dolar_failure_is_a_plain_message(monkeypatch):
@@ -165,7 +165,7 @@ def test_dolar_failure_is_a_plain_message(monkeypatch):
 
     monkeypatch.setattr(core.dolar, "text", fail)
 
-    assert "No pude consultar" in say("/dolar").text
+    assert "No pude consultar" in core.AI_RUNNERS["dolar"]("").text
 
 
 def test_clima_uses_the_given_city_or_the_configured_one(monkeypatch):
@@ -173,15 +173,15 @@ def test_clima_uses_the_given_city_or_the_configured_one(monkeypatch):
     monkeypatch.setattr(core.clima, "text", lambda city: seen.append(city) or f"clima de {city}")
     monkeypatch.setenv("WEATHER_CITY", "Rosario")
 
-    assert say("/clima").text == "clima de Rosario"
-    assert say("/clima Salta").text == "clima de Salta"
+    assert core.AI_RUNNERS["clima"]("").text == "clima de Rosario"
+    assert core.AI_RUNNERS["clima"]("Salta").text == "clima de Salta"
     assert seen == ["Rosario", "Salta"]
 
 
 def test_clima_without_any_city_explains_what_to_do(monkeypatch):
     monkeypatch.delenv("WEATHER_CITY", raising=False)
 
-    assert "Configuración" in say("/clima").text
+    assert "Configuración" in core.AI_RUNNERS["clima"]("").text
 
 
 def test_clima_failure_is_a_plain_message(monkeypatch):
@@ -190,7 +190,7 @@ def test_clima_failure_is_a_plain_message(monkeypatch):
 
     monkeypatch.setattr(core.clima, "text", fail)
 
-    assert say("/clima Zzz").text == "No encontré el clima de «Zzz»."
+    assert core.AI_RUNNERS["clima"]("Zzz").text == "No encontré el clima de «Zzz»."
 
 
 def test_sistema_answers_from_fixed_options_only(monkeypatch):
@@ -208,7 +208,7 @@ def test_volume_and_music_commands_pass_their_argument_and_answer_as_text(monkey
     monkeypatch.setattr(core.multimedia, "music", lambda arg: seen.append(("musica", arg)) or "Pausé. (chromium)")
 
     assert say("/volumen 40").text == "Volumen: 40 %"
-    sonando_reply = say("/sonando")
+    sonando_reply = say("/musica")
     assert sonando_reply.text == "Sonando: A — B (chromium)"
     assert [a.id for a in sonando_reply.actions] == [
         "musica:anterior", "musica:alternar", "musica:siguiente", "volumen:-5", "volumen:+5"
@@ -253,9 +253,9 @@ def test_windows_command_passes_its_argument_and_errors_come_back_as_text(monkey
     seen = []
     monkeypatch.setattr(core.ventanas, "report", lambda arg: seen.append(arg) or "tabla")
 
-    assert say("/ventanas activa").text == "tabla" and seen == ["activa"]
+    assert core.AI_RUNNERS["ventanas"]("activa").text == "tabla" and seen == ["activa"]
     monkeypatch.undo()
-    assert "Opciones: activa" in say("/ventanas cerrar todo").text
+    assert "Opciones: activa" in core.AI_RUNNERS["ventanas"]("cerrar todo").text
 
 
 def routines_clock(tmp_path, monkeypatch):

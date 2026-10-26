@@ -1570,20 +1570,20 @@ async function loadConnectorTools() {
   }
 }
 
-// Devuelve true si el texto era «/c …» (ahí se eligen conector y herramienta, no el comando).
+// Devuelve true si el texto era «/conector …» o «/c …» (ahí se eligen conector y herramienta, no el comando).
 function updateConnectorSuggestions() {
-  const match = /^\/c +([^\s]*)(?: +([^\s]*))?$/i.exec(input.value);
+  const match = /^\/(c|conector) +([^\s]*)(?: +([^\s]*))?$/i.exec(input.value);
   if (!match) return false;
   loadConnectorTools().then(() => {
     if (input.value !== match.input) return; // se siguió escribiendo
-    const [, first, second] = match;
+    const [, command, first, second] = match;
     const picked = second !== undefined && connectorTools.some((t) => t.connector === first);
     suggestions = connectorTools
       .filter((t) => (picked ? t.connector === first && t.action.startsWith(second.toLowerCase()) : t.connector.startsWith(first.toLowerCase())))
       .map((t) => ({
         usage: picked ? `${t.action} ${t.args}`.trim() : `${t.connector} ${t.action}`,
         desc: t.desc,
-        insert: `/c ${t.connector} ${t.action} `,
+        insert: `/${command} ${t.connector} ${t.action} `,
         from: 0,
         to: input.value.length,
       }));

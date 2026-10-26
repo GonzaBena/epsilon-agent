@@ -526,7 +526,7 @@ def create_app() -> FastAPI:
                     "desc": tool.help or tool.menu or tool.panel or "",
                 }
                 for tool in tools.TOOLS
-                if tool.name and not tool.channel
+                if tool.name and not tool.channel and tool.web
             ],
             "link_commands": tools.link_commands(),
         }

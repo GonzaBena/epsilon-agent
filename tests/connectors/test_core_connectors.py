@@ -445,5 +445,6 @@ def test_c_connector_error_is_shown_as_text(lights):
 
 def test_c_is_not_a_link_command_nor_ai():
     assert not any(c == "/c" or c.startswith("/c ") for c in tools.link_commands())
-    tool_c = next(t for t in tools.TOOLS if t.name == "c")
+    tool_c = next(t for t in tools.TOOLS if t.name == "conector")
+    assert tool_c.aliases == ("c",)
     assert tool_c.writes and not tool_c.links and not tool_c.ai

@@ -489,7 +489,7 @@ def _audio_suffix(media) -> str:
 
 
 # Notas de voz esperando «Ejecutar» o «Cancelar»: token -> (chat, texto). Viven en memoria (se
-# pierden al reiniciar, como /contexto); el texto no viaja en el botón porque Telegram deja
+# pierden al reiniciar); el texto no viaja en el botón porque Telegram deja
 # apenas 64 bytes. Hasta MAX_PENDING_VOICE en total: lo más viejo se descarta.
 VOICE_PREFIX = "voz:"
 MAX_PENDING_VOICE = 20

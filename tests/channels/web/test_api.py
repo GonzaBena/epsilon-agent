@@ -25,7 +25,15 @@ def test_message_goes_through_the_core(client, tmp_path):
 
 
 def test_command_replies_in_json(client):
-    assert post_message(client, text="/ayuda").json()["text"] == core.HELP
+    assert post_message(client, text="/ayuda").json()["text"] == core.WEB_HELP
+
+
+def test_the_web_neither_offers_nor_runs_the_telegram_only_commands(client):
+    # /sistema y /enviar quedan para Telegram: la web no los sugiere, no los muestra en la ayuda ni los ejecuta.
+    names = {c["name"] for c in client.get("/api/tools").json()["commands"]}
+    assert "sistema" not in names and "enviar" not in names and "ver" in names
+    assert "/sistema" not in core.WEB_HELP and "/enviar" not in core.WEB_HELP
+    assert post_message(client, text="/sistema").json()["text"] == core.WEB_HELP
 
 
 def test_button_press_is_an_action(client, monkeypatch):

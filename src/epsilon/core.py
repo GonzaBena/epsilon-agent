@@ -26,16 +26,21 @@ TICKETS_DIR = "tickets"
 
 # El texto de ayuda vive en un solo lugar: lo usan /ayuda, /start y el
 # mensaje que se devuelve cuando se escribe algo que no se entiende.
-HELP = (
-    "Qué puedo hacer:\n\n"
-    + "\n".join(tools.help_lines())
-    + "\n\n"
-    "Para charlar con la IA: /ia pregunta (una sola pregunta), o un chat en modo IA desde la web.\n"
-    "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
-    "Si me mandás una nota de voz, la paso a texto y hago lo que pediste.\n"
-    "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
-    "la paso a CSV."
-)
+def _help_text(web: bool) -> str:
+    return (
+        "Qué puedo hacer:\n\n"
+        + "\n".join(tools.help_lines(web))
+        + "\n\n"
+        "Para charlar con la IA: /ia pregunta (una sola pregunta), o un chat en modo IA desde la web.\n"
+        "Si me mandás una imagen o PDF, lo guardo y te pregunto si querés resumirlo.\n"
+        "Si me mandás una nota de voz, la paso a texto y hago lo que pediste.\n"
+        "Si la imagen lleva un texto tipo «gastos: fecha, proveedor, total», "
+        "la paso a CSV."
+    )
+
+
+HELP = _help_text(web=False)  # la de Telegram (y la de los demás canales)
+WEB_HELP = _help_text(web=True)  # sin los comandos que la web no ofrece
 
 
 # --- Tipos: lo único que los canales y el núcleo se intercambian -------------
@@ -128,30 +133,18 @@ class PendingTool:
 class Session:
     pending_tool: PendingTool | None = None  # herramienta de la IA esperando permiso
     pending_csv: dict | None = None  # CSV esperando Guardar / Cancelar
-    pending_forget: tuple[int, str] | None = None  # (número, línea) de /olvidar esperando confirmar
+    pending_forget: tuple[int, str] | None = None  # (número, línea) de /memoria olvidar esperando confirmar
     folder: str | None = None  # modo /ticket: carpeta de la próxima imagen
     files: dict[str, str] = field(default_factory=dict)  # id -> ruta, esperando Resumir
     counter: int = 0  # para numerar los archivos de arriba
-    artifacts: list[Artifact] = field(default_factory=list)  # lo guardado, lo más nuevo primero
+    web: bool = False  # la sesión es de la web: ahí no corren los comandos con `web=False` en tools.py
 
 
 SESSIONS: dict[str, Session] = {}
 
-# /contexto recuerda hasta esta cantidad de ítems por sesión (la memoria no crece sin límite).
-MAX_CONTEXT = 100
-KIND_NAMES = {"file": "archivo", "csv": "CSV", "note": "nota", "summary": "resumen"}
-
-
-def _remember(session: Session, saved: list[Artifact]) -> None:
-    """Suma lo que acaba de guardar una respuesta: arriba de todo, sin repetir ruta."""
-    if not saved:
-        return
-    paths = {a.path for a in saved}
-    session.artifacts = [*reversed(saved), *(a for a in session.artifacts if a.path not in paths)][:MAX_CONTEXT]
-
-
 def _session(session_id: str) -> Session:
-    return SESSIONS.setdefault(session_id, Session())
+    is_web = session_id == "web" or session_id.startswith("web:")
+    return SESSIONS.setdefault(session_id, Session(web=is_web))
 
 
 # --- Comandos ----------------------------------------------------------------
@@ -283,7 +276,13 @@ def _remember_cmd(args: str, session: Session) -> Reply:
 
 
 def _memory_cmd(args: str, session: Session) -> Reply:
-    """/memoria: muestra lo recordado, numerado para poder señalar una línea."""
+    """/memoria: muestra lo recordado, numerado para poder señalar una línea.
+    /memoria olvidar N y /memoria editar N texto la cambian."""
+    action, _, rest = args.strip().partition(" ")
+    if action.lower() == "olvidar":
+        return _forget_cmd(rest.strip(), session)
+    if action.lower() == "editar":
+        return _edit_cmd(rest.strip(), session)
     lines = memory.lines()
     if not lines:
         return Reply("Todavía no recordé nada. Probá con /recordar.")
@@ -295,10 +294,10 @@ def _line_number(text: str) -> int | None:
 
 
 def _forget_cmd(args: str, session: Session) -> Reply:
-    """/olvidar N: muestra la línea N de la memoria y pide confirmar antes de borrarla."""
+    """/memoria olvidar N: muestra la línea N de la memoria y pide confirmar antes de borrarla."""
     n = _line_number(args)
     if n is None:
-        return Reply("Uso: /olvidar número (los números están en /memoria)")
+        return Reply("Uso: /memoria olvidar número (los números están en /memoria)")
     try:
         _, line = memory.line_at(n)
     except ValueError as e:
@@ -311,10 +310,10 @@ def _forget_cmd(args: str, session: Session) -> Reply:
 
 
 def _forget_now(args: str) -> Reply:
-    """/olvidar N para la IA: borra sin la pregunta de _forget_cmd (el permiso ya fue la confirmación)."""
+    """Olvidar para la IA: borra sin la pregunta de _forget_cmd (el permiso ya fue la confirmación)."""
     n = _line_number(_bare(args).strip())
     if n is None:
-        return Reply("Uso: /olvidar número (los números están en /memoria)", failed=True)
+        return Reply("Uso: /memoria olvidar número (los números están en /memoria)", failed=True)
     try:
         _, line = memory.line_at(n)
         memory.forget(n, line)
@@ -338,11 +337,11 @@ def _confirm_forget(action: str, session: Session) -> Reply:
 
 
 def _edit_cmd(args: str, session: Session) -> Reply:
-    """/editar N texto: cambia el texto de la línea N (conserva su fecha)."""
+    """/memoria editar N texto: cambia el texto de la línea N (conserva su fecha)."""
     number, _, text = args.partition(" ")
     n = _line_number(number)
     if n is None or not text.strip():
-        return Reply("Uso: /editar número texto nuevo (los números están en /memoria)", failed=True)
+        return Reply("Uso: /memoria editar número texto nuevo (los números están en /memoria)", failed=True)
     try:
         line = memory.edit(n, text)
     except ValueError as e:
@@ -385,21 +384,13 @@ def _usage(args: str) -> Reply:
     return Reply(usage.format_summary(usage.summary()))
 
 
-def _context(args: str, session: Session) -> Reply:
-    """/contexto: lo guardado desde que arrancó el bot (se pierde al reiniciarlo). No usa el modelo."""
-    if not session.artifacts:
-        return Reply("Todavía no guardaste nada en esta sesión. Para ver todo lo guardado: /archivos")
-    listing = "\n".join(f"- {KIND_NAMES[a.kind]}: {a.path}" for a in session.artifacts)
-    return Reply(f"Guardado en esta sesión (lo más nuevo primero):\n{listing}")
-
-
 def _date(args: str) -> Reply:
-    """/fecha: fecha y hora de ahora. No usa el modelo."""
+    """La fecha y hora de ahora (solo para la IA). No usa el modelo."""
     return Reply(clock.now_text())
 
 
 def _dollar(args: str) -> Reply:
-    """/dolar: cotizaciones de hoy desde una API pública. No usa el modelo."""
+    """Cotizaciones de hoy desde una API pública (solo para la IA). No usa el modelo."""
     try:
         return Reply(dolar.text())
     except ValueError as error:
@@ -407,20 +398,18 @@ def _dollar(args: str) -> Reply:
 
 
 def _weather(args: str) -> Reply:
-    """/clima [ciudad]: el clima de la ciudad (por defecto, WEATHER_CITY). No usa el modelo."""
+    """El clima de la ciudad (por defecto, WEATHER_CITY; solo para la IA). No usa el modelo."""
     city = args.strip() or os.environ.get("WEATHER_CITY", "").strip()
     if not city:
-        return Reply("Decime la ciudad (/clima Rosario) o cargá la tuya en Configuración (Ciudad del clima).")
+        return Reply("Decime la ciudad o cargá la tuya en Configuración (Ciudad del clima).")
     try:
         return Reply(clima.text(city))
     except ValueError as error:
         return Reply(str(error))
 
 
-def _todo_cmd(args: str) -> Reply:
-    """/todo texto: agrega una tarea pendiente (todo.md)."""
-    if not args.strip():
-        return Reply("Uso: /todo la tarea que quieras agregar")
+def _add_task(args: str) -> Reply:
+    """/tareas texto: agrega una tarea pendiente (todo.md)."""
     try:
         task = todo.add(args)
     except ValueError as e:
@@ -430,9 +419,12 @@ def _todo_cmd(args: str) -> Reply:
 
 
 def _tasks_cmd(args: str) -> Reply:
-    """/tareas [todas]: las pendientes, numeradas para /hecho; con «todas», también las hechas."""
+    """/tareas [todas]: las pendientes, numeradas para /hecho; con «todas», también las hechas.
+    Con cualquier otro texto, lo agrega como tarea."""
+    if args.strip() and args.strip().lower() != "todas":
+        return _add_task(args)
     waiting = todo.pending()
-    lines = [f"{n}. {task.text}" for n, task in enumerate(waiting, 1)] or ["No tenés tareas pendientes. Agregá una con /todo."]
+    lines = [f"{n}. {task.text}" for n, task in enumerate(waiting, 1)] or ["No tenés tareas pendientes. Agregá una con /tareas texto."]
     if args.strip().lower() == "todas" and (done := todo.completed()):
         lines += ["", "Hechas:", *(f"- ✓ {task.text}" for task in done)]
     return Reply("\n".join(lines))
@@ -708,7 +700,7 @@ def _send(args: str) -> Reply:
 
 
 def _help(args: str, session: Session) -> Reply:
-    return Reply(HELP)
+    return Reply(WEB_HELP if session.web else HELP)
 
 
 def _menu_reply(screen: tuple[str, list[tuple[str, str]]]) -> Reply:
@@ -819,12 +811,19 @@ def _ticket(args: str, session: Session) -> Reply:
     session.folder = TICKETS_DIR
     return Reply(
         "Mandame el ticket como archivo (así no se comprime) y lo guardo en tickets/.\n"
-        "Para arrepentirte: /cancelar"
+        "Para arrepentirte: /ticket cancelar"
     )
 
 
+def _ticket_cmd(args: str, session: Session) -> Reply:
+    """/ticket [cancelar]: espera la próxima imagen, o deja de esperarla."""
+    if args.strip().lower() == "cancelar":
+        return _cancel(args, session)
+    return _ticket(args, session)
+
+
 def _cancel(args: str, session: Session) -> Reply:
-    """/cancelar: deja de esperar la imagen de /ticket."""
+    """/ticket cancelar (o «cancelar» a secas): deja de esperar la imagen de /ticket."""
     if session.folder:
         session.folder = None
         return Reply("Cancelado. Ya no espero ningún ticket.")
@@ -1394,35 +1393,24 @@ COMMANDS = {
     "ver": lambda args, s: _watch(args),
     "buscar": lambda args, s: _search(args),
     "archivos": lambda args, s: _files(args),
-    "contexto": _context,
-    "fecha": lambda args, s: _date(args),
-    "hora": lambda args, s: _date(args),
-    "dolar": lambda args, s: _dollar(args),
-    "clima": lambda args, s: _weather(args),
-    "todo": lambda args, s: _todo_cmd(args),
     "tareas": lambda args, s: _tasks_cmd(args),
     "hecho": lambda args, s: _done_cmd(args),
     "enviar": lambda args, s: _send(args),
     "csv": lambda args, s: _csv_cmd(args),
     "sistema": lambda args, s: _system_cmd(args),
     "volumen": lambda args, s: _volume_cmd(args),
-    "sonando": lambda args, s: _playing_cmd(args),
-    "musica": lambda args, s: _music_cmd(args),
-    "ventanas": lambda args, s: _windows_cmd(args),
+    "musica": lambda args, s: _music_cmd(args) if args.strip() else _playing_cmd(""),
     "rutina": _routine_cmd,
+    "conector": lambda args, s: _connector_cmd(args),
     "c": lambda args, s: _connector_cmd(args),
     "rutinas": _routines_cmd,
     "recordar": _remember_cmd,
     "memoria": _memory_cmd,
-    "olvidar": _forget_cmd,
-    "editar": _edit_cmd,
     "uso": lambda args, s: _usage(args),
-    "usage": lambda args, s: _usage(args),
     "resumir": _summarize_cmd,
     "ia": _ask_cmd,
     "skills": _skills_cmd,
-    "ticket": _ticket,
-    "cancelar": _cancel,
+    "ticket": _ticket_cmd,
     "menu": _menu,
     "ayuda": _help,
     "start": _help,
@@ -1502,7 +1490,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "rutina_crear": lambda args: _routine_create(_bare(args)),
     "rutina_ver": lambda args: _routines_cmd("", Session()),
     "rutina_borrar": lambda args: _routine_manage("borrar", _bare(args).strip()),
-    "memoria": lambda args: _memory_cmd(args, Session()),
+    "memoria": lambda args: _memory_cmd("", Session()),  # solo ver: olvidar/editar son otras herramientas, con su permiso
     "recordar": lambda args: _remember_cmd(_bare(args).strip(), Session()),
     "editar": lambda args: _edit_cmd(_bare(args).strip(), Session()),
     "olvidar": _forget_now,
@@ -1556,8 +1544,7 @@ def _tool_event(name: str, args: str, state: str) -> None:
 
 
 def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Reply:
-    """Punto de entrada único: ver _dispatch. Además, recuerda en la sesión lo que la
-    respuesta guardó, para /contexto. `on_event` (opcional) recibe el progreso de un turno de IA:
+    """Punto de entrada único: ver _dispatch. `on_event` (opcional) recibe el progreso de un turno de IA:
     {"type": "model", "step": n} al llamar al modelo y {"type": "tool", "name", "arg", "state"}
     (running | done | blocked) por cada herramienta."""
     token = _on_event.set(on_event)
@@ -1595,7 +1582,6 @@ def _handle(msg: Message) -> Reply:
             lock = _ai_lock(msg.conversation_id) if serial else nullcontext()
             with lock:
                 reply = _dispatch(msg)
-    _remember(_session(msg.session_id), reply.artifacts)
     return reply
 
 
@@ -1630,7 +1616,7 @@ def _dispatch(msg: Message) -> Reply:
         # "/ver@mi_bot casa" -> comando "ver", argumentos "casa".
         command, _, args = text[1:].partition(" ")
         command = command.partition("@")[0].lower()
-        handler = COMMANDS.get(command)
+        handler = COMMANDS.get(command) if not session.web or tools.on_web(command) else None
         if handler:
             return handler(args.strip(), session)
         if skill_runtime.is_skill_command(command):
@@ -1639,4 +1625,4 @@ def _dispatch(msg: Message) -> Reply:
     if ai_conversation and text and not text.startswith("/"):
         return _chat(msg, session)
 
-    return Reply(HELP)
+    return _help("", session)

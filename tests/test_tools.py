@@ -225,3 +225,15 @@ def test_every_navegador_tool_tells_the_model_what_it_is_for():
     for tool in tools.ai_tools():
         if tool.ai_group == "navegador":
             assert tool.ai_help and tool.ai_arg is not None
+
+
+def test_the_help_is_grouped_in_sections_in_order():
+    lines = tools.help_lines()
+    titles = [line for line in lines if line.endswith(":") and "→" not in line]
+    assert titles == [f"{section}:" for section in tools.HELP_SECTIONS]
+    assert lines.index("Tareas:") < lines.index("/hecho número → marcar una tarea como hecha (el número sale de /tareas)")
+
+
+def test_every_section_is_a_known_one():
+    for tool in tools.TOOLS:
+        assert tool.section in ("", *tools.HELP_SECTIONS), tool.label

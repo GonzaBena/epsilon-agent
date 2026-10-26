@@ -256,7 +256,7 @@ SETTINGS = (
         live=True,
         validate=_rate,
     ),
-    # Ciudad que usa /clima cuando no le decís otra (core.py la lee en cada pedido).
+    # Ciudad que usa el clima de la IA cuando no le decís otra (core.py la lee en cada pedido).
     Setting(
         "WEATHER_CITY",
         "Ciudad del clima (opcional)",

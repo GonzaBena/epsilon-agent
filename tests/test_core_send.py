@@ -3,7 +3,7 @@ import pytest
 from epsilon import core
 from epsilon.data import notes
 
-# /enviar: pedirle al canal que mande un archivo guardado. Solo Telegram lo envía; la web contesta que ya está en la biblioteca.
+# /enviar: pedirle al canal que mande un archivo guardado. Solo Telegram lo envía; la web no tiene el comando y la IA de la web contesta que ya está en la biblioteca.
 
 
 @pytest.fixture(autouse=True)
@@ -35,11 +35,11 @@ def test_telegram_gets_the_file_to_send():
     assert "tickets/super.jpg" in reply.text
 
 
-def test_the_web_never_sends_anything_and_says_it_is_in_the_library():
+def test_the_web_has_no_enviar_and_its_ai_says_it_is_in_the_library():
     reply = web("/enviar super")
 
-    assert reply.files == []
-    assert "Biblioteca" in reply.text
+    assert reply.files == [] and reply.text == core.WEB_HELP
+    assert "Biblioteca" in core.AI_RUNNERS["enviar"]("super").text  # fuera de Telegram no hay bandeja
 
 
 def test_notes_and_csv_can_be_sent_too():
@@ -81,7 +81,7 @@ def test_a_file_over_the_limit_is_refused(monkeypatch):
 def test_the_outbox_is_per_call_so_nothing_is_sent_twice():
     telegram("/enviar super")
 
-    assert telegram("/fecha").files == []
+    assert telegram("/ver").files == []
 
 
 def test_the_ai_tool_asks_the_channel_to_send_the_file():

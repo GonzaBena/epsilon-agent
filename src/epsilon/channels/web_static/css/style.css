@@ -1251,7 +1251,7 @@ body.booting .log {
   outline-offset: 2px;
 }
 
-/* --- Tarjeta de reproducción multimedia (/sonando) ----------------------- */
+/* --- Tarjeta de reproducción multimedia (/musica) ----------------------- */
 .music-card {
   display: flex;
   flex-direction: column;

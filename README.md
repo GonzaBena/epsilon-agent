@@ -45,7 +45,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `TELEGRAM_ENABLED`                                           | Prende (`si`) o apaga (`no`) el bot. Se cambia desde la página Canales, sin reiniciar.                                  |
 | `USD_ARS`                                                    | Opcional: pesos por dólar, cargado a mano. Habilita el botón ARS en la página Uso.                                      |
 | `CHAT_LIMIT_USD`                                             | Opcional: límite de costo (US$) con el que nace cada chat con IA; se cambia en cada conversación. Por defecto 0.50.     |
-| `WEATHER_CITY`                                               | Opcional: la ciudad que usa `/clima` cuando no escribís otra.                                                           |
+| `WEATHER_CITY`                                               | Opcional: la ciudad que usa la IA para el clima cuando no le decís otra.                                                           |
 | `USER_NAME`                                                  | Opcional: tu nombre, para el saludo y el chat con IA.                                                                   |
 | `AGENT_NAME`                                                 | Opcional: cómo querés llamar al asistente (por defecto Epsilon).                                                        |
 | `CHAT_MAX_FILES`                                             | Opcional: archivos que se pueden mencionar con `@` en un mensaje del chat con IA. Por defecto 5.                        |
@@ -88,35 +88,33 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | Comando                | Qué hace                                                                  |
 | ---------------------- | ------------------------------------------------------------------------- |
 | `+ texto`              | Guarda una nota en inbox.                                                 |
+| **Notas** | |
 | `/ver [nota]`          | Lee una nota (por defecto, inbox).                                        |
 | `/buscar palabra`      | Busca en las notas.                                                       |
+| **Tareas** | |
+| `/tareas [texto]` | Sin nada, tus tareas pendientes, numeradas; con un texto, agrega una tarea; con «todas», muestra también las hechas. |
+| `/hecho número`        | Marca como hecha la tarea pendiente con ese número.                       |
+| **Memoria** | |
+| `/recordar texto`      | Anota un dato o preferencia tuya en la memoria.                           |
+| `/memoria [olvidar N, editar N texto]` | Muestra lo que anotaste en la memoria, numerado; `olvidar N` borra una línea (pide confirmar) y `editar N texto` la cambia. |
+| **Archivos** | |
 | `/archivos [texto]`    | Lista lo guardado (lo más nuevo primero).                                 |
 | `/resumir nombre`      | Resume una nota o archivo guardado. _Usa IA._                             |
-| `/ia pregunta`         | Una pregunta suelta a la IA, con tu memoria y sus herramientas. _Usa IA._ |
-| `/skills`              | Tus skills: instrucciones propias que se usan con `/nombre pedido`.       |
-| `/ticket`              | Guarda la próxima imagen o PDF en `tickets/`.                             |
-| `/cancelar`            | Cancela el `/ticket` que quedó en espera.                                 |
-| `/contexto`            | Lista lo que guardaste desde que arrancó el bot.                          |
-| `/recordar texto`      | Anota un dato o preferencia tuya en la memoria.                           |
-| `/memoria`             | Muestra lo que anotaste en la memoria.                                    |
-| `/olvidar número`      | Borra una línea de la memoria (pide confirmar).                           |
-| `/editar número texto` | Cambia una línea de la memoria.                                           |
-| `/fecha`               | Fecha y hora de ahora (sin IA).                                           |
-| `/dolar`               | Cotización del dólar hoy: oficial, blue, MEP… (sin IA).                   |
-| `/clima [ciudad]`      | Clima ahora y próximos días; sin ciudad, usa `WEATHER_CITY` (sin IA).     |
-| `/tareas [todas]`      | Tus tareas pendientes, numeradas (con «todas», también las hechas).       |
-| `/todo texto`          | Agrega una tarea pendiente.                                               |
-| `/hecho número`        | Marca como hecha la tarea pendiente con ese número.                       |
-| `/enviar nombre`       | Te manda por Telegram una nota o archivo guardado (en la web ya está en la biblioteca). |
+| `/ticket [cancelar]`   | Guarda la próxima imagen o PDF en `tickets/`; `cancelar` deja de esperarla. |
+| `/enviar nombre`       | Solo Telegram: te manda una nota o archivo guardado.                      |
 | `/csv nombre [filtros]` | Consulta un CSV guardado: filtros y, tras una barra vertical, suma, promedio, agrupar… (sin IA). |
-| `/sistema [qué]`       | Estado de la máquina: disco, ram, uptime, servicio (sin IA).              |
+| **PC** | |
+| `/sistema [qué]`       | Solo Telegram: estado de la máquina (disco, ram, uptime, servicio; sin IA). |
 | `/volumen [valor]` | Volumen de la PC: sin valor dice cómo está; con un número (`40`), `+5`/`-5`, `silenciar` o `activar` lo cambia. Nunca pasa de 100 % (sin IA, usa `wpctl`). |
-| `/sonando`             | Qué se está reproduciendo en la PC: título, artista y app (sin IA, por MPRIS). |
-| `/musica [acción]` | Controla la música o el video de la PC: `pausa`, `play`, `siguiente`, `anterior`; sin acción alterna play/pausa (sin IA). |
-| `/ventanas [activa]` | Ventanas abiertas de la PC con su espacio y la que tiene el foco; con `activa`, solo esa (sin IA, usa `hyprctl`). |
+| `/musica [acción]` | Sin acción, qué suena en la PC (título, artista y app, con botones); `pausa`, `play`, `siguiente`, `anterior`, `repetir` y `aleatorio` lo controlan (sin IA, por MPRIS). |
+| **Rutinas** | |
 | `/rutina [regla]` | Programa algo que Epsilon hace solo, sin IA: `/rutina 23:00 \| volumen 20`, `lun-vie 09:00 \| avisar Standup`, `en 30m \| avisar la pizza`, `disco>90 \| avisar poco espacio` (también `ram>85`). También `borrar N`, `pausar N`, `seguir N`. Avisa por escritorio y por Telegram. |
 | `/rutinas` | Tus rutinas programadas, numeradas, con su próxima vez. También se ven y se manejan con botones en la página Rutinas (`/rutinas` en el navegador). |
-| `/c [conector herramienta args]` | Usa un conector (MCP) sin IA: sin argumentos lista los que hay y sus herramientas; con `/c luces apagar habitacion=living` (o un objeto JSON) la ejecuta. Lo escribís vos, así que no pide permiso. |
+| **IA** | |
+| `/ia pregunta`         | Una pregunta suelta a la IA, con tu memoria y sus herramientas. _Usa IA._ |
+| `/skills`              | Tus skills: instrucciones propias que se usan con `/nombre pedido`.       |
+| **Otros** | |
+| `/conector [conector herramienta args]` | Usa un conector (MCP) sin IA (también `/c`): sin argumentos lista los que hay y sus herramientas; con `/conector luces apagar habitacion=living` (o un objeto JSON) la ejecuta. Lo escribís vos, así que no pide permiso. |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones: la voz y el modelo de IA (entre tus favoritos). |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |

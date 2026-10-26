@@ -30,7 +30,7 @@ def test_a_message_in_a_conversation_is_saved_with_its_reply(client):
 def test_a_message_without_conversation_is_not_saved_and_replies_as_before(client, tmp_path):
     reply = post_message(client, text="/ayuda")
 
-    assert reply.json() == {"text": core.HELP, "actions": [], "artifacts": []}
+    assert reply.json() == {"text": core.WEB_HELP, "actions": [], "artifacts": []}
     assert not (tmp_path / "conversations").exists()
 
 
@@ -416,7 +416,7 @@ def test_mode_is_ignored_on_existing_conversation(client, ai_web):
     reply = chat(client, cid, "hola", mode="ai").json()
 
     assert conversations.mode(cid) == "normal"
-    assert reply["text"] == core.HELP
+    assert reply["text"] == core.WEB_HELP
 
 
 def test_upload_with_mode_ai_creates_ai_conversation(client, ai_web):

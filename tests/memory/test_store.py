@@ -120,7 +120,7 @@ def test_edit_gives_todays_date_to_a_line_edited_by_hand(data_dir):
 def test_olvidar_asks_first_and_only_the_button_deletes(data_dir):
     fill()
 
-    asked = say("/olvidar 2")
+    asked = say("/memoria olvidar 2")
     assert "dos" in asked and len(store.lines()) == 3  # todavía no borró nada
 
     assert press("olvidar").text == "Olvidado." and len(store.lines()) == 2
@@ -129,16 +129,27 @@ def test_olvidar_asks_first_and_only_the_button_deletes(data_dir):
 
 def test_olvidar_conservar_keeps_everything_and_bad_numbers_are_explained(data_dir):
     fill()
-    core.handle(Message(text="/olvidar 1", session_id="test-memory"))
+    core.handle(Message(text="/memoria olvidar 1", session_id="test-memory"))
 
     assert "queda en la memoria" in press("conservar").text and len(store.lines()) == 3
-    assert "Uso: /olvidar" in say("/olvidar")
-    assert "No hay una línea 9" in say("/olvidar 9")
-    assert "Uso: /editar" in say("/editar 2")
+    assert "Uso: /memoria olvidar" in say("/memoria olvidar")
+    assert "No hay una línea 9" in say("/memoria olvidar 9")
+    assert "Uso: /memoria editar" in say("/memoria editar 2")
 
 
 def test_editar_command(data_dir):
     fill()
 
-    assert say("/editar 3 tres corregido").startswith("Cambiado: 3. ")
+    assert say("/memoria editar 3 tres corregido").startswith("Cambiado: 3. ")
     assert store.lines()[2].endswith(": tres corregido")
+
+
+def test_the_ai_memory_read_tool_never_edits_or_forgets():
+    # /memoria editar|olvidar es de la persona; la acción «ver» de la IA es de solo lectura (sus permisos son otros).
+    store.remember("uno")
+    before = store.lines()
+
+    for args in ("editar 1 cambiado", "olvidar 1"):
+        assert "1. " in core.AI_RUNNERS["memoria"](args).text
+
+    assert store.lines() == before

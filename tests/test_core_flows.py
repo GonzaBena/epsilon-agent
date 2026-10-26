@@ -260,12 +260,12 @@ def test_ticket_mode_is_used_only_once():
 def test_cancel_leaves_ticket_mode():
     say("/ticket")
 
-    assert say("/cancelar").text == "Cancelado. Ya no espero ningún ticket."
+    assert say("/ticket cancelar").text == "Cancelado. Ya no espero ningún ticket."
     assert send_file(name="a.jpg").text.startswith("Guardado: files/")
 
 
 def test_cancel_without_ticket_mode():
-    assert say("/cancelar").text == "No hay nada para cancelar."
+    assert say("/ticket cancelar").text == "No hay nada para cancelar."
 
 
 def test_plain_word_cancelar_also_cancels():
@@ -399,68 +399,6 @@ def test_nada_reports_nothing_new():
     assert press(reply.actions[1].id).artifacts == []
 
 
-# --- /contexto: lo guardado en esta sesión -----------------------------------
-
-
-def test_contexto_with_nothing_saved_says_so():
-    assert "Todavía no guardaste nada" in say("/contexto").text
-
-
-def test_contexto_lists_what_the_session_saved_newest_first(monkeypatch):
-    say("+ una nota")
-    send_file(name="doc.pdf")
-    fake_rows(monkeypatch, [{"fecha": "1/1"}])
-    send_file("gastos: fecha")
-    press("guardar")
-
-    lines = say("/contexto").text.splitlines()
-
-    assert lines[0].startswith("Guardado en esta sesión")
-    assert lines[1:] == ["- CSV: gastos.csv", lines[2], "- nota: inbox.md"]
-    assert lines[2].startswith("- archivo: files/") and lines[2].endswith("doc.pdf")
-
-
-def test_contexto_does_not_repeat_a_path():
-    say("+ uno")
-    say("+ dos")
-
-    assert say("/contexto").text.count("inbox.md") == 1
-
-
-def test_contexto_is_per_session():
-    say("+ mía", session_id="a")
-
-    assert "Todavía no guardaste nada" in say("/contexto", session_id="b").text
-    assert "inbox.md" in say("/contexto", session_id="a").text
-
-
-def test_contexto_saves_nothing_itself_and_does_not_list_itself():
-    reply = say("/contexto")
-
-    assert reply.artifacts == []
-    assert "Todavía no guardaste nada" in say("/contexto").text
-
-
-def test_contexto_remembers_a_bounded_number_of_items():
-    for n in range(core.MAX_CONTEXT + 5):
-        core._remember(core._session("s1"), [core.Artifact("file", f"files/g{n}.txt")])
-
-    assert len(core._session("s1").artifacts) <= core.MAX_CONTEXT
-
-
-def test_contexto_is_in_the_help_and_works_with_a_bot_suffix():
-    assert "/contexto" in core.HELP
-    assert "Todavía no guardaste nada" in say("/contexto@epsilon_bot").text
-
-
-def test_inside_one_reply_the_last_saved_item_is_the_newest():
-    session = core.Session()
-
-    core._remember(session, [core.Artifact("file", "a.pdf"), core.Artifact("note", "b.md")])
-
-    assert [a.path for a in session.artifacts] == ["b.md", "a.pdf"]
-
-
 # --- Modo IA ---------------------------------------------------------------------------
 
 from epsilon.ai import usage  # noqa: E402
@@ -516,7 +454,7 @@ def test_normal_conversation_free_text_still_shows_help_and_never_calls_chat(ai_
 
     reply = core.handle(core.Message(text="hola", session_id="web:n", conversation_id=AI_CID))
 
-    assert reply.text == core.HELP and not reply.ai and ai_mode == []
+    assert reply.text == core.WEB_HELP and not reply.ai and ai_mode == []
 
 
 def test_without_conversation_and_telegram_never_chat(ai_mode):
@@ -526,7 +464,7 @@ def test_without_conversation_and_telegram_never_chat(ai_mode):
 
 
 def test_unknown_slash_and_plus_notes_do_not_go_to_ai_in_ai_mode(ai_mode):
-    assert ai_say("/inventado").text == core.HELP
+    assert ai_say("/inventado").text == core.WEB_HELP
     assert "inbox" in ai_say("+ comprar pan").text
     assert ai_mode == []
 

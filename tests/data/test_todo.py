@@ -81,17 +81,16 @@ def test_a_task_that_looks_like_the_date_suffix_still_reads_back_whole():
     assert [t.text for t in todo.pending()] == ["revisar (creado : 2020-01-01)"]
 
 
-def test_todo_command_confirms_with_the_pending_count():
-    assert "Uso" in say("/todo")
-    assert say("/todo Comprar café") == "Tarea agregada (1 pendiente): Comprar café"
-    assert say("/todo Pagar internet") == "Tarea agregada (2 pendientes): Pagar internet"
+def test_tareas_with_text_adds_and_confirms_with_the_pending_count():
+    assert say("/tareas Comprar café") == "Tarea agregada (1 pendiente): Comprar café"
+    assert say("/tareas Pagar internet") == "Tarea agregada (2 pendientes): Pagar internet"
     assert say("/tareas") == "1. Comprar café\n2. Pagar internet"
 
 
 def test_tareas_lists_numbered_pending_and_todas_adds_the_done():
     assert "No tenés tareas pendientes" in say("/tareas")
-    say("/todo uno")
-    say("/todo dos")
+    say("/tareas uno")
+    say("/tareas dos")
     assert say("/hecho 1") == "Hecha: uno"
 
     assert say("/tareas") == "1. dos"
@@ -99,7 +98,7 @@ def test_tareas_lists_numbered_pending_and_todas_adds_the_done():
 
 
 def test_hecho_explains_bad_input():
-    say("/todo uno")
+    say("/tareas uno")
 
     assert "Uso" in say("/hecho")
     assert "Uso" in say("/hecho uno")
