@@ -5193,3 +5193,4 @@ button.claude-icon-wrap {
 .skill-files { margin: 0.25rem 0 0.75rem; padding-left: 1.25rem; font-size: 0.85rem; overflow-wrap: anywhere; }
 .skill-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .skills-page .claude-segmented { margin-bottom: 0.9rem; }
+.skill-save { margin-top: 0.4rem; align-self: flex-start; }

@@ -274,7 +274,9 @@ document.getElementById("skill-url-review").addEventListener("click", () => {
   stage("/api/skills/preview", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ url }) });
 });
 
-// «Crear conversando» se conecta en js/skills-chat.js (abre un chat nuevo con la IA).
+// «Crear conversando»: abre un chat nuevo con IA con el prompt de inicio ya escrito (app.js lo pide a
+// GET /api/skills/starter). Cuando la IA propone la skill, el chat ofrece «Guardar como skill» y vuelve acá a revisar.
+document.getElementById("skill-chat-start").addEventListener("click", () => { location.href = "/?skill=nueva"; });
 
 // --- Revisar / editar ----------------------------------------------------------------------------
 

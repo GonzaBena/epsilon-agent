@@ -216,3 +216,11 @@ def test_editing_a_disabled_skill_keeps_it_disabled(client):
     row = client.put("/api/skills/informe", json={"text": SKILL + " más", "confirmed": True}).json()["skills"][0]
 
     assert row["enabled"] is False and row["changed"] is False
+
+
+def test_starter_endpoint_returns_the_prompt(client):
+    from epsilon.skills import starter
+
+    reply = client.get("/api/skills/starter")
+
+    assert reply.status_code == 200 and reply.json() == {"prompt": starter.STARTER_PROMPT}

@@ -360,9 +360,35 @@ function render(message) {
   // La burbuja y, debajo (afuera de ella), el botón de copiar.
   const column = make("div", "col");
   column.append(body, copyButton(message.text));
+  if (message.role === "bot" && !message.error) {
+    const proposed = window.findSkillBlock(message.text);
+    if (proposed) column.append(saveSkillButton(proposed));
+  }
   row.append(column);
   log.append(row);
   return row;
+}
+
+// «Guardar como skill»: la IA propuso una skill en su respuesta. No guarda nada: arma la revisión
+// (POST /api/skills/preview) y abre la página Skills con el texto exacto para que la persona confirme.
+function saveSkillButton(text) {
+  const button = make("button", "action skill-save", "Guardar como skill");
+  button.type = "button";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const response = await fetch("/api/skills/preview", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "No pude armar la revisión.");
+      window.location.href = `/skills?review=${encodeURIComponent(data.token)}`;
+    } catch (error) {
+      button.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+  return button;
 }
 
 // Un ícono sin innerHTML: se arma con la API de SVG.
@@ -1659,7 +1685,7 @@ async function start() {
 
   const requested = params.get("c") || "";
   try {
-    if (params.has("nuevo")) {
+    if (params.has("nuevo") || params.get("skill") === "nueva") {
       await startNewChat();
     } else {
       // Una conversación pedida en la URL, o la que tenías abierta, o una nueva.
@@ -1672,9 +1698,22 @@ async function start() {
     document.body.classList.remove("booting");
   }
 
+  if (params.get("skill") === "nueva") await writeSkillStarter();
+
   const command = params.get("cmd");
   await loadTools();
   if (command && linkCommands.includes(command)) runCommand(command);
+}
+
+// «Crear conversando» (página Skills): el chat nuevo arranca con el prompt de inicio escrito, sin enviar.
+async function writeSkillStarter() {
+  const token = loadToken;
+  try {
+    const response = await fetch("/api/skills/starter");
+    if (response.ok && token === loadToken) writePrompt((await response.json()).prompt);
+  } catch {
+    // Sin conexión: queda el chat vacío.
+  }
 }
 
 // --- Estado de la conexión ----------------------------------------------------------
@@ -1754,8 +1793,13 @@ async function useCard(card) {
   const token = loadToken;
   await pending;
   if (token !== loadToken) return; // abriste otra conversación mientras tanto: el texto no va ahí
+  writePrompt(card.prompt);
+}
+
+// Deja un texto escrito en el cuadro de un chat con IA, sin enviarlo, para que la persona lo edite.
+function writePrompt(prompt) {
   chooseMode("ai");
-  input.value = card.prompt;
+  input.value = prompt;
   input.dispatchEvent(new Event("input")); // el cuadro ajusta su alto
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);

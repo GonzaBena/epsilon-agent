@@ -26,7 +26,7 @@ from epsilon.connectors import bridge, buttons as connector_buttons, manager as 
 from epsilon.data import conversations, library, notes
 from epsilon.routines import rules as routine_rules, runner as routine_runner, store as routine_store
 from epsilon.settings import checks, config
-from epsilon.skills import importer as skill_importer, store as skill_store
+from epsilon.skills import importer as skill_importer, starter as skill_starter, store as skill_store
 from epsilon.utils import clock, multimedia
 from epsilon.voice import tts, transcribe
 
@@ -825,6 +825,11 @@ def create_app() -> FastAPI:
         except skill_store.SkillError as e:
             raise HTTPException(422, str(e)) from None
         return staged_view(item)
+
+    @app.get("/api/skills/starter")
+    def get_skill_starter():
+        """El texto con el que empieza «Crear conversando»."""
+        return {"prompt": skill_starter.STARTER_PROMPT}
 
     @app.get("/api/skills/staged/{token}")
     def get_staged_skill(token: str):
