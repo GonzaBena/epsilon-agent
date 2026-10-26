@@ -689,37 +689,61 @@ body.view-telegram {
     opacity 0.15s ease 0.05s;
 }
 
-/* Cada herramienta: el comando arriba y qué hace abajo. Tocarla lo escribe en el mensaje. */
+/* Cada herramienta es una card: ícono, nombre (con la etiqueta «IA» si gasta tokens) y qué hace. */
 .tools {
+  display: grid;
+  gap: 8px;
   margin: 0;
-  padding: 0;
+  padding: 0 6px 0 0; /* aire para que la barra de scroll del panel no se coma el borde */
   list-style: none;
 }
 .tool {
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 12px;
   width: 100%;
-  min-height: 52px;
-  padding: 6px 12px;
-  background: none;
-  border: 0;
-  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
   text-align: left;
   cursor: pointer;
 }
 .tool:hover {
   background: var(--surface-2);
+  border-color: var(--accent-line);
+}
+.tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tool-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+}
+.tool-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 .tool-name {
-  font-family: var(--mono);
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 600;
 }
-/* El nombre y, al lado, la etiqueta de las que usan IA. */
+/* El nombre y, a la derecha, la etiqueta de las que usan IA. */
 .tool-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 .tool-tag {
@@ -734,6 +758,7 @@ body.view-telegram {
 .tool-desc {
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.35;
 }
 
 /* Contexto: lo que la conversación guardó. Tocar un ítem escribe el comando en el mensaje. */

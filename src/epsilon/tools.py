@@ -19,6 +19,8 @@ class Tool:
     help: str | None = None  # línea de la ayuda (core.HELP); None = no aparece
     panel: str | None = None  # descripción en el panel de la web; None = no hay fila (ver abajo)
     menu: str | None = None  # descripción en el menú de Telegram; None = no aparece
+    title: str = ""  # nombre de la card del panel, en palabras de persona («Imagen → CSV»), no el comando
+    icon: str = ""  # ícono de la card: una clave de TOOL_ICONS en app.js («image», «summary», «ticket», «table»)
     insert: str = ""  # lo que el panel escribe en el cuadro de texto al tocar la fila
     action: str = ""  # atajo especial del panel que no escribe texto (hoy: «csv»)
     aliases: tuple[str, ...] = ()  # otros nombres que el núcleo también entiende
@@ -82,6 +84,8 @@ TOOLS = (
     ),
     Tool(
         "Imagen a CSV",
+        title="Imagen → CSV",
+        icon="image",
         panel="Pasar una imagen a una tabla: adjuntala y escribí «nombre: campos»",
         action="csv",
         uses_ai=True,
@@ -131,6 +135,8 @@ TOOLS = (
         name="resumir",
         usage="/resumir nombre",
         help="resumir una nota o archivo guardado",
+        title="Resumir",
+        icon="summary",
         panel="Resumir una nota o archivo guardado",
         menu="Resumir una nota o archivo guardado",
         insert="/resumir ",
@@ -171,6 +177,8 @@ TOOLS = (
         "/ticket",
         name="ticket",
         help="guardar la próxima imagen o PDF en tickets/ (mandala como archivo)",
+        title="Ticket",
+        icon="ticket",
         panel="Guardar la próxima imagen en tickets/",
         menu="Guardar la próxima imagen como ticket",
         insert="/ticket",
@@ -320,7 +328,9 @@ TOOLS = (
         name="csv",
         usage="/csv nombre [filtros]",
         help="consultar un CSV guardado: filtrar filas y, con «| suma columna», calcular (sin IA)",
-        panel="Consultar un CSV guardado: /csv nombre precio>100 | suma precio",
+        title="Consultar CSV",
+        icon="table",
+        panel="Consultar un CSV guardado: filtrá filas y sumá columnas",
         menu="Consultar un CSV guardado (filtrar, sumar…)",
         insert="/csv ",
         ai="read",

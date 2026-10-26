@@ -214,7 +214,7 @@ def test_every_tool_row_is_listed_once(client):
 def test_the_ai_tag_explains_itself_and_does_not_name_the_model(client):
     render = re.search(r"function renderTools.*?\n}\n", js("app.js"), re.S).group(0)
 
-    assert '"usa IA"' in render and "tag.title" in render  # el tooltip dice qué significa
+    assert '"IA"' in render and "tag.title" in render  # el tooltip dice qué significa
     assert "Gemini" not in render  # el modelo puede cambiar: el texto habla de «IA»
     assert "Gemini" not in str(client.get("/api/tools").json())
 

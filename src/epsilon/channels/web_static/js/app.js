@@ -1456,19 +1456,42 @@ for (const element of document.querySelectorAll("[data-insert]")) {
 const toolsList = document.getElementById("tools");
 let linkCommands = []; // los pedidos que /?cmd=... puede ejecutar solos (solo lecturas)
 
+// Íconos de las cards: trazos de 24×24 (los dibuja renderTools con createElementNS, nunca como HTML).
+const TOOL_ICONS = {
+  image: ["M4 5h16v14H4z", "M4 16l5-5 4 4 3-3 4 4", "M15 9h.01"],
+  summary: ["M5 4h14", "M5 9h14", "M5 14h9", "M5 19h6"],
+  ticket: ["M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4z", "M14 6v12"],
+  table: ["M4 5h16v14H4z", "M4 10h16", "M10 10v9"],
+};
+
+function toolIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", "stroke-width": "1.6", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(key, value);
+  for (const d of TOOL_ICONS[name] || []) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
 function renderTools(tools) {
   toolsList.replaceChildren();
   for (const tool of tools) {
     const button = make("button", "tool");
     button.type = "button";
+    const icon = make("span", "tool-icon");
+    icon.append(toolIcon(tool.icon));
     const head = make("span", "tool-head");
-    head.append(make("span", "tool-name", tool.label));
+    head.append(make("span", "tool-name", tool.title));
     if (tool.uses_ai) {
-      const tag = make("span", "tool-tag", "usa IA");
+      const tag = make("span", "tool-tag", "IA");
       tag.title = "Usa el modelo de IA: gasta tokens";
       head.append(tag);
     }
-    button.append(head, make("span", "tool-desc", tool.desc));
+    const body = make("span", "tool-body");
+    body.append(head, make("span", "tool-desc", tool.desc));
+    button.append(icon, body);
     if (tool.action === "csv") button.addEventListener("click", armCsv);
     else button.addEventListener("click", () => insertText(tool.insert));
     const row = make("li");

@@ -508,6 +508,8 @@ def create_app() -> FastAPI:
             "tools": [
                 {
                     "label": tool.label,
+                    "title": tool.title or tool.label,
+                    "icon": tool.icon,
                     "desc": tool.panel,
                     "insert": tool.insert,
                     "action": tool.action,
