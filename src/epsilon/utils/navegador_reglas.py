@@ -1,5 +1,6 @@
 import ipaddress
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 # Reglas del navegador de la IA, todas funciones puras: sin red, sin Chromium, sin ajustes. Quien las usa
@@ -99,6 +100,12 @@ def is_sensitive_label(label: str) -> bool:
 SECOND_LEVEL = {"co", "com", "net", "org", "gov", "edu", "gob"}  # mercadolibre.com.ar: el sitio son tres partes
 NAME_ONLY = re.compile(r"[\w-]{2,40}")
 DOMAIN_LIKE = re.compile(r"(?:[\w-]+\.)+[a-z]{2,}(?:[/?#]\S*)?", re.IGNORECASE)
+CONTAINS_MIN = 5  # una palabra de este largo vale también DENTRO de una parte del sitio («virtual» en aulasvirtuales)
+
+
+def fold(text: str) -> str:
+    """En minúsculas y sin acentos («Inglés» → «ingles»): así da igual cómo lo escriba la persona o el modelo."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
 
 
 def site_of(host: str) -> str:
@@ -129,7 +136,7 @@ def _hosts(rows: list[tuple[str, str, int, int]], blocked: list[str]) -> dict[st
             continue
         entry = hosts.setdefault(host, {"score": 0, "words": set()})
         entry["score"] += visits + 10 * typed
-        entry["words"].update(re.findall(r"\w+", (title or "").lower()))
+        entry["words"].update(re.findall(r"\w+", fold(title or "")))
     return hosts
 
 
@@ -139,38 +146,93 @@ def known_site(host: str, rows: list[tuple[str, str, int, int]]) -> bool:
     return any(seen == host or seen.endswith("." + host) for seen in _hosts(rows, []))
 
 
-def pick_site(query: str, rows: list[tuple[str, str, int, int]], blocked: list[str]) -> str | None:
-    """El host del historial que mejor responde a un nombre o una frase corta (`rows`: url, título, visitas, veces
-    escrita). Una palabra: se prefiere que alguna parte del nombre del sitio empiece igual («aula» → aulasvirtuales…),
-    luego una palabra de su título, y al final que las letras aparezcan en orden («yt» → youtube). Una frase: cada
-    palabra (las de menos de 3 letras no cuentan; con más de dos se tolera una que no coincida) tiene que empezar igual
-    que una parte del sitio o una palabra de su título. Entre los que coinciden gana el más usado, con más peso lo que la persona escribió a mano. Los sitios
-    bloqueados nunca salen. None si nada coincide."""
-    words = re.findall(r"[\w-]+", query.lower())
+def _query_words(query: str) -> list[str] | None:
+    """Las palabras de un nombre o una frase («aula virtual de la facu»), sin acentos. En una frase no cuentan las de
+    menos de 3 letras. None si queda algo que no parece un nombre («a/b», «javascript:x»)."""
+    words = re.findall(r"[\w-]+", fold(query))
     if len(words) > 1:
         words = [word for word in words if len(word) >= 3]
     if not words or not all(NAME_ONLY.fullmatch(word) for word in words):
+        return None
+    return words
+
+
+def _word_tier(word: str, labels: list[str], title_words: set[str]) -> int | None:
+    """Qué tan bien aparece una palabra en un sitio: 0 si una parte del nombre del sitio empieza igual («aula» →
+    aulasvirtuales), 1 si empieza igual una palabra de su título o, siendo larga, está dentro de una parte del nombre
+    («virtual» → aulasvirtuales), None si no aparece."""
+    if any(label.startswith(word) for label in labels):
+        return 0
+    if any(t.startswith(word) for t in title_words) or (len(word) >= CONTAINS_MIN and any(word in label for label in labels)):
+        return 1
+    return None
+
+
+def _phrase_tier(words: list[str], labels: list[str], title_words: set[str]) -> int | None:
+    """Cuántas palabras de la frase faltan (0 = todas aparecen). Con una o dos palabras tienen que estar todas; con
+    más se tolera una de relleno. None si faltan más."""
+    matched = sum(_word_tier(word, labels, title_words) is not None for word in words)
+    if matched < (len(words) if len(words) <= 2 else len(words) - 1):
+        return None
+    return len(words) - matched
+
+
+def pick_site(query: str, rows: list[tuple[str, str, int, int]], blocked: list[str]) -> str | None:
+    """El host del historial que mejor responde a un nombre o una frase corta (`rows`: url, título, visitas, veces
+    escrita). Una palabra: se prefiere que alguna parte del nombre del sitio empiece igual («aula» → aulasvirtuales…),
+    luego una palabra de su título o que esté dentro del nombre, y al final que las letras aparezcan en orden («yt» →
+    youtube). Una frase: cada palabra (ver `_phrase_tier`) tiene que aparecer en el sitio o en su título. Sin acentos.
+    Entre los que coinciden gana el más usado, con más peso lo que la persona escribió a mano. Los sitios bloqueados
+    nunca salen. None si nada coincide."""
+    words = _query_words(query)
+    if not words:
         return None
     best: tuple[int, int, str] | None = None
     for host, entry in _hosts(rows, blocked).items():
         labels = _labels(host)
         if len(words) == 1:
             q = words[0]
-            if any(label.startswith(q) for label in labels):
-                tier = 0
-            elif any(word.startswith(q) for word in entry["words"]):
-                tier = 1
-            elif len(q) >= 2 and _subsequence(q, labels[-1] if len(labels) == 1 else "".join(labels[-1:])):
+            tier = _word_tier(q, labels, entry["words"])
+            if tier is None and len(q) >= 2 and _subsequence(q, labels[-1]):
                 tier = 2
-            else:
-                continue
         else:
-            matched = sum(
-                any(label.startswith(w) for label in labels) or any(t.startswith(w) for t in entry["words"]) for w in words
-            )
-            if matched < (len(words) if len(words) <= 2 else len(words) - 1):  # con una frase larga se tolera una palabra de relleno
-                continue
-            tier = len(words) - matched
+            tier = _phrase_tier(words, labels, entry["words"])
+        if tier is None:
+            continue
         candidate = (tier, -entry["score"], host)
         best = candidate if best is None or candidate < best else best
     return best[2] if best else None
+
+
+def pick_bookmark(query: str, bookmarks: list[tuple[str, str]], blocked: list[str]) -> str | None:
+    """La dirección COMPLETA del marcador que responde a un nombre o una frase (`bookmarks`: nombre, dirección, en el
+    orden de Chromium). Se compara con el nombre que le puso la persona y con las partes de su sitio, como una frase
+    de `pick_site` pero sin la regla de las letras en orden: un marcador solo gana si coincide de verdad. Gana el que
+    deja menos palabras afuera y, empatados, el primero. Solo http(s), sin IP ni bloqueados. None si ninguno."""
+    words = _query_words(query)
+    if not words:
+        return None
+    best: tuple[int, int, str] | None = None
+    for index, (name, url) in enumerate(bookmarks):
+        host = host_of(url).removeprefix("www.")
+        if not url.startswith(("http://", "https://")) or not host or _is_ip(host) or matches(host, blocked):
+            continue
+        tier = _phrase_tier(words, _labels(host), set(re.findall(r"\w+", fold(name))))
+        if tier is not None and (best is None or (tier, index) < best[:2]):
+            best = (tier, index, url)
+    return best[2] if best else None
+
+
+def pick_alias(query: str, aliases: dict[str, str]) -> str | None:
+    """La dirección del atajo de la persona («facu» → https://aulasvirtuales…) cuyo nombre aparece entero en lo pedido:
+    «aula virtual de la facu» usa «facu». Sin acentos. Si coinciden varios, gana el de más palabras («facu inglés»
+    antes que «facu»). None si ninguno."""
+    words = set(re.findall(r"[\w-]+", fold(query)))
+    best: tuple[tuple[int, int], str] | None = None
+    for name, url in aliases.items():
+        needed = fold(name).split()
+        if needed and all(word in words for word in needed):
+            key = (len(needed), len(name))
+            if best is None or key > best[0]:
+                best = (key, url)
+    return best[1] if best else None

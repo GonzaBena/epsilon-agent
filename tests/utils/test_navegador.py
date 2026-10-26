@@ -1,7 +1,9 @@
+import json
 from urllib.parse import quote, unquote
 
 import pytest
 
+from epsilon.data import sites
 from epsilon.utils import navegador
 
 
@@ -366,8 +368,9 @@ def test_open_url_waits_past_the_initial_blank_document(monkeypatch):
 # --- resolve_target: de un nombre suelto a una dirección ---
 
 
-def history(monkeypatch, rows):
+def history(monkeypatch, rows, bookmarks=()):
     monkeypatch.setattr(navegador, "_history", lambda: rows)
+    monkeypatch.setattr(navegador, "_bookmarks", lambda: list(bookmarks))
     # La lista de bloqueados no sale del .env de quien corre los tests.
     monkeypatch.setattr(navegador.config, "site_list", lambda key: ["mail.google.com"] if key == "BROWSER_BLOCKED_SITES" else [])
 
@@ -534,3 +537,82 @@ def test_music_is_playing_compares_titles_and_never_raises(monkeypatch):
 
     FakeChromium(monkeypatch, [page("AAAA1111", "Banco", "https://mi-banco.com/")])
     assert navegador.music_is_playing("Una canción") is False  # sin pestaña de YouTube Music
+
+
+# --- atajos de la persona y marcadores de Chromium ---
+
+UTN = [("https://aulasvirtuales.frba.utn.edu.ar/my/", "Área personal | Facultad Regional Buenos Aires", 80, 6)]
+
+
+def test_resolve_target_uses_the_persons_shortcut_first(monkeypatch):
+    history(monkeypatch, UTN, [("Laboratorio de Idiomas", "https://idiomas.campus.example.ar/")])
+    sites.add("inglés", "https://idiomas.campus.example.ar/course/5")
+
+    # «inglés» no está en ningún título ni sitio: solo lo sabe la persona.
+    assert navegador.resolve_target("aula de ingles") == "https://idiomas.campus.example.ar/course/5"
+
+
+def test_resolve_target_uses_the_full_address_of_a_bookmark(monkeypatch):
+    drive = "https://drive.google.com/drive/folders/abc123"
+    history(monkeypatch, [("https://drive.google.com/", "Google Drive", 500, 40)], [("Economia 3003", drive)])
+
+    assert navegador.resolve_target("economía") == drive  # la carpeta, no la portada de Drive
+
+
+def test_resolve_target_falls_back_to_the_history_when_no_bookmark_matches(monkeypatch):
+    history(monkeypatch, UTN, [("MakerWorld", "https://makerworld.com/")])
+
+    assert navegador.resolve_target("aula virtual de la facu") == "https://aulasvirtuales.frba.utn.edu.ar/"
+
+
+def test_resolve_target_never_picks_a_blocked_bookmark(monkeypatch):
+    history(monkeypatch, [], [("Gmail", "https://mail.google.com/mail/u/0")])
+
+    with pytest.raises(navegador.NavegadorError, match="No encontré"):
+        navegador.resolve_target("gmail")
+
+
+def test_resolve_target_accepts_a_bare_domain_that_is_bookmarked(monkeypatch):
+    history(monkeypatch, [], [("MakerWorld", "https://makerworld.com/es")])
+
+    assert navegador.resolve_target("makerworld.com") == "https://makerworld.com"
+
+
+def test_bookmarks_are_read_in_order_and_only_http(tmp_path):
+    source = tmp_path / "Bookmarks"
+    source.write_text(
+        json.dumps(
+            {
+                "roots": {
+                    "bookmark_bar": {
+                        "type": "folder",
+                        "children": [
+                            {"type": "url", "name": "Uno", "url": "https://uno.com/"},
+                            {"type": "folder", "name": "Facu", "children": [{"type": "url", "name": "Aula", "url": "https://aula.edu.ar/"}]},
+                            {"type": "url", "name": "Raro", "url": "javascript:alert(1)"},
+                            {"type": "url", "name": "Dos", "url": "http://dos.com/"},
+                        ],
+                    },
+                    "other": {"type": "folder", "children": [{"type": "url", "name": "Tres", "url": "https://tres.com/"}]},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = source.read_bytes()
+
+    assert navegador.read_bookmarks(source) == [
+        ("Uno", "https://uno.com/"),
+        ("Aula", "https://aula.edu.ar/"),
+        ("Dos", "http://dos.com/"),
+        ("Tres", "https://tres.com/"),
+    ]
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize("content", [None, "{roto", "[]", '{"roots": 3}'])
+def test_bookmarks_missing_or_broken_are_just_empty(tmp_path, content):
+    source = tmp_path / "Bookmarks"
+    if content is not None:
+        source.write_text(content, encoding="utf-8")
+    assert navegador.read_bookmarks(source) == []

@@ -14,13 +14,13 @@ from urllib.parse import quote
 import httpx
 from websockets.sync.client import connect
 
-from epsilon.data import notes
+from epsilon.data import notes, sites
 from epsilon.settings import config
 from epsilon.utils import navegador_reglas as reglas
 
 # El navegador de la IA: habla con el Chromium de la persona por su puerto de depuración (CDP), SOLO en
-# 127.0.0.1:9222. Sin modelo. Los ÚNICOS puntos que tocan algo de afuera son `_http`, `_cdp`, `_resolve` y `_run`
-# (los tests los bloquean). Las reglas de seguridad (sitios bloqueados, pestañas ocultas, direcciones) viven acá y
+# 127.0.0.1:9222. Sin modelo. Los ÚNICOS puntos que tocan algo de afuera son `_http`, `_cdp`, `_resolve`, `_run`,
+# `_history` y `_bookmarks` (los tests los bloquean). Las reglas de seguridad (sitios bloqueados, pestañas ocultas, direcciones) viven acá y
 # en navegador_reglas.py, nunca dependen de lo que diga el modelo. Ver docs/superpowers/specs/2026-10-22-navegador-design.md.
 
 PORT = 9222
@@ -37,6 +37,8 @@ LOG_FILE = "browser.log"
 LOG_RESULT_CHARS = 120
 HISTORY_FILE = Path.home() / ".config/chromium/Default/History"  # el historial de Chromium: se lee, jamás se escribe
 HISTORY_ROWS = 5000  # cuántas direcciones se miran (las más visitadas)
+BOOKMARKS_FILE = Path.home() / ".config/chromium/Default/Bookmarks"  # los marcadores de Chromium: se leen, jamás se escriben
+MAX_BOOKMARKS = 2000
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
 MAX_TEXT = 3000  # caracteres de texto que devuelve `read`
@@ -313,17 +315,49 @@ def read_history(source: Path) -> list[tuple[str, str, int, int]]:
             raise NavegadorError("No pude leer el historial de Chromium: pasame la dirección completa.") from None
 
 
+def _bookmarks() -> list[tuple[str, str]]:
+    """Punto único (bloqueado en los tests): los marcadores reales de Chromium."""
+    return read_bookmarks(BOOKMARKS_FILE)
+
+
+def read_bookmarks(source: Path) -> list[tuple[str, str]]:
+    """Los marcadores de Chromium (nombre, dirección http(s)), en el orden en que se ven. Es un JSON que Chromium
+    reescribe entero: se lee tal cual y nunca se escribe. Sin el archivo, o roto, lista vacía (los marcadores ayudan
+    pero no hacen falta). Como el historial, sirven SOLO para resolver un nombre; nunca llegan al modelo."""
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    roots = data.get("roots") if isinstance(data, dict) else None
+    pending = [node for node in (roots.values() if isinstance(roots, dict) else []) if isinstance(node, dict)][::-1]
+    found: list[tuple[str, str]] = []
+    while pending and len(found) < MAX_BOOKMARKS:  # sin recursión: una carpeta dentro de otra no tiene tope
+        node = pending.pop()
+        name, url = node.get("name"), node.get("url")
+        if node.get("type") == "url" and isinstance(name, str) and isinstance(url, str) and url.startswith(("http://", "https://")):
+            found.append((name, url))
+        children = node.get("children")
+        if isinstance(children, list):
+            pending.extend(child for child in reversed(children) if isinstance(child, dict))
+    return found
+
+
 def resolve_target(text: str) -> str:
-    """De lo que pidió la IA a una dirección: una con «://» se deja tal cual (después la revisan las reglas); un nombre
-    o una frase («yt», «aula virtual utn») se busca en el historial; un dominio suelto («youtube.com») recibe https://
-    SOLO si la persona ya lo visitó o es de confianza (así no se abre un dominio que el modelo inventó). Si no se
-    reconoce, NavegadorError con un mensaje claro (nunca una búsqueda en Google)."""
+    """De lo que pidió la IA a una dirección: una con «://» se deja tal cual (después la revisan las reglas). Un nombre
+    o una frase («facu», «yt», «aula virtual utn») se busca, en este orden, en los atajos de la persona (/sitio, la
+    dirección guardada), en los marcadores de Chromium (la dirección completa del marcador) y en el historial (solo
+    el sitio). Un dominio suelto («youtube.com») recibe https:// SOLO si la persona ya lo visitó, lo tiene en un
+    marcador o es de confianza (así no se abre un dominio que el modelo inventó). Si no se reconoce, NavegadorError
+    con un mensaje claro (nunca una búsqueda en Google)."""
     text = text.strip()
     if "://" in text or not text:
         return text
+    if url := reglas.pick_alias(text, sites.all_sites()):
+        return url
     if reglas.DOMAIN_LIKE.fullmatch(text):
         host = reglas.host_of("https://" + text)
-        if trusted(host) or reglas.known_site(host, _history()):
+        marked = [(url, name, 0, 0) for name, url in _bookmarks()]
+        if trusted(host) or reglas.known_site(host, _history() + marked):
             return "https://" + text
         raise NavegadorError(
             f"«{host}» no está en tu historial ni en los sitios de confianza: no la invento. "
@@ -331,9 +365,16 @@ def resolve_target(text: str) -> str:
         )
     if ":" in text or "/" in text:
         return text  # algo raro («javascript:…», una ruta): lo rechaza la revisión de la dirección
-    host = reglas.pick_site(text, _history(), config.site_list("BROWSER_BLOCKED_SITES"))
+    blocked = config.site_list("BROWSER_BLOCKED_SITES")
+    if url := reglas.pick_bookmark(text, _bookmarks(), blocked):
+        return url
+    host = reglas.pick_site(text, _history(), blocked)
     if not host:
-        raise NavegadorError(f"No encontré «{text}» en el historial de Chromium: pasame la dirección completa.")
+        raise NavegadorError(
+            f"No encontré «{text}» en los atajos, los marcadores ni el historial de Chromium. No lo busques en Google "
+            "ni inventes la dirección: preguntale a la persona cuál es (puede guardarla con /sitio nombre = dirección) "
+            "o pasame la dirección completa."
+        )
     return f"https://{host}/"
 
 

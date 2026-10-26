@@ -107,6 +107,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/sistema [qué]`       | Solo Telegram: estado de la máquina (disco, ram, uptime, servicio; sin IA). |
 | `/volumen [valor]` | Volumen de la PC: sin valor dice cómo está; con un número (`40`), `+5`/`-5`, `silenciar` o `activar` lo cambia. Nunca pasa de 100 % (sin IA, usa `wpctl`). |
 | `/musica [acción]` | Sin acción, qué suena en la PC (título, artista y app, con botones); `pausa`, `play`, `siguiente`, `anterior`, `repetir` y `aleatorio` lo controlan (sin IA, por MPRIS). |
+| `/sitio [nombre = dirección]` | Atajos para el navegador de la IA: `/sitio facu = aulasvirtuales.frba.utn.edu.ar` y después «abrí el aula de la facu» va ahí. Sin nada los lista; `borrar nombre` lo borra. La IA también mira tus marcadores y tu historial de Chromium (sin IA). |
 | **Rutinas** | |
 | `/rutina [regla]` | Programa algo que Epsilon hace solo, sin IA: `/rutina 23:00 \| volumen 20`, `lun-vie 09:00 \| avisar Standup`, `en 30m \| avisar la pizza`, `disco>90 \| avisar poco espacio` (también `ram>85`). También `borrar N`, `pausar N`, `seguir N`. Avisa por escritorio y por Telegram. |
 | `/rutinas` | Tus rutinas programadas, numeradas, con su próxima vez. También se ven y se manejan con botones en la página Rutinas (`/rutinas` en el navegador). |

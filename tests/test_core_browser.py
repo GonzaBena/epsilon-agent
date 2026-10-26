@@ -309,6 +309,7 @@ def test_a_short_name_is_resolved_before_the_guard_and_the_question_shows_the_re
     monkeypatch.setattr(navegador.config, "site_list", lambda key: ["mail.google.com"] if key == "BROWSER_BLOCKED_SITES" else [])
     opened = []
     monkeypatch.setattr(navegador, "_history", lambda: [("https://www.ejemplo.com/", "Ejemplo", 400, 30)])
+    monkeypatch.setattr(navegador, "_bookmarks", lambda: [])
     monkeypatch.setattr(navegador, "open_url", lambda url: opened.append(url) or tab("QWERTY999"))
     script.steps = [step(calls=[("navegador.abrir", "ej")]), step("Listo")]
 
@@ -326,6 +327,7 @@ def test_a_short_name_is_resolved_before_the_guard_and_the_question_shows_the_re
 def test_an_unknown_name_tells_the_model_to_ask_for_the_address(script, monkeypatch):
     opened = []
     monkeypatch.setattr(navegador, "_history", lambda: [])
+    monkeypatch.setattr(navegador, "_bookmarks", lambda: [])
     monkeypatch.setattr(navegador, "open_url", lambda url: opened.append(url) or tab())
     script.steps = [step(calls=[("navegador.abrir", "zzz")]), step("No pude")]
 
@@ -333,3 +335,4 @@ def test_an_unknown_name_tells_the_model_to_ask_for_the_address(script, monkeypa
 
     assert opened == []
     assert "No encontré «zzz»" in results(script.seen[1][0])[0]
+    assert "preguntale a la persona" in results(script.seen[1][0])[0]  # que no se ponga a buscar en Google

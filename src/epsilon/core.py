@@ -14,7 +14,7 @@ from epsilon import menu, tools
 from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, permissions, summarize, usage
 from epsilon.ai.messages import WEAK_MODEL_HINT, ModelError
 from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
-from epsilon.data import activity, changes, conversations, library, notes, tabular, todo
+from epsilon.data import activity, changes, conversations, library, notes, sites, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
 from epsilon.skills import runtime as skill_runtime, store as skill_store
@@ -506,6 +506,35 @@ def _pc(action: Callable[[str], str]) -> Callable[[str], Reply]:
 
 
 _volume_cmd = _pc(lambda args: multimedia.volume(args))
+
+
+def _site_cmd(args: str) -> Reply:
+    """/sitio: los atajos del navegador de la IA («facu» → la dirección). Sin nada los lista; «nombre = dirección»
+    agrega uno; «borrar nombre» lo borra. Solo la persona los toca: la IA no tiene esta herramienta."""
+    args = args.strip()
+    if "=" in args:
+        name, _, url = args.partition("=")
+        try:
+            name, url = sites.add(name, url)
+        except sites.SitesError as e:
+            return Reply(str(e), failed=True)
+        return Reply(f"Listo: cuando le pidas a la IA abrir «{name}», va a {url}")
+    action, _, rest = args.partition(" ")
+    if action.lower() == "borrar" and rest.strip():
+        try:
+            removed = sites.remove(rest)
+        except sites.SitesError as e:
+            return Reply(str(e), failed=True)
+        return Reply(f"Borré el atajo «{removed[0]}».") if removed else Reply(f"No hay un atajo «{rest.strip()}».", failed=True)
+    if args:
+        return Reply("Uso: /sitio nombre = dirección (por ejemplo: /sitio facu = aulasvirtuales.frba.utn.edu.ar), o /sitio borrar nombre.")
+    saved = sites.all_sites()
+    if not saved:
+        return Reply(
+            "Todavía no tenés atajos. Sirven para que la IA sepa a qué sitio te referís: "
+            "/sitio facu = aulasvirtuales.frba.utn.edu.ar"
+        )
+    return Reply("Tus atajos de sitios:\n" + "\n".join(f"- {name} → {url}" for name, url in saved.items()))
 
 
 def _playing_cmd(args: str) -> Reply:
@@ -1432,6 +1461,7 @@ COMMANDS = {
     "csv": lambda args, s: _csv_cmd(args),
     "sistema": lambda args, s: _system_cmd(args),
     "volumen": lambda args, s: _volume_cmd(args),
+    "sitio": lambda args, s: _site_cmd(args),
     "musica": lambda args, s: _music_cmd(args) if args.strip() else _playing_cmd(""),
     "rutina": _routine_cmd,
     "conector": lambda args, s: _connector_cmd(args),

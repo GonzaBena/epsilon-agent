@@ -324,3 +324,25 @@ def test_sistema_refuses_anything_else_without_running_it():
     text = say("/sistema ls -la; rm -rf /").text
 
     assert "Opciones: disco, ram, uptime, servicio" in text
+
+
+# --- /sitio: atajos del navegador de la IA ---
+
+
+def test_site_command_adds_lists_and_removes(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    assert "Todavía no tenés atajos" in say("/sitio").text
+    assert "va a https://aulasvirtuales.frba.utn.edu.ar" in say("/sitio facu = aulasvirtuales.frba.utn.edu.ar").text
+    assert "- facu → https://aulasvirtuales.frba.utn.edu.ar" in say("/sitio").text
+    assert "Ya hay" in say("/sitio facu = otra.com").text
+    assert "Borré" in say("/sitio borrar facu").text
+    assert "No hay un atajo" in say("/sitio borrar facu").text
+
+
+def test_site_command_explains_its_use_and_refuses_bad_addresses(tmp_path, monkeypatch):
+    use_tmp_data(tmp_path, monkeypatch)
+
+    assert "Uso: /sitio" in say("/sitio facu").text
+    reply = say("/sitio router = http://192.168.0.1")
+    assert reply.failed and "red local" in reply.text

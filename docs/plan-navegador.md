@@ -57,3 +57,19 @@ se agrega, redactada, a `DATA_DIR/browser.log`.
 ## Puesta en marcha (2026-10-22)
 
 Primero que ande, después la seguridad: un mensaje con navegador tiene 16 vueltas del modelo; `click` espera la carga y adopta pestañas nuevas; `leer id abajo|arriba`; `BROWSER_GUARD=no` apaga las preguntas de la guardia (no los bloqueos ni los topes).
+
+## Entender un nombre suelto (2026-10-26)
+
+«Abrí el aula virtual de la facu» no pasa por Google: `navegador.resolve_target` busca, en orden, en
+
+1. **los atajos de la persona** (`/sitio facu = aulasvirtuales.frba.utn.edu.ar`, `data/sites.py`, `DATA_DIR/sites.json`):
+   el nombre del atajo tiene que aparecer entero en lo pedido («aula virtual de la facu» usa «facu»); gana el más largo.
+   Es lo que solo sabe la persona («inglés» → el campus de idiomas). Solo los toca la persona: la IA no tiene herramienta.
+2. **los marcadores de Chromium** (`_bookmarks`, solo lectura): la dirección COMPLETA del marcador (una carpeta de Drive
+   abre esa carpeta), comparando con el nombre que le puso la persona; sin la regla de «letras en orden».
+3. **el historial** (como antes): solo el sitio.
+
+En las tres, sin acentos (`reglas.fold`), y una palabra de 5 letras o más vale también dentro del nombre del sitio
+(«virtual» → aulasvirtuales). Si nada coincide, el resultado le dice al modelo que no busque en Google ni invente la
+dirección y que le pregunte a la persona (que puede guardarla con `/sitio`). Ni el historial ni los marcadores llegan al
+modelo. Pendiente: una búsqueda web de verdad (ver la charla del 2026-10-26: SearXNG local o la API de Brave).

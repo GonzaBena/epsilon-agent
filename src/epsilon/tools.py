@@ -364,6 +364,15 @@ TOOLS = (
         ai_arg="un número de 0 a 100 (40), una subida o bajada (+5, -10), «silenciar» o «activar»; vacío para solo ver",
     ),
     Tool(
+        "/sitio",
+        name="sitio",
+        usage="/sitio [nombre = dirección]",
+        help="atajos para el navegador de la IA: sin nada los lista; «facu = aulasvirtuales.frba.utn.edu.ar» agrega uno, «borrar facu» lo borra (sin IA)",
+        insert="/sitio ",
+        section="PC",
+        writes=True,
+    ),
+    Tool(
         "Qué está sonando",
         done="Miró qué está sonando",
         ai="read",

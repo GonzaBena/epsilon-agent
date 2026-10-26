@@ -182,3 +182,76 @@ def test_known_site_accepts_the_host_or_a_parent_in_the_history():
     assert reglas.known_site("aulasvirtuales.frba.utn.edu.ar", UNI)
     assert reglas.known_site("frba.utn.edu.ar", UNI)  # un padre de un sitio visitado
     assert not reglas.known_site("aulavirtualutn.com", UNI)
+
+
+# --- Sin acentos, palabras dentro del nombre, marcadores y atajos ---
+
+REAL_UNI = [("https://aulasvirtuales.frba.utn.edu.ar/my/", "Área personal | Facultad Regional Buenos Aires", 80, 6)]
+
+
+@pytest.mark.parametrize("query", ["aula virtual", "aulas virtuales", "facu", "aula virtual de la facu", "área personal"])
+def test_pick_site_finds_long_words_inside_the_name_and_ignores_accents(query):
+    assert reglas.pick_site(query, REAL_UNI, []) == "aulasvirtuales.frba.utn.edu.ar"
+
+
+def test_pick_site_short_words_do_not_count_inside_the_name():
+    assert reglas.pick_site("ales", REAL_UNI, []) is None  # «ales» está dentro de «aulasvirtuales», pero es corta
+
+
+def test_fold_drops_accents_and_case():
+    assert reglas.fold("Inglés ÁREA Ñandú") == "ingles area nandu"
+
+
+BOOKMARKS = [
+    ("MakerWorld", "https://makerworld.com/"),
+    ("Economia 3003", "https://drive.google.com/drive/folders/abc"),
+    ("Área personal | Facultad Regional Buenos Aires", "https://aulasvirtuales.frba.utn.edu.ar/my/"),
+    ("Log in to the site | Facultad Regional Buenos Aires", "https://aulasvirtuales.frba.utn.edu.ar/login/"),
+    ("Laboratorio de Idiomas", "https://idiomas.campus.filo.uba.ar/"),
+    ("Raro", "javascript:alert(1)"),
+    ("Router", "http://192.168.0.1/"),
+]
+
+
+@pytest.mark.parametrize(
+    "query, url",
+    [
+        ("economía", "https://drive.google.com/drive/folders/abc"),  # la dirección entera del marcador
+        ("facu", "https://aulasvirtuales.frba.utn.edu.ar/my/"),  # dos coinciden: gana el primero
+        ("campus idiomas", "https://idiomas.campus.filo.uba.ar/"),  # una palabra del sitio y una del nombre
+        ("maker", "https://makerworld.com/"),
+    ],
+)
+def test_pick_bookmark_returns_the_full_address(query, url):
+    assert reglas.pick_bookmark(query, BOOKMARKS, []) == url
+
+
+@pytest.mark.parametrize("query", ["mw", "aula ingles", "router", "raro", "", "a/b"])
+def test_pick_bookmark_needs_a_real_match(query):
+    # Sin «letras en orden» (mw ≠ MakerWorld), ni IP, ni nada que no sea http(s).
+    assert reglas.pick_bookmark(query, BOOKMARKS, []) is None
+
+
+def test_pick_bookmark_never_returns_a_blocked_site():
+    assert reglas.pick_bookmark("economia", BOOKMARKS, ["google.com"]) is None
+
+
+ALIASES = {"facu": "https://aulasvirtuales.frba.utn.edu.ar/", "inglés": "https://idiomas.campus.filo.uba.ar/", "facu notas": "https://x.edu.ar/notas"}
+
+
+@pytest.mark.parametrize(
+    "query, url",
+    [
+        ("facu", "https://aulasvirtuales.frba.utn.edu.ar/"),
+        ("aula virtual de la facu", "https://aulasvirtuales.frba.utn.edu.ar/"),  # el nombre del atajo dentro de la frase
+        ("aula de ingles", "https://idiomas.campus.filo.uba.ar/"),  # sin acentos
+        ("las notas de la facu", "https://x.edu.ar/notas"),  # gana el atajo más largo
+    ],
+)
+def test_pick_alias_finds_the_name_inside_the_request(query, url):
+    assert reglas.pick_alias(query, ALIASES) == url
+
+
+@pytest.mark.parametrize("query", ["facultad", "notas", "youtube"])
+def test_pick_alias_needs_every_word_of_the_name(query):
+    assert reglas.pick_alias(query, ALIASES) is None
