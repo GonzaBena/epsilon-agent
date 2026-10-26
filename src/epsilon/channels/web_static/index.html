@@ -226,6 +226,13 @@
               </button>
               <p id="mic-status" class="mic-status" role="status" hidden></p>
             </div>
+
+            <!-- Voz / mute del companion -->
+            <button id="companion-voice-toggle" class="composer-icon-btn" type="button"
+                    aria-label="Voz del asistente" title="Voz automática activada (clic para silenciar)" aria-pressed="true">
+              <svg class="icon-voice-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+              <svg class="icon-voice-off" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+            </button>
           </div>
 
           <div class="composer-actions-right">
@@ -297,6 +304,27 @@
       </div>
 
       <div class="side-body">
+        <!-- Companion Widget: Avatar animado y estado de voz -->
+        <section class="companion-card" id="companion-card" aria-label="Asistente Companion">
+          <div class="companion-avatar-wrap">
+            <img class="companion-avatar" id="companion-avatar" src="/static/img/avatar_chat.png" alt="Avatar del asistente" width="80" height="80">
+            <div class="companion-wave" id="companion-wave" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="companion-details">
+            <div class="companion-name-row">
+              <strong class="companion-name" id="companion-name">Epsilon</strong>
+              <button type="button" class="companion-mute-btn" id="companion-mute-btn"
+                      title="Silenciar o activar voz automática" aria-label="Silenciar o activar voz automática" aria-pressed="false">
+                <svg class="icon-voice-on" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                <svg class="icon-voice-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+              </button>
+            </div>
+            <span class="companion-status" id="companion-status">En reposo</span>
+          </div>
+        </section>
+
         <section aria-labelledby="h-tools">
           <h2 class="side-title" id="h-tools">Herramientas</h2>
           <!-- Las filas las dibuja app.js con lo que devuelve GET /api/tools (viene de tools.py).

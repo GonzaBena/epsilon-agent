@@ -219,3 +219,20 @@ def test_message_endpoint_no_audio_url_when_tts_disabled(client, monkeypatch):
     assert res.status_code == 200
     assert "audio_url" not in res.json()
 
+
+def test_post_tts_endpoint_synthesizes_and_returns_audio_url(client, monkeypatch, tmp_path):
+    fake_ogg = tmp_path / "tts.ogg"
+    fake_ogg.write_bytes(b"AUDIO ON DEMAND")
+    monkeypatch.setattr(web.tts, "synthesize", lambda text: fake_ogg)
+
+    res = client.post("/api/tts", json={"text": "hola mundo"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "audio_url" in data
+    assert data["audio_url"].startswith("/api/audio/")
+
+
+def test_post_tts_endpoint_empty_text_returns_400(client):
+    res = client.post("/api/tts", json={"text": ""})
+    assert res.status_code == 400
+

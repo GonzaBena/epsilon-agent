@@ -9,15 +9,20 @@ import tempfile
 import time
 import uuid
 
-# Módulo de salida de voz (Text-to-Speech / TTS) con Piper.
+# Módulo de salida de voz (Text-to-Speech / TTS) con Kokoro y Piper.
 # Sintetiza respuestas de texto a audio localmente sin gastar tokens ni enviar datos afuera.
 # Complementa a transcribe.py (Whisper local para entrada).
 
-DEFAULT_VOICE = "es_AR-daniela-high"
+from epsilon.voice import kokoro_engine
+
+DEFAULT_ENGINE = "kokoro"
+DEFAULT_KOKORO_VOICE = "af_bella"
+DEFAULT_PIPER_VOICE = "es_AR-daniela-high"
+DEFAULT_VOICE = DEFAULT_KOKORO_VOICE
 DEFAULT_VOICES_DIR = Path.home() / ".local/share/piper-voices"
 DEFAULT_MAX_CHARS = 600
-DEFAULT_SPEED = 0.95
-DEFAULT_LENGTH_SCALE = 1.0526  # 1 / 0.95 (velocidad 0.95)
+DEFAULT_SPEED = 1.0
+DEFAULT_LENGTH_SCALE = 1.0526  # 1 / 0.95 (velocidad 0.95 en Piper)
 
 # Cache en memoria de archivos de audio temporales para servir por la API web.
 # token -> (Path, timestamp). Máximo 50 audios.
@@ -33,18 +38,39 @@ class PiperMissingError(TTSError):
     """No se encontró piper-tts instalado en el sistema."""
 
 
+class KokoroMissingError(TTSError):
+    """No se encontró kokoro-onnx o sus modelos en el sistema."""
+
+
 class VoiceNotFoundError(TTSError):
-    """No se encontró el modelo de voz de Piper solicitado."""
+    """No se encontró el modelo de voz solicitado."""
+
+
+def engine() -> str:
+    """Motor de voz activo: 'kokoro' o 'piper'."""
+    eng = os.environ.get("TTS_ENGINE", "").strip().lower()
+    return eng if eng in ("kokoro", "piper") else DEFAULT_ENGINE
+
+
+def is_installed() -> bool:
+    """Verifica si las librerías del motor TTS activo están disponibles."""
+    if engine() == "piper":
+        return bool(shutil.which("piper-tts") or shutil.which("piper"))
+    return kokoro_engine.kokoro_onnx is not None
 
 
 def voices_dir() -> Path:
-    """Carpeta donde residen los modelos onnx de voces."""
+    """Carpeta donde residen los modelos onnx de voces de Piper."""
     custom = os.environ.get("TTS_VOICES_DIR", "").strip()
     return Path(custom).expanduser() if custom else DEFAULT_VOICES_DIR
 
 
 def list_voices(custom_dir: Path | None = None) -> list[dict]:
-    """Lista las voces disponibles en la carpeta de voces leyendo sus archivos .onnx y .json."""
+    """Lista las voces disponibles según el motor activo o carpeta."""
+    eng = engine()
+    if eng == "kokoro" and custom_dir is None:
+        return kokoro_engine.list_kokoro_voices()
+
     folder = custom_dir or voices_dir()
     if not folder.is_dir():
         return []
@@ -86,6 +112,7 @@ def list_voices(custom_dir: Path | None = None) -> list[dict]:
             "language_name": lang_name,
             "quality": quality,
             "path": str(model_path.resolve()),
+            "engine": "piper",
         })
 
     return found
@@ -93,7 +120,10 @@ def list_voices(custom_dir: Path | None = None) -> list[dict]:
 
 def default_voice() -> str:
     """Nombre o id de la voz configurada por defecto."""
-    return os.environ.get("TTS_VOICE", "").strip() or DEFAULT_VOICE
+    custom = os.environ.get("TTS_VOICE", "").strip()
+    if custom:
+        return custom
+    return DEFAULT_PIPER_VOICE if engine() == "piper" else DEFAULT_KOKORO_VOICE
 
 
 def find_voice_path(voice_id: str | None = None, custom_dir: Path | None = None) -> Path:
@@ -206,8 +236,20 @@ def piper_binary() -> str:
     return bin_path
 
 
+def speed() -> float:
+    """Velocidad de habla para la síntesis (multiplicador estándar, ej: 1.0)."""
+    if raw_speed := os.environ.get("TTS_SPEED", "").strip():
+        try:
+            val = float(raw_speed)
+            if 0.2 <= val <= 3.0:
+                return val
+        except ValueError:
+            pass
+    return DEFAULT_SPEED
+
+
 def length_scale() -> float:
-    """Multiplicador de duración de fonemas para modular la velocidad del habla."""
+    """Multiplicador de duración de fonemas para modular la velocidad del habla en Piper."""
     if raw_scale := os.environ.get("TTS_LENGTH_SCALE", "").strip():
         try:
             val = float(raw_scale)
@@ -282,6 +324,19 @@ def synthesize(text: str, voice_id: str | None = None) -> Path:
     if not cleaned:
         raise ValueError("El texto está vacío o no contiene palabras pronunciables.")
 
+    eng = engine()
+    if eng == "kokoro":
+        voice = voice_id or default_voice()
+        spd = speed()
+        wav_path = kokoro_engine.synthesize(cleaned, voice=voice, speed=spd)
+        ogg_path = wav_path.with_suffix(".ogg")
+        try:
+            _wav_to_ogg(wav_path, ogg_path)
+            return ogg_path
+        finally:
+            wav_path.unlink(missing_ok=True)
+
+    # Motor Piper
     model_path = find_voice_path(voice_id)
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:

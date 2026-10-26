@@ -68,7 +68,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `ASSISTANT_NAME`                                              | Nombre para hablarle por voz: «Hola Meli, ¿qué tengo hoy?» equivale a `/ia ¿qué tengo hoy?`. Varios, separados por coma (se guardan en minúsculas y sin tilde; por defecto, `ia, ai`). |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
-| `TTS_ENABLED`, `TTS_VOICE`, `TTS_MODE`, `TTS_MAX_CHARS` | Respuestas con audio (Piper): prender (por defecto, `no`), modelo de voz (`es_AR-daniela-high`), cuándo responder (`siempre`…) y largo máximo del texto (600). |
+| `TTS_ENABLED`, `TTS_ENGINE`, `TTS_VOICE`, `TTS_MODE`, `TTS_MAX_CHARS` | Respuestas con audio y voz (Kokoro o Piper): prender (por defecto `no`), motor (`kokoro` o `piper`), voz (`ef_dora`…), cuándo responder (`siempre`…) y largo máximo del texto (600). |
 
 Los cambios hechos desde `/config` se guardan en el `.env`, pero **el reinicio es manual**: la
 página avisa cuándo hace falta. El modelo de voz (unos 1,6 GB) se baja solo la primera vez que

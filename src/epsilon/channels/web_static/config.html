@@ -390,7 +390,7 @@
               </div>
             </div>
             <div class="sub" aria-labelledby="s-tts">
-              <h4 id="s-tts">Respuestas con audio (Piper TTS)</h4>
+              <h4 id="s-tts">Respuestas con audio y voz (TTS / Companion)</h4>
               <div class="field switch-field">
                 <div class="switch-row">
                   <span class="switch-label" id="label-TTS_ENABLED">Responder con audio (notas de voz y reproductor web)</span>
@@ -402,11 +402,36 @@
                 <p class="error" id="err-TTS_ENABLED" role="alert"></p>
               </div>
               <div class="field">
-                <label for="f-TTS_VOICE">Voz de Piper</label>
-                <input id="f-TTS_VOICE" data-key="TTS_VOICE" type="text" placeholder="es_AR-daniela-high"
-                       list="tts-voices-list" autocomplete="off" spellcheck="false"
+                <label for="f-TTS_ENGINE">Motor de síntesis de voz</label>
+                <select id="f-TTS_ENGINE" data-key="TTS_ENGINE"
+                        aria-describedby="hint-TTS_ENGINE err-TTS_ENGINE">
+                  <option value="kokoro">Kokoro TTS (Recomendado: voz natural ef_dora)</option>
+                  <option value="piper">Piper TTS (Ligero: modelos ONNX locales)</option>
+                </select>
+                <p class="hint" id="hint-TTS_ENGINE"></p>
+                <p class="error" id="err-TTS_ENGINE" role="alert"></p>
+              </div>
+              <div class="field" id="field-TTS_VOICE">
+                <label id="label-TTS_VOICE" for="voice-single-select">Voz para responder con audio</label>
+                <!-- Input de datos sincronizado con el backend -->
+                <input id="f-TTS_VOICE" data-key="TTS_VOICE" type="hidden" value="af_bella"
                        aria-describedby="hint-TTS_VOICE err-TTS_VOICE">
-                <datalist id="tts-voices-list"></datalist>
+
+                <div class="voice-picker-wrap" id="voice-picker-wrap">
+                  <!-- Modo 1: Voz simple -->
+                  <div class="voice-single-row" id="voice-single-row">
+                    <select id="voice-single-select" class="voice-select" aria-label="Seleccionar voz"></select>
+                    <button type="button" class="btn-merge" id="btn-voice-merge" title="Fusionar dos o más voces">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+                      <span>Fusionar</span>
+                    </button>
+                  </div>
+
+                  <!-- Modo 2: Filas de Fusión -->
+                  <div class="voice-fusion-rows" id="voice-fusion-rows" hidden></div>
+                  <button type="button" class="btn-add-fusion-row" id="btn-add-fusion-row" hidden>+ Agregar otra voz</button>
+                </div>
+
                 <p class="hint" id="hint-TTS_VOICE"></p>
                 <p class="error" id="err-TTS_VOICE" role="alert"></p>
               </div>

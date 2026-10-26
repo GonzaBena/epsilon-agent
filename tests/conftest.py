@@ -139,14 +139,19 @@ def block_real_whisper(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def block_real_piper(monkeypatch):
-    """Ningún test ejecuta piper-tts de verdad."""
-    from epsilon.voice import tts
+def block_real_tts(monkeypatch):
+    """Ningún test ejecuta piper-tts ni kokoro de verdad."""
+    from epsilon.voice import tts, kokoro_engine
 
-    def forbidden(*args, **kwargs):
+    def forbidden_piper(*args, **kwargs):
         raise RuntimeError("Un test intentó ejecutar Piper-TTS de verdad")
 
-    monkeypatch.setattr(tts, "_run_piper", forbidden)
+    def forbidden_kokoro(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar Kokoro-TTS de verdad")
+
+    monkeypatch.setattr(tts, "_run_piper", forbidden_piper)
+    monkeypatch.setattr(kokoro_engine, "synthesize", forbidden_kokoro)
+    monkeypatch.setattr(kokoro_engine, "download_models", forbidden_kokoro)
 
 
 @pytest.fixture(autouse=True)

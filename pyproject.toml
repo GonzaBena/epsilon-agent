@@ -22,11 +22,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Voz (Whisper local): uv sync --extra voz. Opcional: quien no la quiera no descarga nada.
+# Voz (Whisper local para entrada y Kokoro/Piper para salida): uv sync --extra voz.
 voz = [
     "faster-whisper>=1.2.1",
     # faster-whisper 1.2.1 llama av.open(metadata_errors=...), que av 19 ya no acepta.
     "av<19",
+    "kokoro-onnx>=0.3.1",
+    "soundfile>=0.12.1",
 ]
 
 [project.scripts]

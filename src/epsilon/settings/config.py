@@ -76,6 +76,13 @@ def _tts_mode(value: str) -> str:
     return value
 
 
+def _tts_engine(value: str) -> str:
+    value = value.strip().lower()
+    if value not in ("kokoro", "piper"):
+        raise ValueError("El motor de voz debe ser «kokoro» o «piper».")
+    return value
+
+
 def _plain(name: str) -> str:
     """Minúsculas y sin tilde (la ñ se queda): son más fáciles de decir y de reconocer por voz."""
     name = name.lower().replace("ñ", "\0")  # la ñ no es una tilde: se guarda aparte del resto
@@ -378,20 +385,27 @@ SETTINGS = (
         default="no",
         validate=_yes_no,
     ),
-    # Respuestas con audio mediante Piper TTS
+    # Respuestas con audio mediante TTS (Kokoro o Piper)
     Setting(
         "TTS_ENABLED",
-        "Responder con audio (notas de voz y reproductor web con Piper)",
+        "Responder con audio (notas de voz y reproductor web)",
         live=True,
         default="no",
         validate=_yes_no,
     ),
     Setting(
-        "TTS_VOICE",
-        "Voz de Piper para responder con audio",
+        "TTS_ENGINE",
+        "Motor de voz (Kokoro o Piper)",
         live=True,
-        default="es_AR-daniela-high",
-        validate=_matching(r"[\w.\-]+", "Escribí el nombre del modelo de voz (por ejemplo es_AR-daniela-high)."),
+        default="kokoro",
+        validate=_tts_engine,
+    ),
+    Setting(
+        "TTS_VOICE",
+        "Voz para responder con audio",
+        live=True,
+        default="af_bella",
+        validate=_matching(r"[\w.\-+,:]+", "Escribí el nombre del modelo de voz o mezcla (por ejemplo af_bella o af_bella:70,ef_dora:30)."),
     ),
     Setting(
         "TTS_MODE",

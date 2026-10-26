@@ -189,6 +189,212 @@ function renderSetting(setting) {
     if (input.getAttribute("role") === "switch") syncSwitch(input);
     input.dataset.original = shown; // para saber después si lo cambiaste
     hint.textContent = setting.pending_restart ? `${when} Guardado: falta reiniciar.` : when;
+    if (setting.key === "TTS_VOICE") {
+      syncVoiceUIFromValue(shown);
+    }
+  }
+}
+
+let currentTtsVoices = [];
+
+function populateSelectWithOptions(selectEl, selectedVal) {
+  selectEl.replaceChildren();
+  if (!currentTtsVoices || !currentTtsVoices.length) return;
+
+  const categories = {};
+  for (const v of currentTtsVoices) {
+    const cat = v.category || "Otras Voces";
+    if (!categories[cat]) categories[cat] = [];
+    categories[cat].push(v);
+  }
+
+  for (const [catName, list] of Object.entries(categories)) {
+    const grp = document.createElement("optgroup");
+    grp.label = catName;
+    for (const v of list) {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.name;
+      if (v.id === selectedVal) opt.selected = true;
+      grp.appendChild(opt);
+    }
+    selectEl.appendChild(grp);
+  }
+
+  if (selectedVal) {
+    selectEl.value = selectedVal;
+  }
+}
+
+function parseVoiceSpec(spec) {
+  spec = (spec || "").trim();
+  if (!spec) return [{ voice: "af_bella", pct: 100 }];
+  if (!spec.includes(",") && !spec.includes("+") && !spec.includes(":")) {
+    return [{ voice: spec, pct: 100 }];
+  }
+  const parts = spec.replace(/\+/g, ",").split(",");
+  const list = [];
+  for (const p of parts) {
+    if (!p.trim()) continue;
+    if (p.includes(":")) {
+      const [name, pctStr] = p.split(":");
+      list.push({ voice: name.trim(), pct: parseInt(pctStr, 10) || 50 });
+    } else {
+      list.push({ voice: p.trim(), pct: 50 });
+    }
+  }
+  return list.length ? list : [{ voice: "af_bella", pct: 100 }];
+}
+
+function syncVoiceUIFromValue(specVal) {
+  const hiddenInput = document.getElementById("f-TTS_VOICE");
+  const singleRow = document.getElementById("voice-single-row");
+  const singleSelect = document.getElementById("voice-single-select");
+  const fusionContainer = document.getElementById("voice-fusion-rows");
+  const addBtn = document.getElementById("btn-add-fusion-row");
+
+  if (!singleRow || !fusionContainer) return;
+
+  const list = parseVoiceSpec(specVal || (hiddenInput ? hiddenInput.value : ""));
+
+  if (list.length <= 1) {
+    singleRow.hidden = false;
+    fusionContainer.hidden = true;
+    if (addBtn) addBtn.hidden = true;
+    populateSelectWithOptions(singleSelect, list[0].voice);
+  } else {
+    singleRow.hidden = true;
+    fusionContainer.hidden = false;
+    if (addBtn) addBtn.hidden = false;
+    renderFusionRows(list);
+  }
+}
+
+function renderFusionRows(items) {
+  const fusionContainer = document.getElementById("voice-fusion-rows");
+  if (!fusionContainer) return;
+  fusionContainer.replaceChildren();
+
+  items.forEach((item, idx) => {
+    const row = document.createElement("div");
+    row.className = "voice-fusion-row";
+
+    const sel = document.createElement("select");
+    sel.className = "voice-select";
+    populateSelectWithOptions(sel, item.voice);
+
+    const pctWrap = document.createElement("div");
+    pctWrap.className = "voice-pct-wrap";
+
+    const pctInput = document.createElement("input");
+    pctInput.type = "number";
+    pctInput.className = "voice-pct-input";
+    pctInput.min = "1";
+    pctInput.max = "100";
+    pctInput.value = item.pct;
+
+    const pctSymbol = document.createElement("span");
+    pctSymbol.className = "pct-symbol";
+    pctSymbol.textContent = "%";
+    pctWrap.append(pctInput, pctSymbol);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn-remove-row";
+    removeBtn.title = "Eliminar voz de la mezcla";
+    removeBtn.setAttribute("aria-label", "Eliminar voz de la mezcla");
+    removeBtn.textContent = "×";
+
+    sel.addEventListener("change", () => {
+      collectFusionValuesAndSync();
+    });
+
+    pctInput.addEventListener("input", () => {
+      collectFusionValuesAndSync();
+    });
+
+    removeBtn.addEventListener("click", () => {
+      const currentRows = collectCurrentFusionItems();
+      const updated = currentRows.filter((_, i) => i !== idx);
+      if (updated.length <= 1) {
+        // Volvemos al select solo con la voz restante
+        const remainingVoice = updated.length === 1 ? updated[0].voice : "af_bella";
+        syncVoiceUIFromValue(remainingVoice);
+        updateVoiceSetting(remainingVoice);
+      } else {
+        renderFusionRows(updated);
+        collectFusionValuesAndSync();
+      }
+    });
+
+    row.append(sel, pctWrap, removeBtn);
+    fusionContainer.appendChild(row);
+  });
+}
+
+function collectCurrentFusionItems() {
+  const rows = document.querySelectorAll("#voice-fusion-rows .voice-fusion-row");
+  const items = [];
+  rows.forEach((row) => {
+    const sel = row.querySelector(".voice-select");
+    const pctInput = row.querySelector(".voice-pct-input");
+    if (sel && pctInput) {
+      items.push({
+        voice: sel.value,
+        pct: parseInt(pctInput.value, 10) || 50,
+      });
+    }
+  });
+  return items;
+}
+
+function collectFusionValuesAndSync() {
+  const items = collectCurrentFusionItems();
+  if (items.length <= 1) {
+    const single = items.length === 1 ? items[0].voice : "af_bella";
+    updateVoiceSetting(single);
+    return;
+  }
+  const spec = items.map((it) => `${it.voice}:${it.pct}`).join(",");
+  updateVoiceSetting(spec);
+}
+
+function updateVoiceSetting(newVal) {
+  const hiddenInput = document.getElementById("f-TTS_VOICE");
+  if (!hiddenInput) return;
+  hiddenInput.value = newVal;
+  hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
+  hiddenInput.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function initVoicePickerControls() {
+  const singleSelect = document.getElementById("voice-single-select");
+  const mergeBtn = document.getElementById("btn-voice-merge");
+  const addBtn = document.getElementById("btn-add-fusion-row");
+
+  if (singleSelect) {
+    singleSelect.addEventListener("change", () => {
+      updateVoiceSetting(singleSelect.value);
+    });
+  }
+
+  if (mergeBtn) {
+    mergeBtn.addEventListener("click", () => {
+      const currentVoice = singleSelect ? singleSelect.value : "af_bella";
+      const secondaryVoice = currentVoice === "af_bella" ? "ef_dora" : "af_bella";
+      const fusionStr = `${currentVoice}:70,${secondaryVoice}:30`;
+      syncVoiceUIFromValue(fusionStr);
+      updateVoiceSetting(fusionStr);
+    });
+  }
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      const currentItems = collectCurrentFusionItems();
+      currentItems.push({ voice: "jf_alpha", pct: 20 });
+      renderFusionRows(currentItems);
+      collectFusionValuesAndSync();
+    });
   }
 }
 
@@ -218,15 +424,9 @@ function renderVoiceModel(state) {
 }
 
 function renderTtsVoices(voices) {
-  const dl = document.getElementById("tts-voices-list");
-  if (!dl || !voices) return;
-  dl.replaceChildren();
-  for (const v of voices) {
-    const opt = document.createElement("option");
-    opt.value = v.id;
-    opt.label = v.name;
-    dl.appendChild(opt);
-  }
+  currentTtsVoices = voices || [];
+  const hiddenInput = document.getElementById("f-TTS_VOICE");
+  syncVoiceUIFromValue(hiddenInput ? hiddenInput.value : "");
 }
 
 async function load() {
@@ -420,4 +620,5 @@ window.addEventListener("hashchange", () => {
 
 // --- Arranque ---------------------------------------------------------------------------------
 openPanel(location.hash.slice(1));
+initVoicePickerControls();
 load();

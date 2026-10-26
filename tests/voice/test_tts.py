@@ -61,8 +61,23 @@ def test_list_voices_empty_folder(tmp_path):
     assert tts.list_voices(tmp_path / "nonexistent") == []
 
 
-def test_default_voice():
+def test_list_voices_kokoro(monkeypatch):
+    monkeypatch.setenv("TTS_ENGINE", "kokoro")
+    voices = tts.list_voices()
+    assert any(v["id"] == "ef_dora" for v in voices)
+    assert any(v["language"] == "es" for v in voices)
+
+
+def test_default_voice(monkeypatch):
+    monkeypatch.delenv("TTS_VOICE", raising=False)
+    monkeypatch.setenv("TTS_ENGINE", "kokoro")
+    assert tts.default_voice() == "af_bella"
+
+    monkeypatch.setenv("TTS_ENGINE", "piper")
     assert tts.default_voice() == "es_AR-daniela-high"
+
+    monkeypatch.setenv("TTS_VOICE", "otra_voz")
+    assert tts.default_voice() == "otra_voz"
 
 
 def test_default_length_scale_is_slower_at_095(monkeypatch):
@@ -148,6 +163,7 @@ def test_piper_binary_missing(monkeypatch):
 
 
 def test_synthesize_flow(fake_voices_dir, monkeypatch, tmp_path):
+    monkeypatch.setenv("TTS_ENGINE", "piper")
     monkeypatch.setattr(tts, "voices_dir", lambda: fake_voices_dir)
 
     piper_called = []
@@ -169,6 +185,32 @@ def test_synthesize_flow(fake_voices_dir, monkeypatch, tmp_path):
     assert piper_called[0][1].name == "es_AR-daniela-high.onnx"
 
     # Limpiar archivo generado
+    result_path.unlink()
+
+
+def test_synthesize_kokoro_flow(monkeypatch, tmp_path):
+    monkeypatch.setenv("TTS_ENGINE", "kokoro")
+
+    kokoro_called = []
+
+    def fake_kokoro_synthesize(text, voice="ef_dora", speed=1.0):
+        kokoro_called.append((text, voice, speed))
+        fake_wav = tmp_path / "kokoro.wav"
+        fake_wav.write_bytes(b"RIFF fake kokoro wav")
+        return fake_wav
+
+    def fake_wav_to_ogg(wav_path, ogg_path):
+        ogg_path.write_bytes(b"OggS fake kokoro ogg")
+
+    monkeypatch.setattr(tts.kokoro_engine, "synthesize", fake_kokoro_synthesize)
+    monkeypatch.setattr(tts, "_wav_to_ogg", fake_wav_to_ogg)
+
+    result_path = tts.synthesize("Hola companion", voice_id="ef_dora")
+    assert result_path.is_file()
+    assert result_path.suffix == ".ogg"
+    assert kokoro_called[0][0] == "Hola companion"
+    assert kokoro_called[0][1] == "ef_dora"
+
     result_path.unlink()
 
 

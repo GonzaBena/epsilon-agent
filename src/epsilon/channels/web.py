@@ -497,6 +497,7 @@ def create_app() -> FastAPI:
         return {
             "greeting": welcome.greeting(user, assistant, clock.now().hour, first),
             "cards": list(welcome.CARDS),
+            "assistant_name": assistant,
         }
 
     @app.get("/api/tools")
@@ -673,6 +674,20 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "Audio no encontrado o vencido.")
         media_type = "audio/ogg; codecs=opus" if path.suffix == ".ogg" else "audio/wav"
         return FileResponse(path, media_type=media_type)
+
+    @app.post("/api/tts")
+    def synthesize_tts(payload: dict):
+        """Sintetiza texto bajo demanda y devuelve su URL de audio."""
+        text = (payload.get("text") or "").strip()
+        if not text:
+            raise HTTPException(400, "Texto requerido.")
+        try:
+            audio_path = tts.synthesize(text)
+            token = tts.cache_audio(audio_path)
+            return {"audio_url": f"/api/audio/{token}"}
+        except Exception as e:
+            print(f"Error al sintetizar TTS: {config.redact(repr(e))}")
+            raise HTTPException(500, "No pude sintetizar la voz.") from None
 
     # --- Conversaciones guardadas ---------------------------------------------
     # Un id que no tiene la forma exacta (o que no existe) es siempre un 404:
@@ -1116,7 +1131,8 @@ def create_app() -> FastAPI:
             "voice": transcribe.status(),  # apagada / cargado / descargado / descargando / sin descargar / no instalado
             # Bytes del modelo que Epsilon bajó y se puede borrar; None si no hay.
             "voice_model_bytes": transcribe.deletable_model(),
-            "tts_installed": bool(shutil.which("piper-tts") or shutil.which("piper")),
+            "tts_installed": tts.is_installed(),
+            "tts_engine": tts.engine(),
             "tts_voices": tts.list_voices(),
             "tts_default_voice": tts.default_voice(),
             "model": llm.default_model(),  # el predeterminado («proveedor:modelo»), para el botón del encabezado
