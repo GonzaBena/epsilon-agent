@@ -1,3 +1,5 @@
+import re
+
 from epsilon import tools
 from epsilon.data import activity
 from epsilon.routines import steps
@@ -43,3 +45,23 @@ def test_activity_api_filters_before_paging(client):
 def test_activity_api_validates_its_parameters(client):
     assert client.get("/api/activity", params={"who": "persona"}).status_code == 422
     assert client.get("/api/activity", params={"limit": 1000}).status_code == 422
+
+
+def test_the_activity_page_is_served_and_draws_only_text(client):
+    from tests.channels.web.helpers import js
+
+    reply = client.get("/actividad")
+    assert reply.status_code == 200 and "actividad.js" in reply.text and "Actividad" in reply.text
+
+    script = js("actividad.js")
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
+    for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert forbidden not in code
+    assert "encodeURIComponent(item.conversation)" in script  # el enlace a la conversación no arma HTML ni rutas a mano
+
+
+def test_the_page_hides_reads_by_default():
+    from tests.channels.web.helpers import js, page
+
+    assert re.search(r'id="hide-reads" aria-pressed="true"', page("actividad.html"))
+    assert "changes: true" in js("actividad.js")

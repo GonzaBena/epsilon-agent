@@ -94,7 +94,7 @@ def test_menu_has_the_expected_sections_and_no_dead_links():
     labels = [label for _, _, label in menu_items(page("index.html"))]
 
     # Un solo menú, en tres grupos (Usar · Conectar · Controlar); Configuración, abajo de todo.
-    assert labels == ["Chat", "Biblioteca", "Rutinas", "Skills", "Conectores", "Canales", "Permisos", "Uso", "Configuración"]
+    assert labels == ["Chat", "Biblioteca", "Rutinas", "Skills", "Conectores", "Canales", "Permisos", "Actividad", "Uso", "Configuración"]
     # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
     for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
         assert gone not in page("index.html") and gone not in page("config.html")
@@ -234,7 +234,7 @@ def test_the_menu_is_three_groups_that_fold():
 
 
 def test_every_page_marks_itself_once_in_the_menu():
-    pages = {"index.html": "/", "biblioteca.html": "/biblioteca", "rutinas.html": "/rutinas", "skills.html": "/skills", "conectores.html": "/conectores", "canales.html": "/canales", "permisos.html": "/permisos", "uso.html": "/uso", "config.html": "/config"}
+    pages = {"index.html": "/", "biblioteca.html": "/biblioteca", "rutinas.html": "/rutinas", "skills.html": "/skills", "conectores.html": "/conectores", "canales.html": "/canales", "permisos.html": "/permisos", "uso.html": "/uso", "config.html": "/config", "actividad.html": "/actividad"}
     assert set(pages) == set(PAGES)
     for name, href in pages.items():
         assert re.findall(r'<a class="nav-item" href="([^"]+)" aria-current="page"', page(name)) == [href], name

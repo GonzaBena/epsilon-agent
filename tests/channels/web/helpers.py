@@ -7,7 +7,7 @@ from epsilon.channels import web
 
 CFG_SECRET = "AIzaSyD-ejemplo_de_clave_larga_QzXw"
 CFG_TOKEN = "123456789:AAH-ejemplo_de_token_de_telegram_vKjP"
-PAGES = ["index.html", "config.html", "canales.html", "uso.html", "biblioteca.html", "permisos.html", "rutinas.html", "conectores.html", "skills.html"]
+PAGES = ["index.html", "config.html", "canales.html", "uso.html", "biblioteca.html", "permisos.html", "rutinas.html", "conectores.html", "skills.html", "actividad.html"]
 BRAND = "Ε"  # Ε  GREEK CAPITAL LETTER EPSILON
 LOWERCASE = "ε"  # ε  (la minúscula: la letra correcta es la mayúscula)
 

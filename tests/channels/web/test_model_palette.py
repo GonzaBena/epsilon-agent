@@ -8,7 +8,7 @@ import pytest
 from epsilon.channels import web
 from tests.channels.web.helpers import js, page, static_path
 
-PAGES = ["index.html", "biblioteca.html", "permisos.html", "rutinas.html", "canales.html", "uso.html", "config.html"]
+PAGES = ["index.html", "biblioteca.html", "permisos.html", "rutinas.html", "canales.html", "uso.html", "config.html", "actividad.html"]
 NODE = shutil.which("node")
 
 

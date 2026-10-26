@@ -2380,6 +2380,125 @@ a.ghost {
 .usage-page {
   max-width: 70rem;
 }
+
+/* --- Página Actividad: una línea de tiempo por día ----------------------------------------
+   Hora a la izquierda (números de ancho fijo, así las filas alinean), un punto sobre una línea
+   fina (lima: salió bien; rojo: falló) y la frase. */
+.activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 1.5rem;
+}
+.act-day + .act-day {
+  margin-top: 1.75rem;
+}
+.act-day-title {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.act-day-title::first-letter {
+  text-transform: uppercase; /* «viernes 24 de octubre» → «Viernes…» */
+}
+.act-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.act-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.25rem 1rem 1fr;
+  gap: 0 10px;
+  padding: 0.55rem 0;
+}
+/* La línea que une los puntos del día. */
+.act-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(3.25rem + 10px + 0.5rem - 0.5px);
+  width: 1px;
+  background: var(--line);
+}
+.act-row:first-child::before {
+  top: 1.05rem;
+}
+.act-row:last-child::before {
+  bottom: calc(100% - 1.05rem);
+}
+.act-time {
+  padding-top: 1px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.act-dot {
+  position: relative;
+  justify-self: center;
+  width: 9px;
+  height: 9px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--bg);
+}
+.act-row.failed .act-dot {
+  background: var(--danger);
+}
+.act-body {
+  min-width: 0;
+}
+.act-body p {
+  margin: 0;
+}
+.act-what {
+  overflow-wrap: anywhere;
+}
+.act-verb {
+  font-weight: 500;
+}
+.act-arg {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.act-source {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.act-link {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+.act-link:hover {
+  text-decoration-color: var(--accent);
+}
+.act-result {
+  margin-top: 4px;
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.act-row.failed .act-result {
+  color: var(--danger);
+}
+.activity-empty {
+  margin: 2rem 0;
+  color: var(--muted);
+}
+#activity-more {
+  margin-top: 1.5rem;
+}
 .usage-head {
   display: flex;
   flex-wrap: wrap;
