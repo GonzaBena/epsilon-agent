@@ -141,7 +141,7 @@ def brightest_channel(path):
     import pytest
 
     pil = pytest.importorskip("PIL.Image")
-    import numpy as np
+    np = pytest.importorskip("numpy")
 
     pixels = np.asarray(pil.open(path).convert("RGBA"))
     visible = pixels[..., 3] == 255
