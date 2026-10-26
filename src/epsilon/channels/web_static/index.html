@@ -150,11 +150,14 @@
         Esta es tu conversación de Telegram: acá se lee. Para responder, hacelo desde Telegram.
       </p>
 
-      <!-- Modo IA. Al abrir un chat nuevo se elige el tipo (queda fijo cuando se manda el primer
-           mensaje); en uno de modo IA, el panel de la derecha muestra tokens, costo y límite (app.js). -->
-      <div id="mode-picker" class="mode-picker" role="group" aria-label="Tipo de chat" hidden>
-        <button id="mode-normal" class="mode-btn" type="button" aria-pressed="true">Chat normal</button>
-        <button id="mode-ai" class="mode-btn" type="button" aria-pressed="false">Chat con IA</button>
+      <!-- Modo IA. Un chat nuevo arranca con IA si hay una lista (GET /api/config → ai_ready); este
+           interruptor lo pasa a «solo comandos». Queda fijo al mandar el primer mensaje; en uno de
+           modo IA, el panel de la derecha muestra tokens, costo y límite (app.js). -->
+      <div id="mode-picker" class="mode-picker" hidden>
+        <button id="mode-commands" class="mode-switch" type="button" aria-pressed="false">
+          <span class="mode-switch-track" aria-hidden="true"></span>
+          Solo comandos <span class="mode-switch-note">sin IA, sin costo</span>
+        </button>
       </div>
 
       <form id="composer" class="composer" autocomplete="off">

@@ -26,7 +26,7 @@ const micStatus = document.getElementById("mic-status");
 const newChatLink = document.getElementById("new-chat");
 const readonlyNote = document.getElementById("readonly-note");
 const modePicker = document.getElementById("mode-picker");
-const modeButtons = { normal: document.getElementById("mode-normal"), ai: document.getElementById("mode-ai") };
+const modeCommands = document.getElementById("mode-commands"); // prendido = chat de solo comandos
 const aiBar = document.getElementById("ai-bar");
 const aiContext = document.getElementById("ai-context");
 const aiCost = document.getElementById("ai-cost");
@@ -57,6 +57,8 @@ let busy = false;            // true mientras esperamos una respuesta
 // Modo IA: el tipo de chat se elige antes del primer mensaje y después no cambia (el servidor lo
 // fija al crear la conversación). `started` = la conversación ya tiene mensajes.
 let chatMode = "normal";     // lo que está elegido en el selector (solo vale mientras !started)
+let aiReady = false;         // hay IA para el chat (shell.js lo trae de /api/config): un chat nuevo arranca con ella
+let modePicked = false;      // la persona tocó el interruptor en este chat nuevo: no se lo pisamos
 let started = false;
 
 // Historial de mensajes anteriores enviados por el usuario para navegar con flechas arriba/abajo.
@@ -121,13 +123,15 @@ function showAiChip() {
 function chooseMode(mode) {
   chatMode = mode;
   showAiChip();
-  for (const [name, button] of Object.entries(modeButtons)) {
-    button.setAttribute("aria-pressed", String(name === mode));
-  }
+  modeCommands.setAttribute("aria-pressed", String(mode === "normal"));
 }
-for (const [name, button] of Object.entries(modeButtons)) {
-  button.addEventListener("click", () => chooseMode(name));
-}
+modeCommands.addEventListener("click", () => {
+  modePicked = true;
+  chooseMode(chatMode === "ai" ? "normal" : "ai");
+});
+
+// El modo con que arranca un chat nuevo: con IA si hay una lista.
+const defaultMode = () => (aiReady ? "ai" : "normal");
 
 const fmtTokens = (n) => Number(n).toLocaleString("es-AR");
 const fmtUsd = (n) => window.formatUsd(Number(n)); // js/money.js
@@ -573,7 +577,8 @@ async function openNewChat() {
   const token = ++loadToken;
   clearScreen();
   loadWelcome(); // otra frase cada vez
-  chooseMode("normal");
+  modePicked = false;
+  chooseMode(defaultMode());
   showMode("normal", null); // chat nuevo: se elige el tipo
   conversationId = null;
   try {
@@ -1361,6 +1366,8 @@ for (const btn of document.querySelectorAll("[data-effort]")) {
 }
 
 function applyInfo(state) {
+  aiReady = Boolean(state.ai_ready);
+  if (!started && !modePicked) chooseMode(defaultMode()); // la respuesta llegó después de abrir el chat nuevo
   effortWrap.hidden = !state.thinking;
   const setting = state.settings.find((item) => item.key === "AI_THINKING_EFFORT");
   showEffort(setting && setting.value);

@@ -327,3 +327,18 @@ def test_config_says_if_the_chat_model_uses_thinking_effort(cfg, monkeypatch):
     # Ollama no lo usa (y, en los tests, ni siquiera contesta): sin selector, sin error.
     monkeypatch.setenv("AI_MODEL", "ollama:llama3.1:8b")
     assert cfg.get("/api/config").json()["thinking"] is False
+
+
+def test_config_says_if_a_new_chat_can_start_with_ai(cfg, monkeypatch):
+    monkeypatch.delenv("AI_MODEL_CHAT", raising=False)
+    monkeypatch.setenv("AI_MODEL", "gemini:gemini-x")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert cfg.get("/api/config").json()["ai_ready"] is False
+
+    monkeypatch.setenv("GEMINI_API_KEY", CFG_SECRET)
+    assert cfg.get("/api/config").json()["ai_ready"] is True
+
+    # Ollama es local: no necesita clave.
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("AI_MODEL", "ollama:llama3.1:8b")
+    assert cfg.get("/api/config").json()["ai_ready"] is True

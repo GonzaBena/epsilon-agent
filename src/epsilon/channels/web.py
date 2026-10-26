@@ -1139,7 +1139,13 @@ def create_app() -> FastAPI:
             "tts_default_voice": tts.default_voice(),
             "model": llm.default_model(),  # el predeterminado («proveedor:modelo»), para el botón del encabezado
             "thinking": thinking_supported(),  # si el modelo del chat usa el esfuerzo de razonamiento
+            "ai_ready": ai_ready(),  # si un chat nuevo puede arrancar con IA
         }
+
+    def ai_ready() -> bool:
+        # Gemini necesita su clave (solo se mira si está, nunca su valor); Ollama es local y no lleva.
+        provider, _ = llm.parse_model(llm.model_for("chat"))
+        return provider != "gemini" or bool(os.environ.get("GEMINI_API_KEY"))
 
     def thinking_supported() -> bool:
         # Ollama pregunta por HTTP: si no contesta, el selector simplemente no se muestra.

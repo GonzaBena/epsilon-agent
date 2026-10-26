@@ -400,13 +400,22 @@ def test_chat_waits_for_its_conversation_before_showing_the_greeting():
 # --- Modo IA: selector, barra de costo y límite ---------------------------------------
 
 
-def test_new_chat_mode_selector_exists():
+def test_new_chat_offers_commands_only_as_a_secondary_switch():
+    # Un chat nuevo arranca con IA; «solo comandos» es un interruptor, no dos botones iguales.
     html = chat_html()
 
-    for mode in ("normal", "ai"):
-        tag = re.search(rf'<button[^>]*id="mode-{mode}"[^>]*>', html).group(0)
-        assert 'type="button"' in tag and "aria-pressed=" in tag, mode
-    assert "Chat con IA" in html and "IA" in html and "Gemini" not in html
+    tag = re.search(r'<button[^>]*id="mode-commands"[^>]*>', html).group(0)
+    assert 'type="button"' in tag and 'aria-pressed="false"' in tag
+    assert "Solo comandos" in html and "sin IA, sin costo" in html and "Gemini" not in html
+    assert 'id="mode-normal"' not in html and 'id="mode-ai"' not in html
+
+
+def test_a_new_chat_starts_with_ai_when_it_is_ready():
+    script = js("app.js")
+
+    assert 'const defaultMode = () => (aiReady ? "ai" : "normal");' in script
+    assert "chooseMode(defaultMode());" in script[script.index("async function openNewChat"):]
+    assert "if (!started && !modePicked) chooseMode(defaultMode());" in script
 
 
 def test_ai_cost_lives_in_the_right_panel_below_the_context():
