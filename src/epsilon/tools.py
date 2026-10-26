@@ -37,6 +37,7 @@ class Tool:
     ai_action: str = ""  # cómo se llama dentro de su grupo («agregar»); único en el grupo
     section: str = ""  # sección de la ayuda (una de HELP_SECTIONS); vacío = «Otros»
     web: bool = True  # False = la web no lo ofrece ni lo ejecuta (p. ej. /enviar, que solo sirve en Telegram)
+    done: str = ""  # lo que hizo, en pasado y en palabras de persona («Guardó una nota»): la página Actividad
 
 
 # Las secciones de la ayuda, en orden. Una herramienta sin `section` va en la última.
@@ -49,6 +50,7 @@ HELP_SECTIONS = ("Notas", "Tareas", "Memoria", "Archivos", "PC", "Rutinas", "IA"
 TOOLS = (
     Tool(
         "+ texto",
+        done="Guardó una nota rápida",
         help="guardar una nota en inbox",
         insert="+ ",
         section="Notas",
@@ -62,6 +64,7 @@ TOOLS = (
     ),
     Tool(
         "Nota con nombre",
+        done="Guardó una nota",
         usage="nombre de la nota en la primera línea y el texto en las siguientes",
         ai_help="guardar una nota CON nombre propio, cuando el usuario dice cómo se llama o a qué nota va, o nombra una lista («la lista de la compra», «mis ideas»); se crea si no existe y, si existe, agrega al final",
         ai_arg="primera línea: el nombre de la nota; desde la segunda línea: el texto",
@@ -73,6 +76,7 @@ TOOLS = (
     ),
     Tool(
         "Editar nota",
+        done="Editó una línea de una nota",
         usage="nombre de la nota, número de línea y el texto nuevo de esa línea",
         ai_help=(
             "cambiar UNA línea de una nota que YA existe, por su número: marcar una tarea como hecha, corregir o borrar una línea. "
@@ -100,6 +104,7 @@ TOOLS = (
     ),
     Tool(
         "/ver",
+        done="Leyó una nota",
         name="ver",
         usage="/ver [nota]",
         help="leer una nota (por defecto inbox)",
@@ -115,6 +120,7 @@ TOOLS = (
     ),
     Tool(
         "/buscar",
+        done="Buscó en las notas",
         name="buscar",
         usage="/buscar palabra",
         help="buscar en las notas",
@@ -127,6 +133,7 @@ TOOLS = (
     ),
     Tool(
         "/archivos",
+        done="Miró los archivos",
         name="archivos",
         usage="/archivos [texto]",
         help="listar lo guardado (los 10 más nuevos)",
@@ -140,6 +147,7 @@ TOOLS = (
     ),
     Tool(
         "/resumir",
+        done="Resumió un archivo",
         name="resumir",
         usage="/resumir nombre",
         help="resumir una nota o archivo guardado",
@@ -158,6 +166,7 @@ TOOLS = (
     ),
     Tool(
         "Usar skill",
+        done="Usó una skill",
         ai="read",
         ai_name="skill_usar",
         ai_group="skills",
@@ -198,6 +207,7 @@ TOOLS = (
     ),
     Tool(
         "/recordar",
+        done="Anotó en la memoria",
         name="recordar",
         usage="/recordar texto",
         help="anotar un dato o preferencia tuya en la memoria",
@@ -221,6 +231,7 @@ TOOLS = (
     ),
     Tool(
         "Ver la memoria",
+        done="Leyó la memoria",
         ai="read",
         ai_name="memoria",
         ai_group="memoria",
@@ -230,6 +241,7 @@ TOOLS = (
     ),
     Tool(
         "Olvidar de la memoria",
+        done="Borró una línea de la memoria",
         writes=True,
         ai="delete",
         ai_name="olvidar",
@@ -240,6 +252,7 @@ TOOLS = (
     ),
     Tool(
         "Editar la memoria",
+        done="Editó la memoria",
         writes=True,
         ai="write",
         ai_name="editar",
@@ -250,6 +263,7 @@ TOOLS = (
     ),
     Tool(
         "Fecha y hora",
+        done="Miró la fecha y la hora",
         ai="read",
         ai_name="fecha",
         ai_group="consultar",
@@ -259,6 +273,7 @@ TOOLS = (
     ),
     Tool(
         "Dólar",
+        done="Consultó el dólar",
         ai="read",
         ai_name="dolar",
         ai_group="consultar",
@@ -268,6 +283,7 @@ TOOLS = (
     ),
     Tool(
         "Clima",
+        done="Consultó el clima",
         ai="read",
         ai_name="clima",
         ai_group="consultar",
@@ -277,6 +293,7 @@ TOOLS = (
     ),
     Tool(
         "/enviar",
+        done="Envió un archivo",
         name="enviar",
         usage="/enviar nombre",
         help="mandarte por Telegram una nota o archivo guardado",
@@ -290,6 +307,7 @@ TOOLS = (
     ),
     Tool(
         "/csv",
+        done="Consultó un CSV",
         name="csv",
         usage="/csv nombre [filtros]",
         help="consultar un CSV guardado: filtrar filas y, con «| suma columna», calcular (sin IA)",
@@ -314,6 +332,7 @@ TOOLS = (
     ),
     Tool(
         "/sistema",
+        done="Miró el estado de la computadora",
         name="sistema",
         usage="/sistema [qué]",
         help="estado de la máquina: disco, ram, uptime o servicio (sin opción, todo)",
@@ -328,6 +347,7 @@ TOOLS = (
     ),
     Tool(
         "/volumen",
+        done="Cambió el volumen",
         name="volumen",
         usage="/volumen [valor]",
         help="volumen de la PC: sin opción dice cómo está; con un número (40), +5/-5, silenciar o activar lo cambia (sin IA)",
@@ -344,6 +364,7 @@ TOOLS = (
     ),
     Tool(
         "Qué está sonando",
+        done="Miró qué está sonando",
         ai="read",
         ai_name="sonando",
         ai_group="pc",
@@ -353,6 +374,7 @@ TOOLS = (
     ),
     Tool(
         "/musica",
+        done="Controló la música",
         name="musica",
         usage="/musica [acción]",
         help="la música o el video de la PC: sin opción dice qué suena (con botones); pausa, play, siguiente, anterior, repetir y aleatorio lo controlan (sin IA)",
@@ -369,6 +391,7 @@ TOOLS = (
     ),
     Tool(
         "Ventanas abiertas",
+        done="Miró las ventanas abiertas",
         ai="read",
         ai_default="ask",  # los títulos pueden mostrar cosas privadas (correos, el banco): la IA pregunta antes
         ai_name="ventanas",
@@ -422,6 +445,7 @@ TOOLS = (
     ),
     Tool(
         "Rutina: crear",
+        done="Creó una rutina",
         ai="write",
         writes=True,
         ai_group="rutinas",
@@ -441,6 +465,7 @@ TOOLS = (
     ),
     Tool(
         "Rutina: ver",
+        done="Miró las rutinas",
         ai="read",
         ai_group="rutinas",
         ai_action="ver",
@@ -450,6 +475,7 @@ TOOLS = (
     ),
     Tool(
         "Rutina: borrar",
+        done="Borró una rutina",
         ai="delete",
         writes=True,
         ai_default="ask",
@@ -461,6 +487,7 @@ TOOLS = (
     ),
     Tool(
         "Navegador: ver pestañas",
+        done="Miró las pestañas del navegador",
         ai="read",
         ai_group="navegador",
         ai_action="pestanas",
@@ -470,6 +497,7 @@ TOOLS = (
     ),
     Tool(
         "Navegador: leer una pestaña",
+        done="Leyó una página",
         ai="read",
         ai_group="navegador",
         ai_action="leer",
@@ -479,6 +507,7 @@ TOOLS = (
     ),
     Tool(
         "Navegador: abrir una dirección",
+        done="Abrió una dirección",
         ai="write",
         writes=True,
         ai_default="allow",
@@ -490,6 +519,7 @@ TOOLS = (
     ),
     Tool(
         "Navegador: hacer clic",
+        done="Hizo clic en una página",
         ai="write",
         writes=True,
         ai_default="allow",
@@ -501,6 +531,7 @@ TOOLS = (
     ),
     Tool(
         "Navegador: escribir",
+        done="Escribió en una página",
         ai="write",
         writes=True,
         ai_default="allow",

@@ -113,6 +113,7 @@ def build_tools(entry: dict) -> tuple[tools.Tool, ...]:
         built.append(
             tools.Tool(
                 label=f"{entry['name']}.{action}",
+                done=f"Usó {entry['name']}: {action}",
                 writes=True,
                 ai="write",
                 ai_default="ask",

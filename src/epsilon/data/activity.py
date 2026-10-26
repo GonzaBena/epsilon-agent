@@ -58,9 +58,12 @@ def record(
         pass
 
 
-def read(offset: int = 0, limit: int = 50, who: str | None = None, failed: bool = False) -> dict:
+def read(
+    offset: int = 0, limit: int = 50, who: str | None = None, failed: bool = False, skip: frozenset[str] = frozenset()
+) -> dict:
     """Lo más nuevo primero, de a páginas: {"items": [...], "total": n} (total = las que pasan el filtro).
-    `who` filtra por «ia» o «rutina»; `failed`, solo lo que salió mal. Una línea rota se saltea."""
+    `who` filtra por «ia» o «rutina»; `failed`, solo lo que salió mal; `skip`, herramientas que no se muestran
+    (la web pasa las de solo lectura). Una línea rota se saltea."""
     path = _path()
     if not path.exists():
         return {"items": [], "total": 0}
@@ -75,6 +78,8 @@ def read(offset: int = 0, limit: int = 50, who: str | None = None, failed: bool 
         if who and entry["who"] != who:
             continue
         if failed and entry.get("ok", True):
+            continue
+        if entry.get("tool") in skip:
             continue
         entries.append(entry)
     entries.reverse()

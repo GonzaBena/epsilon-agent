@@ -12,8 +12,8 @@ MAX_WAIT = 60  # segundos que puede esperar un paso `esperar`
 
 # Pasos que solo existen dentro de las rutinas (no son comandos ni herramientas de la IA).
 LOCAL = {
-    "avisar": {"label": "Avisar", "hint": "el texto de la notificación"},
-    "esperar": {"label": "Esperar", "hint": f"segundos (1 a {MAX_WAIT})"},
+    "avisar": {"label": "Avisar", "hint": "el texto de la notificación", "done": "Avisó"},
+    "esperar": {"label": "Esperar", "hint": f"segundos (1 a {MAX_WAIT})", "done": "Esperó"},
 }
 ALIASES = {"abrir": "nav_abrir"}
 

@@ -23,8 +23,8 @@ from epsilon import core, state, tools
 from epsilon.channels import welcome
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.connectors import bridge, buttons as connector_buttons, manager as connector_manager, store as connector_store
-from epsilon.data import conversations, library, notes
-from epsilon.routines import rules as routine_rules, runner as routine_runner, store as routine_store
+from epsilon.data import activity, conversations, library, notes
+from epsilon.routines import rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
 from epsilon.settings import checks, config
 from epsilon.skills import importer as skill_importer, starter as skill_starter, store as skill_store
 from epsilon.utils import clock, multimedia
@@ -196,6 +196,29 @@ class RoutineIn(BaseModel):
 
 class RoutineEnabledIn(BaseModel):
     enabled: bool
+
+
+def describe_action(tool_id: str) -> tuple[str, str]:
+    """(qué hizo, en palabras de persona; tipo «read»/«write»/«delete») de una herramienta de la actividad.
+    Una que ya no existe (un conector borrado) se nombra igual, con lo que dice su id."""
+    for tool in tools.ai_tools():
+        if tools.ai_id(tool) == tool_id:
+            return tool.done or tool.label, tool.ai
+    if tool_id in routine_steps.LOCAL:
+        return routine_steps.LOCAL[tool_id]["done"], "write"
+    if tool_id.startswith("mcp_") and "__" in tool_id:
+        connector, action = tool_id[4:].split("__", 1)
+        return f"Usó {connector}: {action}", "write"
+    return tool_id, "write"
+
+
+def activity_view(offset: int, limit: int, who: str, failed: bool, changes: bool) -> dict:
+    """Lo que la página Actividad dibuja. `changes`: sin las de solo lectura (leer una nota, mirar el clima)."""
+    reads = frozenset(tools.ai_id(t) for t in tools.ai_tools() if t.ai == "read") if changes else frozenset()
+    data = activity.read(offset, limit, who or None, failed, reads)
+    for item in data["items"]:
+        item["what"], item["kind"] = describe_action(item.get("tool", ""))
+    return data
 
 
 def routines_view() -> dict:
@@ -1175,6 +1198,16 @@ def create_app() -> FastAPI:
         except ValueError:
             raise HTTPException(404, "Ese archivo no existe") from None
 
+    @app.get("/api/activity")
+    def get_activity(
+        offset: int = Query(0, ge=0),
+        limit: int = Query(50, ge=1, le=200),
+        who: str = Query("", pattern="^(ia|rutina)?$"),
+        failed: bool = False,
+        changes: bool = False,
+    ):
+        return activity_view(offset, limit, who, failed, changes)
+
     @app.get("/api/library")
     def get_library(
         q: str = Query("", max_length=100),
@@ -1331,6 +1364,10 @@ def create_app() -> FastAPI:
     @app.get("/conectores", include_in_schema=False)
     def connectors_page():
         return FileResponse(STATIC_DIR / "conectores.html")
+
+    @app.get("/actividad", include_in_schema=False)
+    def activity_page():
+        return FileResponse(STATIC_DIR / "actividad.html")
 
     @app.get("/biblioteca", include_in_schema=False)
     def library_page():
