@@ -35,9 +35,9 @@ class Tool:
     ai_action: str = ""  # cómo se llama dentro de su grupo («agregar»); único en el grupo
 
 
-# El panel de la web muestra solo lo que no tiene otra puerta de entrada: lo que ya está en el
-# menú de la izquierda (/ver, /archivos, /uso) o en los atajos sobre el cuadro de texto
-# («Guardar nota») no lleva `panel`. Las que gastan tokens quedan, para poder marcarlas «usa IA».
+# El panel de la web muestra solo lo que arma un flujo (adjuntar una imagen, elegir un archivo, nombrar una
+# nota): image→csv, resumir, csv y ticket. El resto se escribe con «/» (el cuadro sugiere los comandos) o
+# ya tiene otra puerta (menú de la izquierda, atajos sobre el cuadro) y no lleva `panel`.
 TOOLS = (
     Tool(
         "+ texto",
@@ -106,7 +106,6 @@ TOOLS = (
         name="buscar",
         usage="/buscar palabra",
         help="buscar en las notas",
-        panel="Buscar una palabra en tus notas",
         menu="Buscar texto en todas las notas",
         insert="/buscar ",
         ai="read",
@@ -148,7 +147,6 @@ TOOLS = (
         name="ia",
         usage="/ia pregunta",
         help="hacerle una pregunta suelta a la IA (sin el resto de la charla)",
-        panel="Hacerle una pregunta suelta a la IA",
         menu="Preguntarle algo a la IA (una sola pregunta)",
         insert="/ia ",
         uses_ai=True,
@@ -195,7 +193,6 @@ TOOLS = (
         name="recordar",
         usage="/recordar texto",
         help="anotar un dato o preferencia tuya en la memoria",
-        panel="Anotar un dato o preferencia tuya en la memoria",
         menu="Anotar algo en la memoria",
         insert="/recordar ",
         writes=True,
@@ -220,7 +217,6 @@ TOOLS = (
         name="olvidar",
         usage="/olvidar número",
         help="borrar una línea de la memoria (pide confirmar)",
-        panel="Borrar una línea de la memoria",
         menu="Borrar una línea de la memoria",
         insert="/olvidar ",
         writes=True,
@@ -234,7 +230,6 @@ TOOLS = (
         name="editar",
         usage="/editar número texto",
         help="cambiar una línea de la memoria",
-        panel="Cambiar el texto de una línea de la memoria",
         menu="Cambiar una línea de la memoria",
         insert="/editar ",
         writes=True,
@@ -295,7 +290,6 @@ TOOLS = (
         name="todo",
         usage="/todo texto",
         help="agregar una tarea pendiente",
-        panel="Agregar una tarea pendiente",
         menu="Agregar una tarea pendiente",
         insert="/todo ",
         writes=True,
@@ -305,7 +299,6 @@ TOOLS = (
         name="hecho",
         usage="/hecho número",
         help="marcar una tarea como hecha (el número sale de /tareas)",
-        panel="Marcar una tarea como hecha",
         menu="Marcar una tarea como hecha",
         insert="/hecho ",
         writes=True,
