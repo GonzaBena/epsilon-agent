@@ -13,6 +13,7 @@ const readsChip = document.getElementById("hide-reads");
 
 const PAGE = 50;
 const state = { who: "", failed: false, changes: true, offset: 0, total: 0, lastDay: null, lastList: null };
+let loadToken = 0; // solo dibuja la última carga: una respuesta vieja (pedida antes de deshacer) no pisa la nueva
 
 function make(tag, className, text) {
   const node = document.createElement(tag);
@@ -60,8 +61,65 @@ function row(item) {
   body.append(what, source(item));
   // Sin repetir: un «avisar» devuelve el mismo texto que recibió.
   if (item.result && item.result !== item.arg) body.append(make("p", "act-result", item.ok ? item.result : `Falló: ${item.result}`));
+  if (item.change) body.append(undoControl(item));
   li.append(time, make("span", "act-dot"), body);
   return li;
+}
+
+// --- Deshacer la edición de una nota ------------------------------------------------------------
+// El servidor decide si todavía es seguro (la línea sigue como la dejó la IA). Antes de deshacer se ve
+// qué va a volver a decir, y se confirma; el servidor también exige la confirmación.
+function undoControl(item) {
+  const box = make("div", "act-undo");
+  if (item.undone) {
+    box.append(make("span", "act-undone", "Deshecho"));
+    return box;
+  }
+  const button = make("button", "pill act-undo-btn", "Deshacer");
+  button.type = "button";
+  const note = make("p", "act-undo-note");
+  note.setAttribute("role", "status");
+  button.addEventListener("click", () => undo(item.change, box, button, note));
+  box.append(button, note);
+  return box;
+}
+
+async function undo(changeId, box, button, note) {
+  const url = `/api/changes/${encodeURIComponent(changeId)}`;
+  button.disabled = true;
+  note.textContent = "";
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("No encontré ese cambio.");
+    const change = await response.json();
+    if (!change.can_undo) {
+      note.textContent = change.reason; // no se toca nada: se explica por qué
+      return;
+    }
+    const again = change.after === "" ? "vuelve a ponerse" : "vuelve a decir";
+    const proceed = await window.epsilonModal({
+      title: "¿Deshacer este cambio?",
+      body: `La línea ${change.line} de «${change.note}» ${again}: «${change.before || "(vacía)"}».`,
+      confirm: "Deshacer",
+      cancel: "Cancelar",
+    });
+    if (!proceed) return;
+    const done = await fetch(`${url}/undo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true }),
+    });
+    const data = await done.json().catch(() => ({}));
+    if (!done.ok) throw new Error(typeof data.detail === "string" ? data.detail : "No pude deshacerlo.");
+    box.replaceChildren(make("span", "act-undone", "Deshecho"));
+    result.className = "result ok";
+    result.textContent = data.message; // «La línea 2 de todo volvió a decir…»
+    load(true); // y la lista, del servidor: otras filas pudieron dejar de poder deshacerse
+  } catch (error) {
+    note.textContent = error.message || "No pude deshacerlo.";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function render(items) {
@@ -86,6 +144,7 @@ function emptyText() {
 }
 
 async function load(reset) {
+  const token = ++loadToken;
   if (reset) {
     state.offset = 0;
     state.lastDay = null;
@@ -99,8 +158,9 @@ async function load(reset) {
     const response = await fetch(`/api/activity?${params}`);
     if (!response.ok) throw new Error();
     const data = await response.json();
+    if (token !== loadToken) return; // mientras tanto se pidió otra: esta ya es vieja
     if (reset) daysBox.replaceChildren(); // recién ahora: si falla, queda lo que se veía
-    result.textContent = "";
+    if (reset && !result.classList.contains("ok")) result.textContent = "";
     render(data.items);
     state.offset += data.items.length;
     state.total = data.total;
@@ -108,15 +168,23 @@ async function load(reset) {
     empty.textContent = emptyText();
     more.hidden = state.offset >= state.total;
   } catch {
+    if (token !== loadToken) return;
     result.className = "result fail";
     result.textContent = "No pude cargar la actividad. ¿Está andando Epsilon?";
   }
 }
 
 // --- Filtros ----------------------------------------------------------------------------------
+// Cambiar un filtro también borra el aviso de arriba (por ejemplo, el de un deshacer).
+function clearResult() {
+  result.className = "result";
+  result.textContent = "";
+}
+
 for (const chip of document.querySelectorAll("[data-who]")) {
   chip.addEventListener("click", () => {
     state.who = chip.dataset.who;
+    clearResult();
     for (const other of document.querySelectorAll("[data-who]")) {
       other.setAttribute("aria-pressed", String(other === chip));
     }
@@ -127,6 +195,7 @@ for (const chip of document.querySelectorAll("[data-who]")) {
 function toggle(chip, key) {
   chip.addEventListener("click", () => {
     state[key] = !state[key];
+    clearResult();
     chip.setAttribute("aria-pressed", String(state[key]));
     load(true);
   });

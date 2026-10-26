@@ -2492,6 +2492,33 @@ a.ghost {
 .act-row.failed .act-result {
   color: var(--danger);
 }
+/* Deshacer la edición de una nota: el botón, el motivo si ya no se puede, y «Deshecho». */
+.act-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+.act-undo-btn {
+  min-height: 30px;
+  font-size: 0.85rem;
+}
+.act-undo-note:empty {
+  display: none;
+}
+.act-undo-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.act-undone {
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 22px;
+}
 .activity-empty {
   margin: 2rem 0;
   color: var(--muted);

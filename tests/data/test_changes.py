@@ -37,7 +37,8 @@ DELETE = {"line": 2, "before": "b", "after": "", "prev": "a", "next": "c"}
         (["B", "a", "B"], CHANGE, "Esa línea cambió"),  # dos candidatas y ninguna en su lugar: no se adivina
         (["a", "c"], DELETE, (1, True)),  # borrada: vuelve entre sus vecinas
         (["x", "a", "c"], DELETE, (2, True)),  # sus vecinas se movieron juntas
-        (["a", "x", "c"], DELETE, "La nota cambió"),  # algo se metió entre las vecinas
+        (["a", "x", "c"], DELETE, (1, True)),  # una vecina sigue en su lugar: insertar no pisa nada
+        (["z", "x", "y"], DELETE, "La nota cambió"),  # ninguna vecina en su lugar ni juntas en otro: no se adivina
         (["c"], {"line": 1, "before": "b", "after": "", "prev": None, "next": "c"}, (0, True)),  # era la primera
         (["a"], {"line": 2, "before": "b", "after": "", "prev": "a", "next": None}, (1, True)),  # era la última
     ],
@@ -130,3 +131,14 @@ def test_the_log_only_grows(todo):
 
     lines = (todo.parent / changes.CHANGES_FILE).read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2 and '"undo"' in lines[1]
+
+
+def test_undoing_an_older_edit_first_does_not_block_a_newer_deletion(todo):
+    # La línea 3 se borró cuando su vecina de arriba ya estaba editada; deshacer esa edición primero
+    # cambia la vecina, pero la de abajo sigue en su lugar: el borrado vuelve igual.
+    edited = edit(2, "- [x] comprar café")
+    deleted = edit(3, "")
+
+    changes.undo(edited)
+    changes.undo(deleted)
+    assert text(todo) == "- [ ] pagar internet\n- [ ] comprar café\n- [ ] llamar a Ana\n"

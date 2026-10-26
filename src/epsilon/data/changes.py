@@ -71,8 +71,10 @@ def undone_ids() -> set[str]:
 def plan(lines: list[str], change: dict) -> tuple[int, bool] | str:
     """Dónde deshacer, sin tocar nada: (índice, ¿insertar?) o el motivo por el que no se puede. `lines` sin saltos.
 
-    Un cambio se deshace si la línea sigue diciendo lo que la IA escribió (en su número o, si se movió, en un único
-    otro lugar). Un borrado, si sus vecinas siguen juntas (en su lugar o, si se movieron, en un único otro lugar)."""
+    Un cambio PISA texto: se deshace solo si la línea sigue diciendo lo que la IA escribió (en su número o, si se
+    movió, en un único otro lugar). Un borrado se deshace insertando, que no pisa nada: alcanza con que una de sus
+    vecinas siga en su lugar (la otra pudo cambiar, por ejemplo por otro deshacer) o, si no, con un único lugar
+    donde estén las dos juntas."""
     n = change["line"] - 1
     if change["after"]:
         if 0 <= n < len(lines) and lines[n] == change["after"]:
@@ -84,14 +86,15 @@ def plan(lines: list[str], change: dict) -> tuple[int, bool] | str:
         return f"Esa línea cambió desde entonces: no encuentro «{change['after']}». {now}".strip()
     prev, nxt = change.get("prev"), change.get("next")
 
-    def fits(i: int) -> bool:  # ¿la línea borrada iba en la posición i?
-        return (prev is None and i == 0 or prev is not None and i > 0 and lines[i - 1] == prev) and (
-            nxt is None and i == len(lines) or nxt is not None and i < len(lines) and lines[i] == nxt
-        )
+    def above(i: int) -> bool:  # ¿arriba de la posición i está la vecina de arriba (o el principio)?
+        return i == 0 if prev is None else i > 0 and lines[i - 1] == prev
 
-    if 0 <= n <= len(lines) and fits(n):
+    def below(i: int) -> bool:  # ¿en la posición i está la vecina de abajo (o el final)?
+        return i == len(lines) if nxt is None else i < len(lines) and lines[i] == nxt
+
+    if 0 <= n <= len(lines) and (above(n) or below(n)):
         return n, True
-    spots = [i for i in range(len(lines) + 1) if fits(i)]
+    spots = [i for i in range(len(lines) + 1) if above(i) and below(i)]
     if len(spots) == 1:
         return spots[0], True
     return "La nota cambió alrededor de esa línea desde entonces: no sé dónde volver a ponerla."

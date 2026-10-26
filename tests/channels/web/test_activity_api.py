@@ -128,3 +128,13 @@ def test_activity_rows_say_if_their_change_was_undone(client):
     assert row()["undone"] is False
     client.post(f"/api/changes/{change_id}/undo", json={"confirmed": True})
     assert row()["undone"] is True
+
+
+def test_the_undo_button_previews_confirms_and_draws_only_text():
+    from tests.channels.web.helpers import js
+
+    script = js("actividad.js")
+    undo = script[script.index("async function undo"):]
+    assert "window.epsilonModal(" in undo and "confirmed: true" in undo
+    assert undo.index("change.can_undo") < undo.index("window.epsilonModal(")  # si ya no es seguro, ni pregunta
+    assert "innerHTML" not in "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
