@@ -192,10 +192,10 @@
         <div class="composer-toolbar">
           <div class="composer-actions-left">
             <div class="popover-anchor-wrap">
-              <button id="attach" class="composer-icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Adjuntar archivo o imagen" title="Adjuntar archivo o imagen">
+              <button id="attach" class="composer-icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Adjuntar o usar una herramienta" title="Adjuntar o usar una herramienta">
                 <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
               </button>
-              <div id="attach-popover" class="composer-popover attach-popover" role="menu" aria-label="Opciones de adjuntar" hidden>
+              <div id="attach-popover" class="composer-popover attach-popover" role="menu" aria-label="Adjuntar y herramientas" hidden>
                 <button type="button" class="popover-action-item" id="opt-upload-file">
                   <span class="action-item-left">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -205,6 +205,11 @@
                   </span>
                   <span class="shortcut-tag">Ctrl+U</span>
                 </button>
+                <!-- Las herramientas salen de GET /api/tools (tools.py) y las dibuja app.js. Tocar una escribe
+                     su comando en el cuadro (no lo envía); «Imagen a CSV» abre el selector de archivos.
+                     «IA» marca las que gastan tokens (dice «IA» y no el modelo, que puede cambiar). -->
+                <div class="popover-sep" role="separator"></div>
+                <div id="tools" class="popover-tools"></div>
               </div>
             </div>
             <input id="file" type="file" accept="image/*,application/pdf" hidden>
@@ -268,9 +273,9 @@
       </form>
     </div>
 
-    <!-- Panel derecho: qué sabe hacer Epsilon y cómo están los canales. Contraído,
+    <!-- Panel derecho: lo que guardó esta conversación y, en modo IA, su costo. Contraído,
          queda una columna mínima con el botón para abrirlo. -->
-    <aside class="side side-right" id="right" aria-label="Herramientas y canales">
+    <aside class="side side-right" id="right" aria-label="Contexto de la conversación">
       <div class="side-head">
         <h2 class="side-title">Panel</h2>
         <button type="button" class="panel-toggle" data-toggle="right"
@@ -280,15 +285,6 @@
       </div>
 
       <div class="side-body">
-        <section aria-labelledby="h-tools">
-          <h2 class="side-title" id="h-tools">Herramientas</h2>
-          <!-- Las filas las dibuja app.js con lo que devuelve GET /api/tools (viene de tools.py).
-               Tocar una fila escribe el comando en el cuadro de texto (no lo envía): así
-               podés agregarle lo que falta, como el nombre de la nota. «usa IA» marca las que
-               gastan tokens (el texto dice «IA» y no el nombre del modelo, que puede cambiar). -->
-          <ul class="tools" id="tools"></ul>
-        </section>
-
         <section aria-labelledby="h-context">
           <h2 class="side-title" id="h-context">Contexto</h2>
           <!-- Lo que esta conversación creó o guardó (lo dibuja app.js). Tocar un ítem escribe

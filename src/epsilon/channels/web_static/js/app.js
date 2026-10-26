@@ -1402,9 +1402,9 @@ for (const element of document.querySelectorAll("[data-insert]")) {
   element.addEventListener("click", () => insertText(element.dataset.insert));
 }
 
-// --- Herramientas: las filas salen de GET /api/tools (tools.py) --------------------------------
-// Tocar una fila escribe su comando en el cuadro (o, en «Imagen a CSV», abre el selector de
-// archivos). Si el servidor no responde, el panel queda vacío: los atajos de arriba siguen.
+// --- Herramientas: las filas salen de GET /api/tools (tools.py) y van en el menú del «+» ----------
+// Tocar una escribe su comando en el cuadro (o, en «Imagen a CSV», abre el selector de archivos).
+// Si el servidor no responde, el menú queda solo con «Subir o agregar archivos».
 const toolsList = document.getElementById("tools");
 let linkCommands = []; // los pedidos que /?cmd=... puede ejecutar solos (solo lecturas)
 
@@ -1418,7 +1418,7 @@ const TOOL_ICONS = {
 
 function toolIcon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", width: "22", height: "22", fill: "none", stroke: "currentColor", "stroke-width": "1.6", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(key, value);
+  for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", width: "16", height: "16", fill: "none", stroke: "currentColor", "stroke-width": "1.6", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) svg.setAttribute(key, value);
   for (const d of TOOL_ICONS[name] || []) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", d);
@@ -1430,26 +1430,25 @@ function toolIcon(name) {
 function renderTools(tools) {
   toolsList.replaceChildren();
   for (const tool of tools) {
-    const button = make("button", "tool");
+    const button = make("button", "popover-action-item");
     button.type = "button";
-    const icon = make("span", "tool-icon");
-    icon.append(toolIcon(tool.icon));
-    const head = make("span", "tool-head");
-    head.append(make("span", "tool-name", tool.title));
+    button.title = tool.desc; // qué hace, al pasar el mouse
+    const left = make("span", "action-item-left");
+    left.append(toolIcon(tool.icon), make("span", null, tool.title));
+    button.append(left);
     if (tool.uses_ai) {
       const tag = make("span", "tool-tag", "IA");
       tag.title = "Usa el modelo de IA: gasta tokens";
-      head.append(tag);
+      button.append(tag);
     }
-    const body = make("span", "tool-body");
-    body.append(head, make("span", "tool-desc", tool.desc));
-    button.append(icon, body);
-    if (tool.action === "csv") button.addEventListener("click", armCsv);
-    else button.addEventListener("click", () => insertText(tool.insert));
-    const row = make("li");
-    row.append(button);
-    toolsList.append(row);
+    button.addEventListener("click", () => {
+      closeAllDropdowns();
+      if (tool.action === "csv") armCsv();
+      else insertText(tool.insert);
+    });
+    toolsList.append(button);
   }
+  toolsList.previousElementSibling.hidden = !tools.length; // sin herramientas, sin separador
 }
 
 async function loadTools() {

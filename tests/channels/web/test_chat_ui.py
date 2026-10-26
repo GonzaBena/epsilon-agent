@@ -55,10 +55,10 @@ def test_the_tools_panel_skips_what_the_menu_and_the_shortcuts_already_offer(cli
 
 
 def test_tool_rows_are_buttons_that_fill_the_message_box_without_sending():
-    # Las filas las dibuja app.js: botones que solo escriben en el cuadro (insertText), sin enviar.
+    # Las filas las dibuja app.js en el menú del «+»: botones que solo escriben en el cuadro (insertText), sin enviar.
     render = re.search(r"function renderTools.*?\n}\n", js("app.js"), re.S).group(0)
 
-    assert 'make("button", "tool")' in render and 'button.type = "button"' in render
+    assert 'make("button", "popover-action-item")' in render and 'button.type = "button"' in render
     assert "insertText(tool.insert)" in render
     assert "sendMessage" not in render and "submit" not in render
 
@@ -220,18 +220,17 @@ def test_the_ai_tag_explains_itself_and_does_not_name_the_model(client):
 def test_the_tag_has_a_style():
     css = static_path("style.css").read_text(encoding="utf-8")
 
-    assert ".tool-tag" in css and ".tool-head" in css
+    assert ".tool-tag" in css
 
 
 # --- panel «Contexto» --------------------------------------------------------
 
 
-def test_the_right_panel_has_a_context_section_after_the_tools():
+def test_the_right_panel_has_a_context_section():
     right = right_panel()
 
     heading = re.search(r'<h2[^>]*id="h-context"[^>]*>\s*Contexto\s*</h2>', right)
     assert heading
-    assert right.index("h-tools") < heading.start()
     assert re.search(r'<ul[^>]*id="context"', right)
     # Vacío no es un hueco: explica qué va a aparecer ahí.
     assert re.search(r'<p[^>]*id="context-empty"[^>]*>[^<]+</p>', right)
@@ -370,12 +369,13 @@ def test_the_open_telegram_conversation_refreshes_itself_and_follows_nuevo():
 # --- El panel derecho ya no muestra canales (tienen su página) ---------------------
 
 
-def test_the_right_panel_has_only_tools_context_and_the_ai_cost():
+def test_the_right_panel_has_only_context_and_the_ai_cost():
+    # Las herramientas van en el menú del «+» del composer, no en el panel.
     right = right_panel()
     headings = re.findall(r"<h2[^>]*>\s*(.*?)\s*</h2>", right, re.S)
 
-    assert headings[0] in ("Panel", "Herramientas")
-    assert headings[-3:] == ["Herramientas", "Contexto", "Costo del chat"]
+    assert headings == ["Panel", "Contexto", "Costo del chat"]
+    assert 'id="tools"' in re.search(r'<div id="attach-popover".*?id="tools"[^>]*>', chat_html(), re.S).group(0)
     for gone in ("side-channels", "Administrar canales", "Canales"):
         assert gone not in right, gone
 
