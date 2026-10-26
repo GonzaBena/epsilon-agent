@@ -65,3 +65,66 @@ def test_the_page_hides_reads_by_default():
 
     assert re.search(r'id="hide-reads" aria-pressed="true"', page("actividad.html"))
     assert "changes: true" in js("actividad.js")
+
+
+# --- Deshacer la edición de una nota -----------------------------------------------------------
+
+
+def edited(client, new="- [x] pan"):
+    from epsilon.data import changes, notes
+
+    notes.save_note("todo", "- [ ] pan")
+    before, prev, nxt = notes.edit_line("todo", 1, new)
+    change_id = changes.record("todo", 1, before, new, prev, nxt)
+    return change_id
+
+
+def test_preview_says_what_the_line_will_say_again(client):
+    change_id = edited(client)
+
+    data = client.get(f"/api/changes/{change_id}").json()
+    assert (data["note"], data["line"], data["before"], data["after"]) == ("todo", 1, "- [ ] pan", "- [x] pan")
+    assert data["can_undo"] is True and data["reason"] == ""
+
+
+def test_undo_needs_confirmation_then_works_once(client):
+    from epsilon.data import notes
+
+    change_id = edited(client)
+    url = f"/api/changes/{change_id}/undo"
+
+    assert client.post(url, json={}).status_code == 422
+    assert notes.read_note("todo") == "- [x] pan\n"  # sin confirmar, nada
+
+    reply = client.post(url, json={"confirmed": True})
+    assert reply.status_code == 200 and reply.json()["change"]["undone"] is True
+    assert notes.read_note("todo") == "- [ ] pan\n"
+    assert client.post(url, json={"confirmed": True}).status_code == 409  # ya deshecho
+
+
+def test_undo_refuses_with_the_reason_if_the_line_changed(client):
+    from epsilon.data import notes
+
+    change_id = edited(client)
+    notes.edit_line("todo", 1, "- [x] pan y leche")
+
+    reply = client.post(f"/api/changes/{change_id}/undo", json={"confirmed": True})
+    assert reply.status_code == 409 and "cambió desde entonces" in reply.json()["detail"]
+    assert notes.read_note("todo") == "- [x] pan y leche\n"
+
+
+def test_unknown_changes_are_404(client):
+    assert client.get("/api/changes/20260101-000000-abcd").status_code == 404
+    assert client.get("/api/changes/..%2F..%2Fetc").status_code == 404
+    assert client.post("/api/changes/20260101-000000-abcd/undo", json={"confirmed": True}).status_code == 404
+
+
+def test_activity_rows_say_if_their_change_was_undone(client):
+    change_id = edited(client)
+    activity.attach(change=change_id)
+    activity.record("ia", "nota_editar", "todo 1", "ok", True)
+
+    row = lambda: next(i for i in client.get("/api/activity").json()["items"] if "change" in i)
+    assert row()["undone"] is False
+    client.post(f"/api/changes/{change_id}/undo", json={"confirmed": True})
+    assert row()["undone"] is True

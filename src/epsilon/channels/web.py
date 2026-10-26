@@ -23,7 +23,7 @@ from epsilon import core, state, tools
 from epsilon.channels import welcome
 from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.connectors import bridge, buttons as connector_buttons, manager as connector_manager, store as connector_store
-from epsilon.data import activity, conversations, library, notes
+from epsilon.data import activity, changes, conversations, library, notes
 from epsilon.routines import rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
 from epsilon.settings import checks, config
 from epsilon.skills import importer as skill_importer, starter as skill_starter, store as skill_store
@@ -144,6 +144,10 @@ PLUGIN_WARNING = (
 )
 
 
+class UndoIn(BaseModel):
+    confirmed: bool = False  # la persona vio qué va a volver a decir la línea (lo exige el servidor, no solo la página)
+
+
 class RevealIn(BaseModel):
     path: str = Field(max_length=300)
 
@@ -212,12 +216,15 @@ def describe_action(tool_id: str) -> tuple[str, str]:
     return tool_id, "write"
 
 
-def activity_view(offset: int, limit: int, who: str, failed: bool, changes: bool) -> dict:
-    """Lo que la página Actividad dibuja. `changes`: sin las de solo lectura (leer una nota, mirar el clima)."""
-    reads = frozenset(tools.ai_id(t) for t in tools.ai_tools() if t.ai == "read") if changes else frozenset()
+def activity_view(offset: int, limit: int, who: str, failed: bool, changes_only: bool) -> dict:
+    """Lo que la página Actividad dibuja. `changes_only`: sin las de solo lectura (leer una nota, mirar el clima)."""
+    reads = frozenset(tools.ai_id(t) for t in tools.ai_tools() if t.ai == "read") if changes_only else frozenset()
     data = activity.read(offset, limit, who or None, failed, reads)
+    undone = changes.undone_ids() if any("change" in item for item in data["items"]) else set()
     for item in data["items"]:
         item["what"], item["kind"] = describe_action(item.get("tool", ""))
+        if "change" in item:
+            item["undone"] = item["change"] in undone  # la página muestra «Deshacer» o «Deshecho»
     return data
 
 
@@ -1207,6 +1214,27 @@ def create_app() -> FastAPI:
         changes: bool = False,
     ):
         return activity_view(offset, limit, who, failed, changes)
+
+    @app.get("/api/changes/{change_id}")
+    def get_change(change_id: str):
+        """Lo que se muestra antes de deshacer: el cambio, si todavía se puede y, si no, por qué."""
+        try:
+            return changes.preview(change_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from None
+
+    @app.post("/api/changes/{change_id}/undo")
+    def undo_change(change_id: str, body: UndoIn):
+        """Deshace la edición de una nota. Exige `confirmed`; si la nota cambió desde entonces, 409 con el motivo."""
+        if not body.confirmed:
+            raise HTTPException(422, "Falta confirmar qué se va a deshacer.")
+        try:
+            message = changes.undo(change_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from None
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from None
+        return {"message": message, "change": changes.preview(change_id)}
 
     @app.get("/api/library")
     def get_library(
