@@ -217,6 +217,13 @@ def test_request_explains_http_errors_without_the_body(monkeypatch):
     with pytest.raises(ValueError, match="context size exceeded"):
         real_request("POST", "/api/chat", {"model": "qwen3"})
 
+    # El modelo escribió una llamada a herramienta rota: se explica, sin el texto técnico (ni lo que escribió).
+    broken = {"error": 'llama-server chat error: Failed to parse input at pos 47: {"name": "leer"}'}
+    monkeypatch.setattr(ollama.httpx, "request", lambda *a, **k: FakeResponse(500, broken))
+    with pytest.raises(ValueError, match="modelo más grande") as error:
+        real_request("POST", "/api/chat", {"model": "qwen3"})
+    assert "llama-server" not in str(error.value) and "leer" not in str(error.value)
+
     monkeypatch.setattr(ollama.httpx, "request", lambda *a, **k: FakeResponse(404))
     with pytest.raises(ValueError, match="ollama pull qwen3"):
         real_request("POST", "/api/chat", {"model": "qwen3"})

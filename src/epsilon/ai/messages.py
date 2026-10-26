@@ -8,6 +8,11 @@ class ModelError(ValueError):
     """Un problema esperable con el modelo (sin conexión, sin clave, no soporta algo): su mensaje es para el usuario."""
 
 
+# Lo que se le dice a la persona cuando el modelo se trabó (no contestó nada, o pidió una herramienta con un formato
+# roto): no es un fallo de Epsilon y reintentar solo costaría plata con un modelo pago, así que se explica y se sugiere.
+WEAK_MODEL_HINT = "Suele pasarles a los modelos chicos: probá de nuevo o elegí un modelo más grande."
+
+
 @dataclass
 class File:
     """Un archivo (imagen o PDF) que viaja con el mensaje."""

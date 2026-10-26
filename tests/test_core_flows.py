@@ -545,7 +545,7 @@ def test_empty_model_answer_is_a_short_message_not_a_crash(ai_mode, monkeypatch,
 
     reply = ai_say("hola")
 
-    assert reply.text == "La IA no devolvió texto." and not reply.ai
+    assert reply.text == core.EMPTY_ANSWER and "modelo más grande" in reply.text and not reply.ai
 
 
 def test_two_simultaneous_requests_cannot_both_pass_the_limit(ai_mode, monkeypatch):

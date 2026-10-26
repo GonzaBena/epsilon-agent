@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from epsilon.ai.messages import (
+    WEAK_MODEL_HINT,
     ModelError,
     File,
     Message,
@@ -58,6 +59,8 @@ def _request(
                 detail = f": {err}"
         except Exception:
             pass
+        if "failed to parse" in detail.lower():  # el modelo escribió una llamada a herramienta rota: Ollama no la entiende
+            raise ModelError(f"La IA pidió una herramienta con un formato que no entiendo. {WEAK_MODEL_HINT}")
         raise ModelError(
             f"Ollama respondió con un error (código {response.status_code}){detail}."
         )

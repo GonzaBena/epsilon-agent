@@ -12,7 +12,7 @@ import weakref
 
 from epsilon import menu, tools
 from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, permissions, summarize, usage
-from epsilon.ai.messages import ModelError
+from epsilon.ai.messages import WEAK_MODEL_HINT, ModelError
 from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.data import activity, changes, conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
@@ -1030,6 +1030,7 @@ MAX_QUESTION_ARG = 300
 # Llamadas a herramientas que se atienden por respuesta del modelo; las demás no se ejecutan.
 MAX_CALLS_PER_STEP = 8
 UNAVAILABLE = "Herramienta no disponible."
+EMPTY_ANSWER = f"La IA no contestó nada. {WEAK_MODEL_HINT}"
 TOO_MANY = "Demasiadas herramientas a la vez."
 STALE = "Esa pregunta ya no está vigente. Escribí de nuevo lo que querías."
 
@@ -1086,7 +1087,7 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         if not step.calls or turn.steps > chat.step_limit(turn):
             # Sin texto (por ejemplo, la IA bloqueó la respuesta): no se guarda como si fuera una respuesta.
             if not step.text or not step.text.strip():
-                return Reply("La IA no devolvió texto.", artifacts=artifacts)
+                return Reply(EMPTY_ANSWER, artifacts=artifacts)
             return Reply(step.text, artifacts=artifacts, ai=True)
         question = _run_calls(PendingTool(turn, step, 0, [], artifacts), session)
         if question:
