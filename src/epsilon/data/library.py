@@ -4,7 +4,10 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from epsilon.data import notes
+from epsilon.data import notes, todo
+from epsilon.memory import store as memory
+from epsilon.plugins import channels as plugin_channels
+from epsilon.skills import store as skill_store
 
 # La biblioteca es la vista de SOLO LECTURA de lo que hay en DATA_DIR: notas, archivos y tickets.
 # No escribe, no borra, no llama al modelo. Todo acceso pasa por notes.safe_path.
@@ -18,6 +21,17 @@ IMAGE_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
 PDF_TYPE = "application/pdf"
 
 KINDS = ("note", "file", "ticket")
+
+# Lo que es de Epsilon y no tuyo: no se lista (se ve desde su página o su comando: /memoria, /tareas, Skills,
+# Canales). Se sigue pudiendo abrir por su ruta (resolve), por ejemplo al mencionarlo con @.
+SYSTEM_FOLDERS = {notes.SUMMARIES_DIR, skill_store.DIR, plugin_channels.FOLDER}
+SYSTEM_NOTES = {f"{memory.NAME}.md", f"{todo.NAME}.md"}
+
+
+def _is_system(rel: Path) -> bool:
+    if any(part.startswith(".") for part in rel.parts):  # ocultos
+        return True
+    return rel.parts[0] in SYSTEM_FOLDERS or (len(rel.parts) == 1 and rel.name in SYSTEM_NOTES)
 
 # Tope de texto que se manda al abrir una nota: una nota enorme no tiene que trabar la página.
 MAX_TEXT_CHARS = 200_000
@@ -61,8 +75,8 @@ def _entries() -> list[Entry]:
         if not p.resolve().is_relative_to(root):
             continue
         rel = p.relative_to(root)
-        # Los resúmenes no son parte de la biblioteca (igual que en /archivos).
-        if rel.parts[0] == notes.SUMMARIES_DIR:
+        # Ni los resúmenes (igual que en /archivos) ni lo que es de Epsilon (memoria, tareas, skills, plugins).
+        if _is_system(rel):
             continue
         stat = p.stat()
         found.append(

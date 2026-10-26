@@ -179,3 +179,23 @@ def test_reveal_fails_cleanly_without_a_screen(data, monkeypatch):
 
     with pytest.raises(OSError):
         library.reveal("inbox.md")
+
+
+def test_what_belongs_to_epsilon_is_not_listed_but_still_opens(data):
+    system = {
+        "memory.md": b"- 2026-10-20: soy gonzalo",
+        "todo.md": b"- [ ] pagar",
+        "skills/informe/SKILL.md": b"---\nname: informe\n---",
+        "plugins/eco/README.md": b"un plugin",
+        ".oculto/nota.md": b"x",
+        ".algo.md": b"x",
+    }
+    for name, content in system.items():
+        (data / name).parent.mkdir(parents=True, exist_ok=True)
+        (data / name).write_bytes(content)
+    (data / "casa" / "todo.md").write_bytes(b"- [ ] otra")  # una nota tuya que se llama igual, en otra carpeta, sí va
+
+    paths = {e.path for e in library.search(limit=100)["items"]}
+    assert not paths & set(system)
+    assert "casa/todo.md" in paths and "inbox.md" in paths
+    assert library.resolve("memory.md").name == "memory.md"  # abrir por su ruta (por ejemplo, con @) sigue andando
