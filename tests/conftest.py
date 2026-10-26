@@ -25,6 +25,15 @@ def never_touch_the_real_env_file(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def activity_never_lands_in_the_real_data_dir(monkeypatch, tmp_path):
+    """Un test que ejecuta una herramienta sin apuntar DATA_DIR a su carpeta no anota en tu actividad real."""
+    from epsilon.data import activity, notes
+
+    real, original = notes.DATA_DIR, activity._path
+    monkeypatch.setattr(activity, "_path", lambda: tmp_path / "activity-stray.jsonl" if notes.DATA_DIR == real else original())
+
+
+@pytest.fixture(autouse=True)
 def block_real_gemini_client(monkeypatch):
     """Ni siquiera las llamadas de prueba (llm.check) pueden salir a la red sin querer."""
 
