@@ -1,5 +1,5 @@
 // Esqueleto compartido por el chat y la configuración: paneles que se contraen,
-// datos del header (modelo, título) y del menú (recientes, carpeta local).
+// datos del header (modelo, título) y del menú (recientes).
 //
 // REGLA: lo que viene del servidor o del historial es DATO: se muestra con
 // textContent, nunca con innerHTML. Un test vigila que este archivo no use innerHTML.
@@ -528,13 +528,12 @@
     refreshRecents(); // y con lo que diga el servidor
   });
 
-  // --- Modelo y carpeta de datos (de la API, sin ningún secreto) ---------------------
+  // --- Modelo (de la API, sin ningún secreto) ---------------------
   async function loadInfo() {
     try {
       const response = await fetch("/api/config");
       if (!response.ok) return;
       const state = await response.json();
-      const find = (key) => state.settings.find((setting) => setting.key === key);
       window.epsilonInfo = state; // por si app.js todavía no escuchaba
       window.dispatchEvent(new CustomEvent("epsilon:info", { detail: { state } })); // app.js: chip de esfuerzo
 
@@ -542,16 +541,6 @@
       if (modelName) modelName.textContent = state.model || "sin modelo"; // «proveedor:modelo», lo arma el servidor
       const composerModelName = document.getElementById("composer-model-name");
       if (composerModelName) composerModelName.textContent = state.model || "sin modelo";
-
-      const dataDir = (find("DATA_DIR") || {}).value;
-      const path = document.getElementById("local-path");
-      if (path && dataDir) {
-        // Las dos últimas carpetas alcanzan para reconocerla; la ruta completa va en el tooltip.
-        const parts = dataDir.split("/").filter(Boolean);
-        path.textContent = parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : dataDir;
-        path.title = dataDir;
-      }
-
     } catch {
       // Sin conexión: el header queda con sus marcadores; el estado del chat ya lo indica.
     }

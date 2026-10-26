@@ -16,7 +16,18 @@ def chip_tag(name):
     return re.search(r"<button[^>]*id=\"model-chip\"[^>]*>.*?</button>", page(name), re.S).group(0)
 
 
-@pytest.mark.parametrize("name", PAGES)
+# El chat no lo lleva arriba: tiene el del composer (un solo lugar para elegir el modelo).
+HEADER_CHIP_PAGES = [name for name in PAGES if name != "index.html"]
+
+
+def test_the_chat_picks_the_model_only_in_the_composer():
+    html = page("index.html")
+
+    assert 'id="model-chip"' not in html
+    assert 'id="composer-model"' in html and 'aria-haspopup="dialog"' in html
+
+
+@pytest.mark.parametrize("name", HEADER_CHIP_PAGES)
 def test_the_model_chip_is_a_button_that_opens_the_palette(name):
     html = page(name)
 
@@ -27,7 +38,7 @@ def test_the_model_chip_is_a_button_that_opens_the_palette(name):
 
 
 def test_the_model_chip_is_identical_in_every_page():
-    assert len({chip_tag(name) for name in PAGES}) == 1
+    assert len({chip_tag(name) for name in HEADER_CHIP_PAGES}) == 1
 
 
 @pytest.mark.parametrize("name", PAGES)

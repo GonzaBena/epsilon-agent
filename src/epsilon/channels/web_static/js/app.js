@@ -415,8 +415,8 @@ function audioButton(message) {
 
   button.addEventListener("click", async () => {
     // Si ya está reproduciendo este audio, detenerlo
-    if (companionAudio && message.audio_url && companionAudio.src.includes(message.audio_url) && !companionAudio.paused) {
-      stopCompanionSpeaking();
+    if (voiceAudio && message.audio_url && voiceAudio.src.includes(message.audio_url) && !voiceAudio.paused) {
+      stopVoice();
       return;
     }
 
@@ -424,10 +424,10 @@ function audioButton(message) {
 
     // Si ya tiene el audio generado, reproducir directamente
     if (message.audio_url) {
-      stopCompanionSpeaking();
+      stopVoice();
       button.classList.add("playing");
       button.title = "Detener audio";
-      playCompanionAudio(message.audio_url);
+      playVoice(message.audio_url);
       return;
     }
 
@@ -436,9 +436,6 @@ function audioButton(message) {
     button.classList.add("loading");
     button.title = "Generando voz...";
     button.replaceChildren(svgIcon(SPINNER_ICON));
-
-    const statusEl = document.getElementById("companion-status");
-    if (statusEl) statusEl.textContent = "Generando voz...";
 
     try {
       const res = await fetch("/api/tts", {
@@ -456,17 +453,13 @@ function audioButton(message) {
       button.title = "Detener audio";
       button.replaceChildren(svgIcon(MEGAPHONE_ICON));
 
-      playCompanionAudio(message.audio_url);
+      playVoice(message.audio_url);
     } catch (err) {
       console.warn("No pude sintetizar audio:", err);
       isLoading = false;
       button.classList.remove("loading", "playing");
       button.title = "No pude generar el audio";
       button.replaceChildren(svgIcon(MEGAPHONE_ICON));
-      if (statusEl) statusEl.textContent = "Error al sintetizar";
-      setTimeout(() => {
-        if (statusEl && !companionAudio) statusEl.textContent = companionMuted ? "En silencio" : "En reposo";
-      }, 2500);
     }
   });
 
@@ -509,13 +502,13 @@ function addMessage(message) {
   render(message);
   scrollToEnd();
   if (message.role === "bot" && message.audio_url) {
-    playCompanionAudio(message.audio_url);
+    playVoice(message.audio_url);
   }
 }
 
 // Deja la pantalla sin mensajes (el saludo vuelve a mostrarse si hace falta).
 function clearScreen() {
-  stopCompanionSpeaking();
+  stopVoice();
   for (const node of log.querySelectorAll(".msg")) node.remove();
   setReadOnly(false); // openConversation lo vuelve a poner si es de Telegram
   setContext([]); // lo guardado es de ESTA conversación
@@ -1089,7 +1082,7 @@ async function submit() {
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault(); // evita que el formulario recargue la página
-  stopCompanionSpeaking();
+  stopVoice();
   if (busy) cancelRequest(); // esperando una respuesta, el botón es el cuadradito
   else submit();
 });
@@ -1864,10 +1857,6 @@ async function loadWelcome() {
     if (!response.ok) return;
     const data = await response.json();
     welcomeGreeting.textContent = data.greeting;
-    if (data.assistant_name) {
-      const nameEl = document.getElementById("companion-name");
-      if (nameEl) nameEl.textContent = data.assistant_name;
-    }
     welcomeCards.replaceChildren();
     for (const card of data.cards) {
       const button = document.createElement("button");
@@ -1962,142 +1951,55 @@ document.getElementById("onboarding-form").addEventListener("submit", async (eve
   loadWelcome(); // el saludo ya puede decir tu nombre
 });
 
-// --- Companion Voice & Audio Reactor ----------------------------------------
-let companionAudio = null;
-let audioContext = null;
-let animFrameId = null;
-let companionMuted = localStorage.getItem("epsilon_companion_muted") === "true";
+// --- Voz automática de las respuestas (TTS) ------------------------------------------
+// Un solo botón en el composer la prende o la silencia (se recuerda en este navegador).
+let voiceAudio = null;
+let voiceMuted = localStorage.getItem("epsilon_companion_muted") === "true"; // la clave vieja, para no perder la elección
+const voiceToggle = document.getElementById("voice-toggle");
 
-function initCompanionAudio() {
-  const muteBtn = document.getElementById("companion-mute-btn");
-  const toolbarBtn = document.getElementById("companion-voice-toggle");
-  updateCompanionMuteUI();
-
-  if (muteBtn) {
-    muteBtn.addEventListener("click", () => {
-      toggleCompanionMute();
-    });
-  }
-  if (toolbarBtn) {
-    toolbarBtn.addEventListener("click", () => {
-      toggleCompanionMute();
-    });
-  }
+function updateVoiceToggle() {
+  voiceToggle.setAttribute("aria-pressed", voiceMuted ? "false" : "true");
+  voiceToggle.title = voiceMuted ? "Voz silenciada (clic para activar)" : "Voz de las respuestas activada";
 }
 
-function toggleCompanionMute() {
-  companionMuted = !companionMuted;
-  localStorage.setItem("epsilon_companion_muted", String(companionMuted));
-  updateCompanionMuteUI();
-  if (companionMuted && companionAudio) {
-    stopCompanionSpeaking();
-  }
-}
+voiceToggle.addEventListener("click", () => {
+  voiceMuted = !voiceMuted;
+  localStorage.setItem("epsilon_companion_muted", String(voiceMuted));
+  updateVoiceToggle();
+  if (voiceMuted) stopVoice();
+});
+updateVoiceToggle();
 
-function updateCompanionMuteUI() {
-  const muteBtn = document.getElementById("companion-mute-btn");
-  const toolbarBtn = document.getElementById("companion-voice-toggle");
-  const statusEl = document.getElementById("companion-status");
-
-  if (muteBtn) {
-    muteBtn.setAttribute("aria-pressed", companionMuted ? "true" : "false");
-    muteBtn.title = companionMuted ? "Activar voz del asistente" : "Silenciar voz del asistente";
-  }
-  if (toolbarBtn) {
-    toolbarBtn.setAttribute("aria-pressed", companionMuted ? "false" : "true");
-    toolbarBtn.title = companionMuted ? "Voz silenciada (clic para activar)" : "Voz del asistente activada";
-  }
-  if (statusEl && !companionAudio) {
-    statusEl.textContent = companionMuted ? "En silencio" : "En reposo";
-  }
-}
-
-function stopCompanionSpeaking() {
-  if (companionAudio) {
-    const audioToStop = companionAudio;
-    companionAudio = null;
+function stopVoice() {
+  if (voiceAudio) {
+    const audioToStop = voiceAudio;
+    voiceAudio = null;
     audioToStop.onended = null;
     audioToStop.pause();
     audioToStop.currentTime = 0;
-  }
-  if (animFrameId) {
-    cancelAnimationFrame(animFrameId);
-    animFrameId = null;
   }
   document.querySelectorAll(".msg-audio-play").forEach((btn) => {
     btn.classList.remove("playing", "loading");
     btn.title = "Escuchar respuesta";
     btn.replaceChildren(svgIcon(MEGAPHONE_ICON));
   });
-  const card = document.getElementById("companion-card");
-  const statusEl = document.getElementById("companion-status");
-  if (card) card.classList.remove("speaking");
-  if (statusEl) statusEl.textContent = companionMuted ? "En silencio" : "En reposo";
-  document.documentElement.style.removeProperty("--companion-energy");
 }
 
-function playCompanionAudio(audioUrl) {
-  if (companionMuted || !audioUrl) return;
+function playVoice(audioUrl) {
+  if (voiceMuted || !audioUrl) return;
 
-  stopCompanionSpeaking();
+  stopVoice();
 
   const audio = new Audio(audioUrl);
   audio.preload = "auto";
-  audio.loop = false; // Solo una vez, sin bucle
-  companionAudio = audio;
+  voiceAudio = audio;
 
-  const card = document.getElementById("companion-card");
-  const statusEl = document.getElementById("companion-status");
-
-  audio.addEventListener("play", () => {
-    if (companionAudio !== audio) return;
-    if (card) card.classList.add("speaking");
-    if (statusEl) statusEl.textContent = "Hablando...";
-    startCompanionVisualizer();
-  });
-
-  audio.addEventListener("ended", () => {
-    if (companionAudio === audio) {
-      stopCompanionSpeaking();
-    }
-  });
-
-  audio.addEventListener("error", () => {
-    if (companionAudio === audio) {
-      stopCompanionSpeaking();
-    }
-  });
-
-  audio.play().catch(() => {
-    if (companionAudio === audio) {
-      stopCompanionSpeaking();
-    }
-  });
-}
-
-function startCompanionVisualizer() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx || !companionAudio) return;
-
-    if (!audioContext) audioContext = new AudioCtx();
-    if (audioContext.state === "suspended") audioContext.resume();
-
-    let tickCount = 0;
-    function tick() {
-      if (!companionAudio || companionAudio.paused || companionAudio.ended) {
-        stopCompanionSpeaking();
-        return;
-      }
-      tickCount++;
-      const simulatedEnergy = 0.3 + 0.5 * Math.abs(Math.sin(tickCount * 0.15)) + 0.2 * Math.random();
-      document.documentElement.style.setProperty("--companion-energy", simulatedEnergy.toFixed(2));
-      animFrameId = requestAnimationFrame(tick);
-    }
-    tick();
-  } catch {
-    // Silencioso: la animación CSS pura funciona como fallback
-  }
+  const done = () => {
+    if (voiceAudio === audio) stopVoice();
+  };
+  audio.addEventListener("ended", done);
+  audio.addEventListener("error", done);
+  audio.play().catch(done);
 }
 
 // --- Arranque ---------------------------------------------------------------------
@@ -2105,5 +2007,4 @@ start();
 loadWelcome();
 checkHealth();
 checkSetup();
-initCompanionAudio();
 input.focus();

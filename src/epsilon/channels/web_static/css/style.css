@@ -538,35 +538,6 @@ body.view-telegram {
   outline: 0;
 }
 
-/* Dónde se guardan tus datos: abajo del todo. */
-.local-card {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
-  max-height: 65px;
-  height: 100%;
-  overflow: hidden;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  font-size: 13px;
-  transition:
-    max-height var(--t) ease,
-    padding var(--t) ease,
-    border-width var(--t) ease,
-    opacity 0.15s ease 0.05s;
-}
-.local-path {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .panel-toggle {
   flex: none;
   display: grid;
@@ -582,6 +553,10 @@ body.view-telegram {
 .panel-toggle:hover {
   color: var(--text);
   background: var(--surface-2);
+}
+/* El de la izquierda va abajo del todo, debajo de las conversaciones. */
+.side-left > .panel-toggle {
+  margin-top: auto;
 }
 
 /* --- Panel izquierdo contraído: una columna de íconos -------------------------
@@ -623,22 +598,6 @@ body.view-telegram {
   visibility: hidden;
   transition:
     max-height var(--t) ease,
-    opacity 0.1s ease,
-    visibility 0s linear var(--t);
-}
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
-  .side-left
-  .local-card {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-width: 0;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    max-height var(--t) ease,
-    padding var(--t) ease,
-    border-width var(--t) ease,
     opacity 0.1s ease,
     visibility 0s linear var(--t);
 }
@@ -5289,177 +5248,15 @@ button.claude-icon-wrap {
   align-self: flex-start;
 }
 
-/* --- Companion Widget & Audio Reactor --------------------------------------- */
-.companion-card {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.75rem 0.9rem;
-  margin-bottom: 1.25rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  transition:
-    border-color 0.25s ease,
-    box-shadow 0.25s ease;
-}
-.companion-card.speaking {
-  border-color: var(--accent-line);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 15%, transparent);
-}
-.companion-avatar-wrap {
-  position: relative;
-  width: auto;
-  height: 64px;
-  aspect-ratio: 1/1;
-  flex-shrink: 0;
-}
-.companion-avatar {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  background: var(--surface-2);
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
-}
-.companion-card.speaking .companion-avatar {
-  border-color: var(--accent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
-  transform: scale(calc(1 + var(--companion-energy, 0.05) * 0.1));
-  animation: companion-pulse 1.6s ease-in-out infinite alternate;
-}
-@keyframes companion-pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1.02);
-  }
-}
-.companion-wave {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 16px;
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 2px 3px;
-  pointer-events: none;
-}
-.companion-wave span {
-  width: 2.5px;
-  height: 3px;
-  background: var(--muted);
-  border-radius: 2px;
-  transition:
-    height 0.15s ease,
-    background-color 0.2s ease;
-}
-.companion-card.speaking .companion-wave {
-  border-color: var(--accent-line);
-}
-.companion-card.speaking .companion-wave span {
-  background: var(--accent);
-  animation: companion-wave-bounce 0.8s ease-in-out infinite alternate;
-}
-.companion-card.speaking .companion-wave span:nth-child(1) {
-  animation-delay: 0.1s;
-}
-.companion-card.speaking .companion-wave span:nth-child(2) {
-  animation-delay: 0.3s;
-}
-.companion-card.speaking .companion-wave span:nth-child(3) {
-  animation-delay: 0.2s;
-}
-.companion-card.speaking .companion-wave span:nth-child(4) {
-  animation-delay: 0.4s;
-}
-
-@keyframes companion-wave-bounce {
-  0% {
-    height: 3px;
-  }
-  100% {
-    height: 11px;
-  }
-}
-
-.companion-details {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-.companion-name-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.companion-name {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.companion-mute-btn {
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-.companion-mute-btn:hover {
-  color: var(--text);
-  background: var(--surface-2);
-}
-.companion-status {
-  font-size: 0.78rem;
-  color: var(--muted);
-  transition: color 0.2s ease;
-}
-.companion-card.speaking .companion-status {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-/* Icon toggles */
-.companion-mute-btn[aria-pressed="false"] .icon-voice-off,
-.companion-mute-btn[aria-pressed="true"] .icon-voice-on {
+/* --- Voz automática de las respuestas: un solo botón en el composer ------------ */
+#voice-toggle[aria-pressed="false"] .icon-voice-on,
+#voice-toggle[aria-pressed="true"] .icon-voice-off {
   display: none;
 }
-.companion-mute-btn[aria-pressed="true"] {
-  color: var(--danger);
-}
-
-#companion-voice-toggle[aria-pressed="false"] .icon-voice-on,
-#companion-voice-toggle[aria-pressed="true"] .icon-voice-off {
-  display: none;
-}
-#companion-voice-toggle[aria-pressed="true"] {
+#voice-toggle[aria-pressed="true"] {
   color: var(--accent);
 }
-#companion-voice-toggle[aria-pressed="false"] {
+#voice-toggle[aria-pressed="false"] {
   color: var(--muted);
 }
 

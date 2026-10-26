@@ -778,3 +778,10 @@ def test_config_says_that_the_voice_names_live_in_the_voice_section():
     names = html[html.index('aria-labelledby="s-nombres"'):html.index('aria-labelledby="s-chat"')]
 
     assert "Voz" in names and "hablarle por voz" in names
+
+
+def test_the_right_panel_has_no_companion_and_voice_has_one_button():
+    html = chat_html()
+
+    assert "companion" not in html and "companion" not in js("app.js").replace("epsilon_companion_muted", "")
+    assert html.count('id="voice-toggle"') == 1
