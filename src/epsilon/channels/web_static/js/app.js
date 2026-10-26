@@ -1811,16 +1811,21 @@ function maybeOnboard(settings) {
   onboardingUser.focus();
 }
 
-document.getElementById("onboarding-skip").addEventListener("click", () => {
+// «Saltar por ahora» y Esc (el evento nativo «cancel» del <dialog>) hacen lo mismo: recordarlo y cerrar.
+function skipOnboarding() {
   try {
     localStorage.setItem(ONBOARDING_SKIPPED, "1");
   } catch {
     // Sin almacenamiento, vuelve a preguntar en la próxima visita: no es grave.
   }
   onboarding.close();
-});
+}
+document.getElementById("onboarding-skip").addEventListener("click", skipOnboarding);
+onboarding.addEventListener("cancel", skipOnboarding);
 
-document.getElementById("onboarding-save").addEventListener("click", async () => {
+// Enter en un campo o el botón «Continuar» disparan el envío del formulario.
+document.getElementById("onboarding-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
   onboardingUserError.textContent = "";
   onboardingAssistantError.textContent = "";
   const user = onboardingUser.value.trim();

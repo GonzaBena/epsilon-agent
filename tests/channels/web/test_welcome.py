@@ -90,7 +90,7 @@ def named(monkeypatch):
 def test_welcome_endpoint_reports_first_time_and_profile(cfg):
     data = cfg.get("/api/welcome").json()
 
-    assert data["needs_profile"] is True
+    assert "needs_profile" not in data  # la web decide con /api/config: no hace falta repetirlo acá
     assert data["greeting"].startswith("Hola,\nsoy Epsilon, tu nueva asistente,")
     assert len(data["cards"]) == 6
 
@@ -98,7 +98,6 @@ def test_welcome_endpoint_reports_first_time_and_profile(cfg):
 def test_welcome_endpoint_uses_the_names_and_the_first_greeting_until_there_is_a_conversation(cfg, named):
     data = cfg.get("/api/welcome").json()
 
-    assert data["needs_profile"] is False
     assert data["greeting"].split("\n")[:2] == ["Hola Gonzalo,", "soy Luna, tu nueva asistente,"]
 
 
@@ -153,3 +152,11 @@ def test_welcome_picture_is_not_dimmed():
     from tests.channels.web.helpers import web
 
     assert brightest_channel(web.STATIC_DIR / "img" / "welcome-avatar.webp") >= 235
+
+
+def test_fallback_greeting_in_the_html_does_not_claim_the_person_is_new():
+    from tests.channels.web.helpers import chat_html
+
+    fallback = re.search(r'<p id="welcome-greeting"[^>]*>(.*?)</p>', chat_html(), re.S).group(1)
+
+    assert "nueva" not in fallback and "nuevo" not in fallback and fallback.startswith("Hola,")

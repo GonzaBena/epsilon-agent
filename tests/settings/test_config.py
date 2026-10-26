@@ -785,3 +785,11 @@ def test_every_setting_key_is_unique():
     keys = [s.key for s in config.SETTINGS]
 
     assert len(keys) == len(set(keys)), sorted({k for k in keys if keys.count(k) > 1})
+
+
+def test_env_example_mentions_the_name_settings():
+    from pathlib import Path
+
+    text = (Path(config.__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
+
+    assert "USER_NAME" in text and "AGENT_NAME" in text

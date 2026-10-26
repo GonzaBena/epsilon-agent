@@ -112,7 +112,7 @@
         <section id="empty" class="empty">
           <div class="welcome-hero">
             <p id="welcome-greeting" class="welcome-greeting">Hola,
-soy Epsilon, tu nueva asistente.</p>
+¿en qué vamos a trabajar hoy?</p>
             <img class="welcome-avatar" src="/static/img/welcome-avatar.webp" alt="" width="575" height="1000">
           </div>
           <div id="welcome-cards" class="welcome-cards"></div>
@@ -121,7 +121,7 @@ soy Epsilon, tu nueva asistente.</p>
 
       <!-- Primera vez: cómo te llamo y cómo me llamás (app.js lo abre si falta USER_NAME). -->
       <dialog id="onboarding" class="perm-dialog onboarding" aria-labelledby="onboarding-title">
-      <div class="onboarding-panel">
+      <form class="onboarding-panel" id="onboarding-form" novalidate>
         <img class="onboarding-logo" src="/static/img/icon.svg" alt="" width="56" height="56">
         <h3 id="onboarding-title">Antes de empezar</h3>
         <p class="hint">Dos datos para que la charla sea tuya. Los podés cambiar después en Configuración.</p>
@@ -138,10 +138,10 @@ soy Epsilon, tu nueva asistente.</p>
           <p class="error" id="onboarding-assistant-error" role="alert"></p>
         </div>
         <div class="perm-dialog-actions">
-          <button type="button" class="send" id="onboarding-save">Continuar</button>
+          <button type="submit" class="send" id="onboarding-save">Continuar</button>
           <button type="button" class="ghost" id="onboarding-skip">Saltar por ahora</button>
         </div>
-      </div>
+      </form>
       </dialog>
 
       <!-- Solo se ve en la conversación de Telegram: la web la lee, no escribe en ella (app.js). -->

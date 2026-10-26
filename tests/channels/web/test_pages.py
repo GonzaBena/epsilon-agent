@@ -492,7 +492,7 @@ def test_onboarding_has_one_error_line_per_field_wired_to_its_input():
 
 def test_onboarding_saves_with_put_config_and_shows_each_error_under_its_field():
     region = app_region("// --- Primera vez")
-    save = region[region.index('"onboarding-save"'):]
+    save = region[region.index('"onboarding-form"'):]
 
     assert 'fetch("/api/config"' in save and 'method: "PUT"' in save
     assert "USER_NAME: user" in save and "ASSISTANT_NAME" not in region
@@ -504,7 +504,7 @@ def test_onboarding_saves_with_put_config_and_shows_each_error_under_its_field()
 
 def test_onboarding_skip_is_remembered_in_the_browser_without_breaking_when_storage_fails():
     region = app_region("// --- Primera vez")
-    skip = region[region.index('"onboarding-skip"'):region.index('"onboarding-save"')]
+    skip = region[region.index("function skipOnboarding"):region.index('"onboarding-skip"')]
 
     assert "localStorage.setItem(ONBOARDING_SKIPPED" in skip and "try {" in skip and "catch" in skip
     assert "localStorage.getItem(ONBOARDING_SKIPPED" in region and "catch" in region
@@ -563,3 +563,20 @@ def test_welcome_greeting_keeps_its_line_breaks_and_the_picture_is_big():
     columns = css_rule(".welcome-hero")
     assert re.search(r"minmax\(0, (1[8-9]|2\d)rem\)", columns)  # columna de la imagen: 18 rem o más
     assert re.search(r"max-height: (2[6-9]|3\d)rem", css_rule(".welcome-avatar"))
+
+
+def test_onboarding_is_a_real_form_so_enter_submits_it():
+    section = onboarding_html()
+
+    assert re.search(r'<form[^>]*id="onboarding-form"', section)
+    assert re.search(r'<button[^>]*type="submit"[^>]*id="onboarding-save"', section)
+    assert re.search(r'<button[^>]*type="button"[^>]*id="onboarding-skip"', section)
+    assert 'addEventListener("submit"' in app_region("// --- Primera vez")
+
+
+def test_escape_counts_as_skip_in_the_first_run_form():
+    region = app_region("// --- Primera vez")
+
+    assert "function skipOnboarding" in region
+    assert 'addEventListener("cancel", skipOnboarding)' in region  # Esc: el evento nativo del <dialog>
+    assert 'addEventListener("click", skipOnboarding)' in region
