@@ -80,8 +80,7 @@ def test_modern_composer_toolbar_has_llm_controls():
 
 
 def test_chat_warns_that_reading_images_can_be_wrong():
-    assert "Epsilon puede equivocarse al leer imágenes" in chat_html()
-    assert "Revisá los datos antes de guardar" in chat_html()
+    assert "Puede equivocarse: revisá los datos antes de guardar." in chat_html()
 
 
 # --- Vista previa del archivo adjunto (cuadrada, con quitar y nombre) ---------
@@ -794,3 +793,11 @@ def test_the_right_panel_has_no_companion_and_voice_has_one_button():
 
     assert "companion" not in html and "companion" not in js("app.js").replace("epsilon_companion_muted", "")
     assert html.count('id="voice-toggle"') == 1
+
+
+def test_the_placeholder_invites_to_ask_or_to_type_a_command():
+    script = js("app.js")
+
+    assert 'placeholder="Pedile algo o escribí / para un comando"' in chat_html()
+    assert 'const COMMANDS_PLACEHOLDER = "Escribí un comando, por ejemplo /ayuda";' in script
+    assert "input.placeholder = defaultPlaceholder()" in script[script.index("function showAiChip"):]

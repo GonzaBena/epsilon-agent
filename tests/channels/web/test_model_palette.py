@@ -175,3 +175,11 @@ def test_ctrl_f_and_the_star_save_favorites_through_the_server():
     assert "event.preventDefault()" in palette  # que Ctrl+F no abra la búsqueda del navegador
     css = static_path("style.css").read_text(encoding="utf-8")
     assert ".palette-heading" in css and ".palette-star" in css
+
+
+@pytest.mark.skipif(not NODE, reason="sin node")
+def test_the_chip_shows_the_model_without_its_provider():
+    assert run_node('[window.epsilonPalette.shortModel("gemini:gemini-3.1-flash-lite"), window.epsilonPalette.shortModel("ollama:llama3.1:8b")]') == [
+        "gemini-3.1-flash-lite",
+        "llama3.1:8b",
+    ]

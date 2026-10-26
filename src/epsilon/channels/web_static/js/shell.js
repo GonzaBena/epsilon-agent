@@ -537,10 +537,7 @@
       window.epsilonInfo = state; // por si app.js todavía no escuchaba
       window.dispatchEvent(new CustomEvent("epsilon:info", { detail: { state } })); // app.js: chip de esfuerzo
 
-      const modelName = document.getElementById("model-name");
-      if (modelName) modelName.textContent = state.model || "sin modelo"; // «proveedor:modelo», lo arma el servidor
-      const composerModelName = document.getElementById("composer-model-name");
-      if (composerModelName) composerModelName.textContent = state.model || "sin modelo";
+      window.epsilonPalette.showModel(state.model); // «proveedor:modelo», lo arma el servidor
     } catch {
       // Sin conexión: el header queda con sus marcadores; el estado del chat ya lo indica.
     }

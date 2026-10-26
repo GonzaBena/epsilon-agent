@@ -68,7 +68,10 @@ let historyDraft = "";
 
 // Con un archivo adjunto, el texto que escribas se usa para pedir un CSV.
 // Esa función no se descubre sola, así que el placeholder la explica.
-const DEFAULT_PLACEHOLDER = input.placeholder; // el que trae el HTML
+// Sin archivo, invita a pedir (con IA) o a escribir un comando (solo comandos); lo pone showAiChip.
+const AI_PLACEHOLDER = input.placeholder; // el que trae el HTML
+const COMMANDS_PLACEHOLDER = "Escribí un comando, por ejemplo /ayuda";
+const defaultPlaceholder = () => (aiMode() ? AI_PLACEHOLDER : COMMANDS_PLACEHOLDER);
 const FILE_PLACEHOLDER =
   "Para pasarlo a CSV escribí: gastos: fecha, total. Sin texto, solo se guarda.";
 
@@ -118,6 +121,7 @@ function setReadOnly(on) {
 const crumbAi = document.getElementById("crumb-ai");
 function showAiChip() {
   crumbAi.hidden = !aiMode();
+  if (!pendingFile) input.placeholder = defaultPlaceholder(); // con archivo, manda el del CSV
 }
 
 function chooseMode(mode) {
@@ -906,7 +910,7 @@ function clearFile() {
   pendingFile = null;
   fileInput.value = ""; // permite elegir el mismo archivo otra vez
   chip.hidden = true;
-  input.placeholder = DEFAULT_PLACEHOLDER;
+  input.placeholder = defaultPlaceholder();
 }
 
 // --- Control universal de menús desplegables del compositor -----------------

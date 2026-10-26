@@ -316,10 +316,7 @@
       status.textContent = error.message || "No pude guardar el modelo.";
       return;
     }
-    const name = document.getElementById("model-name");
-    if (name) name.textContent = id;
-    const composerName = document.getElementById("composer-model-name");
-    if (composerName) composerName.textContent = id;
+    showModel(id);
     window.dispatchEvent(new CustomEvent("epsilon:model")); // shell.js relee lo que depende del modelo
     dialog.close();
   }
@@ -354,6 +351,21 @@
     paint();
   }
 
+  // El chip muestra el modelo sin el proveedor («gemini-3.1-flash-lite»); el id completo, en el tooltip.
+  function shortModel(id) {
+    const colon = id.indexOf(":");
+    return colon < 0 ? id : id.slice(colon + 1);
+  }
+
+  function showModel(id) {
+    for (const nameId of ["model-name", "composer-model-name"]) {
+      const name = document.getElementById(nameId);
+      if (!name) continue;
+      name.textContent = id ? shortModel(id) : "sin modelo";
+      name.parentElement.title = id ? `Cambiar el modelo de IA (ahora: ${id})` : "Elegir un modelo de IA";
+    }
+  }
+
   window.epsilonModal = modal;
-  window.epsilonPalette = { open, filter, usable, layout };
+  window.epsilonPalette = { open, filter, usable, layout, shortModel, showModel };
 })();
