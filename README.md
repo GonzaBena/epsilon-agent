@@ -233,3 +233,7 @@ Epsilon puede usar modelos que corren en tu máquina con [Ollama](https://ollama
 3. Si Ollama está en otra dirección, cargala en `OLLAMA_URL`. «Probar conexión con Ollama» no gasta nada.
 
 Ollama no lee PDFs, y no todos sus modelos usan herramientas o leen imágenes: Epsilon lo avisa en vez de fallar.
+
+## Skills
+
+Una skill son instrucciones tuyas para que Epsilon haga algo a tu manera (un informe con tu formato, un correo con tu tono). Es una carpeta con un `SKILL.md` (nombre y descripción arriba, instrucciones abajo). Se agregan desde la página **Skills**: subiendo un archivo o un `.zip`, pegando una dirección o creándola conversando con la IA, y siempre ves el texto exacto antes de guardar. Se usan con `/nombre lo que necesitás` (por ejemplo `/correo avisar a Marta que la reunión pasa al jueves`) o la IA la elige sola si encaja. Son solo texto: no ejecutan nada ni dan permisos. Vienen tres de ejemplo (`/informe`, `/correo` y `/prioridades`) que podés editar o borrar.
