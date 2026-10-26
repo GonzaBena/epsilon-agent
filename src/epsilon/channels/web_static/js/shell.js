@@ -535,6 +535,8 @@
       if (!response.ok) return;
       const state = await response.json();
       const find = (key) => state.settings.find((setting) => setting.key === key);
+      window.epsilonInfo = state; // por si app.js todavía no escuchaba
+      window.dispatchEvent(new CustomEvent("epsilon:info", { detail: { state } })); // app.js: chip de esfuerzo
 
       const modelName = document.getElementById("model-name");
       if (modelName) modelName.textContent = state.model || "sin modelo"; // «proveedor:modelo», lo arma el servidor
@@ -562,6 +564,9 @@
       refreshRecents(); // pudo haber conversaciones nuevas (por ejemplo, desde otra pestaña)
     }
   });
+
+  // Otro modelo puede usar (o no) el esfuerzo de razonamiento.
+  window.addEventListener("epsilon:model", loadInfo);
 
   // El botón con el modelo abre la paleta para elegir otro (palette.js).
   const modelChip = document.getElementById("model-chip");

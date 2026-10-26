@@ -316,3 +316,14 @@ def test_run_marks_the_web_as_running(monkeypatch):
 
     assert started == [{"host": "127.0.0.1", "port": 9124, "log_level": "warning"}]
     assert state.snapshot()["web"]["state"] == "running"
+
+
+def test_config_says_if_the_chat_model_uses_thinking_effort(cfg, monkeypatch):
+    # Gemini respeta AI_THINKING_EFFORT: la web muestra el selector.
+    monkeypatch.setenv("AI_MODEL", "gemini:gemini-x")
+    monkeypatch.delenv("AI_MODEL_CHAT", raising=False)
+    assert cfg.get("/api/config").json()["thinking"] is True
+
+    # Ollama no lo usa (y, en los tests, ni siquiera contesta): sin selector, sin error.
+    monkeypatch.setenv("AI_MODEL", "ollama:llama3.1:8b")
+    assert cfg.get("/api/config").json()["thinking"] is False

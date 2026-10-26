@@ -141,7 +141,7 @@ class GeminiProvider(Provider):
         ]
 
     def capabilities(self, model):
-        return Capabilities(tools=True, images=True, pdf=True)
+        return Capabilities(tools=True, images=True, pdf=True, thinking=True)
 
 
 def _explain(code: int, model: str) -> str:

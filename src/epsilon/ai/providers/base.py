@@ -5,11 +5,13 @@ from epsilon.ai.messages import Message, Step, ToolSpec
 
 @dataclass
 class Capabilities:
-    """Lo que un modelo puede hacer: usar herramientas, leer imágenes, leer PDFs."""
+    """Lo que un modelo puede hacer: usar herramientas, leer imágenes, leer PDFs y, si el proveedor
+    respeta AI_THINKING_EFFORT, razonar más o menos (la web muestra el selector solo entonces)."""
 
     tools: bool
     images: bool
     pdf: bool
+    thinking: bool = False
 
 
 @dataclass

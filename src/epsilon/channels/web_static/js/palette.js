@@ -320,6 +320,7 @@
     if (name) name.textContent = id;
     const composerName = document.getElementById("composer-model-name");
     if (composerName) composerName.textContent = id;
+    window.dispatchEvent(new CustomEvent("epsilon:model")); // shell.js relee lo que depende del modelo
     dialog.close();
   }
 

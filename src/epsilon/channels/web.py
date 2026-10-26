@@ -1138,7 +1138,15 @@ def create_app() -> FastAPI:
             "tts_voices": tts.list_voices(),
             "tts_default_voice": tts.default_voice(),
             "model": llm.default_model(),  # el predeterminado («proveedor:modelo»), para el botón del encabezado
+            "thinking": thinking_supported(),  # si el modelo del chat usa el esfuerzo de razonamiento
         }
+
+    def thinking_supported() -> bool:
+        # Ollama pregunta por HTTP: si no contesta, el selector simplemente no se muestra.
+        try:
+            return llm.capabilities("chat").thinking
+        except Exception:
+            return False
 
     @app.get("/api/usage")
     def get_usage():

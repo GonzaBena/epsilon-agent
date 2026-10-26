@@ -1324,7 +1324,11 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.Medi
   navigator.mediaDevices.addEventListener("devicechange", refreshMic);
 }
 
-// --- Barra de herramientas: Esfuerzo de pensamiento y Modo de herramientas ---
+// --- Esfuerzo de razonamiento -------------------------------------------------------------
+// Es un ajuste global (AI_THINKING_EFFORT), no de cada mensaje. El chip solo se ve si el modelo del
+// chat lo usa (shell.js avisa con «epsilon:info» lo que dijo GET /api/config) y muestra el valor del
+// servidor, no uno recordado en el navegador.
+const effortWrap = document.getElementById("effort-wrap");
 const effortBtn = document.getElementById("composer-effort");
 const effortLabel = document.getElementById("effort-label");
 const effortPopover = document.getElementById("effort-popover");
@@ -1337,85 +1341,40 @@ const EFFORT_LABELS = {
 
 setupDropdown(effortBtn, effortPopover);
 
-async function setEffort(value, saveToServer) {
-  const label = EFFORT_LABELS[value] || "Medio";
-  if (effortLabel) effortLabel.textContent = label;
-  localStorage.setItem("epsilon_thinking_effort", value);
+function showEffort(value) {
+  const effort = EFFORT_LABELS[value] ? value : "medio";
+  effortLabel.textContent = EFFORT_LABELS[effort];
   for (const item of document.querySelectorAll("[data-effort]")) {
-    item.setAttribute("aria-selected", String(item.dataset.effort === value));
+    item.setAttribute("aria-selected", String(item.dataset.effort === effort));
   }
+}
+
+async function saveEffort(value) {
   closeAllDropdowns();
-  if (saveToServer) {
-    try {
-      await fetch("/api/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ changes: { AI_THINKING_EFFORT: value }, clear: [] }),
-      });
-    } catch {
-      // Sin conexión: queda guardado localmente
-    }
+  try {
+    const response = await fetch("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes: { AI_THINKING_EFFORT: value }, clear: [] }),
+    });
+    if (response.ok) showEffort(value); // solo si quedó guardado: el chip nunca dice algo que no es
+  } catch {
+    // Sin conexión: el chip sigue con el valor anterior.
   }
 }
 
 for (const btn of document.querySelectorAll("[data-effort]")) {
-  btn.addEventListener("click", () => setEffort(btn.dataset.effort, true));
+  btn.addEventListener("click", () => saveEffort(btn.dataset.effort));
 }
 
-const storedEffort = localStorage.getItem("epsilon_thinking_effort") || "medio";
-setEffort(storedEffort, false);
-
-const toolsModeBtn = document.getElementById("composer-tools-mode");
-const toolsModeLabel = document.getElementById("tools-mode-label");
-const toolsModePopover = document.getElementById("tools-mode-popover");
-const TOOLS_MODE_LABELS = {
-  manual: "Manual",
-  auto: "Automático",
-  inseguro: "Solo si es inseguro",
-};
-
-setupDropdown(toolsModeBtn, toolsModePopover);
-
-async function setToolsMode(mode, applyToServer) {
-  const label = TOOLS_MODE_LABELS[mode] || "Manual";
-  if (toolsModeLabel) toolsModeLabel.textContent = label;
-  localStorage.setItem("epsilon_tools_mode", mode);
-  for (const item of document.querySelectorAll("[data-tools-mode]")) {
-    item.setAttribute("aria-selected", String(item.dataset.toolsMode === mode));
-  }
-  closeAllDropdowns();
-  if (applyToServer) {
-    try {
-      const response = await fetch("/api/permissions");
-      if (!response.ok) return;
-      const data = await response.json();
-      const newStates = {};
-      for (const tool of data.tools) {
-        if (mode === "manual") {
-          newStates[tool.id] = "ask";
-        } else if (mode === "auto") {
-          newStates[tool.id] = "allow";
-        } else if (mode === "inseguro") {
-          newStates[tool.id] = tool.kind === "read" ? "allow" : "ask";
-        }
-      }
-      await fetch("/api/permissions", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ states: newStates }),
-      });
-    } catch {
-      // Sin conexión: queda en local
-    }
-  }
+function applyInfo(state) {
+  effortWrap.hidden = !state.thinking;
+  const setting = state.settings.find((item) => item.key === "AI_THINKING_EFFORT");
+  showEffort(setting && setting.value);
 }
 
-for (const btn of document.querySelectorAll("[data-tools-mode]")) {
-  btn.addEventListener("click", () => setToolsMode(btn.dataset.toolsMode, true));
-}
-
-const storedToolsMode = localStorage.getItem("epsilon_tools_mode") || "manual";
-setToolsMode(storedToolsMode, false);
+window.addEventListener("epsilon:info", (event) => applyInfo(event.detail.state));
+if (window.epsilonInfo) applyInfo(window.epsilonInfo);
 
 // --- Comandos con un toque: los del estado vacío y los del menú lateral ------------------
 // Los del menú son enlaces (/?cmd=...) para que también funcionen desde la

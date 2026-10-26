@@ -76,9 +76,7 @@ def test_modern_composer_toolbar_has_llm_controls():
     assert 'id="mic"' in composer
     assert 'id="composer-model"' in composer
     assert 'id="composer-effort"' in composer
-    assert 'id="composer-tools-mode"' in composer
     assert 'id="effort-popover"' in composer
-    assert 'id="tools-mode-popover"' in composer
 
 
 def test_chat_warns_that_reading_images_can_be_wrong():

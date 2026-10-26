@@ -580,3 +580,15 @@ def test_escape_counts_as_skip_in_the_first_run_form():
     assert "function skipOnboarding" in region
     assert 'addEventListener("cancel", skipOnboarding)' in region  # Esc: el evento nativo del <dialog>
     assert 'addEventListener("click", skipOnboarding)' in region
+
+
+def test_chat_has_no_shortcut_that_rewrites_every_permission():
+    # Los permisos se cambian uno por uno en /permisos; el chat no tiene un atajo que los pise todos.
+    html, script = page("index.html"), js("app.js")
+    assert "tools-mode" not in html and "/api/permissions" not in script
+
+
+def test_thinking_effort_starts_hidden_and_follows_the_server():
+    # Solo se ve con un modelo que lo usa, y su valor sale del servidor, no del navegador.
+    assert 'id="effort-wrap" hidden' in page("index.html")
+    assert "epsilon_thinking_effort" not in js("app.js")

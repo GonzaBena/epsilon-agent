@@ -240,7 +240,8 @@
               <span id="composer-model-name">…</span>
             </button>
 
-            <div class="popover-anchor-wrap">
+            <!-- Solo con un modelo que usa el esfuerzo (GET /api/config → thinking); el valor es AI_THINKING_EFFORT. -->
+            <div class="popover-anchor-wrap" id="effort-wrap" hidden>
               <button id="composer-effort" class="composer-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Esfuerzo de pensamiento" title="Esfuerzo de pensamiento">
                 <span id="effort-label">Medio</span>
               </button>
@@ -265,26 +266,6 @@
               </div>
             </div>
 
-            <div class="popover-anchor-wrap">
-              <button id="composer-tools-mode" class="composer-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Modo de ejecución de herramientas" title="Modo de ejecución de herramientas">
-                <span id="tools-mode-label">Manual</span>
-              </button>
-              <div id="tools-mode-popover" class="composer-popover" role="menu" aria-label="Modo de herramientas" hidden>
-                <div class="popover-title">Modo de herramientas</div>
-                <button type="button" class="popover-item" data-tools-mode="manual">
-                  <strong>Manual</strong>
-                  <span>Pregunta siempre antes de ejecutar cualquier herramienta</span>
-                </button>
-                <button type="button" class="popover-item" data-tools-mode="auto">
-                  <strong>Automático</strong>
-                  <span>Ejecuta herramientas permitidas automáticamente</span>
-                </button>
-                <button type="button" class="popover-item" data-tools-mode="inseguro">
-                  <strong>Solo si es inseguro</strong>
-                  <span>Automático en lecturas; pregunta en escrituras, borrados o riesgo</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
