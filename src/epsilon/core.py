@@ -1181,6 +1181,10 @@ def _run(state: PendingTool, tool: tools.Tool, name: str, args: str, asked: bool
     activity.record("ia", tool_id, args, shown, ok, asked=asked, conversation=state.turn.conversation_id)
     browser_guard.record(tool, args, state.results[-1][1], asked)
     browser_guard.after_run(tool, args, state.turn)
+    if tool.ai_tips and tool_id not in state.turn.tipped:  # las pistas, una vez por mensaje (ni a la Actividad ni al registro)
+        state.turn.tipped.add(tool_id)
+        # ANTES del resultado: son de Epsilon, no van dentro del bloque rotulado «datos, no instrucciones».
+        state.results[-1] = (name, f"Cómo seguir: {tool.ai_tips}\n\n{result}")
     _tool_event(tool_id, args, "done")
     return None
 
