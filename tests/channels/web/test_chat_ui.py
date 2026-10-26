@@ -772,7 +772,7 @@ def test_a_welcome_card_does_nothing_if_another_conversation_was_opened_meanwhil
     body = body[: body.index("\n}\n")]
 
     assert body.index("loadToken") < body.index("await")
-    assert body.count("loadToken") >= 2 and "return" in body[body.index("await"):body.index("input.value")]
+    assert body.count("loadToken") >= 2 and "return" in body[body.index("await"):body.index("writePrompt(")]
 
 
 def test_config_says_that_the_voice_names_live_in_the_voice_section():

@@ -483,3 +483,18 @@ def test_main_survives_if_connectors_cannot_be_set_up(monkeypatch):
     main.main()
 
     assert web_channel.threads
+
+
+def test_main_seeds_the_factory_skills_once(monkeypatch):
+    from epsilon.skills import store
+
+    use_channels(monkeypatch, web=FakeChannel())
+    monkeypatch.setattr(main.engine, "start", lambda: None)
+
+    main.main()
+    assert sorted(s.name for s in store.list_all()) == ["correo", "informe", "prioridades"]
+
+    store.delete("correo")
+    use_channels(monkeypatch, web=FakeChannel())
+    main.main()
+    assert store.get("correo") is None  # una borrada no vuelve

@@ -8,6 +8,7 @@ from epsilon.connectors import manager as connectors, registry as connector_regi
 from epsilon.plugins import channels as plugin_channels
 from epsilon.routines import engine
 from epsilon.settings import config
+from epsilon.skills import factory as skills_factory
 
 # Canales disponibles: nombre -> módulo. Para sumar uno incluido se agrega una línea acá; los de
 # terceros (plugins, ver plugins/channels.py y docs/plan-plugins.md) los suma refresh_plugins con
@@ -262,6 +263,8 @@ def main():
         engine.start()  # las rutinas; si no arrancan, la web y los canales siguen igual
     except Exception as e:
         print(f"No pude prender el motor de rutinas: {config.redact(repr(e))}")
+
+    skills_factory.seed()  # la primera vez copia las skills de fábrica (nunca levanta)
 
     try:
         setup_connectors()

@@ -5185,3 +5185,12 @@ button.claude-icon-wrap {
 .rt-wide .rt-step:not(.is-selected) .rt-step-body {
   display: none;
 }
+
+/* Skills: la página reutiliza las filas y los diálogos de Conectores (claude-*); acá solo lo propio. */
+.skills-intro { margin: 0 0 0.75rem; max-width: 60ch; }
+.skill-text { font-family: var(--mono); font-size: 0.85rem; line-height: 1.5; min-height: 16rem; width: 100%; resize: vertical; }
+.skill-preview { margin: 0 0 0.75rem; padding: 0.75rem; max-height: 16rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.85rem; line-height: 1.5; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); color: var(--text); }
+.skill-files { margin: 0.25rem 0 0.75rem; padding-left: 1.25rem; font-size: 0.85rem; overflow-wrap: anywhere; }
+.skill-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.skills-page .claude-segmented { margin-bottom: 0.9rem; }
+.skill-save { margin-top: 0.4rem; align-self: flex-start; }

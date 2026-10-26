@@ -94,7 +94,7 @@ def test_menu_has_the_expected_sections_and_no_dead_links():
     labels = [label for _, _, label in menu_items(page("index.html"))]
 
     # Canales y Uso están en la barra de arriba; Configuración, abajo de todo en este menú.
-    assert labels == ["Chat", "Biblioteca", "Permisos", "Conectores", "Rutinas", "Configuración"]
+    assert labels == ["Chat", "Biblioteca", "Permisos", "Conectores", "Skills", "Rutinas", "Configuración"]
     # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
     for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
         assert gone not in page("index.html") and gone not in page("config.html")
@@ -220,7 +220,7 @@ def test_the_marks_drawn_by_the_scripts_use_the_brand_logo():
 
 def test_every_page_has_the_same_top_bar_and_marks_where_you_are():
     expected = [("/", "Chat"), ("/canales", "Canales"), ("/uso", "Uso"), ("/permisos", "Permisos")]
-    current = {"index.html": "Chat", "canales.html": "Canales", "uso.html": "Uso", "config.html": None, "biblioteca.html": None, "permisos.html": "Permisos", "rutinas.html": None, "conectores.html": None}
+    current = {"index.html": "Chat", "canales.html": "Canales", "uso.html": "Uso", "config.html": None, "biblioteca.html": None, "permisos.html": "Permisos", "rutinas.html": None, "conectores.html": None, "skills.html": None}
 
     for name in PAGES:
         links = top_links(page(name))
