@@ -1475,6 +1475,7 @@ def _nav_type(args: str) -> str:
 
 
 AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
+    "skill_usar": lambda args: Reply(skill_runtime.use(args)),
     "nav_pestanas": _nav(_nav_tabs),
     "nav_leer": _nav(lambda args: navegador.read(args.strip())),
     "nav_abrir": _nav(_nav_open),

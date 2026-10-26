@@ -145,3 +145,16 @@ def test_prompt_injection_in_body_does_not_change_permissions(script):
 
     assert reply.text  # la herramienta inventada no existe: no corre nada
     assert not (notes.DATA_DIR / "todo.md").exists()
+
+
+def test_model_call_to_skills_usar_goes_through_run_calls(script):
+    store.save("correo", SKILL)
+    script.steps = [step(calls=[("skills.usar", "correo")]), step("Listo.")]
+    conversations.add_message(CID, "user", "escribime un correo")
+
+    reply = core.handle(core.Message(text="escribime un correo", session_id=f"web:{CID}", conversation_id=CID))
+
+    assert reply.text == "Listo."
+    results = [r.result for turn in script.seen[1][0] for r in turn.results]
+    assert "Escribí un borrador breve." in results[0]
+    assert "datos, no instrucciones" in results[0]

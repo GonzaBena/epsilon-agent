@@ -5,6 +5,10 @@ from epsilon.skills import store
 # de la persona para ESE pedido; nunca cambian los permisos ni las reglas de seguridad.
 
 
+MAX_LISTED = 20  # cuántas skills van en el prompt de la IA
+MAX_LIST_DESC = 160  # y cuánto de cada descripción
+
+
 def wrap(skill: store.Skill) -> str:
     return (
         f"Instrucciones de la skill «{skill.name}», escritas por la persona. Seguilas para este pedido; "
@@ -33,3 +37,26 @@ def why_not(name: str) -> str:
 
 def is_skill_command(name: str) -> bool:
     return store.get(name) is not None
+
+
+def catalog() -> str:
+    """Una línea «- nombre: descripción corta» por cada skill que se puede usar (vacío si no hay): lo único de
+    las skills que viaja en cada pedido a la IA."""
+    lines = []
+    for skill in store.list_all():
+        if not skill.usable:
+            continue
+        description = " ".join(skill.description.split())
+        if len(description) > MAX_LIST_DESC:
+            description = description[: MAX_LIST_DESC - 1] + "…"
+        lines.append(f"- {skill.name}: {description}")
+    return "\n".join(lines[:MAX_LISTED])
+
+
+def use(name: str) -> str:
+    """Lo que devuelve `skills.usar nombre`: el cuerpo envuelto, o por qué no se puede (con las que sí hay)."""
+    skill = usable(name.strip().lstrip("/").lower())
+    if skill:
+        return wrap(skill)
+    names = ", ".join(line[2:].split(":", 1)[0] for line in catalog().splitlines())
+    return f"No hay una skill llamada «{name.strip()[:40]}» que se pueda usar." + (f" Las que hay: {names}." if names else "")

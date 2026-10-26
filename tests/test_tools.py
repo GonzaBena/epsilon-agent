@@ -83,6 +83,7 @@ def test_ai_tools_are_the_ones_of_the_spec():
         ("buscar", "read"),
         ("archivos", "read"),
         ("resumir", "write"),
+        ("skill_usar", "read"),
         ("recordar", "write"),
         ("memoria", "read"),
         ("olvidar", "delete"),
