@@ -2,7 +2,7 @@ import contextvars
 import os
 from contextlib import contextmanager
 
-from epsilon.ai import providers, usage
+from epsilon.ai import images, providers, usage
 from epsilon.ai.messages import Call, File, Message, ModelError, Result, Step, ToolSpec  # noqa: F401 (los usan los llamadores)
 from epsilon.ai.providers.base import Capabilities
 
@@ -88,6 +88,12 @@ def _record(model_id: str, input_tokens: int, output_tokens: int) -> None:
     usage.record(usage.stored_name(model_id), input_tokens, output_tokens)
 
 
+def _shrunk(parts: list) -> list:
+    """Las partes con cada imagen achicada al tope de la tarea en curso (ver ai/images.py)."""
+    limit = images.max_side(current_task())
+    return [images.shrink(p, limit) if isinstance(p, File) else p for p in parts]
+
+
 def generate(parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool = False) -> str:
     """Manda las partes (texto o File) + el prompt y devuelve el texto.
 
@@ -95,7 +101,7 @@ def generate(parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool =
     model_id = model_for()
     provider, model = parse_model(model_id)
     _ensure_can_read([p for p in parts if isinstance(p, File)], model_id)
-    result = providers.get(provider).generate(model, parts, prompt, max_tokens, json_mode)
+    result = providers.get(provider).generate(model, _shrunk(parts), prompt, max_tokens, json_mode)
     _record(model_id, result.input_tokens, result.output_tokens)
     return result.text
 
@@ -110,6 +116,9 @@ def chat_tools(
     model_id = model_for()
     provider, model = parse_model(model_id)
     _ensure_can_read([p for m in history for p in m.parts if isinstance(p, File)], model_id)
+    for message in history:  # en el lugar: el historial es del turno, así la próxima vuelta ya la manda achicada
+        if any(isinstance(p, File) for p in message.parts):
+            message.parts = _shrunk(message.parts)
     result = providers.get(provider).chat(model, history, system, tools, max_tokens, allow_calls)
     _record(model_id, result.input_tokens, result.output_tokens)
     return result.step

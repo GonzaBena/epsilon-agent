@@ -1,4 +1,7 @@
+import io
+
 import pytest
+from PIL import Image
 
 from epsilon.ai import llm
 from epsilon.ai.messages import File, Message, ModelError, Step, ToolSpec
@@ -239,3 +242,37 @@ def test_files_the_model_can_read_go_through(fake):
     real_generate([File(b"x", "application/pdf")], "hola")
 
     assert [c[0] for c in fake.calls] == ["generate"]
+
+
+# --- imágenes: se achican en la fachada, para cualquier proveedor ---------------------------------
+
+
+def _photo(width, height) -> File:
+    out = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(out, "JPEG")
+    return File(out.getvalue(), "image/jpeg")
+
+
+def _side(file: File) -> int:
+    return max(Image.open(io.BytesIO(file.data)).size)
+
+
+def test_generate_shrinks_images_to_the_limit_of_the_task(fake):
+    with llm.task("summary"):
+        real_generate([_photo(4000, 3000)], "resumí")
+    with llm.task("csv"):
+        real_generate([_photo(4000, 3000)], "a csv")
+
+    (summary_part,), (csv_part,) = fake.calls[0][2], fake.calls[1][2]
+    assert _side(summary_part) == 1024 and _side(csv_part) == 2048
+
+
+def test_chat_shrinks_the_image_once_in_the_history(fake):
+    history = [llm.parts_turn("user", [_photo(4000, 3000), "¿qué es esto?"])]
+
+    real_chat_tools(history, "sistema", SPECS)
+    shrunk = history[0].parts[0]
+    real_chat_tools(history, "sistema", SPECS)
+
+    assert _side(fake.calls[0][2][0].parts[0]) == 1024
+    assert history[0].parts[0] is shrunk  # la segunda vuelta no la vuelve a procesar
