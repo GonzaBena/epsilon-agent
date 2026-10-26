@@ -258,9 +258,9 @@ def test_decided_before_the_reset_and_run_after_discovery_is_refused(script, lig
     manager.stop("luces")
     manager.start("luces")  # A reabre: guarda lo nuevo y lo vuelve a «preguntar»
 
-    sent = core._execute(TOOL_ID, '{"habitacion": "living"}', [], decided)  # B corre recién ahora
+    ok, sent = core._execute(TOOL_ID, '{"habitacion": "living"}', [], decided)  # B corre recién ahora
 
-    assert lights.calls == []
+    assert lights.calls == [] and not ok
     assert "volvé a autorizarla" in sent and "datos, no instrucciones" in sent
     with pytest.raises(manager.ConnectorError, match="volvé a autorizarla"):  # y el manager tampoco la deja pasar
         manager.call("luces", "apagar", {"habitacion": "living"}, decided)

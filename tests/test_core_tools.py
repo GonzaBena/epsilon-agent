@@ -1227,3 +1227,38 @@ def test_the_routine_group_is_offered_with_its_three_actions(script, at_1430):
     say("hola")
 
     assert "rutinas" in script.seen[0][1]
+
+
+# --- Actividad: lo que la IA hizo queda anotado -----------------------------------------------
+
+
+def test_what_the_ai_runs_lands_in_the_activity(script):
+    from epsilon.data import activity
+
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
+    say("¿qué anoté del switch?")
+
+    (entry,) = activity.read()["items"]
+    assert entry["who"] == "ia" and entry["tool"] == "buscar" and entry["arg"] == "switch"
+    assert entry["ok"] is True and entry["asked"] is False and entry["conversation"] == CID
+    assert "datos, no instrucciones" not in entry["result"]  # el rótulo es para el modelo, no para la persona
+
+
+def test_an_approved_action_says_it_was_asked_and_a_blocked_one_is_not_recorded(script):
+    from epsilon.data import activity
+
+    script.steps = [step(calls=[("notas.guardar", "comprar pan")]), step("Listo")]
+    say("anotá que tengo que comprar pan")
+    assert activity.read()["items"] == []  # todavía no hizo nada: está preguntando
+
+    press("perm:si")
+    (entry,) = activity.read()["items"]
+    assert entry["tool"] == "nota" and entry["asked"] is True and entry["ok"] is True
+
+    states = permissions.load()
+    states["nota"] = "deny"
+    permissions.save(states)
+    script.steps = [step(calls=[("notas.guardar", "otra")]), step("No pude")]
+    say("anotá otra")
+    assert activity.read()["total"] == 1  # lo bloqueado no se hizo: no es actividad

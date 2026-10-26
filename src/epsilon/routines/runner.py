@@ -1,10 +1,11 @@
 from collections.abc import Callable
+import json
 from dataclasses import dataclass
 from datetime import datetime
 import threading
 import time
 
-from epsilon.data import notes
+from epsilon.data import activity, notes
 from epsilon.routines import notify, steps
 from epsilon.settings import config
 
@@ -104,11 +105,19 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
         outputs[number] = result.text
         results.append(result)
         log(rule_id, f"paso {number} {step['tool']} {'ok' if result.ok else 'falló'}", result.text)
+        raw = step["args"] if isinstance(step["args"], str) else json.dumps(step["args"], ensure_ascii=False)
+        activity.record("rutina", step["tool"], raw, result.text, result.ok, routine=_routine_label(rule))
         if on_step:
             on_step(number, result)
         if not result.ok:
             break
     return results
+
+
+def _routine_label(rule: dict) -> str:
+    """Cómo se nombra la rutina en la actividad: su nombre (o su número), y si fue una prueba desde el editor."""
+    name = rule.get("name") or f"#{rule.get('id', '')}"
+    return f"{name} (prueba)" if "id" not in rule or rule.get("id") == "prueba" else name
 
 
 def describe_failure(rule: dict, number: int, result: StepResult) -> str:

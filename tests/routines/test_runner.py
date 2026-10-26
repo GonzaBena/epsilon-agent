@@ -140,3 +140,24 @@ def test_every_step_is_logged(quiet):
     runner.run_job(rule(("volumen", "15"), ("avisar", "hola")))
 
     assert log().count("\n") == 2
+
+
+def test_every_step_lands_in_the_activity_with_the_routine_name(quiet):
+    from epsilon.data import activity
+
+    runner.run_chain(rule(("volumen", "20"), ("avisar", "listo"), name="Mañana"))
+
+    items = activity.read()["items"]
+    assert [(e["who"], e["tool"], e["routine"], e["ok"]) for e in items] == [
+        ("rutina", "avisar", "Mañana", True),
+        ("rutina", "volumen", "Mañana", True),
+    ]
+    assert items[1]["arg"] == "20" and "asked" not in items[1]
+
+
+def test_a_test_run_from_the_editor_is_marked_as_such(quiet):
+    from epsilon.data import activity
+
+    runner.run_chain({"name": "Nueva", "steps": [{"tool": "volumen", "args": "20"}]})
+
+    assert activity.read()["items"][0]["routine"] == "Nueva (prueba)"
