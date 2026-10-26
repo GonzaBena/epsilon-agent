@@ -628,6 +628,11 @@ def google(monkeypatch, value):
     chromium.scripts = []
 
     def cdp(ws_url, method, params=None):
+        if method == "Target.createTarget":  # por el control general de Chromium, no por /json/new
+            assert ws_url == chromium.version["webSocketDebuggerUrl"] and params["background"] is True
+            chromium.requested = params["url"]
+            chromium.tabs.append(page("NEWTAB123456", "", params["url"]))
+            return {"targetId": "NEWTAB123456"}
         if params and params.get("expression") == navegador.SEARCH_JS:
             chromium.scripts.append(params["expression"])
             return {"result": {"type": "object", "value": value}}
@@ -650,7 +655,8 @@ def test_search_lists_the_results_and_closes_its_tab(monkeypatch):
 
     text = navegador.search("aula   virtual utn")
 
-    assert "q=aula+virtual+utn" in unquote(chromium.requested)  # la búsqueda va en la dirección, no en un script
+    assert "q=aula+virtual+utn" in chromium.requested  # la búsqueda va en la dirección, no en un script
+    assert not any(path.startswith("/json/new") for _, path in chromium.calls)  # detrás: sin robarle el foco a la persona
     assert chromium.scripts == [navegador.SEARCH_JS]  # el único código que corre es el fijo
     assert text.splitlines() == [
         "Resultados de Google para «aula virtual utn»:",

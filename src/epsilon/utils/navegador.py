@@ -406,17 +406,32 @@ def resolve_target(text: str) -> str:
     return f"https://{host}/"
 
 
-def open_url(url: str) -> Tab:
-    """Abre la dirección en una pestaña nueva. Revisa la dirección antes y la dirección final después."""
+def _background_tab(url: str) -> str:
+    """Crea una pestaña SIN pasarla al frente (Target.createTarget con `background`, por el control general de
+    Chromium): no le roba el foco a lo que la persona está haciendo. Devuelve su id."""
+    version = _http("GET", "/json/version")
+    result = _cdp(str(version.get("webSocketDebuggerUrl", "")) if isinstance(version, dict) else "", "Target.createTarget", {"url": url, "background": True})
+    if not result.get("targetId"):
+        raise NavegadorError("Chromium no abrió la pestaña.")
+    return str(result["targetId"])
+
+
+def open_url(url: str, background: bool = False) -> Tab:
+    """Abre la dirección en una pestaña nueva (al frente, o con `background` detrás, sin quitarle el foco a nadie).
+    Revisa la dirección antes y la dirección final después."""
     ensure_running()
     url = url.strip()
     _check_destination(url)
-    item = _http("PUT", "/json/new?" + quote(url, safe=""))  # Chromium parte el pedido en «&» y decodifica: todo escapado
-    if not isinstance(item, dict) or not item.get("id"):
-        raise NavegadorError("Chromium no abrió la pestaña.")
-    tab_id = str(item["id"])
+    if background:
+        tab_id = _background_tab(url)
+        tab = Tab(tab_id, "", url, reglas.host_of(url))
+    else:
+        item = _http("PUT", "/json/new?" + quote(url, safe=""))  # Chromium parte el pedido en «&» y decodifica: todo escapado
+        if not isinstance(item, dict) or not item.get("id"):
+            raise NavegadorError("Chromium no abrió la pestaña.")
+        tab_id = str(item["id"])
+        tab = _tab(item)
     _opened.add(tab_id)
-    tab = _tab(item)
     for _ in range(LOAD_TRIES):  # esperar a que salga de about:blank, para ver adónde llegó de verdad
         current = next((_tab(i) for i in _raw_tabs() if i.get("id") == tab_id), None)
         if current is None:
@@ -506,15 +521,15 @@ def _search_results(data: object) -> list[tuple[str, str, str]]:
 
 
 def search(query: str) -> str:
-    """Busca en Google con el Chromium de la persona: abre los resultados en una pestaña nueva, los lee con el script
-    fijo y la cierra. No abre ninguno: devuelve título, sitio y dirección para que se elija uno con `abrir`. Si Google
+    """Busca en Google con el Chromium de la persona: abre los resultados en una pestaña nueva DETRÁS (no le roba el
+    foco a la persona), los lee con el script fijo y la cierra. No abre ninguno: devuelve título, sitio y dirección para que se elija uno con `abrir`. Si Google
     pide el captcha, la pestaña queda abierta para que la persona lo resuelva."""
     query = " ".join(query.split())
     if not query:
         raise NavegadorError("Falta qué buscar.")
     if len(query) > MAX_QUERY:
         raise NavegadorError(f"La búsqueda es muy larga: como mucho {MAX_QUERY} caracteres.")
-    tab = open_url(SEARCH_URL + quote_plus(query))
+    tab = open_url(SEARCH_URL + quote_plus(query), background=True)
     try:
         data = _cdp(tab.ws, "Runtime.evaluate", {"expression": SEARCH_JS, "returnByValue": True}).get("result", {}).get("value")
     except NavegadorError:

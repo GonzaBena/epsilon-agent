@@ -79,7 +79,10 @@ modelo.
 Sin procesos nuevos ni claves: `buscar` (`nav_buscar`, `navegador.search`) usa el mismo Chromium. Se descartaron
 SearXNG (un servicio más corriendo siempre), la API de Brave (cuenta y clave) y el grounding de Gemini (atado a un
 proveedor). Abre `https://www.google.com/search?hl=es&q=…` (la búsqueda va en la dirección, nunca en un script), corre
-el tercer script fijo, `SEARCH_JS` (enlaces con `h3` y si Google mostró el captcha), y cierra la pestaña. En Python se
+el tercer script fijo, `SEARCH_JS` (enlaces con `h3` y si Google mostró el captcha), y cierra la pestaña. La pestaña se
+crea DETRÁS (`Target.createTarget` con `background`): `/json/new` la pasa al frente y, con `focus_on_activate` de
+Omarchy, Hyprland le da el foco a Chromium. Se probó un Chromium `--headless` aparte y se descartó: Google le da
+enlaces opacos (`/goto?url=…`) y el proceso no terminaba. En Python se
 filtra (http(s), sin Google mismo, la red local ni los bloqueados, sin repetir; `/url?q=` se desenvuelve), se deja cada
 resultado en una línea, se le saca la «miga de pan» y se recorta: hasta 8. No abre ninguno: el modelo elige y usa
 `abrir` con la dirección (que pasa por la guardia de siempre).
