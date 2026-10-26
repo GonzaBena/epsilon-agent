@@ -26,11 +26,15 @@ def never_touch_the_real_env_file(monkeypatch, tmp_path):
 
 @pytest.fixture(autouse=True)
 def activity_never_lands_in_the_real_data_dir(monkeypatch, tmp_path):
-    """Un test que ejecuta una herramienta sin apuntar DATA_DIR a su carpeta no anota en tu actividad real."""
+    """Un test que ejecuta una herramienta sin apuntar DATA_DIR a su carpeta no anota en tu actividad ni en tus cambios reales."""
     from epsilon.data import activity, notes
 
-    real, original = notes.DATA_DIR, activity._path
-    monkeypatch.setattr(activity, "_path", lambda: tmp_path / "activity-stray.jsonl" if notes.DATA_DIR == real else original())
+    from epsilon.data import changes
+
+    real = notes.DATA_DIR
+    for module, stray in ((activity, "activity-stray.jsonl"), (changes, "changes-stray.jsonl")):
+        original = module._path
+        monkeypatch.setattr(module, "_path", lambda original=original, stray=stray: tmp_path / stray if notes.DATA_DIR == real else original())
 
 
 @pytest.fixture(autouse=True)

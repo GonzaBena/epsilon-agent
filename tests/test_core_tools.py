@@ -1262,3 +1262,28 @@ def test_an_approved_action_says_it_was_asked_and_a_blocked_one_is_not_recorded(
     script.steps = [step(calls=[("notas.guardar", "otra")]), step("No pude")]
     say("anotá otra")
     assert activity.read()["total"] == 1  # lo bloqueado no se hizo: no es actividad
+
+
+def test_an_ai_edit_leaves_its_change_id_in_the_activity_and_can_be_undone(script):
+    from epsilon.data import activity, changes
+
+    allow("nota_editar")
+    notes.save_note("todo", "- [ ] comprar pan")
+    script.steps = [step(calls=[("notas.editar", "todo\n1\n- [x] comprar pan")]), step("Listo")]
+    say("marcá el pan")
+
+    (entry,) = activity.read()["items"]
+    assert entry["tool"] == "nota_editar" and changes.get(entry["change"])["after"] == "- [x] comprar pan"
+    changes.undo(entry["change"])
+    assert notes.read_note("todo") == "- [ ] comprar pan\n"
+
+
+def test_nothing_from_a_previous_action_sticks_to_the_next_one(script):
+    from epsilon.data import activity
+
+    activity.attach(change="20260101-000000-abcd")  # algo quedó colgado (no debería pasar)
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [step(calls=[("notas.buscar", "switch")]), step("Lo encontré")]
+    say("¿qué anoté del switch?")
+
+    assert "change" not in activity.read()["items"][0]

@@ -100,6 +100,7 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
         if _clock() - started > RUN_BUDGET:
             result = StepResult(False, "Se pasó del tiempo máximo de la rutina.")
         else:
+            activity.begin()
             result = _step(rule_id, step, outputs, trigger)
         result = StepResult(result.ok, config.redact(result.text)[:steps.MAX_OUTPUT])
         outputs[number] = result.text

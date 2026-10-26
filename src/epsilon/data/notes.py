@@ -50,10 +50,11 @@ def save_note(name: str, texto: str) -> str:
     return f"Guardado en {path.name}"
 
 
-def edit_line(name: str, n: int, new: str) -> str:
+def edit_line(name: str, n: int, new: str) -> tuple[str, str | None, str | None]:
     """Cambia la línea `n` (desde 1) de una nota que ya existe por `new`; con `new` vacío la borra. Es la única forma
     de pisar una nota: nunca la reescribe entera ni la crea. Deja la versión anterior en «<nota>.md.bak» (una sola,
-    la de antes de la última edición) y escribe por un archivo temporal. Devuelve la línea que tenía antes."""
+    la de antes de la última edición) y escribe por un archivo temporal. Devuelve (la línea que tenía antes, la de
+    arriba, la de abajo; None si no hay): con las vecinas, data/changes.py sabe dónde reinsertar una línea borrada."""
     path = safe_path(f"{name}.md")
     if not path.exists():
         raise ValueError(f"No existe la nota '{name}'.")
@@ -63,12 +64,37 @@ def edit_line(name: str, n: int, new: str) -> str:
         raise ValueError(f"La nota '{name}' tiene {len(lines)} líneas: no existe la {n}.")
     new = new.strip("\n")
     before = lines[n - 1].rstrip("\n")
+    prev = lines[n - 2].rstrip("\n") if n > 1 else None
+    nxt = lines[n].rstrip("\n") if n < len(lines) else None
     lines[n - 1 : n] = [new + "\n"] if new else []
-    path.with_name(path.name + ".bak").write_text(text, encoding="utf-8")
+    _replace(path, text, lines)
+    return before, prev, nxt
+
+
+def restore_line(name: str, index: int, text: str, insert: bool) -> None:
+    """Deshacer una edición (data/changes.py, que antes verificó que es seguro): pone `text` en la línea `index`
+    (desde 0) o, con `insert`, la vuelve a insertar ahí. La otra única forma de pisar una nota, también por archivo
+    temporal y dejando el `.bak`. Una línea vacía se respeta (no es lo mismo que borrarla)."""
+    path = safe_path(f"{name}.md")
+    if not path.exists():
+        raise ValueError(f"No existe la nota '{name}'.")
+    current = path.read_text(encoding="utf-8")
+    lines = current.splitlines(keepends=True)
+    if not 0 <= index <= len(lines) - (0 if insert else 1):
+        raise ValueError(f"La nota '{name}' ya no tiene esa línea.")
+    if insert:
+        lines.insert(index, text + "\n")
+    else:
+        lines[index] = text + "\n"
+    _replace(path, current, lines)
+
+
+def _replace(path: Path, current: str, lines: list[str]) -> None:
+    """Escribe la nota nueva por un archivo temporal (nunca queda a medias) y deja la anterior en «.bak»."""
+    path.with_name(path.name + ".bak").write_text(current, encoding="utf-8")
     temp = path.with_name(path.name + ".tmp")
     temp.write_text("".join(lines), encoding="utf-8")
-    os.replace(temp, path)  # la nota nunca queda a medias
-    return before
+    os.replace(temp, path)
 
 
 def clean_note_name(name: str) -> str:

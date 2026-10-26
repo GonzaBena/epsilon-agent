@@ -14,7 +14,7 @@ from epsilon import menu, tools
 from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, permissions, summarize, usage
 from epsilon.ai.messages import ModelError
 from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
-from epsilon.data import activity, conversations, library, notes, tabular, todo
+from epsilon.data import activity, changes, conversations, library, notes, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config
 from epsilon.skills import runtime as skill_runtime, store as skill_store
@@ -227,9 +227,11 @@ def _edit_note(args: str) -> Reply:
         )
     name, n, text = parsed
     try:
-        before = notes.edit_line(name, n, text)
+        before, prev, nxt = notes.edit_line(name, n, text)
     except ValueError as e:
         return Reply(str(e), failed=True)
+    # El cambio, para poder deshacerlo desde Actividad (la fila de esta acción lleva su id).
+    activity.attach(change=changes.record(name, n, before, text, prev, nxt))
     after = f"«{text}»" if text else "(borrada)"
     return Reply(f"Editada la línea {n} de {name}.md. Decía «{before}» y ahora dice {after}.", artifacts=[_artifact("note", notes.safe_path(f"{name}.md"))])
 
@@ -1149,6 +1151,7 @@ def _run(state: PendingTool, tool: tools.Tool, name: str, args: str, asked: bool
     if tool.uses_ai and (reason := _limit_reason(state.turn.conversation_id)):
         return Reply(reason, artifacts=state.artifacts)
     _tool_event(tool_id, args, "running")
+    activity.begin()
     ok, result = _execute(tool_id, args, state.artifacts, state.connector_hash)
     state.results.append((name, result))
     # Actividad: lo que hizo la IA, con su resultado legible (sin el rótulo de «datos» que lleva para el modelo).

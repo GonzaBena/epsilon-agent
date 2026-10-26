@@ -102,7 +102,7 @@ def make_note(tmp_path, monkeypatch, text="- [ ] pagar internet\n- [ ] comprar c
 def test_edit_line_changes_only_that_line_and_keeps_the_previous_version(tmp_path, monkeypatch):
     path = make_note(tmp_path, monkeypatch)
 
-    assert notes.edit_line("todo", 1, "- [x] pagar internet") == "- [ ] pagar internet"  # devuelve lo que decía
+    assert notes.edit_line("todo", 1, "- [x] pagar internet")[0] == "- [ ] pagar internet"  # devuelve lo que decía
 
     assert path.read_text(encoding="utf-8") == "- [x] pagar internet\n- [ ] comprar café\n"
     assert (tmp_path / "todo.md.bak").read_text(encoding="utf-8") == "- [ ] pagar internet\n- [ ] comprar café\n"

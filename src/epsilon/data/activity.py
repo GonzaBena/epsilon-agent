@@ -1,3 +1,4 @@
+import contextvars
 import json
 from datetime import datetime
 
@@ -11,6 +12,23 @@ from epsilon.settings import config
 ACTIVITY_FILE = "activity.jsonl"
 MAX_TEXT = 160  # caracteres del argumento y del resultado
 WHO = ("ia", "rutina")
+
+
+# Lo que la herramienta en curso quiere sumar a su línea (hoy: «change», el id del cambio de una nota, para poder
+# deshacerlo). Variable de contexto: vale para la tarea en curso; begin() la limpia antes de cada herramienta y
+# record() la usa y la limpia.
+_extra: contextvars.ContextVar[dict | None] = contextvars.ContextVar("activity_extra", default=None)
+EXTRA_KEYS = ("change",)
+
+
+def begin() -> None:
+    """Antes de ejecutar una herramienta: nada de una acción anterior se pega a esta."""
+    _extra.set(None)
+
+
+def attach(**fields: str) -> None:
+    """Desde una herramienta: datos para la línea de esta acción (solo las claves de EXTRA_KEYS)."""
+    _extra.set({**(_extra.get() or {}), **{k: v for k, v in fields.items() if k in EXTRA_KEYS}})
 
 
 def _path():
@@ -51,6 +69,8 @@ def record(
         line["conversation"] = conversation
     if routine:
         line["routine"] = _short(routine)
+    line.update(_extra.get() or {})
+    _extra.set(None)
     try:
         with _path().open("a", encoding="utf-8") as out:
             out.write(json.dumps(line, ensure_ascii=False) + "\n")
