@@ -154,6 +154,13 @@ TOOLS = (
         uses_ai=True,
     ),
     Tool(
+        "/skills",
+        name="skills",
+        help="ver tus skills (instrucciones propias) y cómo usarlas con /nombre",
+        menu="Tus skills: instrucciones propias que se usan con /nombre",
+        insert="/skills",
+    ),
+    Tool(
         "/ticket",
         name="ticket",
         help="guardar la próxima imagen o PDF en tickets/ (mandala como archivo)",

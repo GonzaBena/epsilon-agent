@@ -93,6 +93,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/archivos [texto]`    | Lista lo guardado (lo más nuevo primero).                                 |
 | `/resumir nombre`      | Resume una nota o archivo guardado. _Usa IA._                             |
 | `/ia pregunta`         | Una pregunta suelta a la IA, con tu memoria y sus herramientas. _Usa IA._ |
+| `/skills`              | Tus skills: instrucciones propias que se usan con `/nombre pedido`.       |
 | `/ticket`              | Guarda la próxima imagen o PDF en `tickets/`.                             |
 | `/cancelar`            | Cancela el `/ticket` que quedó en espera.                                 |
 | `/contexto`            | Lista lo que guardaste desde que arrancó el bot.                          |
