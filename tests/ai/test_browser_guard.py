@@ -231,3 +231,29 @@ def test_with_the_guard_off_blocked_links_and_the_caps_still_hold(turn, page, mo
     page.href = ""
     turn.browser_actions = guard.MAX_BROWSER_ACTIONS
     assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"
+
+
+# --- buscar en Google ---
+
+
+def test_search_question_shows_what_goes_to_google(turn):
+    review = guard.review(tool("navegador.buscar"), "  horarios   utn frba ", turn)
+
+    assert review.verdict == "run" and review.shown == "Buscar en Google: «horarios utn frba»"  # el permiso (ask) decide
+
+
+def test_search_cap_blocks_the_fourth_search_even_with_the_guard_off(turn, monkeypatch):
+    monkeypatch.setenv("BROWSER_GUARD", "no")
+    for _ in range(guard.MAX_SEARCHES):
+        guard.after_run(tool("navegador.buscar"), "algo", turn)
+
+    review = guard.review(tool("navegador.buscar"), "algo más", turn)
+
+    assert review.verdict == "block" and "preguntale a la persona" in review.message
+    assert turn.browser_actions == guard.MAX_SEARCHES  # también cuentan como acciones del navegador
+
+
+def test_search_results_taint_the_turn(turn):
+    guard.after_run(tool("navegador.buscar"), "algo", turn)
+
+    assert turn.tainted and turn.browser_tabs == 0  # la pestaña de resultados se cierra: no cuenta como nueva

@@ -1319,7 +1319,8 @@ def routine_catalog() -> list[dict]:
     return found
 
 
-NO_TEMPLATE_TOOLS = {"nav_abrir", "nav_clic", "nav_escribir"}  # lo que lee una página no decide a dónde se va ni qué se toca
+# Lo que lee una página no decide a dónde se va ni qué se toca, y lo que lee una nota no sale hacia Google.
+NO_TEMPLATE_TOOLS = {"nav_abrir", "nav_clic", "nav_escribir", "nav_buscar"}
 
 
 def _is_destructive(tool: tools.Tool) -> bool:
@@ -1532,6 +1533,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nav_pestanas": _nav(_nav_tabs),
     "nav_leer": _nav(lambda args: navegador.read(args.strip())),
     "nav_abrir": _nav(_nav_open),
+    "nav_buscar": _nav(lambda args: navegador.search(args)),
     "nav_clic": _nav(_nav_click),
     "nav_escribir": _nav(_nav_type),
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),

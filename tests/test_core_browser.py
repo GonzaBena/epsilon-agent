@@ -336,3 +336,20 @@ def test_an_unknown_name_tells_the_model_to_ask_for_the_address(script, monkeypa
     assert opened == []
     assert "No encontré «zzz»" in results(script.seen[1][0])[0]
     assert "preguntale a la persona" in results(script.seen[1][0])[0]  # que no se ponga a buscar en Google
+
+
+# --- buscar en Google: pregunta por defecto y muestra qué se busca ---
+
+
+def test_a_search_asks_first_and_shows_the_query(script, monkeypatch):
+    searched = []
+    monkeypatch.setattr(navegador, "search", lambda query: searched.append(query) or "Resultados de Google para «utn»:\n1. UTN — utn.edu.ar")
+    script.steps = [step(calls=[("navegador.buscar", "utn")]), step("Listo")]
+
+    reply = say("buscá la utn")
+
+    assert "Buscar en Google: «utn»" in reply.text and searched == []
+    done = press("perm:si")
+
+    assert searched == ["utn"] and done.text == "Listo"
+    assert "1. UTN — utn.edu.ar" in results(script.seen[1][0])[0]

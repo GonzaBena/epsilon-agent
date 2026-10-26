@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import json
+import re
 import shutil
 import socket
 import sqlite3
@@ -9,7 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, quote_plus, urlsplit
 
 import httpx
 from websockets.sync.client import connect
@@ -109,6 +110,33 @@ MUSIC_JS = """(() => {
   const title = bar.querySelector('.title');
   return {repeat: bar.getAttribute('repeat-mode'), shuffle: bar.hasAttribute('shuffle-on'), title: title ? title.textContent : '',
           repeatAt: center(bar.querySelector('.repeat')), shuffleAt: center(bar.querySelector('.shuffle'))};
+})()"""
+# El TERCER (y último) código fijo: lee la página de resultados de Google (los enlaces con título `h3`, que es lo que
+# viene siendo estable) y si Google pidió el captcha. No toca nada y no recibe nada del modelo: la búsqueda va en la
+# dirección. El texto de cada resultado es dato y se limpia y recorta en Python (ver search).
+SEARCH_URL = "https://www.google.com/search?hl=es&q="
+GOOGLE_HOST = re.compile(r"(?:www\.)?google\.[a-z.]+")  # la portada y los resultados de Google (no drive.google.com)
+MAX_QUERY = 200
+MAX_RESULTS = 8
+MAX_SNIPPET = 200
+CRUMB = re.compile(r"^.{0,80}?https?://\S+(?: › \S+)*\s*")  # el sitio y la «miga de pan» con que Google empieza cada resultado
+SEARCH_JS = """(() => {
+  if (location.pathname.startsWith('/sorry') || document.querySelector('#captcha-form, iframe[src*="recaptcha"]')) return {blocked: true, results: []};
+  const clean = (s, n) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, n);
+  const out = [];
+  for (const h3 of document.querySelectorAll('a h3')) {
+    const a = h3.closest('a');
+    const title = clean(h3.innerText, 150);
+    if (!a || !title) continue;
+    let snippet = '';
+    for (let p = a.parentElement, i = 0; p && i < 8; p = p.parentElement, i++) {
+      const t = clean(p.innerText, 600);
+      if (t.length > title.length + 60) { snippet = t; break; }
+    }
+    out.push({title, href: a.href, snippet});
+    if (out.length >= 20) break;
+  }
+  return {blocked: false, results: out};
 })()"""
 MUSIC_TRIES = 3  # clics máximos para llegar al modo de repetir pedido (son tres modos)
 MUSIC_POLLS = 6  # cuántas veces se mira si el clic cambió el estado (de a 0,3 s)
@@ -371,9 +399,9 @@ def resolve_target(text: str) -> str:
     host = reglas.pick_site(text, _history(), blocked)
     if not host:
         raise NavegadorError(
-            f"No encontré «{text}» en los atajos, los marcadores ni el historial de Chromium. No lo busques en Google "
-            "ni inventes la dirección: preguntale a la persona cuál es (puede guardarla con /sitio nombre = dirección) "
-            "o pasame la dirección completa."
+            f"No encontré «{text}» en los atajos, los marcadores ni el historial de Chromium. No inventes la dirección: "
+            "si es un sitio de la persona (su facu, su banco), preguntale a la persona cuál es (puede guardarla con "
+            "/sitio nombre = dirección) o pasame la dirección completa; si es algo público, usá buscar una vez."
         )
     return f"https://{host}/"
 
@@ -427,6 +455,81 @@ def _check_destination(url: str) -> None:
     problem = reglas.url_problem(url, _resolve(host) if host else [])
     if problem:
         raise NavegadorError(problem)
+
+
+# --- Buscar en Google --------------------------------------------------------------------------------
+
+
+def _close(tab: Tab) -> None:
+    """Cierra una pestaña que abrió Epsilon; si no se puede, queda abierta (no es un error para nadie)."""
+    try:
+        _http("GET", f"/json/close/{tab.id}")
+    except NavegadorError:
+        pass
+    _opened.discard(tab.id)
+
+
+def _result_url(href: str) -> str:
+    """La dirección real de un resultado: un enlace de Google «/url?q=…» se desenvuelve; uno a Google mismo
+    (más resultados, imágenes, la portada) queda vacío."""
+    try:
+        parts = urlsplit(href)
+    except ValueError:
+        return ""
+    if not GOOGLE_HOST.fullmatch(reglas.host_of(href)):
+        return href
+    if parts.path == "/url":
+        inner = (parse_qs(parts.query).get("q") or parse_qs(parts.query).get("url") or [""])[0]
+        return inner if not GOOGLE_HOST.fullmatch(reglas.host_of(inner)) else ""
+    return ""
+
+
+def _search_results(data: object) -> list[tuple[str, str, str]]:
+    """(título, dirección, texto) de los resultados que se podrían abrir: http(s), sin esta compu ni la red local, sin
+    los sitios bloqueados ni Google mismo, sin repetir. Todo en una sola línea y recortado: es dato de una página."""
+    items = data.get("results") if isinstance(data, dict) else None
+    blocked = config.site_list("BROWSER_BLOCKED_SITES")
+    found: list[tuple[str, str, str]] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        url = _result_url(str(item.get("href", ""))[:500])
+        if not url or reglas.local_problem(url) or reglas.matches(reglas.host_of(url), blocked) or any(url == f[1] for f in found):
+            continue
+        title = " ".join(str(item.get("title", "")).split())[:150]
+        snippet = " ".join(str(item.get("snippet", "")).split()).replace(title, "", 1)
+        snippet = CRUMB.sub("", snippet).strip(" ·-—")[:MAX_SNIPPET]  # sin «UTN.BA https://frba.utn.edu.ar › posgrado ›», que repite la dirección
+        found.append((title, url, snippet))
+        if len(found) >= MAX_RESULTS:
+            break
+    return found
+
+
+def search(query: str) -> str:
+    """Busca en Google con el Chromium de la persona: abre los resultados en una pestaña nueva, los lee con el script
+    fijo y la cierra. No abre ninguno: devuelve título, sitio y dirección para que se elija uno con `abrir`. Si Google
+    pide el captcha, la pestaña queda abierta para que la persona lo resuelva."""
+    query = " ".join(query.split())
+    if not query:
+        raise NavegadorError("Falta qué buscar.")
+    if len(query) > MAX_QUERY:
+        raise NavegadorError(f"La búsqueda es muy larga: como mucho {MAX_QUERY} caracteres.")
+    tab = open_url(SEARCH_URL + quote_plus(query))
+    try:
+        data = _cdp(tab.ws, "Runtime.evaluate", {"expression": SEARCH_JS, "returnByValue": True}).get("result", {}).get("value")
+    except NavegadorError:
+        _close(tab)
+        raise
+    if isinstance(data, dict) and data.get("blocked") is True:
+        raise NavegadorError(f"Google pidió comprobar que es una persona: que la persona lo resuelva en la pestaña {tab.short} y después buscá de nuevo.")
+    _close(tab)
+    results = _search_results(data)
+    if not results:
+        return f"Google no devolvió resultados que se puedan abrir para «{query}»."
+    lines = [f"Resultados de Google para «{query}»:"]
+    for n, (title, url, snippet) in enumerate(results, 1):
+        lines += [f"{n}. {title} — {reglas.host_of(url)}", f"   {url}"] + ([f"   {snippet}"] if snippet else [])
+    return "\n".join(lines)
 
 
 # --- Leer, tocar y escribir ----------------------------------------------------------------------

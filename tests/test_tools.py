@@ -104,6 +104,7 @@ def test_ai_tools_are_the_ones_of_the_spec():
         ("nav_pestanas", "read"),
         ("nav_leer", "read"),
         ("nav_abrir", "write"),
+        ("nav_buscar", "read"),
         ("nav_clic", "write"),
         ("nav_escribir", "write"),
     ]
@@ -117,7 +118,7 @@ def test_ai_ids_are_unique_and_kinds_valid():
 
 def test_only_a_few_tools_override_their_default():
     overrides = {tools.ai_id(t): t.ai_default for t in tools.ai_tools() if t.ai_default}
-    assert overrides == {"resumir": "deny", "sistema": "ask", "nav_abrir": "allow", "nav_clic": "allow", "nav_escribir": "allow", "volumen": "allow", "musica": "allow", "ventanas": "ask", "rutina_borrar": "ask"}
+    assert overrides == {"resumir": "deny", "sistema": "ask", "nav_abrir": "allow", "nav_buscar": "ask", "nav_clic": "allow", "nav_escribir": "allow", "volumen": "allow", "musica": "allow", "ventanas": "ask", "rutina_borrar": "ask"}
 
 
 def test_ai_read_tools_never_write_or_use_ai():
@@ -201,15 +202,16 @@ def test_notas_tells_the_model_that_tasks_are_the_todo_note_and_how_to_use_it():
 
 # --- el grupo «navegador» ---------------------------------------------------------------------------
 
-NAV_IDS = ["nav_pestanas", "nav_leer", "nav_abrir", "nav_clic", "nav_escribir"]
+NAV_IDS = ["nav_pestanas", "nav_leer", "nav_abrir", "nav_buscar", "nav_clic", "nav_escribir"]
 
 
-def test_the_navegador_group_has_its_five_actions():
+def test_the_navegador_group_has_its_six_actions():
     ids = {tools.ai_id(t): t for t in tools.ai_tools() if t.ai_group == "navegador"}
 
     assert sorted(ids) == sorted(NAV_IDS)
-    assert {t.ai_action for t in ids.values()} == {"pestanas", "leer", "abrir", "clic", "escribir"}
+    assert {t.ai_action for t in ids.values()} == {"pestanas", "leer", "abrir", "buscar", "clic", "escribir"}
     assert ids["nav_leer"].ai == "read" and ids["nav_pestanas"].ai == "read"
+    assert ids["nav_buscar"].ai == "read" and ids["nav_buscar"].ai_default == "ask"  # lo que se busca sale hacia Google
     assert all(ids[i].ai == "write" and ids[i].ai_default == "allow" for i in ("nav_abrir", "nav_clic", "nav_escribir"))
 
 

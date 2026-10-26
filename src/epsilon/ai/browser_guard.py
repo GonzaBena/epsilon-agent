@@ -13,6 +13,7 @@ from epsilon.utils import navegador, navegador_reglas as reglas
 
 MAX_BROWSER_ACTIONS = 40  # acciones del navegador por mensaje
 MAX_NEW_TABS = 5  # pestañas nuevas por mensaje
+MAX_SEARCHES = 3  # búsquedas en Google por mensaje: elegir entre los resultados, no buscar veinte veces
 ACTING = ("nav_abrir", "nav_clic", "nav_escribir")
 CONTEXT_SEPARATOR = " — "  # navegador.py le suma al rótulo de un botón repetido el texto de su tarjeta, tras este separador
 LINK_BLOCKED = "Ese enlace lleva a un sitio bloqueado o a esta red: no lo toco."
@@ -82,6 +83,10 @@ def review(tool: tools.Tool, args: str, turn: chat.Turn) -> Review:
         return Review("block", "Llegué al tope de acciones del navegador para este mensaje.")
     if tool_id == "nav_abrir" and turn.browser_tabs >= MAX_NEW_TABS:
         return Review("block", "Llegué al tope de pestañas nuevas para este mensaje.")
+    if tool_id == "nav_buscar":  # la pregunta muestra qué sale hacia Google, armado por el código
+        if turn.browser_searches >= MAX_SEARCHES:
+            return Review("block", f"Ya busqué {MAX_SEARCHES} veces en este mensaje: elegí entre esos resultados o preguntale a la persona.")
+        return Review(shown=f"Buscar en Google: «{' '.join(args.split())[:200]}»")
     acting = Review()
     if not config.enabled("BROWSER_GUARD"):
         # Guardia apagada (BROWSER_GUARD=no): no pregunta por sitios ni rótulos. Siguen los topes de arriba y los bloqueos duros
@@ -110,6 +115,9 @@ def after_run(tool: tools.Tool, args: str, turn: chat.Turn) -> None:
     if tool_id == "nav_abrir":
         turn.browser_tabs += 1
         turn.tainted = turn.tainted or not _trusted(reglas.host_of(args.strip()))
+    elif tool_id == "nav_buscar":
+        turn.browser_searches += 1
+        turn.tainted = True  # los resultados los escribieron otros sitios
     elif tool_id == "nav_leer":
         hosts = navegador.last_read_hosts()
         turn.tainted = turn.tainted or not hosts or not all(_trusted(host) for host in hosts)
@@ -126,6 +134,8 @@ def _site_of(tool_id: str, args: str) -> str:
         return reglas.host_of(args.strip())
     if tool_id == "nav_pestanas":
         return ""
+    if tool_id == "nav_buscar":
+        return "google.com"
     try:
         return navegador.tab_host(args.split()[0] if args.split() else "")
     except navegador.NavegadorError:

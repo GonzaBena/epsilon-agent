@@ -148,7 +148,7 @@ def test_a_site_name_is_also_resolved_when_the_step_runs(monkeypatch):
     assert result.ok is True and seen == ["https://music.youtube.com/"]
 
 
-@pytest.mark.parametrize("tool", ["nav_abrir", "nav_clic", "nav_escribir", "nota_editar", "olvidar"])
+@pytest.mark.parametrize("tool", ["nav_abrir", "nav_clic", "nav_escribir", "nav_buscar", "nota_editar", "olvidar"])
 def test_steps_that_act_on_the_world_do_not_take_the_output_of_other_steps(tool):
     with pytest.raises(ValueError, match="salida"):
         core.stamp_steps([{"tool": "nav_leer", "args": ""}, {"tool": tool, "args": "{{paso 1}}"}])

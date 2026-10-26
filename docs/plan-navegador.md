@@ -72,4 +72,21 @@ Primero que ande, después la seguridad: un mensaje con navegador tiene 16 vuelt
 En las tres, sin acentos (`reglas.fold`), y una palabra de 5 letras o más vale también dentro del nombre del sitio
 («virtual» → aulasvirtuales). Si nada coincide, el resultado le dice al modelo que no busque en Google ni invente la
 dirección y que le pregunte a la persona (que puede guardarla con `/sitio`). Ni el historial ni los marcadores llegan al
-modelo. Pendiente: una búsqueda web de verdad (ver la charla del 2026-10-26: SearXNG local o la API de Brave).
+modelo.
+
+## Buscar en Google (2026-10-26)
+
+Sin procesos nuevos ni claves: `buscar` (`nav_buscar`, `navegador.search`) usa el mismo Chromium. Se descartaron
+SearXNG (un servicio más corriendo siempre), la API de Brave (cuenta y clave) y el grounding de Gemini (atado a un
+proveedor). Abre `https://www.google.com/search?hl=es&q=…` (la búsqueda va en la dirección, nunca en un script), corre
+el tercer script fijo, `SEARCH_JS` (enlaces con `h3` y si Google mostró el captcha), y cierra la pestaña. En Python se
+filtra (http(s), sin Google mismo, la red local ni los bloqueados, sin repetir; `/url?q=` se desenvuelve), se deja cada
+resultado en una línea, se le saca la «miga de pan» y se recorta: hasta 8. No abre ninguno: el modelo elige y usa
+`abrir` con la dirección (que pasa por la guardia de siempre).
+
+- Permiso `ask` por defecto: la pregunta muestra qué sale hacia Google («Buscar en Google: «…»»).
+- Los resultados contaminan el turno (los escribieron otros sitios).
+- Tope de 3 búsquedas por mensaje, también con `BROWSER_GUARD=no`: el caso que lo motivó fueron ~20 búsquedas seguidas.
+- En una rutina, `nav_buscar` no acepta `{{paso N}}`: lo que lee una nota no sale hacia Google.
+- Si Google pide el captcha, la pestaña queda abierta para que la persona lo resuelva; si cambia su página, el
+  arreglo es solo `SEARCH_JS`.

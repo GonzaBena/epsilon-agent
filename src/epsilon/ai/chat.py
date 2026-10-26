@@ -151,6 +151,7 @@ class Turn:
     tainted: bool = False  # leyó una página de un sitio de afuera: desde ahí toda acción pregunta (ai/browser_guard.py)
     browser_actions: int = 0  # acciones del navegador en este mensaje (tope en browser_guard)
     browser_tabs: int = 0  # pestañas nuevas abiertas en este mensaje (tope en browser_guard)
+    browser_searches: int = 0  # búsquedas en Google en este mensaje (tope en browser_guard)
     groups: set[str] = field(default_factory=set)  # grupos de herramientas que ya viajan enteros (ver `offer`)
     asked_groups: bool = False  # ya usó `herramientas`: sigue declarada, porque el historial la nombra
     tipped: set[str] = field(default_factory=set)  # herramientas cuyas pistas (Tool.ai_tips) ya recibió en este mensaje

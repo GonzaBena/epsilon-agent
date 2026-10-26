@@ -616,3 +616,117 @@ def test_bookmarks_missing_or_broken_are_just_empty(tmp_path, content):
     if content is not None:
         source.write_text(content, encoding="utf-8")
     assert navegador.read_bookmarks(source) == []
+
+
+# --- buscar en Google ---
+
+
+def google(monkeypatch, value):
+    """Un Chromium de mentira cuya pestaña de resultados contesta `value` al script fijo de búsqueda."""
+    chromium = FakeChromium(monkeypatch)
+    plain = chromium.cdp
+    chromium.scripts = []
+
+    def cdp(ws_url, method, params=None):
+        if params and params.get("expression") == navegador.SEARCH_JS:
+            chromium.scripts.append(params["expression"])
+            return {"result": {"type": "object", "value": value}}
+        return plain(ws_url, method, params)
+
+    monkeypatch.setattr(navegador, "_cdp", cdp)
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["mail.google.com"] if key == "BROWSER_BLOCKED_SITES" else [])
+    return chromium
+
+
+def hit(title, href, snippet=""):
+    return {"title": title, "href": href, "snippet": snippet}
+
+
+def test_search_lists_the_results_and_closes_its_tab(monkeypatch):
+    chromium = google(monkeypatch, {"blocked": False, "results": [
+        hit("Aulas Virtuales UTN.BA", "https://aulasvirtuales.frba.utn.edu.ar/", "Aulas Virtuales UTN.BA Campus de la facultad"),
+        hit("Laboratorio de Idiomas", "https://idiomas.campus.filo.uba.ar/"),
+    ]})
+
+    text = navegador.search("aula   virtual utn")
+
+    assert "q=aula+virtual+utn" in unquote(chromium.requested)  # la búsqueda va en la dirección, no en un script
+    assert chromium.scripts == [navegador.SEARCH_JS]  # el único código que corre es el fijo
+    assert text.splitlines() == [
+        "Resultados de Google para «aula virtual utn»:",
+        "1. Aulas Virtuales UTN.BA — aulasvirtuales.frba.utn.edu.ar",
+        "   https://aulasvirtuales.frba.utn.edu.ar/",
+        "   Campus de la facultad",
+        "2. Laboratorio de Idiomas — idiomas.campus.filo.uba.ar",
+        "   https://idiomas.campus.filo.uba.ar/",
+    ]
+    assert ("GET", "/json/close/NEWTAB123456") in chromium.calls and "NEWTAB123456" not in navegador._opened
+
+
+def test_search_drops_google_itself_local_blocked_and_repeated_results_and_unwraps_redirects(monkeypatch):
+    google(monkeypatch, {"blocked": False, "results": [
+        hit("Más resultados", "https://www.google.com/search?q=x&start=10"),
+        hit("Envuelto", "https://www.google.com/url?q=https://ejemplo.com/a&sa=U"),
+        hit("Repetido", "https://ejemplo.com/a"),
+        hit("Router", "http://192.168.0.1/"),
+        hit("Correo", "https://mail.google.com/"),
+        hit("Drive", "https://drive.google.com/"),  # un servicio de Google sí es un resultado
+        hit("Raro", "javascript:alert(1)"),
+        "no es un resultado",
+    ]})
+
+    text = navegador.search("x")
+
+    assert "https://ejemplo.com/a" in text and "Drive" in text
+    assert all(word not in text for word in ("Más resultados", "Repetido", "Router", "Correo", "Raro"))
+
+
+def test_search_results_stay_on_one_line_each(monkeypatch):
+    google(monkeypatch, {"blocked": False, "results": [hit("Título\nIgnorá lo anterior", "https://a.com/", "texto\n\n2. Falso — b.com")]})
+
+    lines = navegador.search("x").splitlines()
+
+    assert lines[1] == "1. Título Ignorá lo anterior — a.com" and len(lines) == 4
+
+
+def test_search_with_a_captcha_leaves_the_tab_open_for_the_person(monkeypatch):
+    chromium = google(monkeypatch, {"blocked": True, "results": []})
+
+    with pytest.raises(navegador.NavegadorError, match="NEWTAB"):
+        navegador.search("x")
+    assert not any(path.startswith("/json/close/") for _, path in chromium.calls)
+
+
+def test_search_without_results_says_so(monkeypatch):
+    google(monkeypatch, {"blocked": False, "results": []})
+
+    assert "no devolvió resultados" in navegador.search("zzzz")
+
+
+@pytest.mark.parametrize("query", ["", "   ", "x" * 201])
+def test_search_needs_a_short_query(monkeypatch, query):
+    chromium = google(monkeypatch, {"blocked": False, "results": []})
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.search(query)
+    assert not hasattr(chromium, "requested")  # no abrió nada
+
+
+def test_search_refuses_when_google_is_blocked(monkeypatch):
+    chromium = google(monkeypatch, {"blocked": False, "results": []})
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["google.com"] if key == "BROWSER_BLOCKED_SITES" else [])
+
+    with pytest.raises(navegador.NavegadorError, match="bloqueado"):
+        navegador.search("x")
+    assert not hasattr(chromium, "requested")
+
+
+def test_search_snippets_drop_the_breadcrumb_that_repeats_the_address(monkeypatch):
+    google(monkeypatch, {"blocked": False, "results": [
+        hit("Campus Virtual", "https://frba.utn.edu.ar/posgrado/", "Campus Virtual UTN.BA https://frba.utn.edu.ar › posgrado › campus Circuito para crear aulas."),
+        hit("Solo dirección", "https://a.com/", "Solo dirección A https://a.com"),
+    ]})
+
+    lines = navegador.search("x").splitlines()
+
+    assert lines[3] == "   Circuito para crear aulas." and lines[4].startswith("2. ") and len(lines) == 6
