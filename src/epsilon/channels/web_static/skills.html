@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skills · Epsilon</title>
+  <link rel="icon" href="/static/img/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32.png">
+  <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Estructura de la página. El estilo está en style.css, la lógica en
+       skills.js y el esqueleto (paneles, menú) en shell.js. Las fichas las
+       dibuja skills.js con lo que responde GET /api/skills. -->
+  <script src="/static/js/boot.js"></script>
+  <script src="/static/js/palette.js" defer></script>
+  <script src="/static/js/shell.js" defer></script>
+  <script src="/static/js/skills.js" defer></script>
+</head>
+<body class="settings-page">
+
+  <header class="top">
+    <a class="brand" href="/">
+      <img class="brand-logo" src="/static/img/apple-touch-icon.png" alt="" width="30" height="30">
+      <h1>Epsilon</h1>
+    </a>
+    <nav class="top-nav" aria-label="Principal">
+      <a class="top-link" href="/">Chat</a>
+      <a class="top-link" href="/canales">Canales</a>
+      <a class="top-link" href="/uso">Uso</a>
+      <a class="top-link" href="/permisos">Permisos</a>
+    </nav>
+    <p class="crumb"><span class="crumb-sep" aria-hidden="true">/</span> <span id="crumb">Skills</span></p>
+    <div class="top-actions">
+      <button type="button" class="model-chip" id="model-chip" aria-haspopup="dialog" title="Cambiar el modelo de IA"><span id="model-name">…</span></button>
+    </div>
+  </header>
+
+  <div class="shell" data-left="open" data-right="open">
+
+    <!-- Menú lateral. Es el mismo en todas las páginas (si cambia uno, cambia el otro:
+         un test lo vigila). Contraído, queda una columna de íconos; las
+         etiquetas siguen ahí para los lectores de pantalla. -->
+    <aside class="side side-left" id="left" aria-label="Menú principal">
+      <a class="new-chat" id="new-chat" href="/?nuevo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="label">Nuevo chat</span>
+      </a>
+
+      <p class="side-title">Menú</p>
+      <nav class="nav" aria-label="Secciones">
+        <a class="nav-item" href="/">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20.5l1.4-4.4A8 8 0 1 1 21 12z"/></svg>
+          <span class="label">Chat</span>
+        </a>
+        <a class="nav-item" href="/biblioteca">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="label">Biblioteca</span>
+        </a>
+        <a class="nav-item" href="/permisos">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span class="label">Permisos</span>
+        </a>
+        <a class="nav-item" href="/conectores">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v3"/></svg>
+          <span class="label">Conectores</span>
+        </a>
+        <a class="nav-item" href="/skills" aria-current="page">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
+          <span class="label">Skills</span>
+        </a>
+        <a class="nav-item" href="/rutinas">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span class="label">Rutinas</span>
+        </a>
+        <a class="nav-item" href="/config">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+          <span class="label">Configuración</span>
+        </a>
+      </nav>
+
+      <section class="recents" aria-label="Conversaciones">
+        <ul class="recents-list" id="recents"></ul>
+      </section>
+
+      <div class="local-card" id="local-card">
+        <strong>Local</strong>
+        <span class="local-path" id="local-path"></span>
+      </div>
+
+      <button type="button" class="panel-toggle" data-toggle="left"
+              aria-expanded="true" aria-controls="left" aria-label="Cerrar el menú" title="Cerrar el menú">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+      </button>
+    </aside>
+
+    <div class="stage">
+      <main class="settings routines-page connectors-page skills-page">
+        <div class="claude-window">
+          <div class="claude-header">
+            <div class="claude-header-left">
+              <h2 class="claude-title">Skills</h2>
+            </div>
+            <div class="claude-header-right">
+              <div class="claude-search">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input type="search" id="skill-filter" placeholder="Buscar" aria-label="Buscar skills" autocomplete="off">
+              </div>
+              <button type="button" class="claude-add-btn" id="skill-add-open">
+                <span class="plus-icon">+</span>
+                <span>Agregar skill</span>
+              </button>
+            </div>
+          </div>
+
+          <p class="hint skills-intro">Una skill son instrucciones tuyas para que Epsilon haga algo a tu manera (un informe, un correo). Se usa escribiendo <code>/nombre</code> y lo que necesitás, o la IA la elige sola si encaja. Nunca da permisos extra.</p>
+          <p class="result" id="skill-status" role="status"></p>
+          <p class="result fail" id="skill-error" role="alert"></p>
+
+          <div class="claude-panel" id="skill-panel">
+            <div class="claude-table-header">
+              <span class="col-conn">Skill</span>
+              <span class="col-type">Comando</span>
+              <span class="col-tools"></span>
+              <span class="col-status">Estado</span>
+            </div>
+            <ul class="routine-list claude-list" id="skill-list"></ul>
+            <div class="routine-empty claude-empty" id="skill-empty" hidden>
+              <div class="claude-empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+              </div>
+              <p class="claude-empty-title">No hay skills todavía</p>
+              <p class="claude-empty-desc">Tocá «+ Agregar skill» para subir un archivo, pegar una dirección o crear una conversando con la IA.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ventana modal: Agregar skill (tres caminos) -->
+        <dialog class="claude-dialog" id="skill-add-dialog" aria-labelledby="skill-add-title">
+          <div class="claude-modal-box">
+            <div class="claude-modal-header">
+              <h3 class="claude-modal-title" id="skill-add-title">Agregar una skill</h3>
+              <button type="button" class="claude-modal-close" id="skill-add-close" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="routine-new conn-card">
+              <div class="claude-segmented" role="tablist" aria-label="Cómo agregarla">
+                <button type="button" class="claude-seg-btn is-active" id="skill-tab-file" role="tab" aria-selected="true" aria-controls="skill-path-file">Archivo</button>
+                <button type="button" class="claude-seg-btn" id="skill-tab-url" role="tab" aria-selected="false" aria-controls="skill-path-url">Dirección</button>
+                <button type="button" class="claude-seg-btn" id="skill-tab-chat" role="tab" aria-selected="false" aria-controls="skill-path-chat">Crear conversando</button>
+              </div>
+
+              <div id="skill-path-file" role="tabpanel" aria-labelledby="skill-tab-file">
+                <label for="skill-file">Un SKILL.md o un .zip</label>
+                <input id="skill-file" type="file" accept=".md,.txt,.zip">
+                <p class="hint">Antes de guardar vas a ver el texto exacto. Los scripts de un .zip no se copian ni se ejecutan nunca.</p>
+                <div class="routine-new-row">
+                  <button type="button" class="send" id="skill-file-review">Revisar</button>
+                </div>
+              </div>
+
+              <div id="skill-path-url" role="tabpanel" aria-labelledby="skill-tab-url" hidden>
+                <label for="skill-url">Dirección del SKILL.md</label>
+                <input id="skill-url" type="url" maxlength="500" spellcheck="false" placeholder="https://…/SKILL.md">
+                <p class="hint">Solo direcciones de internet (no de tu red local). Antes de guardar vas a ver el texto exacto.</p>
+                <div class="routine-new-row">
+                  <button type="button" class="send" id="skill-url-review">Revisar</button>
+                </div>
+              </div>
+
+              <div id="skill-path-chat" role="tabpanel" aria-labelledby="skill-tab-chat" hidden>
+                <p class="hint">Abre un chat con la IA que te hace unas preguntas y al final te propone la skill completa. Vos la revisás y la guardás: la IA no escribe nada sola.</p>
+                <div class="routine-new-row">
+                  <button type="button" class="send" id="skill-chat-start">Empezar conversación</button>
+                </div>
+              </div>
+
+              <p class="result fail" id="skill-add-error" role="alert"></p>
+            </div>
+          </div>
+        </dialog>
+
+        <!-- Ventana modal: revisar, ver o editar el texto exacto de una skill -->
+        <dialog class="claude-dialog" id="skill-review" aria-labelledby="skill-review-title">
+          <div class="claude-modal-box">
+            <div class="claude-modal-header">
+              <h3 class="claude-modal-title" id="skill-review-title">Revisar la skill</h3>
+              <button type="button" class="claude-modal-close" id="skill-review-close" aria-label="Cerrar">✕</button>
+            </div>
+            <form class="routine-new conn-card" id="skill-review-form" autocomplete="off">
+              <div class="conn-fields">
+                <div class="conn-field">
+                  <label for="skill-review-name">Nombre (será el comando)</label>
+                  <input id="skill-review-name" type="text" maxlength="32" spellcheck="false">
+                </div>
+              </div>
+              <p class="hint" id="skill-review-source"></p>
+              <label for="skill-review-text">Texto exacto (SKILL.md)</label>
+              <textarea id="skill-review-text" class="skill-text" rows="14" spellcheck="false"></textarea>
+              <div id="skill-review-extra" hidden>
+                <div class="conn-argv-head">También se guardan estos archivos de texto:</div>
+                <ul class="skill-files" id="skill-review-files"></ul>
+              </div>
+              <div id="skill-review-skipped" hidden>
+                <p class="routine-banner" role="status">Estos archivos NO se guardan ni se ejecutan:</p>
+                <ul class="skill-files" id="skill-review-skipped-list"></ul>
+              </div>
+              <p class="hint" id="skill-review-note">Las instrucciones se le pasan a la IA cuando usás la skill. No le dan permisos: las herramientas siguen pidiendo los tuyos.</p>
+              <div class="routine-new-row">
+                <button type="submit" class="send" id="skill-review-save">Guardar skill</button>
+                <button type="button" class="secondary" id="skill-review-cancel">Cancelar</button>
+              </div>
+              <p class="result fail" id="skill-review-error" role="alert"></p>
+            </form>
+          </div>
+        </dialog>
+      </main>
+    </div>
+
+  </div>
+
+</body>
+</html>

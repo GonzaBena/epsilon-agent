@@ -1283,6 +1283,10 @@ def create_app() -> FastAPI:
     def routines_page():
         return FileResponse(STATIC_DIR / "rutinas.html")
 
+    @app.get("/skills", include_in_schema=False)
+    def skills_page():
+        return FileResponse(STATIC_DIR / "skills.html")
+
     @app.get("/conectores", include_in_schema=False)
     def connectors_page():
         return FileResponse(STATIC_DIR / "conectores.html")
