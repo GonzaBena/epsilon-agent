@@ -26,6 +26,7 @@ from epsilon.connectors import bridge, buttons as connector_buttons, manager as 
 from epsilon.data import conversations, library, notes
 from epsilon.routines import rules as routine_rules, runner as routine_runner, store as routine_store
 from epsilon.settings import checks, config
+from epsilon.skills import importer as skill_importer, store as skill_store
 from epsilon.utils import clock, multimedia
 from epsilon.voice import tts, transcribe
 
@@ -225,6 +226,24 @@ class ConnectorIn(BaseModel):
     confirm: bool = False
 
 
+class SkillPreviewIn(BaseModel):
+    text: str | None = Field(default=None, max_length=60_000)
+    url: str | None = Field(default=None, max_length=500)
+
+
+class SkillSaveIn(BaseModel):
+    token: str = Field(max_length=100)
+    name: str | None = Field(default=None, max_length=40)
+    confirmed: bool = False
+
+
+class SkillChangeIn(BaseModel):
+    enabled: bool | None = None
+    text: str | None = Field(default=None, max_length=60_000)
+    reconfirm: bool = False
+    confirmed: bool = False
+
+
 class ButtonIn(BaseModel):
     label: str = Field(max_length=40)
     connector: str = Field(max_length=40)
@@ -292,6 +311,23 @@ def connectors_view() -> dict:
         except (KeyError, ValueError, TypeError, connector_manager.ConnectorError):
             continue  # una ficha rota (archivo editado a mano) no tira la página
     return {"connectors": shown}
+
+
+def skills_view() -> dict:
+    """Lo que la página de skills dibuja (el texto va redactado)."""
+    return {"skills": [
+        {"name": s.name, "description": config.redact(s.description), "enabled": s.enabled, "changed": s.changed,
+         "text": config.redact(skill_store.read_text(s.name))}
+        for s in skill_store.list_all()
+    ]}
+
+
+def skill_preview_view(token: str, item: skill_importer.Staged) -> dict:
+    """Lo que la persona revisa antes de confirmar: el texto exacto y lo que NO se va a tomar."""
+    return {
+        "token": token, "name": item.name, "description": config.redact(item.description),
+        "text": config.redact(item.text), "extra": sorted(item.extra), "skipped": item.skipped, "source": item.source,
+    }
 
 
 def connector_start(name: str) -> None:
@@ -760,6 +796,84 @@ def create_app() -> FastAPI:
         if not routine_store.remove(rule_id):
             raise HTTPException(404, "No existe esa rutina")
         return routines_view()
+
+    @app.get("/api/skills")
+    def get_skills():
+        return skills_view()
+
+    def staged_view(item: skill_importer.Staged) -> dict:
+        return skill_preview_view(skill_importer.stage(item), item)
+
+    @app.post("/api/skills/preview")
+    def preview_skill(body: SkillPreviewIn):
+        """Arma la importación (texto o URL) sin guardar nada: devuelve lo que hay que revisar y un token."""
+        if (body.text is None) == (body.url is None):
+            raise HTTPException(422, "Mandá el texto o la dirección, uno de los dos.")
+        try:
+            item = skill_importer.from_text(body.text) if body.text is not None else skill_importer.from_url(body.url)
+        except skill_store.SkillError as e:
+            raise HTTPException(422, str(e)) from None
+        return staged_view(item)
+
+    @app.post("/api/skills/preview-file")
+    def preview_skill_file(file: UploadFile = File(...)):
+        data = file.file.read(skill_importer.MAX_ZIP_BYTES + 1)
+        if len(data) > skill_importer.MAX_ZIP_BYTES:
+            raise HTTPException(422, "El archivo es muy grande.")
+        try:
+            item = skill_importer.from_file(file.filename or "", data)
+        except skill_store.SkillError as e:
+            raise HTTPException(422, str(e)) from None
+        return staged_view(item)
+
+    @app.get("/api/skills/staged/{token}")
+    def get_staged_skill(token: str):
+        item = skill_importer.peek(token)
+        if item is None:
+            raise HTTPException(404, "Esa revisión venció: volvé a agregar la skill.")
+        return skill_preview_view(token, item)
+
+    @app.post("/api/skills")
+    def save_skill(body: SkillSaveIn):
+        """Guarda lo que se revisó. Exige la confirmación explícita."""
+        if body.confirmed is not True:
+            raise HTTPException(422, "Confirmá que querés guardar esta skill.")
+        item = skill_importer.peek(body.token)
+        if item is None:
+            raise HTTPException(404, "Esa revisión venció: volvé a agregar la skill.")
+        try:
+            skill_importer.commit(item, body.name)
+        except skill_store.SkillError as e:
+            raise HTTPException(422, str(e)) from None
+        skill_importer.take(body.token)
+        return skills_view()
+
+    @app.put("/api/skills/{name}")
+    def change_skill(name: str, body: SkillChangeIn):
+        if skill_store.get(name) is None:
+            raise HTTPException(404, "No existe esa skill")
+        if (body.text is not None or body.reconfirm) and body.confirmed is not True:
+            raise HTTPException(422, "Confirmá los cambios de esta skill.")
+        try:
+            if body.text is not None:
+                was_enabled = skill_store.get(name).enabled
+                skill_store.save(name, body.text, overwrite=True)
+                if not was_enabled and body.enabled is None:  # editar el texto no vuelve a prender una apagada
+                    skill_store.set_enabled(name, False)
+            elif body.reconfirm:
+                skill_store.confirm(name)
+            if body.enabled is not None:
+                skill_store.set_enabled(name, body.enabled)
+        except skill_store.SkillError as e:
+            raise HTTPException(422, str(e)) from None
+        return skills_view()
+
+    @app.delete("/api/skills/{name}")
+    def delete_skill(name: str):
+        if skill_store.get(name) is None:
+            raise HTTPException(404, "No existe esa skill")
+        skill_store.delete(name)
+        return skills_view()
 
     @app.get("/api/connectors")
     def get_connectors():

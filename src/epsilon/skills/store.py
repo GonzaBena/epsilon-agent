@@ -122,6 +122,16 @@ def get(name: str) -> Skill | None:
     )
 
 
+def read_text(name: str) -> str:
+    """El SKILL.md tal como está en disco ("" si no existe)."""
+    if not isinstance(name, str) or not NAME.fullmatch(name):
+        return ""
+    try:
+        return (_folder(name) / "SKILL.md").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return ""
+
+
 def list_all() -> list[Skill]:
     try:
         names = sorted(p.name for p in notes.safe_path(DIR).iterdir() if p.is_dir())
