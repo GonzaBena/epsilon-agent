@@ -801,3 +801,15 @@ def test_the_placeholder_invites_to_ask_or_to_type_a_command():
     assert 'placeholder="Pedile algo o escribí / para un comando"' in chat_html()
     assert 'const COMMANDS_PLACEHOLDER = "Escribí un comando, por ejemplo /ayuda";' in script
     assert "input.placeholder = defaultPlaceholder()" in script[script.index("function showAiChip"):]
+
+
+def test_the_right_panel_folds_by_itself_when_it_has_nothing_to_show():
+    # Sin nada guardado y sin costo, se ve contraído; lo que elegiste con el botón no se pisa.
+    shell, script = js("shell.js"), js("app.js")
+
+    assert "window.epsilonShell = { setRightEmpty };" in shell
+    assert 'layout.right === "open" && (!rightEmpty || rightPeek)' in shell
+    assert "window.epsilonShell.setRightEmpty(contextItems.length === 0 && aiBar.hidden);" in script
+    for caller in ("function renderContext", "function showChatBar"):
+        body = script[script.index(caller):]
+        assert "updateRightPanel();" in body[: body.index("\n}\n")], caller

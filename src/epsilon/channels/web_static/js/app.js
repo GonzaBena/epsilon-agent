@@ -143,6 +143,7 @@ const fmtUsd = (n) => window.formatUsd(Number(n)); // js/money.js
 // Dibuja la barra con lo que mandó el servidor ({cost, context, limit, blocked, reason}).
 function showChatBar(chat) {
   aiBar.hidden = !chat;
+  updateRightPanel();
   if (!chat) return;
   aiContext.textContent = fmtTokens(chat.context);
   aiCost.textContent = fmtUsd(chat.cost);
@@ -1684,9 +1685,15 @@ function contextIcon(item) {
   return svg;
 }
 
+// El panel derecho se contrae solo si no tiene nada: ni lo guardado en esta conversación ni su costo.
+function updateRightPanel() {
+  window.epsilonShell.setRightEmpty(contextItems.length === 0 && aiBar.hidden);
+}
+
 function renderContext() {
   contextList.replaceChildren();
   contextEmpty.hidden = contextItems.length > 0;
+  updateRightPanel();
   for (const item of contextItems) {
     const row = make("li");
     const button = make("button", "context-item");
@@ -1844,7 +1851,12 @@ const welcomeGreeting = document.getElementById("welcome-greeting");
 const welcomeCards = document.getElementById("welcome-cards");
 
 // Una idea abre un chat NUEVO con IA y deja su texto escrito en el cuadro, sin enviarlo, para editarlo.
+// Si trae «href» (como «Conectá tus apps»), lleva a esa página de Epsilon en vez de escribir nada.
 async function useCard(card) {
+  if (card.href) {
+    location.href = card.href;
+    return;
+  }
   const pending = startNewChat(); // openNewChat sube loadToken antes de su primer await
   const token = loadToken;
   await pending;

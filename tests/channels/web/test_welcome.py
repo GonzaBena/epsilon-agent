@@ -69,13 +69,21 @@ def test_phrases_do_not_repeat_the_salute_or_the_name():
             assert "Buen" not in phrase and "{name}" not in phrase and "Hola" not in phrase
 
 
-def test_cards_are_six_with_title_subtitle_and_prompt():
+def test_cards_are_six_with_title_subtitle_and_a_prompt_or_a_page():
     assert len(welcome.CARDS) == 6
     assert len({card["title"] for card in welcome.CARDS}) == 6
     for card in welcome.CARDS:
-        assert set(card) == {"title", "subtitle", "prompt"}
+        assert set(card) in ({"title", "subtitle", "prompt"}, {"title", "subtitle", "href"})
         assert all(card[key].strip() for key in card)
-        assert "\n" not in card["prompt"] and len(card["prompt"]) <= 200
+        if "prompt" in card:
+            assert "\n" not in card["prompt"] and len(card["prompt"]) <= 200
+        else:
+            assert card["href"].startswith("/") and not card["href"].startswith("//")  # solo páginas de Epsilon
+
+
+def test_connect_your_apps_goes_to_the_connectors_page():
+    card = next(card for card in welcome.CARDS if card["title"] == "Conectá tus apps")
+    assert card["href"] == "/conectores"
 
 
 # --- API -----------------------------------------------------------------------

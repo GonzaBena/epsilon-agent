@@ -38,7 +38,7 @@ CARDS = (
     {
         "title": "Conectá tus apps",
         "subtitle": "Correo, calendario y más",
-        "prompt": "¿Qué conectores puedo agregar y cómo se hace?",
+        "href": "/conectores",  # lleva a la página: preguntarle a la IA gastaría tokens en algo que la página ya muestra
     },
 )
 

@@ -14,6 +14,11 @@
 
   // El estado de cada panel: "open" o "collapsed".
   let layout = loadLayout();
+  // El panel derecho sin nada que mostrar (app.js avisa con setRightEmpty) se ve contraído, sin
+  // cambiar lo que elegiste. Si igual lo abrís con su botón, se abre (peek) hasta que lo cierres.
+  let rightEmpty = false;
+  let rightPeek = false;
+  const rightState = () => (layout.right === "open" && (!rightEmpty || rightPeek) ? "open" : "collapsed");
 
   function loadLayout() {
     // localStorage puede fallar (modo privado, datos bloqueados): la página
@@ -56,12 +61,13 @@
   // Dibuja el estado: el CSS se encarga del ancho según data-left / data-right, y
   // los botones avisan a los lectores de pantalla si el panel está abierto.
   function applyLayout() {
-    shell.dataset.left = layout.left;
-    shell.dataset.right = layout.right;
+    const state = { left: layout.left, right: rightState() };
+    shell.dataset.left = state.left;
+    shell.dataset.right = state.right;
     for (const button of document.querySelectorAll("[data-toggle]")) {
       const side = button.dataset.toggle;
-      const label = TOGGLE_LABELS[side][layout[side]];
-      button.setAttribute("aria-expanded", String(layout[side] === "open"));
+      const label = TOGGLE_LABELS[side][state[side]];
+      button.setAttribute("aria-expanded", String(state[side] === "open"));
       button.setAttribute("aria-label", label);
       button.title = label; // el texto que aparece al pasar el mouse
     }
@@ -87,8 +93,13 @@
         setDrawer(!shell.classList.contains("drawer-open"));
         return;
       }
-      layout[side] = layout[side] === "open" ? "collapsed" : "open";
-      saveLayout();
+      if (side === "right" && rightEmpty && layout.right === "open") {
+        rightPeek = !rightPeek; // vacío: abrirlo o cerrarlo no cambia lo que quedó guardado
+      } else {
+        layout[side] = layout[side] === "open" ? "collapsed" : "open";
+        if (side === "right") rightPeek = rightEmpty; // lo abriste a mano: que se vea aunque esté vacío
+        saveLayout();
+      }
       applyLayout();
       // Al abrir un panel refrescamos: el estado de los canales cambia con el tiempo.
       if (layout[side] === "open") loadInfo();
@@ -559,6 +570,15 @@
   if (modelChip) modelChip.addEventListener("click", () => window.epsilonPalette.open());
   const composerModel = document.getElementById("composer-model");
   if (composerModel) composerModel.addEventListener("click", () => window.epsilonPalette.open());
+
+  // app.js: ¿el panel derecho tiene algo para mostrar? (lo guardado en la conversación o su costo)
+  function setRightEmpty(empty) {
+    if (empty === rightEmpty) return;
+    rightEmpty = empty;
+    rightPeek = false; // al cambiar lo que hay, vuelve a la regla: vacío se contrae, con algo se abre
+    applyLayout();
+  }
+  window.epsilonShell = { setRightEmpty };
 
   // --- Grupos del menú (Usar · Conectar · Controlar) --------------------------------------------
   // Cada título pliega y despliega su grupo; el navegador recuerda cuáles plegaste. El grupo de la
