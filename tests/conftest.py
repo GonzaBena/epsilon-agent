@@ -216,3 +216,15 @@ def block_real_connectors(monkeypatch):
     manager._reset()
     yield
     manager._reset()  # también olvida el gancho que puso main()
+
+
+@pytest.fixture(autouse=True)
+def block_real_skill_download(monkeypatch):
+    """Ningún test baja una skill de la red ni resuelve nombres de verdad."""
+    from epsilon.skills import importer
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó usar la red para bajar una skill")
+
+    monkeypatch.setattr(importer, "_fetch", forbidden)
+    monkeypatch.setattr(importer, "_resolve", forbidden)
