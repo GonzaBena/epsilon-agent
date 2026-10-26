@@ -560,7 +560,43 @@
   const composerModel = document.getElementById("composer-model");
   if (composerModel) composerModel.addEventListener("click", () => window.epsilonPalette.open());
 
+  // --- Grupos del menú (Usar · Conectar · Controlar) --------------------------------------------
+  // Cada título pliega y despliega su grupo; el navegador recuerda cuáles plegaste. El grupo de la
+  // página en la que estás arranca siempre abierto, para que se vea dónde estás.
+  const NAV_KEY = "epsilon.nav.collapsed";
+
+  function recallNav() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAV_KEY) || "[]");
+      return new Set(Array.isArray(saved) ? saved : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function setupNavGroups() {
+    const folded = recallNav();
+    for (const group of document.querySelectorAll(".nav-group")) {
+      const head = group.querySelector(".nav-head");
+      const key = group.dataset.group;
+      const here = group.querySelector('[aria-current="page"]');
+      head.setAttribute("aria-expanded", String(Boolean(here) || !folded.has(key)));
+      head.addEventListener("click", () => {
+        const open = head.getAttribute("aria-expanded") !== "true";
+        head.setAttribute("aria-expanded", String(open));
+        if (open) folded.delete(key);
+        else folded.add(key);
+        try {
+          localStorage.setItem(NAV_KEY, JSON.stringify([...folded]));
+        } catch {
+          // Sin almacenamiento, el pliegue dura hasta recargar.
+        }
+      });
+    }
+  }
+
   // --- Arranque -------------------------------------------------------------------------------
+  setupNavGroups();
   applyLayout();
   applyNarrow();
   refreshRecents();

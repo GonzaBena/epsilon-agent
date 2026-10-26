@@ -116,12 +116,3 @@ def telegram_talk(text="desde Telegram"):
 
 def switch_tags():
     return re.findall(r"<button[^>]*role=\"switch\"[^>]*>", page("config.html"))
-
-
-def top_links(html):
-    """Los enlaces de la barra de arriba: [(href, texto, ¿es la página actual?)]."""
-    nav = re.search(r'<nav class="top-nav"[^>]*>(.*?)</nav>', html, re.S).group(1)
-    return [
-        (m.group(2), m.group(4).strip(), "aria-current" in m.group(1) + m.group(3))
-        for m in re.finditer(r'<a class="top-link"([^>]*?)href="([^"]*)"([^>]*)>(.*?)</a>', nav, re.S)
-    ]

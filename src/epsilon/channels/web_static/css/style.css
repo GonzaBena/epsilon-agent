@@ -159,34 +159,6 @@ img.mark {
 }
 
 /* Los enlaces de arriba: Chat, Canales y Uso. */
-.top-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 0.25rem;
-}
-.top-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 14px;
-  text-decoration: none;
-}
-.top-link:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.top-link[aria-current="page"] {
-  background: var(--accent-soft); /* el lima, apenas visible: dónde estás */
-  color: var(--text);
-}
-.top-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 /* El título de la conversación va al centro del header. */
 .crumb {
   flex: 1;
@@ -387,6 +359,58 @@ body.view-telegram {
   flex: none;
 }
 
+/* Grupos del menú (Usar · Conectar · Controlar): el título pliega y despliega, como en las conversaciones. */
+.nav-group + .nav-group {
+  margin-top: 6px;
+}
+.nav-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  max-height: 28px;
+  margin: 0 0 2px;
+  padding: 4px 12px;
+  overflow: hidden;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nav-head:hover {
+  color: var(--text);
+}
+.nav-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.nav-head svg {
+  transition: rotate 0.15s ease;
+  rotate: 90deg; /* desplegado: la flecha apunta hacia abajo */
+}
+.nav-head[aria-expanded="false"] svg {
+  rotate: 0deg;
+}
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-head[aria-expanded="false"] + .nav-items {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-head svg {
+    transition: none;
+  }
+}
+
 .recents {
   max-height: 4000px;
   overflow: hidden;
@@ -579,6 +603,26 @@ body.view-telegram {
 }
 /* Lo que desaparece también sale del orden de tabulación (visibility), pero recién
    cuando termina el desvanecimiento. */
+/* Contraído a íconos: sin títulos de grupo y con todos los íconos, aunque un grupo esté plegado. */
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .nav-head {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    max-height var(--t) ease,
+    padding var(--t) ease,
+    opacity 0.1s ease,
+    visibility 0s linear var(--t);
+}
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .nav-items {
+  display: flex;
+}
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .nav-group + .nav-group {
+  margin-top: 0;
+}
 .shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
   .side-left
   .side-title {
@@ -2314,16 +2358,10 @@ a.ghost {
   font-size: 13px;
 }
 
-/* En pantallas angostas el menú de arriba se achica: sin el título del medio. */
+/* En pantallas angostas el header se achica: sin el título del medio. */
 @media (max-width: 46rem) {
   .crumb {
     display: none;
-  }
-  .top-nav {
-    margin-left: 0;
-  }
-  .top-link {
-    padding: 0 8px;
   }
   .brand h1 {
     display: none;

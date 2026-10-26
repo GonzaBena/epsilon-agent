@@ -169,7 +169,7 @@ def test_menu_is_identical_on_every_page():
     menus = {name: [(h, c, t) for h, c, t in menu_items(page(name))] for name in PAGES}
     first = menus["index.html"]
     labels = [t for _, _, t in first]
-    assert labels.index("Permisos") + 1 == labels.index("Conectores") == labels.index("Skills") - 1 == labels.index("Rutinas") - 2
+    assert labels.index("Conectores") + 1 == labels.index("Canales")  # el grupo «Conectar»
     for name, items in menus.items():
         assert items == first, name
 

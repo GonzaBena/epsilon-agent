@@ -14,7 +14,7 @@ def test_menu_has_skills_in_every_page_in_same_place():
     for name in PAGES:
         items = [item[0] for item in menu_items(page(name))]
         assert "/skills" in items, name
-        assert items.index("/skills") == items.index("/conectores") + 1, name
+        assert items.index("/skills") == items.index("/rutinas") + 1, name
         expected = expected or items
         assert items == expected, name
 

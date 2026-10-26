@@ -8,7 +8,7 @@ import pytest
 from epsilon import state, tools
 from epsilon import state
 from epsilon.channels import web
-from tests.channels.web.helpers import BRAND, LOWERCASE, PAGES, chat_html, js, menu_items, page, static_path, top_links
+from tests.channels.web.helpers import BRAND, LOWERCASE, PAGES, chat_html, js, menu_items, page, static_path
 
 
 # --- Página estática ---------------------------------------------------------
@@ -93,8 +93,8 @@ def test_both_pages_have_the_same_menu():
 def test_menu_has_the_expected_sections_and_no_dead_links():
     labels = [label for _, _, label in menu_items(page("index.html"))]
 
-    # Canales y Uso están en la barra de arriba; Configuración, abajo de todo en este menú.
-    assert labels == ["Chat", "Biblioteca", "Permisos", "Conectores", "Skills", "Rutinas", "Configuración"]
+    # Un solo menú, en tres grupos (Usar · Conectar · Controlar); Configuración, abajo de todo.
+    assert labels == ["Chat", "Biblioteca", "Rutinas", "Skills", "Conectores", "Canales", "Permisos", "Uso", "Configuración"]
     # Nada que no funcione todavía (Memoria, Docs, Sesión, Resúmenes...).
     for gone in ("Memoria", "Docs", "Sesión", "Resúmenes"):
         assert gone not in page("index.html") and gone not in page("config.html")
@@ -218,14 +218,26 @@ def test_the_marks_drawn_by_the_scripts_use_the_brand_logo():
 # --- Barra de arriba y página Canales ----------------------------------------
 
 
-def test_every_page_has_the_same_top_bar_and_marks_where_you_are():
-    expected = [("/", "Chat"), ("/canales", "Canales"), ("/uso", "Uso"), ("/permisos", "Permisos")]
-    current = {"index.html": "Chat", "canales.html": "Canales", "uso.html": "Uso", "config.html": None, "biblioteca.html": None, "permisos.html": "Permisos", "rutinas.html": None, "conectores.html": None, "skills.html": None}
-
+def test_there_is_no_top_menu_anymore():
+    # Todo el menú está a la izquierda: arriba quedan la marca, el título y el estado.
     for name in PAGES:
-        links = top_links(page(name))
-        assert [(h, t) for h, t, _ in links] == expected, name
-        assert [t for _, t, here in links if here] == ([current[name]] if current[name] else []), name
+        assert "top-nav" not in page(name) and "top-link" not in page(name), name
+
+
+def test_the_menu_is_three_groups_that_fold():
+    groups = r'<div class="nav-group" data-group="([^"]+)">\s*<button type="button" class="nav-head" aria-expanded="true" aria-controls="nav-\1">(\w+)'
+    for name in PAGES:
+        found = [(key, title) for key, title in re.findall(groups, page(name))]
+        assert found == [("usar", "Usar"), ("conectar", "Conectar"), ("controlar", "Controlar")], name
+    shell = js("shell.js")
+    assert "function setupNavGroups" in shell and '"epsilon.nav.collapsed"' in shell
+
+
+def test_every_page_marks_itself_once_in_the_menu():
+    pages = {"index.html": "/", "biblioteca.html": "/biblioteca", "rutinas.html": "/rutinas", "skills.html": "/skills", "conectores.html": "/conectores", "canales.html": "/canales", "permisos.html": "/permisos", "uso.html": "/uso", "config.html": "/config"}
+    assert set(pages) == set(PAGES)
+    for name, href in pages.items():
+        assert re.findall(r'<a class="nav-item" href="([^"]+)" aria-current="page"', page(name)) == [href], name
 
 
 def test_settings_is_the_last_item_of_the_left_menu_and_is_current_only_on_its_page():
@@ -236,11 +248,6 @@ def test_settings_is_the_last_item_of_the_left_menu_and_is_current_only_on_its_p
         assert 'href="/config"' in attrs and "Configuración" in inner, name
         assert ("aria-current" in attrs) == (name == "config.html"), name
         assert "icon-link" not in html  # ya no hay botón de configuración arriba
-
-
-def test_the_top_bar_only_has_chat_channels_usage_and_permissions():
-    for name in PAGES:
-        assert [t for _, t, _ in top_links(page(name))] == ["Chat", "Canales", "Uso", "Permisos"]
 
 
 def test_the_channels_page_is_served(client):
