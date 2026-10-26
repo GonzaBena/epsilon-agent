@@ -165,7 +165,7 @@ function renderRow(skill) {
     confirmAgain.type = "button";
     confirmAgain.addEventListener("click", (event) => {
       event.stopPropagation();
-      change("PUT", skill.name, { reconfirm: true, confirmed: true }, "Skill confirmada.");
+      change("PUT", skill.name, { reconfirm: true, confirmed: true, sha: skill.sha }, "Skill confirmada.");
     });
     actions.append(confirmAgain);
   }

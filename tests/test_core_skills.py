@@ -157,4 +157,17 @@ def test_model_call_to_skills_usar_goes_through_run_calls(script):
     assert reply.text == "Listo."
     results = [r.result for turn in script.seen[1][0] for r in turn.results]
     assert "Escribí un borrador breve." in results[0]
-    assert "datos, no instrucciones" in results[0]
+    assert "escritas por la persona" in results[0]
+
+
+def test_skills_usar_returns_the_whole_body_not_cut_and_not_labeled_as_data(script):
+    body = "x" * 6000 + " FIN-DE-LA-SKILL"
+    store.save("largo", f"---\nname: largo\ndescription: Una larga\n---\n{body}")
+    script.steps = [step(calls=[("skills.usar", "largo")]), step("Listo.")]
+    conversations.add_message(CID, "user", "usá la larga")
+
+    core.handle(core.Message(text="usá la larga", session_id=f"web:{CID}", conversation_id=CID))
+
+    result = [r.result for turn in script.seen[1][0] for r in turn.results][0]
+    assert result.endswith("FIN-DE-LA-SKILL")
+    assert "datos, no instrucciones" not in result

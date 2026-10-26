@@ -77,6 +77,10 @@ def check_name(name: str) -> None:
 
 
 def _folder(name: str):
+    """La carpeta de una skill. Una carpeta que es un enlace simbólico no vale: safe_path lo seguiría y
+    guardar o borrar actuaría sobre otro lugar de DATA_DIR."""
+    if (notes.safe_path(DIR) / name).is_symlink():
+        raise SkillError("Esa carpeta de skill no es válida (es un enlace).")
     return notes.safe_path(f"{DIR}/{name}")
 
 
@@ -189,10 +193,17 @@ def set_enabled(name: str, enabled: bool) -> Skill:
     return get(name)
 
 
-def confirm(name: str) -> Skill:
-    """La persona aceptó lo que hay hoy en disco: se anota su hash y se deja prendida."""
+def confirm(name: str, expected_sha: str | None = None) -> Skill:
+    """La persona aceptó lo que hay hoy en disco: se anota su hash y se deja prendida. Con `expected_sha` (el del
+    texto que vio) se niega si el archivo volvió a cambiar; y valida igual que `save` (un SKILL.md editado a mano
+    no se salta los límites)."""
     _require(name)
     text = (_folder(name) / "SKILL.md").read_text(encoding="utf-8")
+    if expected_sha is not None and sha(text) != expected_sha:
+        raise SkillError("La skill cambió otra vez mientras la mirabas: revisala de nuevo antes de confirmarla.")
+    _, _, body = parse(text)
+    if len(body) > MAX_BODY:
+        raise SkillError(f"Las instrucciones son muy largas ({len(body)} de {MAX_BODY} caracteres).")
     with _lock:
         state = _read_state()
         state[name] = {"enabled": True, "sha": sha(text)}

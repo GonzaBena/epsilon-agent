@@ -242,6 +242,7 @@ class SkillChangeIn(BaseModel):
     text: str | None = Field(default=None, max_length=60_000)
     reconfirm: bool = False
     confirmed: bool = False
+    sha: str | None = Field(default=None, max_length=100)  # el hash del texto que la persona vio (para reconfirm)
 
 
 class ButtonIn(BaseModel):
@@ -315,11 +316,12 @@ def connectors_view() -> dict:
 
 def skills_view() -> dict:
     """Lo que la página de skills dibuja (el texto va redactado)."""
-    return {"skills": [
-        {"name": s.name, "description": config.redact(s.description), "enabled": s.enabled, "changed": s.changed,
-         "text": config.redact(skill_store.read_text(s.name))}
-        for s in skill_store.list_all()
-    ]}
+    shown = []
+    for s in skill_store.list_all():
+        raw = skill_store.read_text(s.name)
+        shown.append({"name": s.name, "description": config.redact(s.description), "enabled": s.enabled,
+                      "changed": s.changed, "text": config.redact(raw), "sha": skill_store.sha(raw)})
+    return {"skills": shown}
 
 
 def skill_preview_view(token: str, item: skill_importer.Staged) -> dict:
@@ -866,7 +868,9 @@ def create_app() -> FastAPI:
                 if not was_enabled and body.enabled is None:  # editar el texto no vuelve a prender una apagada
                     skill_store.set_enabled(name, False)
             elif body.reconfirm:
-                skill_store.confirm(name)
+                if not body.sha:
+                    raise HTTPException(422, "Falta el texto que viste: recargá la página y revisalo de nuevo.")
+                skill_store.confirm(name, body.sha)
             if body.enabled is not None:
                 skill_store.set_enabled(name, body.enabled)
         except skill_store.SkillError as e:

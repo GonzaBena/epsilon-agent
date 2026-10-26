@@ -113,3 +113,41 @@ def test_save_redacts_secrets(monkeypatch):
     store.save("informe", SKILL + " SECRETO")
 
     assert "SECRETO" not in store.get("informe").body
+
+
+def test_confirm_refuses_when_the_text_is_not_the_one_the_person_saw():
+    store.save("informe", SKILL)
+    path = notes.DATA_DIR / "skills" / "informe" / "SKILL.md"
+    path.write_text(SKILL + " versión B", encoding="utf-8")
+    seen = store.sha(SKILL + " versión A")
+
+    with pytest.raises(store.SkillError, match="cambió"):
+        store.confirm("informe", expected_sha=seen)
+    assert store.get("informe").changed is True
+    assert store.confirm("informe", expected_sha=store.sha(path.read_text(encoding="utf-8"))).usable is True
+
+
+def test_confirm_applies_the_same_limits_as_save():
+    store.save("informe", SKILL)
+    path = notes.DATA_DIR / "skills" / "informe" / "SKILL.md"
+    path.write_text(f"---\nname: informe\ndescription: x\n---\n{'a' * (store.MAX_BODY + 1)}", encoding="utf-8")
+
+    with pytest.raises(store.SkillError):
+        store.confirm("informe")
+    assert store.get("informe").usable is False
+
+
+def test_a_symlinked_skill_folder_is_never_touched(tmp_path):
+    other = notes.DATA_DIR / "otra"
+    other.mkdir()
+    (other / "SKILL.md").write_text(SKILL, encoding="utf-8")
+    (notes.DATA_DIR / "skills").mkdir()
+    (notes.DATA_DIR / "skills" / "enlace").symlink_to(other, target_is_directory=True)
+
+    assert store.get("enlace") is None
+    assert [s.name for s in store.list_all()] == []
+    with pytest.raises(store.SkillError):
+        store.delete("enlace")
+    with pytest.raises(store.SkillError):
+        store.save("enlace", SKILL, overwrite=True)
+    assert (other / "SKILL.md").exists()

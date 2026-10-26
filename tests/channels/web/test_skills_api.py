@@ -172,7 +172,8 @@ def test_put_reconfirm_after_disk_edit(client):
     assert client.get("/api/skills").json()["skills"][0]["changed"] is True
 
     assert client.put("/api/skills/informe", json={"reconfirm": True}).status_code == 422
-    row = client.put("/api/skills/informe", json={"reconfirm": True, "confirmed": True}).json()["skills"][0]
+    shown = client.get("/api/skills").json()["skills"][0]["sha"]
+    row = client.put("/api/skills/informe", json={"reconfirm": True, "confirmed": True, "sha": shown}).json()["skills"][0]
 
     assert row["changed"] is False
 
@@ -224,3 +225,17 @@ def test_starter_endpoint_returns_the_prompt(client):
     reply = client.get("/api/skills/starter")
 
     assert reply.status_code == 200 and reply.json() == {"prompt": starter.STARTER_PROMPT}
+
+
+def test_reconfirm_needs_the_hash_of_the_text_that_was_shown(client):
+    save_via_api(client)
+    path = notes.DATA_DIR / "skills" / "informe" / "SKILL.md"
+    path.write_text(SKILL + " A", encoding="utf-8")
+    shown = client.get("/api/skills").json()["skills"][0]["sha"]
+    path.write_text(SKILL + " B", encoding="utf-8")  # cambió OTRA VEZ después de que la persona vio la A
+
+    without = client.put("/api/skills/informe", json={"reconfirm": True, "confirmed": True})
+    stale = client.put("/api/skills/informe", json={"reconfirm": True, "confirmed": True, "sha": shown})
+
+    assert without.status_code == 422 and stale.status_code == 422 and "cambió" in stale.json()["detail"]
+    assert client.get("/api/skills").json()["skills"][0]["changed"] is True

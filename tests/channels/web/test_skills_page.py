@@ -113,3 +113,9 @@ def test_find_skill_block_behaviour():
     found, none, plain, no_name = json.loads(out)
     assert found == "---\nname: informe\ndescription: x\n---\nPasos"
     assert none is None and plain is None and no_name is None
+
+
+def test_confirm_again_sends_the_hash_of_the_text_that_was_shown():
+    js = static_path("skills.js").read_text(encoding="utf-8")
+
+    assert "reconfirm: true, confirmed: true, sha: skill.sha" in js
