@@ -477,3 +477,7 @@ def test_anthropic_models_are_priced_with_their_provider():
     assert usage.price("anthropic:claude-sonnet-5-5") == (2.0, 10.0)
     assert usage.price("anthropic:claude-desconocido") is None
     assert usage.stored_name("anthropic:claude-sonnet-5-5") == "anthropic:claude-sonnet-5-5"
+
+
+def test_haiku_4_5_has_a_price():
+    assert usage.price("anthropic:claude-haiku-4-5") == (1.0, 5.0)
