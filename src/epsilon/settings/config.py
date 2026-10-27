@@ -613,29 +613,42 @@ def set_plugin_settings(items: list[Setting]) -> None:
         raise ValueError(f"«{clashes[0]}» ya es un ajuste de Epsilon.")
     for old in _plugin_settings:
         BY_KEY.pop(old.key, None)
+    global _processed
     _plugin_settings = tuple(items)
     for item in items:
         BY_KEY[item.key] = item
         if item.secret:
             _plugin_secret_keys.add(item.key)
-    if SETTINGS_READY:
+    # Solo si cambió el conjunto (la web lo vuelve a registrar en cada pedido): así no se relee ni
+    # se reescribe nada de más.
+    if SETTINGS_READY and _signature(items) != _processed:
+        _processed = _signature(items)
         _move_plugin_values(items)
 
 
 # Lo pone main.setup_settings cuando settings.json ya está listo. Antes (y en los tests que no lo
 # piden), registrar un plugin no toca el entorno ni escribe archivos.
 SETTINGS_READY = False
+_processed: tuple | None = None  # el último conjunto de ajustes de plugins que se pasó a settings.json
+
+
+def _signature(items) -> tuple:
+    """Lo que importa de cada ajuste para settings.json y sus archivos de referencia (sin el
+    validador, que es una función nueva en cada registro)."""
+    return tuple(
+        (s.key, s.label, s.secret, s.live, s.default, s.page, s.group, s.name, s.kind, s.section, s.help)
+        for s in items
+    )
 
 
 def _move_plugin_values(items) -> None:
-    """Pasa a settings.json los ajustes de un plugin que estaban en el .env y regenera los archivos
-    de referencia. Nunca rompe el registro del plugin: un error se anota y sigue."""
+    """Pasa a settings.json (una vez por clave) los ajustes de un plugin que estaban en el .env,
+    vuelve a leer el archivo (sus claves ahora existen) y regenera los archivos de referencia.
+    Nunca rompe el registro del plugin: un error se anota y sigue."""
     try:
-        before = set(ENV_AT_START)
         _forget_env_file_values(items)
-        moved = [key for key in ENV_AT_START if key not in before]
-        if moved:
-            store.migrate_keys(ENV_AT_START, moved)
+        store.migrate_keys(ENV_AT_START, [s.key for s in items])
+        store.reload()
         from epsilon.settings import generate  # acá: generate importa este módulo
 
         generate.write_generated()
@@ -645,8 +658,12 @@ def _move_plugin_values(items) -> None:
 
 def reset_plugin_settings() -> None:
     """Deja el registro vacío, también el de secretos. Solo lo usan los tests."""
-    set_plugin_settings([])
+    global _plugin_settings, _processed
+    for old in _plugin_settings:
+        BY_KEY.pop(old.key, None)
+    _plugin_settings = ()
     _plugin_secret_keys.clear()
+    _processed = None
 
 
 # --- Leer un ajuste ------------------------------------------------------------

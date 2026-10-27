@@ -271,9 +271,9 @@ def main():
     La web va en el hilo principal: es el punto de control por defecto y maneja
     las señales de apagado. Telegram y compañía van en hilos aparte, así que si
     uno falla (token inválido, se cae Telegram) la web sigue funcionando."""
+    install_log_redaction()  # antes que los ajustes: sus avisos también van al log, tachados
     setup_settings()
-    install_log_redaction()
-    refresh_plugins()
+    refresh_plugins()  # registra los ajustes de los plugins y vuelve a leer settings.json
     enabled = enabled_channels(config.environ())
 
     try:

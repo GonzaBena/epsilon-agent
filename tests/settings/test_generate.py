@@ -291,3 +291,135 @@ def test_plugin_registration_survives_a_failing_migration(tmp_data, monkeypatch)
         [config.Setting("FAKE_ROOM", "Sala", live=True, name="plugin.fake.fake_room", section="plugin.fake", help="Sala")]
     )
     assert "FAKE_ROOM" in config.BY_KEY
+
+
+# --- Plugins al reiniciar ----------------------------------------------------------------
+
+
+def fake_plugin() -> list[config.Setting]:
+    return [config.Setting("FAKE_ROOM", "Sala", live=True, name="plugin.fake.fake_room", section="plugin.fake", help="Sala")]
+
+
+def restart(monkeypatch, env=None):
+    """Un proceso nuevo: nada en memoria (store, plugins, marca de listo) y el .env otra vez en el entorno."""
+    store.stop_watcher()
+    store.reset()
+    config.reset_plugin_settings()
+    monkeypatch.setattr(config, "SETTINGS_READY", False)
+    monkeypatch.setattr(config, "ENV_AT_START", {})
+    for key, value in (env or {}).items():
+        monkeypatch.setenv(key, value)
+
+
+def start(monkeypatch, env=None):
+    """Arranca como main(): setup_settings y después refresh_plugins (que registra el plugin)."""
+    restart(monkeypatch, env)
+    main.setup_settings()
+    config.set_plugin_settings(fake_plugin())
+
+
+def file_keys() -> dict:
+    return jsonc.loads(store.settings_path().read_text(encoding="utf-8"))
+
+
+def test_plugin_values_in_the_file_apply_after_a_restart(tmp_data, monkeypatch):
+    store.settings_path().write_text('{"plugin.fake.fake_room": "general"}', encoding="utf-8")
+
+    start(monkeypatch)  # al leer el archivo el plugin todavía no existe; aparece después
+
+    assert config.value("FAKE_ROOM") == "general"
+    assert store.issues() == []
+
+
+def test_plugin_values_written_on_the_first_start_still_apply_on_the_second(tmp_data, monkeypatch):
+    start(monkeypatch, {"FAKE_ROOM": "general"})
+    assert file_keys()["plugin.fake.fake_room"] == "general"
+
+    start(monkeypatch, {"FAKE_ROOM": "general"})
+
+    assert config.value("FAKE_ROOM") == "general" and store.issues() == []
+
+
+def test_plugin_keys_deleted_from_the_file_do_not_come_back_from_the_env(tmp_data, monkeypatch):
+    start(monkeypatch, {"FAKE_ROOM": "general"})
+    path = store.settings_path()
+    store._replace(path, jsonc.remove(path.read_text(encoding="utf-8"), "plugin.fake.fake_room"))
+
+    start(monkeypatch, {"FAKE_ROOM": "general"})  # sigue en el .env
+
+    assert "plugin.fake.fake_room" not in file_keys()
+    assert config.value("FAKE_ROOM") == ""
+
+
+def test_deleting_settings_json_migrates_the_plugin_again(tmp_data, monkeypatch):
+    start(monkeypatch, {"FAKE_ROOM": "general"})
+    store.settings_path().unlink()
+
+    start(monkeypatch, {"FAKE_ROOM": "general"})
+
+    assert file_keys()["plugin.fake.fake_room"] == "general"
+
+
+def test_registering_the_same_plugins_again_rewrites_nothing(tmp_data, monkeypatch):
+    start(monkeypatch)
+    calls = []
+    monkeypatch.setattr(generate, "write_generated", lambda: calls.append("generate"))
+    monkeypatch.setattr(store, "migrate_keys", lambda values, keys: calls.append("migrate") or [])
+
+    for _ in range(3):  # cada GET /api/config o /api/channels vuelve a registrarlos
+        config.set_plugin_settings(fake_plugin())
+    assert calls == []
+
+    config.set_plugin_settings(fake_plugin() + [config.Setting("FAKE_TOPIC", "Tema", live=True, name="plugin.fake.fake_topic", section="plugin.fake", help="Tema")])
+    assert calls == ["migrate", "generate"]
+
+
+# --- Los avisos van también al log ---------------------------------------------------------
+
+
+def test_settings_warnings_reach_the_log_once_without_values(tmp_data, caplog):
+    caplog.set_level("WARNING", logger="epsilon.settings.store")
+    store.settings_path().write_text(
+        '{"zzz.nada": 1, "GEMINI_API_KEY": "AIzaSECRETSECRETSECRETSECRET"}', encoding="utf-8"
+    )
+
+    store.load_initial()
+    store.reload()  # releer lo mismo no repite los avisos
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert sum("zzz.nada" in line and "No existe" in line for line in lines) == 1
+    assert sum("GEMINI_API_KEY" in line for line in lines) == 1
+    assert not any("SECRET" in line for line in lines)
+
+
+def test_a_new_warning_and_a_broken_file_are_logged_on_refresh(tmp_data, caplog):
+    caplog.set_level("WARNING", logger="epsilon.settings.store")
+    path = store.settings_path()
+    path.write_text("{}", encoding="utf-8")
+    store.load_initial()
+
+    path.write_text('{"chat.max_tool_steps": 999}', encoding="utf-8")
+    store.reload()
+    path.write_text('{"a": ', encoding="utf-8")
+    store.reload()
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert any("chat.max_tool_steps" in line for line in lines)
+    assert any("error en la línea 1" in line for line in lines)
+    assert not any("999" in line for line in lines)
+
+
+def test_unknown_plugin_keys_are_not_logged_before_the_plugins_register(tmp_data, monkeypatch, caplog):
+    caplog.set_level("WARNING", logger="epsilon.settings.store")
+    store.settings_path().write_text('{"plugin.fake.fake_room": "general", "plugin.otro.x": "y"}', encoding="utf-8")
+
+    start(monkeypatch)
+
+    lines = [r.getMessage() for r in caplog.records if "No existe" in r.getMessage()]
+    assert lines and all("plugin.otro.x" in line for line in lines)  # el de un plugin que no está, sí
+
+
+def test_values_from_the_env_that_cannot_move_are_logged(tmp_data, caplog):
+    caplog.set_level("WARNING", logger="epsilon.settings.store")
+    store.migrate({"WHISPER_IDLE_MINUTES": "abc"})
+    assert any("voice.idle_minutes" in r.getMessage() and "abc" not in r.getMessage() for r in caplog.records)

@@ -11,6 +11,7 @@ que entienden los validadores («si», «6»).
 
 from dataclasses import dataclass
 import difflib
+import json
 import logging
 import os
 from pathlib import Path
@@ -26,6 +27,8 @@ from epsilon.settings.config import ConfigError, Setting
 SETTINGS_FILE = "settings.json"
 DEFAULT_FILE = "settings_default.json"
 SCHEMA_FILE = "settings.schema.json"
+# Las claves de plugins que ya se pasaron del .env (cada una una sola vez). Oculto: no es de la persona.
+PLUGINS_MARKER = ".settings_plugins.json"
 SCHEMA_KEY = "$schema"  # reservada: la pone Epsilon para el autocompletado
 
 SECRET_WARNING = "las claves van en la pantalla de Configuración, no en este archivo"
@@ -55,6 +58,7 @@ _issues: list[Issue] = []
 _broken: str | None = None  # motivo, con número de línea
 _stamp: tuple[int, int] | None = None  # (mtime_ns, tamaño) de la última lectura; None = no existía
 _migrate_issues: list[Issue] = []  # lo del .env que no se pudo pasar (sobrevive a las relecturas)
+_logged: set[Issue] = set()  # los avisos que ya están en el log (uno que se va y vuelve se anota de nuevo)
 
 
 # --- Rutas ---------------------------------------------------------------------
@@ -150,6 +154,23 @@ def _broken_reason(e: Exception, starting: bool) -> tuple[str, int]:
     return f"El archivo tiene un error en la línea {line}: se usan {fallback}.", line
 
 
+def _warn(text: str) -> None:
+    """Al log, siempre tachado (los avisos no llevan valores, pero por las dudas)."""
+    log.warning("%s", config.redact(text))
+
+
+def _log_issues(issues: list[Issue]) -> None:
+    """Anota en el log cada aviso nuevo: nombre y mensaje, nunca el valor. Sin candado."""
+    _logged.intersection_update(issues)
+    for issue in issues:
+        if issue in _logged:
+            continue
+        if issue.name.startswith("plugin.") and issue.message.startswith(UNKNOWN) and not config.SETTINGS_READY:
+            continue  # los plugins todavía no se registraron: se mira de nuevo cuando lo hagan
+        _logged.add(issue)
+        _warn(f"settings.json, «{issue.name}»: {issue.message}")
+
+
 def _effective(s: Setting | None, value: str | None) -> str:
     if value is not None:
         return value
@@ -197,6 +218,9 @@ def _load(starting: bool) -> bool:
                 else:
                     applied[key] = new
         _saved, _applied, _issues = values, applied, issues
+    if _broken and _broken != before[3]:
+        _warn(f"settings.json: {_broken}")
+    _log_issues(_issues)
     return before != (_saved, _applied, _issues, _broken)
 
 
@@ -211,6 +235,14 @@ def refresh() -> bool:
     with _lock:
         if _file_stamp(settings_path()) == _stamp:
             return False
+        return _load(starting=False)
+
+
+def reload() -> bool:
+    """Vuelve a leer el archivo aunque no haya cambiado. Lo usa config cuando cambian los ajustes
+    que existen (un plugin que aparece o se va): así sus claves, que al arrancar todavía no se
+    conocían, se aplican (los de plugins son todos en caliente)."""
+    with _lock:
         return _load(starting=False)
 
 
@@ -333,6 +365,7 @@ def reset() -> None:
         _saved, _applied, _issues = {}, {}, []
         _broken, _stamp = None, None
         _migrate_issues.clear()
+        _logged.clear()
 
 
 # --- Pasar el .env a settings.json (una vez) ----------------------------------------
@@ -357,7 +390,9 @@ def _add_values(text: str, env_values: dict[str, str], settings: list[Setting], 
             value = config.to_json(s, config.from_json(s, raw))
             config.from_json(s, value)  # lo que va al archivo tiene que leerse igual
         except Exception as e:  # un validador que se queja: queda el de fábrica y se avisa (sin el valor)
-            _migrate_issues.append(Issue(s.name, f"{NOT_MIGRATED}: {e}" if str(e) else NOT_MIGRATED + "."))
+            issue = Issue(s.name, f"{NOT_MIGRATED}: {e}" if str(e) else NOT_MIGRATED + ".")
+            _migrate_issues.append(issue)
+            _warn(f"settings.json, «{issue.name}»: {issue.message}")
             continue
         if value is None or value == "" or value == []:
             continue
@@ -376,17 +411,36 @@ def migrate(env_values: dict[str, str]) -> list[str]:
         text = f'{MIGRATED_HEADER}\n{{\n  "{SCHEMA_KEY}": "./settings.schema.json"\n}}\n'
         text, moved = _add_values(text, env_values, _migratable(env_values), set())
         _replace(path, text)
+        _marker().unlink(missing_ok=True)  # archivo nuevo: los plugins también se pasan de nuevo
         return moved
+
+
+def _marker() -> Path:
+    return _path(PLUGINS_MARKER)
+
+
+def _already_migrated() -> set[str]:
+    try:
+        data = json.loads(_marker().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    keys = data.get("migrated") if isinstance(data, dict) else None
+    return {k for k in keys if isinstance(k, str)} if isinstance(keys, list) else set()
 
 
 def migrate_keys(env_values: dict[str, str], keys) -> list[str]:
     """Agrega a settings.json (lo crea si falta) las claves de `keys` que todavía no tiene, sin
-    pisar ninguna, y aplica lo nuevo. Para los ajustes de un plugin que aparece en pleno uso. Si
-    el archivo está roto, no lo toca."""
+    pisar ninguna, y aplica lo nuevo. Para los ajustes de un plugin: cada clave se mira UNA vez
+    (queda anotada en PLUGINS_MARKER), así una que la persona borró del archivo no vuelve del .env
+    en el próximo arranque. Si el archivo está roto, no lo toca ni anota nada."""
     settings = _migratable(keys)
     if not settings:
         return []
     with _lock:
+        done = _already_migrated()
+        settings = [s for s in settings if s.key not in done]
+        if not settings:
+            return []
         path = settings_path()
         text, _ = _read()
         if text is None:
@@ -399,6 +453,7 @@ def migrate_keys(env_values: dict[str, str], keys) -> list[str]:
         if moved:
             _replace(path, text)
             _load(starting=False)
+        _replace(_marker(), json.dumps({"migrated": sorted(done | {s.key for s in settings})}) + "\n")
         return moved
 
 
