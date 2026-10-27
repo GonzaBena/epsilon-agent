@@ -1172,6 +1172,8 @@ def create_app() -> FastAPI:
                 main.stop_channel(name)
         except main.ChannelError as e:
             raise HTTPException(409, str(e)) from None
+        except config.ConfigError as e:  # settings.json roto: la elección no se puede guardar
+            raise HTTPException(409, " ".join(e.errors.values())) from None
         return channels_state()
 
     def config_state() -> dict:

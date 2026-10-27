@@ -74,6 +74,18 @@ def test_a_channel_that_will_not_stop_answers_409(client, switchable_telegram, m
     monkeypatch.delenv("TELEGRAM_ENABLED", raising=False)
 
 
+def test_switching_a_channel_with_a_broken_settings_file_is_409_and_touches_nothing(client, switchable_telegram):
+    path = store.settings_path()
+    path.write_text('{"general.user_name": "Ana",,}', encoding="utf-8")
+    store.load_initial()
+
+    reply = client.put("/api/channels/telegram", json={"enabled": False})
+
+    assert reply.status_code == 409 and "arreglalo a mano" in reply.json()["detail"]
+    assert switchable_telegram.calls == []  # no se apagó: la elección no se pudo guardar
+    assert path.read_text(encoding="utf-8") == '{"general.user_name": "Ana",,}'
+
+
 def test_the_channels_api_refuses_foreign_origins_and_bad_bodies(client, switchable_telegram):
     evil = {"Origin": "http://evil.example"}
 
