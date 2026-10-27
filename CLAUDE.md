@@ -15,7 +15,8 @@ La idea es que sea simple y barato de correr, y que otra persona pueda instalarl
   los de la web, partidos por tema, en `tests/web/` (`helpers.py` y `conftest.py` comparten lo común)
 - `EPSILON_ENV_FILE=/ruta/otro.env` hace que Epsilon use ESE archivo de
   configuración en vez del `.env` real (que ni se carga). Sirve para probar el
-  ciclo de configuración con una copia de `.env.example` y datos al azar.
+  ciclo de configuración con una copia de `.env.example` y datos al azar. Los ajustes que no son secretos viven en
+  `DATA_DIR/settings.json` (ver `settings/config.py`).
 - El bot corre como servicio de usuario (`deploy/epsilon.service`):
   `systemctl --user status|restart|stop epsilon`; logs con
   `journalctl --user -u epsilon -f`.
@@ -34,7 +35,7 @@ ai/        llm.py messages.py images.py providers/ chat.py permissions.py browse
 data/      notes.py todo.py tabular.py conversations.py library.py activity.py sites.py   lo que se guarda en DATA_DIR (library: vista de solo lectura; activity: lo que hicieron la IA y las rutinas; sites: atajos del navegador)
 voice/     transcribe.py                                Whisper (voz → texto)
 memory/    store.py                                     lo que Epsilon recuerda de vos (memory.md)
-settings/  config.py checks.py                          ajustes del .env y pruebas de conexión
+settings/  config.py checks.py store.py jsonc.py tunables.py generate.py editor.py   ajustes (settings.json + .env de secretos) y pruebas de conexión
 connectors/ store.py manager.py bridge.py registry.py buttons.py   conectores MCP: servidores externos (stdio) cuyas herramientas usa la IA o la persona, y sus botones
 skills/    store.py importer.py runtime.py factory.py starter.py   skills: instrucciones de la persona (SKILL.md) que se usan con /<nombre> o que la IA elige; solo texto
 routines/  rules.py store.py engine.py notify.py     rutinas: lo que Epsilon hace solo a una hora (sin modelo)
@@ -82,9 +83,8 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
   preguntas de permiso quedan «vencidas») y `log_turn` guarda `ai=reply.ai`; el texto sin `/` va a la IA y los comandos
   siguen sin modelo (el núcleo los resuelve antes que `_chat`). El contexto es más corto (`CHAT_MAX_TURNS_TELEGRAM`, por
   defecto 5 pares) y el límite de costo y los permisos son los de la web. La web la ve de solo lectura. Ver `docs/plan-telegram-ia.md`.
-- `settings/config.py`: ajustes editables desde la web (claves, modelo, puerto). Único
-  que escribe el `.env`; también `redact()` y el filtro de logs. Ver
-  `docs/plan-config.md`.
+- `settings/config.py`: el registro de ajustes (nombre del `.env`, nombre JSON, tipo, rango, si es secreto) y la lectura: `config.value(clave)`, `config.number(clave)` y `config.environ()` (lo que reciben como `env` los canales y plugins). **Nadie lee `os.environ` para un ajuste** (un test de estructura lo vigila). El `.env` guarda solo secretos, `ALLOWED_USER_ID` y `DATA_DIR`; escribe el `.env` solo `config.py`, y `settings.json` solo `settings/store.py`. También `redact()` y el filtro de logs. Ver `docs/plan-config.md`.
+- **settings.json** (`DATA_DIR/settings.json`, estilo VS Code, JSONC con comentarios): los ajustes que no son secretos. `settings_default.json` (todos los valores y sus comentarios) y `settings.schema.json` (autocompletado) se regeneran solos (`generate.py`); los números sin valor por defecto ni habitual salen del default pero están en el schema. Precedencia: variable de entorno del proceso > `settings.json` > valor por defecto. Al arrancar migra una vez los ajustes del `.env` (los de un plugin, `plugin.<plugin>.<clave>`, al registrarse el plugin). Un hilo mira el archivo cada 2 s y aplica en caliente; lo que SUELTA un límite (`tunables`, `store.tightens`) pide reinicio salvo que lo ajuste (endurecer aplica al instante); si el archivo queda roto con Epsilon andando se conservan los últimos valores buenos y se avisa. `/ajustes` y los botones de Configuración abren el archivo en el editor (`editor.py`). La IA no tiene acceso: no hay herramienta que lo lea ni lo escriba.
 - `data/conversations.py`: conversaciones como archivos (`DATA_DIR/conversations/<id>.jsonl`,
   una línea por mensaje, solo se agrega; la única excepción es eliminar una conversación entera, que
   borra su archivo de verdad y no toca lo que guardó en notas o archivos). Cada mensaje lleva un id; un botón tocado y
@@ -185,4 +185,4 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Memoria: el modelo ya la maneja con las herramientas `recordar`/`memoria`/`editar`/`olvidar` (con permisos). No se le pasa a los resúmenes, salvo que el resumen se pida dentro de un chat de modo IA (ahí ya la recibe).
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
-- Más proveedores (OpenAI…; Anthropic ya está, sin razonamiento todavía): uno por vez, como un archivo nuevo en `ai/providers/`. Y un archivo de configuración propio (hoy los ajustes viven en el `.env`). Ver `docs/plan-modelos.md`.
+- Más proveedores (OpenAI…; Anthropic ya está, sin razonamiento todavía): uno por vez, como un archivo nuevo en `ai/providers/`. Ver `docs/plan-modelos.md`.

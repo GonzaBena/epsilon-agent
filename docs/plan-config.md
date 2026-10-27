@@ -86,3 +86,34 @@ largo (el campo real queda vacío), validación con el error junto al campo,
 aviso de reinicio con su razón, pruebas de conexión contra Google y Telegram,
 borrado en dos pasos y aviso de primer arranque en el chat. Escribir sobre el
 `.env` real queda sin probar a propósito (lo maneja el dueño a mano).
+
+## settings.json (ajustes fuera del `.env`)
+
+**Para quien instala Epsilon.** El `.env` queda solo para lo secreto (claves, token), `ALLOWED_USER_ID` y `DATA_DIR`.
+Todo lo demás vive en `DATA_DIR/settings.json`, un archivo de texto con comentarios (como el de VS Code). Junto a él hay
+dos archivos que Epsilon regenera solo y no hay que tocar: `settings_default.json` (todos los ajustes con su valor por
+defecto y su explicación) y `settings.schema.json` (para que el editor autocomplete y avise de errores). Para cambiar
+algo: copiá la línea de `settings_default.json` a `settings.json` y editá el valor. Se abre con `/ajustes` o con el botón
+«Abrir settings.json» de Configuración. La primera vez que arranca, Epsilon pasa solo a `settings.json` los ajustes que
+tenías en el `.env`.
+
+**Precedencia:** variable de entorno del proceso > `settings.json` > valor por defecto.
+
+**Aplicar cambios.** Un hilo mira el archivo cada 2 s y aplica lo que cambió, sin reiniciar. Los ajustes que AFLOJAN un
+límite (más pasos de herramientas, topes más altos, más sitios permitidos…) piden reiniciar el servicio, salvo que el
+cambio lo ENDUREZCA (`store.tightens`): bajar un tope o bloquear un sitio se aplica al instante, porque nunca da más
+poder. Los pendientes de reinicio aparecen en el aviso de Configuración. Si guardás el archivo roto (una coma de más) con
+Epsilon andando, se siguen usando los últimos valores buenos y se avisa; al arrancar, un archivo roto se informa con su
+línea. Un valor inválido o fuera de rango se ignora y se avisa, sin tirar el resto.
+
+**La IA no tiene acceso** a `settings.json`: ninguna herramienta lo lee ni lo escribe.
+
+**Notas para desarrollo.**
+- Registro: `settings/config.py` (nombre del `.env`, nombre JSON `sección.clave`, tipo, rango, secreto). Se lee siempre con
+  `config.value(...)` / `config.number(...)`, nunca con `os.environ` (un test de estructura lo vigila). `config.environ()`
+  es lo que reciben los canales y plugins como `env`.
+- `settings/store.py` es el único que escribe `settings.json` (`jsonc.py` lo lee y `editor.py` hace ediciones mínimas sin
+  perder comentarios); `tunables.py` marca cuáles aflojan; `generate.py` arma el default y el schema. Los números sin valor
+  por defecto ni valor habitual se omiten de `settings_default.json` pero están en el schema.
+- Plugins: sus ajustes se llaman `plugin.<nombre del plugin>.<clave>` y se migran del `.env` cuando el plugin se registra.
+- `EPSILON_ENV_FILE` sigue sirviendo para probar con otro `.env`.
