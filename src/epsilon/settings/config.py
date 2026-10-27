@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 import os
 from pathlib import Path
@@ -132,11 +132,30 @@ def _whole(low: int, high: int, what: str):
     """Validador de enteros entre `low` y `high`."""
 
     def check(value: str) -> str:
-        if not re.fullmatch(r"\d{1,4}", value, re.ASCII) or not low <= int(value) <= high:
+        if not re.fullmatch(r"\d{1,7}", value, re.ASCII) or not low <= int(value) <= high:
             raise ValueError(f"{what} tiene que ser un número entero entre {low} y {high}.")
         return str(int(value))
 
     return check
+
+
+def _decimal(low: float, high: float, what: str):
+    """Validador de números con decimales (punto o coma) entre `low` y `high`."""
+
+    def check(value: str) -> str:
+        value = value.replace(",", ".")
+        if not re.fullmatch(r"\d{1,7}(\.\d{1,4})?", value, re.ASCII) or not low <= float(value) <= high:
+            raise ValueError(f"{what} tiene que ser un número entre {low:g} y {high:g}.")
+        return str(float(value)) if "." in value else value
+
+    return check
+
+
+def _folder(value: str) -> str:
+    """Una carpeta: una sola línea, sin caracteres de control."""
+    if not value or len(value) > 300 or any(not c.isprintable() for c in value):
+        raise ValueError("Escribí la ruta de una carpeta, en una sola línea (hasta 300 caracteres).")
+    return value
 
 
 def _model_id(value: str) -> str:
@@ -199,6 +218,17 @@ class Setting:
     default: str = ""  # lo que se usa (y se muestra) si el ajuste no está definido
     page: str = "config"  # en qué página de la web se edita: «config» o «canales»
     group: str = ""  # de qué plugin es (su nombre): la página de configuración lo dibuja aparte
+    # --- Cómo se ve en settings.json (vacío en los secretos y en los de arranque) ---
+    name: str = ""  # clave JSON «sección.nombre»
+    kind: str = "text"  # «text», «int», «float», «bool» o «list»
+    minimum: float | None = None  # solo números
+    maximum: float | None = None
+    choices: tuple[str, ...] = ()  # valores posibles de un texto, si son pocos
+    section: str = ""  # primer tramo del nombre
+    help: str = ""  # una línea, para el comentario y el schema
+    loosens: bool = False  # subirlo (o prenderlo) afloja una defensa o un tope de gasto
+    safer: str = ""  # hacia dónde es más seguro: «lower» (números), «si»/«no» (bool), «more»/«fewer» (listas)
+    bootstrap: bool = False  # se lee antes que settings.json: vive solo en el .env
 
 
 SETTINGS = (
@@ -473,6 +503,87 @@ SETTINGS = (
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
 
+# Cómo es cada ajuste propio en settings.json: nombre, tipo, rango y ayuda. Aparte de la lista
+# de arriba para que ésta siga siendo la definición del .env. Los secretos no tienen nada acá.
+_J = dict  # solo para abreviar la tabla
+_JSON_FIELDS: dict[str, dict] = {
+    "GEMINI_MODEL": _J(name="ai.gemini_model", help="Modelo de Gemini que se usa si no elegís otro"),
+    "AI_MODEL": _J(name="ai.model", help="Modelo de IA que se usa por defecto (proveedor:modelo)"),
+    "AI_MODEL_CHAT": _J(name="ai.model_chat", help="Modelo para el chat con IA (si está vacío, el de siempre)"),
+    "AI_MODEL_ASK": _J(name="ai.model_ask", help="Modelo para /ia (si está vacío, el de siempre)"),
+    "AI_MODEL_SUMMARY": _J(name="ai.model_summary", help="Modelo para resumir archivos (si está vacío, el de siempre)"),
+    "AI_MODEL_CSV": _J(name="ai.model_csv", help="Modelo para pasar imágenes a CSV (si está vacío, el de siempre)"),
+    "AI_THINKING_EFFORT": _J(
+        name="ai.thinking_effort",
+        choices=("desactivado", "bajo", "medio", "alto"),
+        help="Cuánto razona la IA antes de contestar (más razonamiento cuesta más)",
+    ),
+    "OLLAMA_URL": _J(name="ai.ollama_url", help="Dirección donde corre Ollama"),
+    "USER_NAME": _J(name="general.user_name", help="Tu nombre, para el saludo"),
+    "AGENT_NAME": _J(name="general.agent_name", help="Cómo querés llamar al asistente"),
+    "WEB_PORT": _J(name="web.port", kind="int", minimum=1, maximum=65535, help="Puerto de la web local (hace falta reiniciar)"),
+    "USD_ARS": _J(name="usage.usd_ars", kind="float", minimum=0.01, maximum=9999999, help="Pesos por dólar, para ver el gasto también en pesos"),
+    "WEATHER_CITY": _J(name="weather.city", help="Ciudad del clima cuando no pedís otra"),
+    "CHAT_LIMIT_USD": _J(
+        name="chat.limit_usd", kind="float", minimum=0.01, maximum=1000, loosens=True, safer="lower",
+        help="Tope de gasto en dólares con el que nace cada chat con IA",
+    ),
+    "CHAT_MAX_FILES": _J(
+        name="chat.max_files", kind="int", minimum=1, maximum=20, loosens=True, safer="lower",
+        help="Cuántos archivos podés mencionar con @ en un mensaje",
+    ),
+    "CHAT_MAX_MB": _J(
+        name="chat.max_mb", kind="int", minimum=1, maximum=100, loosens=True, safer="lower",
+        help="Tamaño total máximo de los archivos de un mensaje, en MB",
+    ),
+    "CHAT_MAX_TURNS": _J(
+        name="chat.max_turns", kind="int", minimum=1, maximum=100, loosens=True, safer="lower",
+        help="Cuántos intercambios anteriores ve la IA en el chat",
+    ),
+    "CHAT_MAX_TURNS_TELEGRAM": _J(
+        name="chat.max_turns_telegram", kind="int", minimum=1, maximum=100, loosens=True, safer="lower",
+        help="Cuántos intercambios anteriores ve la IA en Telegram",
+    ),
+    "WHISPER_LANGUAGE": _J(name="voice.language", help="Idioma en que hablás (es, en...) o auto para detectarlo"),
+    "WHISPER_IDLE_MINUTES": _J(
+        name="voice.idle_minutes", kind="float", minimum=1, maximum=1440,
+        help="Minutos sin usar la voz antes de soltar el modelo de la memoria",
+    ),
+    "WHISPER_DEVICE": _J(name="voice.device", choices=("cpu", "cuda"), help="Dónde corre la voz: cpu o cuda (placa NVIDIA)"),
+    "ASSISTANT_NAME": _J(name="voice.wake_names", help="Nombres con los que le hablás por voz, separados por coma"),
+    "VOICE_ENABLED": _J(name="voice.enabled", kind="bool", help="Usar la voz (micrófono de la web y notas de voz)"),
+    "VOICE_CONFIRM": _J(name="voice.confirm", kind="bool", help="Pedir confirmación antes de ejecutar una nota de voz"),
+    "TTS_ENABLED": _J(name="tts.enabled", kind="bool", help="Responder también con audio"),
+    "TTS_ENGINE": _J(name="tts.engine", choices=("kokoro", "piper"), help="Motor de voz para responder: kokoro o piper"),
+    "TTS_VOICE": _J(name="tts.voice", help="Nombre de la voz para responder con audio"),
+    "TTS_MODE": _J(name="tts.mode", choices=("siempre", "solo_voz"), help="Cuándo responder con audio: siempre o solo_voz"),
+    "TTS_MAX_CHARS": _J(name="tts.max_chars", kind="int", minimum=50, maximum=5000, help="Largo máximo del texto que se pasa a audio"),
+    "TELEGRAM_ENABLED": _J(name="channels.telegram_enabled", kind="bool", help="Canal de Telegram prendido"),
+    "BROWSER_ENABLED": _J(name="browser.enabled", kind="bool", loosens=True, safer="no", help="Dejar que la IA use tu Chromium"),
+    "BROWSER_GUARD": _J(name="browser.guard", kind="bool", loosens=True, safer="si", help="Preguntar antes de actuar en sitios que no son de confianza"),
+    "BROWSER_TRUSTED_SITES": _J(
+        name="browser.trusted_sites", kind="list", loosens=True, safer="fewer",
+        help="Sitios donde la IA actúa sin preguntar",
+    ),
+    "BROWSER_BLOCKED_SITES": _J(
+        name="browser.blocked_sites", kind="list", loosens=True, safer="more",
+        help="Sitios que la IA nunca puede ver ni tocar",
+    ),
+    "ROUTINES_ENABLED": _J(name="routines.enabled", kind="bool", loosens=True, safer="no", help="Cumplir las rutinas programadas"),
+    "ALLOWED_USER_ID": _J(bootstrap=True),
+    "DATA_DIR": _J(bootstrap=True),
+}
+
+
+def _with_json(s: Setting) -> Setting:
+    fields = dict(_JSON_FIELDS.get(s.key, {}))
+    if "name" in fields:
+        fields["section"] = fields["name"].partition(".")[0]
+    return replace(s, **fields)
+
+
+SETTINGS = tuple(_with_json(s) for s in SETTINGS)
+
 BY_KEY = {s.key: s for s in SETTINGS}
 
 # Ajustes que declaran los plugins de canales (ver plugins/channels.py). Se suman a los propios
@@ -485,13 +596,13 @@ _plugin_secret_keys: set[str] = set()
 
 def all_settings() -> tuple[Setting, ...]:
     """Los ajustes propios más los de los plugins registrados."""
-    return SETTINGS + _plugin_settings
+    return SETTINGS + tunables.TUNABLES + _plugin_settings
 
 
 def set_plugin_settings(items: list[Setting]) -> None:
     """Reemplaza el conjunto de ajustes de plugins. No puede pisar un ajuste propio."""
     global _plugin_settings
-    own = {s.key for s in SETTINGS}
+    own = {s.key for s in SETTINGS + tunables.TUNABLES}
     clashes = sorted(own.intersection(item.key for item in items))
     if clashes:
         raise ValueError(f"«{clashes[0]}» ya es un ajuste de Epsilon.")
@@ -526,7 +637,9 @@ def status(env_file: Path | None = None) -> list[dict]:
     saved = dotenv_values(path) if path.exists() else {}
 
     result = []
-    for s in all_settings():
+    # Solo los de la página de Configuración de hoy; los números del código y los ajustes nuevos
+    # (tunables) viven únicamente en settings.json.
+    for s in SETTINGS + _plugin_settings:
         current = _current(s)
         entry = {
             "key": s.key,
@@ -649,6 +762,71 @@ def update(
             os.environ[key] = ""
 
 
+# --- Valores en settings.json -------------------------------------------------
+
+
+def _number_text(setting: Setting, raw: object) -> str:
+    """Un número de JSON (o un texto con número) como el texto que entienden los validadores."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        raise ValueError(f"«{setting.name}» tiene que ser un número.")
+    if isinstance(raw, float):
+        if raw != raw or raw in (float("inf"), float("-inf")):
+            raise ValueError(f"«{setting.name}» tiene que ser un número.")
+        return str(int(raw)) if raw.is_integer() else repr(raw)
+    return str(raw).strip()
+
+
+def from_json(setting: Setting, raw: object) -> str:
+    """Un valor de settings.json como el texto que guarda el .env. Valida: ValueError en español."""
+    if setting.kind == "bool":
+        if raw is True:
+            return "si"
+        if raw is False:
+            return "no"
+        if isinstance(raw, str):
+            return _yes_no(raw.strip())
+        raise ValueError(f"«{setting.name}» tiene que ser true o false.")
+    if setting.kind == "list":
+        if isinstance(raw, list) and all(isinstance(x, str) for x in raw):
+            text = ",".join(raw)
+        elif isinstance(raw, str):
+            text = raw
+        else:
+            raise ValueError(f"«{setting.name}» tiene que ser una lista de textos.")
+        return setting.validate(text.strip())
+    if setting.kind in ("int", "float"):
+        text = _number_text(setting, raw)
+        try:
+            number = float(text.replace(",", "."))
+        except ValueError:
+            raise ValueError(f"«{setting.name}» tiene que ser un número.") from None
+        low, high = setting.minimum, setting.maximum
+        if (low is not None and number < low) or (high is not None and number > high):
+            raise ValueError(f"«{setting.name}» tiene que estar entre {low:g} y {high:g}.")
+        return setting.validate(text) if setting.validate else text
+    if not isinstance(raw, str):
+        raise ValueError(f"«{setting.name}» tiene que ser un texto.")
+    text = raw.strip()
+    if not text:
+        return ""  # vacío: no está definido
+    return setting.validate(text) if setting.validate else text
+
+
+def to_json(setting: Setting, text: str) -> object:
+    """El texto del .env como el valor que va en settings.json."""
+    text = (text or "").strip()
+    if setting.kind == "bool":
+        return text.lower() in ("si", "sí")
+    if setting.kind == "list":
+        return list(dict.fromkeys(x.strip().lower() for x in text.split(",") if x.strip()))
+    if setting.kind in ("int", "float"):
+        if not text:
+            return None
+        number = float(text.replace(",", "."))
+        return int(number) if setting.kind == "int" else number
+    return text
+
+
 # --- Lo guardado, solo para uso interno --------------------------------------
 
 
@@ -706,3 +884,10 @@ class RedactingFilter(logging.Filter):
         if record.stack_info:
             record.stack_info = redact(record.stack_info)
         return True
+
+
+# Al final: tunables importa Setting y los validadores de acá arriba.
+from epsilon.settings import tunables  # noqa: E402
+
+if hasattr(tunables, "TUNABLES"):  # si alguien importó tunables primero, él mismo se suma al terminar
+    BY_KEY.update({s.key: s for s in tunables.TUNABLES})

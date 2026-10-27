@@ -217,7 +217,17 @@ def settings_for(plugin: Plugin) -> list[config.Setting]:
     """Los ajustes de un plugin como los entiende config: los de su manifiesto (se editan en
     Configuración) más el interruptor <NOMBRE>_ENABLED (en la página Canales, «no» por defecto)."""
     result = [
-        config.Setting(s.key, s.label, secret=s.secret, live=True, validate=_validator(s), group=plugin.label)
+        config.Setting(
+            s.key,
+            s.label,
+            secret=s.secret,
+            live=True,
+            validate=_validator(s),
+            group=plugin.label,
+            name="" if s.secret else f"plugin.{plugin.name}.{s.key.lower()}",
+            section=f"plugin.{plugin.name}",
+            help=s.label,
+        )
         for s in plugin.settings
     ]
     result.append(
@@ -228,6 +238,10 @@ def settings_for(plugin: Plugin) -> list[config.Setting]:
             default="no",
             validate=config._yes_no,
             page="canales",
+            name=f"plugin.{plugin.name}.enabled",
+            kind="bool",
+            section=f"plugin.{plugin.name}",
+            help=f"Canal de {plugin.label} prendido",
         )
     )
     return result
