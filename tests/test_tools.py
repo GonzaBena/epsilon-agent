@@ -93,6 +93,7 @@ def test_ai_tools_are_the_ones_of_the_spec():
         ("clima", "read"),
         ("enviar", "read"),
         ("csv", "read"),
+        ("crear_archivo", "write"),
         ("sistema", "read"),
         ("volumen", "write"),
         ("sonando", "read"),

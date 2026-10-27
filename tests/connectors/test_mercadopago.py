@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import importlib.util
 import json
 import os
@@ -53,7 +54,7 @@ def test_script_declares_its_own_dependencies():
 def test_server_defines_the_read_only_tools_and_buttons_that_fit_them(mp):
     found = {t.name: t.input_schema for t in asyncio.run(mp.server.list_tools())}
 
-    assert set(found) == {"cuentas", "buscar_pagos", "ver_pago", "saldo"}
+    assert set(found) == {"cuentas", "buscar_pagos", "exportar_pagos", "ver_pago", "saldo"}
     for button in json.loads(mp.buttons()):
         assert button["tool"] in found and not found[button["tool"]].get("required")
 
@@ -169,3 +170,59 @@ def test_a_network_failure_is_reported_without_a_traceback(mp, monkeypatch):
     monkeypatch.setattr(mp, "_http", down)
 
     assert "No pude hablar con Mercado Pago" in mp.saldo()
+
+
+def paged_http(mp, monkeypatch, payments):
+    """Un /v1/payments/search que respeta limit y offset, como el de verdad."""
+    calls = []
+
+    def fake(path, token, params=None):
+        calls.append(params)
+        start = params["offset"]
+        return 200, {"paging": {"total": len(payments)}, "results": payments[start:start + params["limit"]]}
+
+    monkeypatch.setattr(mp, "_http", fake)
+    return calls
+
+
+def test_export_pages_through_everything_and_writes_the_csv(mp, monkeypatch, tmp_path):
+    monkeypatch.setenv("MP_TOKEN_NEGOCIO", "t")
+    monkeypatch.setenv("MP_EXPORT_DIR", str(tmp_path))
+    payments = [{**PAYMENT, "id": n} for n in range(1, 121)]  # 120: tres páginas de 50
+    payments[0]["description"] = "=HYPERLINK(1)"
+    calls = paged_http(mp, monkeypatch, payments)
+
+    text = mp.exportar_pagos(desde="2026-10-01", hasta="2026-10-31", estado="approved")
+
+    assert [c["offset"] for c in calls] == [0, 50, 100] and calls[0]["status"] == "approved"
+    assert "120 pagos guardados en mp_negocio_2026-10-01_2026-10-31.csv" in text and "Aprobado en total" in text
+    rows = list(csv.reader((tmp_path / "mp_negocio_2026-10-01_2026-10-31.csv").open(encoding="utf-8")))
+    assert rows[0] == mp.EXPORT_FIELDS and len(rows) == 121
+    assert rows[1] == ["1", "2026-10-23 14:05", "approved", "15000.5", "ARS", "700.25", "14300.25", "visa", "'=HYPERLINK(1)"]
+    assert "x" * 200 not in rows[2][-1] and "\n" not in rows[2][-1]
+
+
+def test_export_never_overwrites_and_needs_a_folder(mp, monkeypatch, tmp_path):
+    monkeypatch.setenv("MP_TOKEN_NEGOCIO", "t")
+    paged_http(mp, monkeypatch, [PAYMENT])
+
+    assert "MP_EXPORT_DIR" in mp.exportar_pagos(desde="2026-10-23")  # sin carpeta no escribe
+    monkeypatch.setenv("MP_EXPORT_DIR", str(tmp_path / "no-existe"))
+    assert "no es una carpeta" in mp.exportar_pagos(desde="2026-10-23")
+    monkeypatch.setenv("MP_EXPORT_DIR", str(tmp_path))
+    mp.exportar_pagos(desde="2026-10-23")
+    again = mp.exportar_pagos(desde="2026-10-23")
+
+    assert "mp_negocio_2026-10-23_2.csv" in again
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["mp_negocio_2026-10-23.csv", "mp_negocio_2026-10-23_2.csv"]
+
+
+def test_export_refuses_too_many_and_writes_nothing_when_there_are_none(mp, monkeypatch, tmp_path):
+    monkeypatch.setenv("MP_TOKEN_NEGOCIO", "t")
+    monkeypatch.setenv("MP_EXPORT_DIR", str(tmp_path))
+    monkeypatch.setattr(mp, "MAX_EXPORT", 10)
+    paged_http(mp, monkeypatch, [PAYMENT] * 11)
+    assert "período más corto" in mp.exportar_pagos(desde="2026-10-01", hasta="2026-10-31")
+    paged_http(mp, monkeypatch, [])
+    assert "no se guardó ningún archivo" in mp.exportar_pagos(desde="2026-10-01")
+    assert list(tmp_path.iterdir()) == []

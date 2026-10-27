@@ -166,6 +166,27 @@ def save_file(original_name: str, data: bytes, folder: str | None = None) -> Pat
     return destiny
 
 
+# Lo que la IA puede crear con «crear_archivo»: solo texto, nunca algo que se ejecute.
+CREATE_EXT = (".csv", ".txt", ".md", ".json")
+MAX_CREATE_CHARS = 100_000
+
+
+def create_file(name: str, text: str) -> Path:
+    """Crea un archivo de texto nuevo en files/ (nombre con extensión de CREATE_EXT) y nunca pisa uno existente.
+    ValueError, en español, si el nombre, la extensión o el tamaño no sirven."""
+    stem, ext = Path(name.strip()).stem, Path(name.strip()).suffix.lower()
+    if ext not in CREATE_EXT:
+        raise ValueError(f"Extensión no permitida ({ext or 'ninguna'}). Se pueden crear: {', '.join(CREATE_EXT)}.")
+    clean = clean_note_name(stem)
+    if not clean:
+        raise ValueError("Falta un nombre de archivo válido.")
+    if not text.strip():
+        raise ValueError("El contenido está vacío.")
+    if len(text) > MAX_CREATE_CHARS:
+        raise ValueError(f"El contenido es demasiado largo ({len(text)} caracteres, el máximo es {MAX_CREATE_CHARS}).")
+    return save_file(clean + ext, text.encode("utf-8"))
+
+
 def read_note(name: str) -> str:
     """Devuelve el contenido completo de una nota."""
     path = safe_path(f"{name}.md")

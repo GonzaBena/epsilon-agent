@@ -10,7 +10,8 @@ Ver tus pagos recibidos, el detalle de un pago y el saldo, desde Epsilon y sin g
    - Nombre: `mp`
    - Comando (ruta absoluta; la primera vez baja sus dependencias solo):
      `uv run /ruta/a/epsilon/conectores/mercadopago/mercadopago_mcp.py`
-   - Variables: `MP_TOKEN_NEGOCIO` = tu token (el nombre después de `MP_TOKEN_` es el de la cuenta).
+   - Variables: `MP_TOKEN_NEGOCIO` = tu token (el nombre después de `MP_TOKEN_` es el de la cuenta). Para exportar:
+     `MP_EXPORT_DIR` = la carpeta donde guardar los CSV (la de archivos de Epsilon, `<DATA_DIR>/files`, para verlos en la Biblioteca).
 3. Confirmá, prendelo y probá: `/c mp saldo` o `/c mp buscar_pagos`.
 
 ## Varias cuentas
@@ -24,6 +25,7 @@ decir nada (con una sola cuenta no hace falta). Para otra: `/c mp saldo cuenta=n
 |---|---|
 | `cuentas` | Lista las cuentas cargadas (nunca el token) |
 | `buscar_pagos` | Pagos recibidos. `desde`/`hasta` (AAAA-MM-DD; sin fechas, hoy), `estado`, `limite` (máx. 50) |
+| `exportar_pagos` | Guarda en un CSV TODOS los pagos del período (`desde`/`hasta`, `estado`; hasta 5000). Nunca pisa un archivo |
 | `ver_pago` | Detalle de un pago por número: estado, monto, comisión, neto, medio, fechas |
 | `saldo` | Saldo disponible y no disponible |
 

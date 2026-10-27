@@ -145,3 +145,37 @@ def test_edit_line_never_creates_a_note_and_stays_inside_the_data_dir(tmp_path, 
         notes.edit_line("../../etc/passwd", 1, "b")
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_create_file_makes_a_new_text_file_and_never_overwrites(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+
+    a = notes.create_file("Cobros Octubre.CSV", "id,monto\n1,10\n")
+    b = notes.create_file("cobros octubre.csv", "id,monto\n2,20\n")
+
+    assert a != b and a.read_text(encoding="utf-8") == "id,monto\n1,10\n"  # el segundo no pisó al primero
+    assert a.parent == tmp_path / "files" and a.suffix == ".csv"
+
+
+@pytest.mark.parametrize("name, text, message", [
+    ("script.sh", "echo", "Extensión no permitida"),
+    ("sin_extension", "hola", "Extensión no permitida"),
+    (".csv", "hola", "Extensión no permitida"),
+    ("a.txt", "  \n", "vacío"),
+    ("a.txt", "x" * (notes.MAX_CREATE_CHARS + 1), "demasiado largo"),
+])
+def test_create_file_rejects_what_does_not_fit(tmp_path, monkeypatch, name, text, message):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+
+    with pytest.raises(ValueError, match=message):
+        notes.create_file(name, text)
+
+    assert not (tmp_path / "files").exists()
+
+
+def test_create_file_cannot_escape_data_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())
+
+    path = notes.create_file("../../fuera.md", "hola")
+
+    assert path.is_relative_to(tmp_path)

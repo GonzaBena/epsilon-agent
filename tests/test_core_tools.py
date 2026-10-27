@@ -1353,3 +1353,28 @@ def test_nothing_from_a_previous_action_sticks_to_the_next_one(script):
     say("¿qué anoté del switch?")
 
     assert "change" not in activity.read()["items"][0]
+
+
+# --- Crear archivo -----------------------------------------------------------------------
+
+
+def test_create_file_asks_showing_the_real_name_and_then_saves_it(script):
+    script.steps = [step(calls=[("archivos.crear", "ventas.csv\nid,monto\n1,10")]), step("listo")]
+
+    asked = say("guardame las ventas en un csv")
+
+    assert "Se creará ventas.csv en files/ con 13 caracteres" in asked.text
+    press("perm:si")
+    created = list((notes.DATA_DIR / "files").glob("*_ventas.csv"))
+    assert len(created) == 1 and created[0].read_text(encoding="utf-8") == "id,monto\n1,10"
+
+
+def test_create_file_refuses_a_bad_extension_without_writing(script):
+    allow("crear_archivo")
+    script.steps = [step(calls=[("archivos.crear", "virus.sh\necho hola")]), step("no pude")]
+
+    say("creá un script")
+
+    (sent,) = results(script.seen[1][0])
+    assert "Extensión no permitida" in sent and "No se creó nada" in sent
+    assert not (notes.DATA_DIR / "files").exists()

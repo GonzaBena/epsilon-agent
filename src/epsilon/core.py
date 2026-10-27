@@ -266,6 +266,22 @@ def _save_named(args: str) -> Reply:
     return Reply(f"{verb}: {path.name}", artifacts=[_artifact("note", path)])
 
 
+def _create_file(args: str) -> Reply:
+    """Herramienta de la IA: primera línea = nombre.ext, el resto = contenido. Archivo nuevo, nunca pisa."""
+    name, _, text = args.partition("\n")
+    try:
+        path = notes.create_file(name, text)
+    except ValueError as error:
+        return Reply(f"{error} No se creó nada.", failed=True)
+    return Reply(f"Archivo creado: {path.name}", artifacts=[_artifact("csv" if path.suffix == ".csv" else "file", path)])
+
+
+def _create_preview(args: str) -> str:
+    """Para la pregunta de permiso: cómo se entendió el pedido (nombre, extensión y tamaño reales)."""
+    name, _, text = args.partition("\n")
+    return f"\nSe creará {Path(name.strip()).name or '(sin nombre)'} en files/ con {len(text.strip())} caracteres."
+
+
 def _remember_cmd(args: str, session: Session) -> Reply:
     """/recordar texto: agrega un dato a la memoria (memory.md)."""
     if not args:
@@ -1393,7 +1409,12 @@ def _question(tool: tools.Tool, args: str, shown: str = "") -> Reply:
         cut = full[:MAX_QUESTION_ARG]
         more = f"\n… (y {len(full) - len(cut)} caracteres más)" if len(full) > len(cut) else ""
     tool_id = tools.ai_id(tool)
-    preview = _edit_preview(args) if tool_id == "nota_editar" else _routine_preview(tool_id, args)
+    if tool_id == "nota_editar":
+        preview = _edit_preview(args)
+    elif tool_id == "crear_archivo":
+        preview = _create_preview(args)
+    else:
+        preview = _routine_preview(tool_id, args)
     return Reply(
         f"La IA quiere usar {tool.label} con:\n{_fenced(cut)}{more}{preview}",
         actions=[
@@ -1539,6 +1560,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "nota_editar": lambda args: _edit_note(config.redact(args)),
+    "crear_archivo": lambda args: _create_file(config.redact(args)),
     "ver": _watch_numbered,
     "buscar": _search,
     "archivos": _files,
