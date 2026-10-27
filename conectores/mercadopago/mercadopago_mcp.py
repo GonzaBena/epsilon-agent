@@ -253,7 +253,8 @@ def exportar_pagos(cuenta: str | None = None, desde: str | None = None, hasta: s
     except Problem as problem:
         return str(problem)
     if not payments:
-        return f"[{name}] Sin pagos ({first if first == last else f'{first} a {last}'}): no se guardó ningún archivo."
+        span = first if first == last else f"{first} a {last}"
+        return f"[{name}] No hay cobros en ese período ({span}{', ' + STATUS[estado] if estado else ''}): no hay nada para exportar y no se creó ningún archivo."
     try:
         with path.open("x", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)

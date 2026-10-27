@@ -224,5 +224,5 @@ def test_export_refuses_too_many_and_writes_nothing_when_there_are_none(mp, monk
     paged_http(mp, monkeypatch, [PAYMENT] * 11)
     assert "período más corto" in mp.exportar_pagos(desde="2026-10-01", hasta="2026-10-31")
     paged_http(mp, monkeypatch, [])
-    assert "no se guardó ningún archivo" in mp.exportar_pagos(desde="2026-10-01")
+    assert "No hay cobros en ese período" in mp.exportar_pagos(desde="2026-10-01") and "no se creó ningún archivo" in mp.exportar_pagos(desde="2026-10-01", estado="approved")
     assert list(tmp_path.iterdir()) == []
