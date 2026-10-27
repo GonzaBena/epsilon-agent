@@ -8,6 +8,8 @@ Ver tus pagos recibidos, el detalle de un pago y el saldo, desde Epsilon y sin g
    tu aplicación → Credenciales de producción. (Tratalo como una contraseña.)
 2. En Epsilon, página **Conectores** → agregar:
    - Nombre: `mp`
+   - Descripción: `Mercado Pago: cobros y pagos recibidos, saldo, exportar a CSV`. Importante para la IA: sus palabras
+     (cobros, pagos, saldo…) hacen que el modelo reconozca el conector cuando se las nombrás (el nombre `mp` solo no alcanza).
    - Comando (ruta absoluta; la primera vez baja sus dependencias solo):
      `uv run /ruta/a/epsilon/conectores/mercadopago/mercadopago_mcp.py`
    - Variables: `MP_TOKEN_NEGOCIO` = tu token (el nombre después de `MP_TOKEN_` es el de la cuenta). Para exportar:

@@ -170,9 +170,18 @@ def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
     return preload(Turn(conversation_id, history), text)
 
 
+DESCRIPTION_STOP = {"para", "como", "desde", "hasta", "datos", "sobre", "este", "esta", "todo", "todos", "solo", "pero", "tool", "tools"}
+
+
 def _plain(text: str) -> str:
     """En minúsculas y sin tildes («Mañana» -> «manana»), para comparar con las palabras clave."""
     return unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+
+
+def _description_words(description: str) -> list[str]:
+    """Las palabras con peso de la descripción de un conector («Mercado Pago: cobros, saldo»), para reconocerlo en
+    el mensaje aunque la persona no diga su nombre corto («mp»)."""
+    return [w for w in re.findall(r"[^\W\d_]{4,}", description) if _plain(w) not in DESCRIPTION_STOP]
 
 
 def preload(turn: Turn, text: str) -> Turn:
@@ -187,6 +196,8 @@ def preload(turn: Turn, text: str) -> Turn:
         words = tools.AI_GROUP_INDEX.get(group, ("", (group,)))[1]
         if group == "skills":
             words = (*words, *re.findall(r"^- ([^:]+):", skill_runtime.catalog(), re.M))
+        elif group not in tools.AI_GROUP_INDEX:  # un conector: su nombre y las palabras de lo que la persona escribió de él
+            words = (*words, *_description_words(tools.group_text(group).partition("): ")[2]))
         if any(says(word) for word in words):
             turn.groups.add(group)
     return turn

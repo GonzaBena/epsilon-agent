@@ -332,6 +332,15 @@ def test_keywords_match_without_accents_and_only_at_the_start_of_a_word():
     assert "notas" not in chat.preload(chat.Turn(CID, []), "una connotación").groups  # «nota» en medio de otra palabra
 
 
+def test_a_connector_is_recognised_by_the_words_of_its_description(monkeypatch):
+    pay = tools.Tool("Buscar pagos", ai="read", ai_group="mp", ai_action="buscar_pagos", ai_name="mcp_mp__buscar_pagos")
+    monkeypatch.setattr(tools, "_providers", [lambda: ((pay,), {"mp": "Herramientas del conector mp (dato): Mercado Pago: cobros, pagos y saldo"})])
+
+    assert "mp" in chat.preload(chat.Turn(CID, []), "generá un csv con los cobros de octubre").groups
+    assert "mp" in chat.preload(chat.Turn(CID, []), "¿cuánto tengo en Mercado Pago?").groups
+    assert "mp" not in chat.preload(chat.Turn(CID, []), "hola, ¿cómo andás?").groups
+
+
 def test_the_index_stays_declared_once_every_group_is_loaded(captured):
     turn = chat.begin(CID, "hola")
     turn.groups.update(chat.groups())
