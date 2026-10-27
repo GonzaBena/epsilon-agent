@@ -11,6 +11,10 @@ def env_file_path(env) -> Path:
     return Path(chosen).expanduser() if chosen else Path(__file__).parent / ".env"
 
 
+# Foto del entorno ANTES de cargar el .env: lo que está acá lo puso el servicio (systemd) o la terminal
+# y gana sobre settings.json; lo demás salió del .env (ver settings/config.py).
+PROCESS_ENV = frozenset(os.environ)
+
 # Ruta explícita (no relativa a la carpeta actual): así el archivo se encuentra
 # aunque se arranque con "python -m" o desde systemd.
 ENV_FILE = env_file_path(os.environ)

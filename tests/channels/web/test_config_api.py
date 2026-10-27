@@ -3,7 +3,7 @@ import os
 import pytest
 
 from epsilon import state
-from epsilon.settings import config
+from epsilon.settings import config, store
 from epsilon import state
 from epsilon.settings import checks
 from epsilon.channels import web
@@ -59,8 +59,9 @@ def test_put_config_saves_and_returns_the_new_state(cfg):
 
     assert reply.status_code == 200
     assert setting(reply.json(), "GEMINI_MODEL")["value"] == "gemini-nuevo"
-    assert "gemini-nuevo" in config.ENV_FILE.read_text(encoding="utf-8")
-    assert os.environ["GEMINI_MODEL"] == "gemini-nuevo"  # se aplica al instante
+    assert store.saved("GEMINI_MODEL") == "gemini-nuevo"  # en settings.json, no en el .env
+    assert not config.ENV_FILE.exists()
+    assert config.value("GEMINI_MODEL") == "gemini-nuevo"  # se aplica al instante
 
 
 def test_put_secret_returns_only_its_length_and_never_echoes_it(cfg):

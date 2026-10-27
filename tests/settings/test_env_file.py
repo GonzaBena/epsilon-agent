@@ -42,3 +42,37 @@ def test_a_process_with_the_variable_loads_that_file_and_not_the_default(tmp_pat
 
     assert out[0] == str(chosen)
     assert out[1] == "modelo-del-archivo-elegido"
+
+
+def test_env_file_only_loads_secrets_and_bootstrap(tmp_path):
+    # En un proceso aparte: lo que no es clave ni de arranque sale del .env (vive en settings.json),
+    # pero queda guardado para migrarlo.
+    chosen = tmp_path / "elegido.env"
+    key = "a" * 30
+    chosen.write_text(
+        f"USER_NAME=Ana\nGEMINI_API_KEY={key}\nALLOWED_USER_ID=42\nDATA_DIR={tmp_path / 'datos'}\n",
+        encoding="utf-8",
+    )
+    env = {k: v for k, v in os.environ.items() if k not in ("USER_NAME", "GEMINI_API_KEY", "ALLOWED_USER_ID", "DATA_DIR")}
+    env["EPSILON_ENV_FILE"] = str(chosen)
+    code = (
+        "import os; from epsilon.settings import config; "
+        "print('USER_NAME' in os.environ, os.environ.get('GEMINI_API_KEY') == 'a' * 30, "
+        "os.environ.get('ALLOWED_USER_ID'), config.ENV_AT_START.get('USER_NAME'), "
+        "'GEMINI_API_KEY' in config.ENV_AT_START)"
+    )
+
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
+
+    assert out.split() == ["False", "True", "42", "Ana", "False"]
+
+
+def test_a_setting_from_the_process_stays_and_counts_as_from_the_environment(tmp_path):
+    chosen = tmp_path / "elegido.env"
+    chosen.write_text("USER_NAME=Ana\n", encoding="utf-8")
+    env = dict(os.environ, EPSILON_ENV_FILE=str(chosen), USER_NAME="Beto")
+    code = "from epsilon.settings import config; print(config.value('USER_NAME'), config.from_process('USER_NAME'))"
+
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
+
+    assert out.split() == ["Beto", "True"]

@@ -143,3 +143,4 @@ TUNABLES: tuple[Setting, ...] = (
     ),)
 
 config.BY_KEY.update({s.key: s for s in TUNABLES})  # idempotente: config también lo hace
+config._forget_env_file_values(TUNABLES)  # idempotente: config también lo hace

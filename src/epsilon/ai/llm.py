@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from epsilon.ai import images, providers, usage
 from epsilon.ai.messages import Call, File, Message, ModelError, Result, Step, ToolSpec  # noqa: F401 (los usan los llamadores)
 from epsilon.ai.providers.base import Capabilities
+from epsilon.settings import config
 
 # El ÚNICO lugar que el resto del código usa para hablar con un modelo. Elige el proveedor y el modelo
 # según la tarea en curso, le pasa el pedido, anota el gasto y devuelve el resultado. Los proveedores
@@ -49,7 +50,7 @@ def default_model() -> str:
     """El modelo predeterminado (id completo): AI_MODEL, o GEMINI_MODEL como antes, o el de fábrica.
 
     «or» y no el valor por defecto de get(): si la configuración borra el modelo queda "" (vacío)."""
-    return _full(os.environ.get("AI_MODEL") or os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL)
+    return _full(config.value("AI_MODEL") or config.value("GEMINI_MODEL") or DEFAULT_MODEL)
 
 
 def model_for(task_name: str | None = None) -> str:

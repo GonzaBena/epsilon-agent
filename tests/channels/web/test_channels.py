@@ -2,6 +2,7 @@ import os
 
 from epsilon import state
 from epsilon import state
+from epsilon.settings import config, store
 
 
 # --- Canales: estado y prender / apagar --------------------------------------
@@ -19,26 +20,23 @@ def test_the_channels_api_tells_state_and_which_can_be_switched(client, switchab
     assert telegram_row["switchable"] is True and telegram_row["state"] == "off"
 
 
-def test_turning_telegram_off_saves_the_choice_and_stops_the_bot(client, switchable_telegram, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_ENABLED", "si")
-
+def test_turning_telegram_off_saves_the_choice_and_stops_the_bot(client, switchable_telegram):
     reply = client.put("/api/channels/telegram", json={"enabled": False})
 
     assert reply.status_code == 200
     assert switchable_telegram.calls == ["stop:telegram"]
-    assert os.environ["TELEGRAM_ENABLED"] == "no"
+    assert store.saved("TELEGRAM_ENABLED") == "no" and not config.enabled("TELEGRAM_ENABLED")
+    assert "TELEGRAM_ENABLED" not in os.environ  # vive en settings.json, no en el entorno
     assert [c["enabled"] for c in reply.json()["channels"]] == [True, False]
-    monkeypatch.delenv("TELEGRAM_ENABLED")
 
 
-def test_turning_telegram_on_saves_the_choice_and_starts_the_bot(client, switchable_telegram, monkeypatch):
-    monkeypatch.setenv("TELEGRAM_ENABLED", "no")
+def test_turning_telegram_on_saves_the_choice_and_starts_the_bot(client, switchable_telegram):
+    config.update({"TELEGRAM_ENABLED": "no"}, [])
 
     reply = client.put("/api/channels/telegram", json={"enabled": True})
 
     assert reply.status_code == 200 and switchable_telegram.calls == ["start:telegram"]
-    assert os.environ["TELEGRAM_ENABLED"] == "si"
-    monkeypatch.delenv("TELEGRAM_ENABLED")
+    assert store.saved("TELEGRAM_ENABLED") == "si" and config.enabled("TELEGRAM_ENABLED")
 
 
 def test_the_web_cannot_be_switched_off_from_the_web(client, switchable_telegram):

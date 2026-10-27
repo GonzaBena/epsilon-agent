@@ -6,15 +6,16 @@ import hashlib
 
 from epsilon import core, menu
 from epsilon.ai import favorites
-from epsilon.settings import config
+from epsilon.settings import config, store
 from epsilon.channels import telegram
 
 
 @pytest.fixture(autouse=True)
 def voice_settings(monkeypatch, tmp_path):
-    # Los ajustes de voz empiezan en su valor por defecto y el .env es uno temporal.
+    # Los ajustes de voz empiezan en su valor por defecto (sin variable del entorno, que ganaría
+    # sobre settings.json) y el .env es uno temporal.
     for key in ("VOICE_ENABLED", "VOICE_CONFIRM", "TTS_ENABLED"):
-        monkeypatch.setenv(key, config.BY_KEY[key].default)
+        monkeypatch.delenv(key, raising=False)
     env = tmp_path / "menu.env"
     monkeypatch.setattr(config, "ENV_FILE", env)
     return env
@@ -52,13 +53,12 @@ def test_a_toggle_changes_the_setting_saves_it_and_redraws_the_same_screen(voice
     reply = say(action="menu:t:VOICE_CONFIRM")
 
     assert labels(reply)[1] == "Confirmar antes de ejecutar: sí ✅"
-    assert os.environ["VOICE_CONFIRM"] == "si"
-    assert "VOICE_CONFIRM='si'" in voice_settings.read_text(encoding="utf-8")
+    assert config.enabled("VOICE_CONFIRM") and store.saved("VOICE_CONFIRM") == "si"
 
     reply = say(action="menu:t:VOICE_CONFIRM")  # y de vuelta
 
     assert labels(reply)[1] == "Confirmar antes de ejecutar: no ⬜"
-    assert os.environ["VOICE_CONFIRM"] == "no"
+    assert not config.enabled("VOICE_CONFIRM") and store.saved("VOICE_CONFIRM") == "no"
 
 
 def test_turning_voice_off_is_visible_in_the_setting():
@@ -149,7 +149,8 @@ def button_for(model):
 def models(monkeypatch):
     """Tres favoritos y gemini:modelo-a como modelo actual; sin modelo propio para el chat."""
     favorites.save(FAVS)
-    monkeypatch.setenv("AI_MODEL", "gemini:modelo-a")
+    monkeypatch.delenv("AI_MODEL", raising=False)  # una variable del entorno ganaría sobre lo que guarda el menú
+    config.update({"AI_MODEL": "gemini:modelo-a"}, [])
     monkeypatch.delenv("AI_MODEL_CHAT", raising=False)
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
 
@@ -165,8 +166,8 @@ def test_the_model_screen_lists_the_favorites_and_marks_the_current_one(models):
 def test_tapping_a_favorite_saves_it_as_the_model_and_moves_the_mark(models, voice_settings):
     reply = say(action=button_for("ollama:llama3.1:8b"))
 
-    assert os.environ["AI_MODEL"] == "ollama:llama3.1:8b"
-    assert "AI_MODEL='ollama:llama3.1:8b'" in voice_settings.read_text(encoding="utf-8")
+    assert config.value("AI_MODEL") == "ollama:llama3.1:8b"
+    assert store.saved("AI_MODEL") == "ollama:llama3.1:8b"  # en settings.json, no en el .env
     assert labels(reply)[:3] == ["gemini:modelo-a", "✅ ollama:llama3.1:8b", "gemini:modelo-c"]
     assert "ollama:llama3.1:8b" in reply.text.splitlines()[0]  # lo dice
 
@@ -186,20 +187,20 @@ def test_a_favorite_removed_after_the_menu_was_drawn_changes_nothing(models):
 
     reply = say(action=stale)
 
-    assert os.environ["AI_MODEL"] == "gemini:modelo-a"
+    assert store.saved("AI_MODEL") == "gemini:modelo-a"
     assert labels(reply) == ["✅ gemini:modelo-a", "‹ Volver"] and "ya no" in reply.text
 
 
 def test_a_model_that_is_not_a_favorite_cannot_be_chosen_even_with_a_valid_hash(models):
     reply = say(action=button_for("gemini:cualquiera"))
 
-    assert os.environ["AI_MODEL"] == "gemini:modelo-a" and "ya no" in reply.text
+    assert store.saved("AI_MODEL") == "gemini:modelo-a" and "ya no" in reply.text
 
 
 @pytest.mark.parametrize("action", ["menu:m", "menu:m:", "menu:m:xyz", "menu:m:0123456789", "menu:m:../../x", "menu:m:ABCDEF12"])
 def test_malformed_model_buttons_do_nothing(action, models, voice_settings):
     assert say(action=action).text == "No entiendo esa acción."
-    assert os.environ["AI_MODEL"] == "gemini:modelo-a" and not voice_settings.exists()
+    assert store.saved("AI_MODEL") == "gemini:modelo-a" and not voice_settings.exists()
 
 
 def test_a_model_of_the_chat_of_its_own_is_flagged_because_it_wins_over_the_default(models, monkeypatch):

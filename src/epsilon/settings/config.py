@@ -8,12 +8,14 @@ import unicodedata
 
 from dotenv import dotenv_values, set_key
 
-from epsilon import ENV_FILE
+from epsilon import ENV_FILE, PROCESS_ENV
 from epsilon.data import notes
 from epsilon.utils import clima
 
-# Configuración editable desde la web. Todo vive en el .env (única fuente) y
-# este módulo es el único que lo escribe. No conoce HTTP ni ningún canal.
+# Configuración editable desde la web. Las claves (secret) y lo de arranque (bootstrap) viven en
+# el .env, y este módulo es el único que lo escribe; todo lo demás vive en settings.json (lo
+# escribe settings/store.py). Para leer un ajuste: value() / number(), nunca os.environ.
+# No conoce HTTP ni ningún canal.
 #
 # REGLA: los valores secretos NUNCA salen de acá. status() solo dice si están
 # cargados y cuántos caracteres tienen; los mensajes de error tampoco los repiten.
@@ -621,6 +623,64 @@ def reset_plugin_settings() -> None:
     _plugin_secret_keys.clear()
 
 
+# --- Leer un ajuste ------------------------------------------------------------
+
+# Por qué espera al reinicio un cambio que afloja una protección (loosens).
+LOOSENS_REASON = "Afloja una protección: se aplica al reiniciar, así ningún programa puede cambiarla sin que lo veas."
+
+
+def _in_env_file(setting: Setting) -> bool:
+    """¿Vive en el .env? Las claves, lo de arranque y lo que no tiene nombre en settings.json."""
+    return setting.secret or setting.bootstrap or not setting.name
+
+
+def value(key: str) -> str:
+    """El valor que usa el proceso: la variable del entorno si está (el servicio o la terminal
+    ganan), si no lo aplicado de settings.json y si no el de fábrica."""
+    setting = BY_KEY[key]
+    if key in os.environ:
+        return os.environ[key]
+    applied = store.applied(key) if setting.name else None
+    return applied if applied is not None else setting.default
+
+
+def number(key: str) -> int | float | None:
+    """Un ajuste numérico ya convertido (int o float según su `kind`). Un valor del entorno que no
+    sirve cae al de fábrica; None si no hay ninguno (un ajuste opcional sin definir)."""
+    setting = BY_KEY[key]
+
+    def parse(text: str) -> int | float:
+        clean = from_json(setting, text)  # valida rango y formato; ValueError si no sirve
+        n = float(clean.replace(",", "."))
+        return int(n) if setting.kind == "int" else n
+
+    try:
+        return parse(value(key))
+    except ValueError:
+        return parse(setting.default) if setting.default else None
+
+
+def from_process(key: str) -> bool:
+    """¿El valor viene del entorno del proceso (systemd, la terminal) y no del .env?"""
+    if key not in os.environ:
+        return False
+    setting = BY_KEY.get(key)
+    if setting is not None and setting.name:
+        return True  # los que salieron del .env se sacaron del entorno al importar este módulo
+    return key in PROCESS_ENV
+
+
+def environ() -> dict[str, str]:
+    """os.environ más el valor en uso de cada ajuste de settings.json (para is_configured(env))."""
+    env = dict(os.environ)
+    for s in all_settings():
+        if s.name and s.key not in env:
+            current = value(s.key)
+            if current:
+                env[s.key] = current
+    return env
+
+
 # --- Estado ------------------------------------------------------------------
 
 
@@ -628,76 +688,89 @@ def _current(setting: Setting) -> str:
     """Lo que el proceso está usando ahora."""
     if setting.key == "DATA_DIR":
         return str(notes.DATA_DIR)  # la ruta ya resuelta, no el texto del .env
-    return os.environ.get(setting.key, setting.default)
+    return value(setting.key)
+
+
+def _entry(s: Setting, env_saved: dict) -> dict:
+    current = _current(s)
+    entry = {
+        "key": s.key,
+        "label": s.label,
+        "secret": s.secret,
+        "editable": s.editable,
+        "live": s.live,
+        "set": bool(current),
+        "group": s.group,
+        "name": s.name,
+        "kind": s.kind,
+        "from_env": from_process(s.key),
+    }
+    if s.secret:
+        entry["length"] = len(current) if current else None  # solo el largo
+    else:
+        entry["value"] = current
+
+    if _in_env_file(s):
+        # Pendiente de reinicio: lo guardado en el .env difiere de lo que el
+        # proceso tiene cargado. Si la clave no está en el archivo (por ejemplo,
+        # viene del servicio), no hay nada que comparar.
+        pending = s.editable and not s.live and s.key in env_saved and (env_saved[s.key] or "") != current
+        new = (env_saved.get(s.key) or "") if pending else ""
+        reason = s.reason
+    else:
+        # Pendiente: settings.json dice otra cosa que lo aplicado (el entorno del proceso no cuenta).
+        new_raw, now = store.saved(s.key), store.applied(s.key)
+        pending = s.editable and (new_raw if new_raw is not None else s.default) != (
+            now if now is not None else s.default
+        )
+        new = new_raw or ""
+        reason = LOOSENS_REASON if s.loosens else s.reason
+    entry["pending_restart"] = pending
+    entry["reason"] = reason if pending else ""
+    # Qué cambio espera: borrar o reemplazar. Sin ningún valor, así que sirve
+    # también para los secretos.
+    entry["pending_kind"] = ("changed" if new else "cleared") if pending else ""
+    if pending and not s.secret:
+        # Lo guardado, para que la pantalla no parezca haberlo perdido.
+        # Nunca para los secretos.
+        entry["saved"] = new
+    return entry
+
+
+def _env_saved(env_file: Path | None) -> dict:
+    path = env_file or ENV_FILE
+    return dotenv_values(path) if path.exists() else {}
 
 
 def status(env_file: Path | None = None) -> list[dict]:
     """Estado de cada ajuste, listo para mostrar. Sin valores secretos."""
-    path = env_file or ENV_FILE
-    saved = dotenv_values(path) if path.exists() else {}
-
-    result = []
+    env_saved = _env_saved(env_file)
     # Solo los de la página de Configuración de hoy; los números del código y los ajustes nuevos
     # (tunables) viven únicamente en settings.json.
-    for s in SETTINGS + _plugin_settings:
-        current = _current(s)
-        entry = {
-            "key": s.key,
-            "label": s.label,
-            "secret": s.secret,
-            "editable": s.editable,
-            "live": s.live,
-            "set": bool(current),
-            "group": s.group,
-        }
-        if s.secret:
-            entry["length"] = len(current) if current else None  # solo el largo
-        else:
-            entry["value"] = current
-
-        # Pendiente de reinicio: lo guardado en el .env difiere de lo que el
-        # proceso tiene cargado. Si la clave no está en el archivo (por ejemplo,
-        # viene del servicio), no hay nada que comparar.
-        pending = (
-            s.editable
-            and not s.live
-            and s.key in saved
-            and (saved[s.key] or "") != current
-        )
-        entry["pending_restart"] = pending
-        entry["reason"] = s.reason if pending else ""
-        # Qué cambio espera: borrar o reemplazar. Sin ningún valor, así que sirve
-        # también para los secretos.
-        entry["pending_kind"] = (
-            ("changed" if saved[s.key] else "cleared") if pending else ""
-        )
-        if pending and not s.secret:
-            # Lo guardado, para que la pantalla no parezca haberlo perdido.
-            # Nunca para los secretos.
-            entry["saved"] = saved[s.key] or ""
-        result.append(entry)
-    return result
+    return [_entry(s, env_saved) for s in SETTINGS + _plugin_settings]
 
 
 def enabled(key: str) -> bool:
     """¿Un ajuste de sí/no está en «si»? Vacío o sin definir usa su valor por defecto; cualquier otra cosa vale «no»."""
     setting = BY_KEY[key]
-    value = os.environ.get(key, setting.default).strip().lower()
-    return (value or setting.default) == "si"
+    current = value(key).strip().lower()
+    return (current or setting.default) == "si"
 
 
 def site_list(key: str) -> list[str]:
     """Un ajuste de lista de sitios como lista (en minúsculas, sin vacíos ni repetidos). Vacío usa el valor por defecto."""
     setting = BY_KEY[key]
-    value = os.environ.get(key, setting.default).strip() or setting.default
-    return list(dict.fromkeys(site.strip().lower() for site in value.split(",") if site.strip()))
+    current = value(key).strip() or setting.default
+    return list(dict.fromkeys(site.strip().lower() for site in current.split(",") if site.strip()))
 
 
 def pending_restart(env_file: Path | None = None) -> list[dict]:
-    """Ajustes guardados que todavía no se aplicaron: para el aviso de reinicio."""
+    """Ajustes guardados que todavía no se aplicaron: para el aviso de reinicio.
+    Incluye los de settings.json que no están en la página (tunables)."""
+    env_saved = _env_saved(env_file)
     return [
         {"key": e["key"], "label": e["label"], "reason": e["reason"]}
-        for e in status(env_file)
+        for e in (_entry(s, env_saved) for s in all_settings())
         if e["pending_restart"]
     ]
 
@@ -708,12 +781,13 @@ def pending_restart(env_file: Path | None = None) -> list[dict]:
 def update(
     changes: dict[str, str], clear: list[str], env_file: Path | None = None
 ) -> None:
-    """Guarda ajustes en el .env. Todo o nada: si uno no sirve, no se escribe nada.
+    """Guarda ajustes: las claves y lo de arranque en el .env, el resto en settings.json.
+    Todo o nada: si uno no sirve (o settings.json está roto), no se escribe nada.
 
     changes: {ajuste: valor nuevo}. Un valor vacío significa «no tocar».
-    clear: ajustes a borrar (se guardan como valor vacío).
-    Los ajustes «live» también se aplican al proceso en marcha; el resto queda
-    guardado y se aplica al reiniciar."""
+    clear: ajustes a borrar (en el .env quedan vacíos; de settings.json se sacan).
+    En el .env, los «live» también se aplican al proceso en marcha; en settings.json decide el
+    store (lo live al instante, lo que afloja una protección al reiniciar)."""
     path = env_file or ENV_FILE
     errors: dict[str, str] = {}
     clean: dict[str, str] = {}
@@ -740,6 +814,16 @@ def update(
         raise ConfigError(errors)
     if not clean and not clear:
         return  # nada que escribir: ni siquiera se toca el archivo
+
+    file_changes = {k: v for k, v in clean.items() if not _in_env_file(BY_KEY[k])}
+    file_clear = [k for k in clear if not _in_env_file(BY_KEY[k])]
+    clean = {k: v for k, v in clean.items() if k not in file_changes}
+    clear = [k for k in clear if k not in file_clear]
+    # Primero settings.json: si está roto, store.write lanza y el .env todavía no se tocó.
+    if file_changes or file_clear:
+        store.write(file_changes, file_clear)
+    if not clean and not clear:
+        return
 
     # Si el archivo no existe, lo creamos YA privado (0600), antes de poner claves.
     if not path.exists():
@@ -831,10 +915,14 @@ def to_json(setting: Setting, text: str) -> object:
 
 
 def saved(key: str, env_file: Path | None = None) -> str:
-    """Valor guardado en el .env (aunque el proceso todavía no lo use).
+    """Valor guardado (en el .env o en settings.json), aunque el proceso todavía no lo use.
 
-    SOLO para uso del servidor: nunca se devuelve al navegador. Si la clave no
-    está en el archivo, vale lo que tiene el proceso (por ejemplo, del servicio)."""
+    SOLO para uso del servidor: nunca se devuelve al navegador. Si no está guardado,
+    vale lo que usa el proceso (por ejemplo, del servicio)."""
+    setting = BY_KEY.get(key)
+    if setting is not None and not _in_env_file(setting):
+        stored = store.saved(key)
+        return stored if stored is not None else value(key)
     path = env_file or ENV_FILE
     file_values = dotenv_values(path) if path.exists() else {}
     if key in file_values:
@@ -886,8 +974,24 @@ class RedactingFilter(logging.Filter):
         return True
 
 
-# Al final: tunables importa Setting y los validadores de acá arriba.
-from epsilon.settings import tunables  # noqa: E402
+# --- Lo que vino del .env y ya no vive ahí ---------------------------------------
+
+# Valores de ajustes de settings.json que este arranque encontró en el .env (para migrarlos).
+# Nunca secretos: esos siguen en el .env y en el entorno.
+ENV_AT_START: dict[str, str] = {}
+
+
+def _forget_env_file_values(settings) -> None:
+    """Saca del entorno los ajustes de settings.json que puso el .env (no el proceso): así la
+    variable del entorno solo gana cuando la puso el servicio o la terminal."""
+    for s in settings:
+        if s.name and not s.secret and s.key in os.environ and s.key not in PROCESS_ENV:
+            ENV_AT_START[s.key] = os.environ.pop(s.key)
+
+
+# Al final: tunables importa Setting y los validadores de acá arriba; store importa este módulo.
+from epsilon.settings import store, tunables  # noqa: E402
 
 if hasattr(tunables, "TUNABLES"):  # si alguien importó tunables primero, él mismo se suma al terminar
     BY_KEY.update({s.key: s for s in tunables.TUNABLES})
+_forget_env_file_values(SETTINGS + getattr(tunables, "TUNABLES", ()))

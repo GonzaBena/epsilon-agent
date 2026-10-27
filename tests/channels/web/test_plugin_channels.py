@@ -4,6 +4,7 @@ import threading
 import pytest
 
 from epsilon import main, state
+from epsilon.settings import store
 from tests.plugins.test_channels import GOOD, make_plugin
 from tests.test_main_plugins import CODE
 
@@ -79,7 +80,7 @@ def test_enabling_an_unconfigured_plugin_is_409(client, plugins):
     assert "Configuración" in reply.json()["detail"]  # no habla del token y el ID de Telegram
 
 
-def test_enable_and_disable_a_plugin(client, plugins, monkeypatch, tmp_path):
+def test_enable_and_disable_a_plugin(client, plugins, monkeypatch):
     make_plugin(plugins, "fake", TOML, CODE)
     monkeypatch.setenv("FAKE_TOKEN", TOKEN)
 
@@ -88,7 +89,7 @@ def test_enable_and_disable_a_plugin(client, plugins, monkeypatch, tmp_path):
     assert on.status_code == 200
     row = {r["name"]: r for r in on.json()["channels"]}["fake"]
     assert row["enabled"] is True and row["state"] in ("starting", "running")
-    assert 'FAKE_ENABLED' in (tmp_path / "never-the-real.env").read_text()
+    assert store.saved("FAKE_ENABLED") == "si"  # en settings.json
 
     off = client.put("/api/channels/fake", json={"enabled": False})
 

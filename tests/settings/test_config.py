@@ -5,9 +5,9 @@ import stat
 import pytest
 
 from epsilon.data import notes
-from epsilon.settings import config
+from epsilon.settings import config, store
 
-KEYS = [s.key for s in config.SETTINGS]
+KEYS = [s.key for s in config.all_settings()]
 
 # Terminaciones raras a propósito: así un test de "no se filtran los últimos
 # caracteres" no choca por casualidad con una etiqueta o una ruta.
@@ -22,6 +22,7 @@ def clean_env(monkeypatch, tmp_path):
         # update() escribe en os.environ: setenv + delenv hace que monkeypatch lo restaure al terminar.
         monkeypatch.setenv(key, "")
         monkeypatch.delenv(key)
+    (tmp_path / "data").mkdir()
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path / "data")
 
 
@@ -32,6 +33,16 @@ def env_file(tmp_path):
 
 def entry(key, env_file):
     return next(e for e in config.status(env_file) if e["key"] == key)
+
+
+def stored(key):
+    """Lo que quedó escrito en settings.json para ese ajuste (None si no está)."""
+    return store.saved(key)
+
+
+def restart():
+    """Reiniciar = el proceso nuevo vuelve a leer settings.json y aplica todo."""
+    store.load_initial()
 
 
 # --- Estado: los secretos nunca salen ----------------------------------------
@@ -86,21 +97,29 @@ def test_status_says_which_settings_apply_live(env_file):
 # --- Escritura ---------------------------------------------------------------
 
 
-def test_update_writes_values_to_the_env_file(env_file):
-    config.update({"GEMINI_MODEL": "gemini-x", "WEB_PORT": "9001"}, [], env_file)
+def test_update_writes_keys_and_bootstrap_to_the_env_file(env_file):
+    config.update({"GEMINI_API_KEY": SECRET, "ALLOWED_USER_ID": "42"}, [], env_file)
 
     text = env_file.read_text(encoding="utf-8")
-    assert "GEMINI_MODEL='gemini-x'" in text and "WEB_PORT='9001'" in text
+    assert f"GEMINI_API_KEY='{SECRET}'" in text and "ALLOWED_USER_ID='42'" in text
+
+
+def test_update_writes_the_rest_to_settings_json_and_not_to_the_env_file(env_file):
+    config.update({"GEMINI_MODEL": "gemini-x", "WEB_PORT": "9001"}, [], env_file)
+
+    assert not env_file.exists()
+    assert stored("GEMINI_MODEL") == "gemini-x" and stored("WEB_PORT") == "9001"
+    assert '"ai.gemini_model": "gemini-x"' in store.settings_path().read_text(encoding="utf-8")
 
 
 def test_update_keeps_comments_and_unrelated_keys(env_file):
-    env_file.write_text("# mis claves\nOTRA=cosa\nGEMINI_MODEL=viejo\n", encoding="utf-8")
+    env_file.write_text("# mis claves\nOTRA=cosa\nALLOWED_USER_ID=11111\n", encoding="utf-8")
 
-    config.update({"GEMINI_MODEL": "nuevo"}, [], env_file)
+    config.update({"ALLOWED_USER_ID": "22222"}, [], env_file)
 
     text = env_file.read_text(encoding="utf-8")
     assert "# mis claves" in text and "OTRA=cosa" in text
-    assert "nuevo" in text and "viejo" not in text
+    assert "22222" in text and "11111" not in text
 
 
 def test_update_creates_the_file_private(env_file):
@@ -113,7 +132,7 @@ def test_update_makes_an_existing_open_file_private(env_file):
     env_file.write_text("A=1\n", encoding="utf-8")
     env_file.chmod(0o644)
 
-    config.update({"GEMINI_MODEL": "x"}, [], env_file)
+    config.update({"ALLOWED_USER_ID": "42"}, [], env_file)
 
     assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
 
@@ -121,15 +140,16 @@ def test_update_makes_an_existing_open_file_private(env_file):
 def test_live_settings_apply_to_the_running_process(env_file):
     config.update({"GEMINI_API_KEY": SECRET, "GEMINI_MODEL": "gemini-x"}, [], env_file)
 
-    assert os.environ["GEMINI_API_KEY"] == SECRET
-    assert os.environ["GEMINI_MODEL"] == "gemini-x"
+    assert os.environ["GEMINI_API_KEY"] == SECRET  # las claves «live», al entorno como siempre
+    assert config.value("GEMINI_MODEL") == "gemini-x"  # el resto, por settings.json
+    assert "GEMINI_MODEL" not in os.environ
 
 
 def test_restart_settings_are_saved_but_not_applied_yet(env_file):
     config.update({"TELEGRAM_TOKEN": TOKEN, "WEB_PORT": "9001"}, [], env_file)
 
     assert "TELEGRAM_TOKEN" not in os.environ and "WEB_PORT" not in os.environ
-    assert "9001" in env_file.read_text(encoding="utf-8")
+    assert config.value("WEB_PORT") == "" and stored("WEB_PORT") == "9001"
 
 
 def test_empty_value_means_leave_it_alone(monkeypatch, env_file):
@@ -182,7 +202,7 @@ def test_invalid_values_are_rejected_and_nothing_is_written(key, value, env_file
         config.update({key: value}, [], env_file)
 
     assert key in error.value.errors
-    assert not env_file.exists()
+    assert not env_file.exists() and not store.settings_path().exists()
 
 
 @pytest.mark.parametrize("key", ["GEMINI_MODEL", "GEMINI_API_KEY", "TELEGRAM_TOKEN", "ALLOWED_USER_ID", "WEB_PORT"])
@@ -200,6 +220,24 @@ def test_newlines_cannot_inject_other_variables(key, env_file):
             config.update({key: payload}, [], env_file)
 
     assert env_file.read_text(encoding="utf-8") == original
+    assert not store.settings_path().exists()
+
+
+def test_a_bad_setting_also_blocks_the_keys(env_file):
+    with pytest.raises(config.ConfigError):
+        config.update({"GEMINI_API_KEY": SECRET, "CHAT_MAX_TOOL_STEPS": "999"}, [], env_file)
+
+    assert not env_file.exists() and "GEMINI_API_KEY" not in os.environ
+
+
+def test_a_broken_settings_file_blocks_the_keys_too(env_file):
+    store.settings_path().write_text('{"general.user_name": ', encoding="utf-8")
+
+    with pytest.raises(config.ConfigError):
+        config.update({"GEMINI_API_KEY": SECRET, "USER_NAME": "Ana"}, [], env_file)
+
+    assert not env_file.exists() and "GEMINI_API_KEY" not in os.environ
+    assert store.settings_path().read_text(encoding="utf-8") == '{"general.user_name": '
 
 
 def test_one_bad_value_blocks_the_whole_change(env_file):
@@ -207,7 +245,8 @@ def test_one_bad_value_blocks_the_whole_change(env_file):
         config.update({"GEMINI_MODEL": "bueno", "WEB_PORT": "malo"}, [], env_file)
 
     assert list(error.value.errors) == ["WEB_PORT"]
-    assert not env_file.exists() and "GEMINI_MODEL" not in os.environ
+    assert not env_file.exists() and not store.settings_path().exists()
+    assert config.value("GEMINI_MODEL") == ""
 
 
 def test_errors_explain_what_is_wrong_per_setting(env_file):
@@ -388,7 +427,7 @@ def test_pending_plain_setting_also_reports_what_was_saved(env_file):
 
 def test_saved_is_only_reported_while_pending(monkeypatch, env_file):
     config.update({"WEB_PORT": "9001"}, [], env_file)
-    monkeypatch.setenv("WEB_PORT", "9001")  # tras reiniciar
+    restart()
 
     assert "saved" not in entry("WEB_PORT", env_file)
 
@@ -458,7 +497,7 @@ def test_voice_settings_show_what_the_process_uses(monkeypatch, env_file):
 def test_valid_voice_values_are_saved_normalized(key, value, env_file):
     config.update({key: value}, [], env_file)
 
-    assert f"{key}='{value.lower()}'" in env_file.read_text(encoding="utf-8")
+    assert stored(key) == value.lower()
 
 
 @pytest.mark.parametrize(
@@ -480,14 +519,14 @@ def test_invalid_voice_values_are_rejected(key, value, env_file):
     with pytest.raises(config.ConfigError) as error:
         config.update({key: value}, [], env_file)
 
-    assert key in error.value.errors and not env_file.exists()
+    assert key in error.value.errors and not store.settings_path().exists()
 
 
 def test_language_and_idle_minutes_apply_at_once_but_device_waits_for_a_restart(env_file):
     config.update({"WHISPER_LANGUAGE": "en", "WHISPER_IDLE_MINUTES": "3", "WHISPER_DEVICE": "cuda"}, [], env_file)
 
-    assert os.environ["WHISPER_LANGUAGE"] == "en" and os.environ["WHISPER_IDLE_MINUTES"] == "3"
-    assert "WHISPER_DEVICE" not in os.environ
+    assert config.value("WHISPER_LANGUAGE") == "en" and config.value("WHISPER_IDLE_MINUTES") == "3"
+    assert config.value("WHISPER_DEVICE") == "cpu"
     assert entry("WHISPER_DEVICE", env_file)["pending_restart"] is True
     assert "modelo de voz" in entry("WHISPER_DEVICE", env_file)["reason"]
 
@@ -509,10 +548,9 @@ def test_yes_no_settings_are_saved_without_accent_and_apply_at_once(key, value, 
 
     config.update({key: value}, [], env_file)
 
-    assert f"{key}='{saved}'" in env_file.read_text(encoding="utf-8")
-    assert os.environ[key] == saved  # son live: no hace falta reiniciar
+    assert stored(key) == saved
+    assert config.value(key) == saved  # son live: no hace falta reiniciar
     assert entry(key, env_file)["pending_restart"] is False
-    monkeypatch.delenv(key)
 
 
 @pytest.mark.parametrize("value", ["talvez", "true", "1", "si\nEVIL=1"])
@@ -538,8 +576,7 @@ def test_the_dollar_rate_accepts_numbers_with_dot_or_comma(value, saved, env_fil
 
     config.update({"USD_ARS": value}, [], env_file)
 
-    assert f"USD_ARS='{saved}'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv("USD_ARS")
+    assert stored("USD_ARS") == saved
 
 
 @pytest.mark.parametrize("value", ["0", "0,0", "-5", "mil", "1e3", "1.2.3", "12345678", "1500\nEVIL=1"])
@@ -561,8 +598,7 @@ def test_chat_limit_accepts_dollar_amounts(value, saved, env_file, monkeypatch):
 
     config.update({"CHAT_LIMIT_USD": value}, [], env_file)
 
-    assert f"CHAT_LIMIT_USD='{saved}'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv("CHAT_LIMIT_USD")
+    assert stored("CHAT_LIMIT_USD") == saved
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "abc", "1001", "1\n2", "0.001", "1e2"])
@@ -581,8 +617,7 @@ def test_chat_file_limits_accept_whole_numbers_in_range(key, value, env_file, mo
 
     config.update({key: value}, [], env_file)
 
-    assert f"{key}='{value}'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv(key)
+    assert stored(key) == value
 
 
 @pytest.mark.parametrize("key,value", [
@@ -608,8 +643,8 @@ def test_chat_file_limits_reject_anything_else(key, value, env_file):
 def test_assistant_names_are_saved_lowercase_without_accents_and_apply_at_once(value, saved, env_file):
     config.update({"ASSISTANT_NAME": value}, [], env_file)
 
-    assert os.environ["ASSISTANT_NAME"] == saved
-    assert f"ASSISTANT_NAME='{saved}'" in env_file.read_text(encoding="utf-8")
+    assert config.value("ASSISTANT_NAME") == saved
+    assert stored("ASSISTANT_NAME") == saved
 
 
 @pytest.mark.parametrize(
@@ -619,7 +654,7 @@ def test_invalid_assistant_names_are_rejected(value, env_file):
     with pytest.raises(config.ConfigError) as error:
         config.update({"ASSISTANT_NAME": value}, [], env_file)
 
-    assert "ASSISTANT_NAME" in error.value.errors and not env_file.exists()
+    assert "ASSISTANT_NAME" in error.value.errors and not store.settings_path().exists()
 
 
 # --- navegador de la IA ---------------------------------------------------------------
@@ -639,10 +674,19 @@ def test_site_list_lowercases_and_drops_empty_and_repeated(monkeypatch):
     assert config.site_list("BROWSER_TRUSTED_SITES") == ["a.com", "b.org"]
 
 
-def test_site_lists_are_saved_normalized_and_apply_at_once(env_file):
+def test_site_lists_are_saved_normalized(env_file):
     config.update({"BROWSER_TRUSTED_SITES": "A.com, b.org"}, [], env_file)
 
-    assert os.environ["BROWSER_TRUSTED_SITES"] == "a.com,b.org"
+    assert stored("BROWSER_TRUSTED_SITES") == "a.com,b.org"
+
+
+def test_trusting_fewer_sites_applies_at_once_but_more_waits_for_a_restart(env_file):
+    config.update({"BROWSER_TRUSTED_SITES": "YouTube.com"}, [], env_file)
+    assert config.site_list("BROWSER_TRUSTED_SITES") == ["youtube.com"]
+
+    config.update({"BROWSER_TRUSTED_SITES": "youtube.com,a.com"}, [], env_file)
+    assert config.site_list("BROWSER_TRUSTED_SITES") == ["youtube.com"]
+    assert entry("BROWSER_TRUSTED_SITES", env_file)["pending_restart"] is True
 
 
 @pytest.mark.parametrize("value", ["https://a.com", "a.com/x", "a.com\nb.com", " , ", "a b.com"])
@@ -650,7 +694,7 @@ def test_invalid_site_lists_are_rejected(value, env_file):
     with pytest.raises(config.ConfigError) as error:
         config.update({"BROWSER_TRUSTED_SITES": value}, [], env_file)
 
-    assert "BROWSER_TRUSTED_SITES" in error.value.errors and not env_file.exists()
+    assert "BROWSER_TRUSTED_SITES" in error.value.errors and not store.settings_path().exists()
 
 
 def test_browser_is_enabled_by_default_and_can_be_turned_off(monkeypatch):
@@ -684,8 +728,7 @@ def test_model_settings_save_provider_and_model(key, env_file, monkeypatch, both
 
     config.update({key: "ollama:llama3.1:8b"}, [], env_file)
 
-    assert f"{key}='ollama:llama3.1:8b'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv(key)
+    assert stored(key) == "ollama:llama3.1:8b"
 
 
 def test_a_model_without_provider_is_saved_as_gemini(env_file, monkeypatch, both_providers):
@@ -693,8 +736,7 @@ def test_a_model_without_provider_is_saved_as_gemini(env_file, monkeypatch, both
 
     config.update({"AI_MODEL": "gemini-3.1-flash-lite"}, [], env_file)
 
-    assert "AI_MODEL='gemini:gemini-3.1-flash-lite'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv("AI_MODEL")
+    assert stored("AI_MODEL") == "gemini:gemini-3.1-flash-lite"
 
 
 @pytest.mark.parametrize(
@@ -716,8 +758,7 @@ def test_ollama_url_accepts_http_and_https(value, saved, env_file, monkeypatch):
 
     config.update({"OLLAMA_URL": value}, [], env_file)
 
-    assert f"OLLAMA_URL='{saved}'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv("OLLAMA_URL")
+    assert stored("OLLAMA_URL") == saved
 
 
 @pytest.mark.parametrize("value", ["ftp://x", "javascript:alert(1)", "localhost:11434", "http://", "http://a b", "http://x\ny", "file:///etc/passwd"])
@@ -738,9 +779,8 @@ def test_weather_city_is_saved_and_applied_live(env_file, monkeypatch):
 
     config.update({"WEATHER_CITY": "  Río   Cuarto "}, [], env_file)
 
-    assert "WEATHER_CITY='Río Cuarto'" in env_file.read_text(encoding="utf-8")
-    assert os.environ["WEATHER_CITY"] == "Río Cuarto"
-    monkeypatch.delenv("WEATHER_CITY")
+    assert stored("WEATHER_CITY") == "Río Cuarto"
+    assert config.value("WEATHER_CITY") == "Río Cuarto"
 
 
 @pytest.mark.parametrize("value", ["123", "a\nb=c", "x" * 61, "a/b"])
@@ -757,9 +797,8 @@ def test_person_name_accepts_accents_and_spaces(env_file, monkeypatch):
 
     config.update({"USER_NAME": "  José   Núñez "}, [], env_file)
 
-    assert os.environ["USER_NAME"] == "José Núñez"
-    assert "USER_NAME='José Núñez'" in env_file.read_text(encoding="utf-8")
-    monkeypatch.delenv("USER_NAME")
+    assert config.value("USER_NAME") == "José Núñez"
+    assert stored("USER_NAME") == "José Núñez"
 
 
 @pytest.mark.parametrize("value", ["<b>x</b>", "a\nb", "x" * 41, "1abc", "a;b"])
@@ -770,8 +809,7 @@ def test_person_name_rejects_markup_newlines_and_long_values(env_file, monkeypat
         config.update({"USER_NAME": value}, [], env_file)
 
     assert "nombre" in error.value.errors["USER_NAME"].lower()
-    assert "USER_NAME" not in os.environ
-    assert not env_file.exists() or "USER_NAME" not in env_file.read_text(encoding="utf-8")
+    assert "USER_NAME" not in os.environ and stored("USER_NAME") is None
 
 
 def test_agent_name_defaults_to_epsilon(env_file, monkeypatch):
@@ -793,3 +831,112 @@ def test_env_example_mentions_the_name_settings():
     text = (Path(config.__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
 
     assert "USER_NAME" in text and "AGENT_NAME" in text
+
+
+# --- settings.json: de dónde sale cada valor -----------------------------------
+
+
+def test_process_env_wins(monkeypatch, tmp_settings):
+    tmp_settings('{"general.user_name": "Ana"}')
+    monkeypatch.setenv("USER_NAME", "Beto")
+    assert config.value("USER_NAME") == "Beto" and config.from_process("USER_NAME")
+
+
+def test_file_then_default(tmp_settings):
+    tmp_settings('{"general.user_name": "Ana"}')
+    assert config.value("USER_NAME") == "Ana" and config.value("AGENT_NAME") == "Epsilon"
+    assert not config.from_process("USER_NAME")
+
+
+def test_number_typed(tmp_settings):
+    tmp_settings('{"telegram.progress_after_seconds": 1.5}')
+    assert config.number("TELEGRAM_PROGRESS_AFTER") == 1.5 and config.number("CHAT_MAX_TOOL_STEPS") == 6
+    assert isinstance(config.number("CHAT_MAX_TOOL_STEPS"), int)
+
+
+def test_number_from_a_bad_environment_value_falls_back_to_the_default(monkeypatch, tmp_settings):
+    tmp_settings("{}")
+    monkeypatch.setenv("CHAT_MAX_TOOL_STEPS", "muchas")
+    assert config.number("CHAT_MAX_TOOL_STEPS") == 6
+    monkeypatch.setenv("CHAT_MAX_TOOL_STEPS", "999")  # fuera de rango
+    assert config.number("CHAT_MAX_TOOL_STEPS") == 6
+    monkeypatch.setenv("CHAT_MAX_TOOL_STEPS", "9")
+    assert config.number("CHAT_MAX_TOOL_STEPS") == 9
+
+
+def test_environ_adds_the_values_in_use(monkeypatch, tmp_settings):
+    tmp_settings('{"general.user_name": "Ana"}')
+    monkeypatch.setenv("OTRA_COSA", "x")
+
+    env = config.environ()
+
+    assert env["USER_NAME"] == "Ana" and env["AGENT_NAME"] == "Epsilon" and env["OTRA_COSA"] == "x"
+    assert "USER_NAME" not in os.environ
+
+
+def test_update_writes_non_secrets_to_settings_json_and_secrets_to_env(tmp_path, tmp_settings):
+    tmp_settings("{}")
+    env = tmp_path / "x.env"
+    config.update({"USER_NAME": "Ana", "GEMINI_API_KEY": "a" * 30}, [], env_file=env)
+    assert "USER_NAME" not in env.read_text() and "GEMINI_API_KEY" in env.read_text()
+    assert "a" * 30 not in store.settings_path().read_text()
+    assert config.value("USER_NAME") == "Ana" and "USER_NAME" not in os.environ
+
+
+def test_update_all_or_nothing(tmp_settings):
+    tmp_settings("{}")
+    with pytest.raises(config.ConfigError):
+        config.update({"USER_NAME": "Ana", "CHAT_MAX_TOOL_STEPS": "999"}, [])
+    assert config.value("USER_NAME") == ""
+
+
+def test_clearing_a_setting_takes_it_out_of_settings_json(tmp_settings):
+    tmp_settings('{"general.agent_name": "Meli"}')
+
+    config.update({}, ["AGENT_NAME"])
+
+    assert stored("AGENT_NAME") is None and config.value("AGENT_NAME") == "Epsilon"
+
+
+def test_loosening_from_the_page_waits_for_restart(tmp_settings):
+    tmp_settings("{}")
+    config.update({"CHAT_MAX_TOOL_STEPS": "20"}, [])
+    assert config.number("CHAT_MAX_TOOL_STEPS") == 6
+    assert any(p["key"] == "CHAT_MAX_TOOL_STEPS" for p in config.pending_restart())
+
+
+def test_a_loosening_says_why_it_waits(tmp_settings, env_file):
+    tmp_settings("{}")
+    config.update({"BROWSER_GUARD": "no"}, [], env_file)
+
+    e = entry("BROWSER_GUARD", env_file)
+
+    assert e["pending_restart"] is True and e["value"] == "si" and e["saved"] == "no"
+    assert e["reason"] == (
+        "Afloja una protección: se aplica al reiniciar, así ningún programa puede cambiarla sin que lo veas."
+    )
+
+
+def test_tightening_from_the_page_applies_at_once(tmp_settings, env_file):
+    tmp_settings('{"browser.guard": false}')
+
+    config.update({"BROWSER_GUARD": "si"}, [], env_file)
+
+    assert config.enabled("BROWSER_GUARD") and entry("BROWSER_GUARD", env_file)["pending_restart"] is False
+
+
+def test_status_says_name_kind_and_where_it_comes_from(monkeypatch, tmp_settings, env_file):
+    tmp_settings('{"general.user_name": "Ana"}')
+    monkeypatch.setenv("WEB_PORT", "9000")
+
+    port, user, key = (entry(k, env_file) for k in ("WEB_PORT", "USER_NAME", "GEMINI_API_KEY"))
+
+    assert (port["name"], port["kind"], port["from_env"]) == ("web.port", "int", True)
+    assert (user["name"], user["kind"], user["from_env"], user["value"]) == ("general.user_name", "text", False, "Ana")
+    assert key["name"] == "" and key["from_env"] is False
+
+
+def test_status_lists_only_the_page_settings_not_the_tunables(env_file):
+    keys = {e["key"] for e in config.status(env_file)}
+
+    assert "USER_NAME" in keys and "CHAT_MAX_TOOL_STEPS" not in keys

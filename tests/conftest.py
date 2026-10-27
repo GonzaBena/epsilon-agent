@@ -63,6 +63,19 @@ def tmp_data(monkeypatch, tmp_path):
     return tmp_path
 
 
+@pytest.fixture
+def tmp_settings(tmp_data):
+    """Escribe settings.json en el DATA_DIR del test y lo carga como al arrancar: tmp_settings('{...}')."""
+    from epsilon.settings import store
+
+    def write(text: str):
+        store.settings_path().write_text(text, encoding="utf-8")
+        store.load_initial()
+        return store.settings_path()
+
+    return write
+
+
 @pytest.fixture(autouse=True)
 def block_real_gemini_client(monkeypatch):
     """Ni siquiera las llamadas de prueba (llm.check) pueden salir a la red sin querer."""
@@ -205,11 +218,11 @@ def block_real_tts(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def voice_on_by_default(monkeypatch):
-    """La voz de la PC real (su .env) no cuenta: cada test parte con la voz prendida."""
-    monkeypatch.setenv("VOICE_ENABLED", "si")
-    monkeypatch.setenv("TTS_ENABLED", "no")
-    monkeypatch.setenv("TELEGRAM_ENABLED", "si")
-    monkeypatch.setenv("USD_ARS", "")  # la cotización de la PC real tampoco cuenta  # (y se restauran solos si un test los cambia)
+    """La voz de la PC real no cuenta: cada test parte con la voz prendida.
+    Sin la variable en el entorno rige settings.json (el del test) o el de fábrica: voz «si», audio
+    «no», Telegram «si» y sin cotización. Una variable del entorno ganaría sobre lo que guarda un test."""
+    for name in ("VOICE_ENABLED", "TTS_ENABLED", "TELEGRAM_ENABLED", "USD_ARS"):
+        monkeypatch.delenv(name, raising=False)
     # Tampoco el modelo elegido en la PC real (p. ej. uno de Ollama): los tests parten con el de siempre, Gemini.
     for name in ("AI_MODEL", "AI_MODEL_CHAT", "AI_MODEL_ASK", "AI_MODEL_SUMMARY", "AI_MODEL_CSV", "GEMINI_MODEL"):
         monkeypatch.delenv(name, raising=False)
