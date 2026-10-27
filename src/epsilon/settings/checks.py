@@ -16,6 +16,7 @@ def _ollama() -> str:
 CHECKS = {
     "gemini": lambda: f"Clave válida; el modelo {llm.check()} está disponible.",
     "ollama": _ollama,
+    "anthropic": lambda: f"Clave válida ({llm.check('anthropic')}).",
     # Prueba el token GUARDADO (aunque todavía no esté aplicado), así sirve
     # para comprobar lo que se acaba de cargar antes de reiniciar.
     "telegram": lambda: telegram.check(config.saved("TELEGRAM_TOKEN")),

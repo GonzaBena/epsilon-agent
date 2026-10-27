@@ -15,13 +15,18 @@ USAGE_FILE = "usage.jsonl"
 # Ejemplo:  "gemini-3.1-flash-lite": (0.10, 0.40),
 PRICES: dict[str, tuple[float, float]] = {
     "gemini-3.1-flash-lite": (0.25, 1.5),
+    # Anthropic se anota con proveedor (como Ollama). La lectura de caché se cuenta como entrada normal: sobreestima.
+    "anthropic:claude-fable-5-1": (10.0, 50.0),
+    "anthropic:claude-opus-5-5": (4.0, 20.0),
+    "anthropic:claude-sonnet-5-5": (2.0, 10.0),
+    "anthropic:claude-haiku-5-5": (0.10, 0.50),
 }
 
 
 def price(model: str) -> tuple[float, float] | None:
     """Precio (entrada, salida) por millón de tokens de un modelo, o None si no se conoce.
 
-    Acepta el id completo («gemini:x», «ollama:x») o el nombre solo, como lo guardan los registros viejos
+    Acepta el id completo («gemini:x», «ollama:x», «anthropic:x») o el nombre solo, como lo guardan los registros viejos
     de Gemini. Un modelo local (Ollama) es gratis y de precio conocido."""
     if model.startswith("ollama:"):
         return (0.0, 0.0)
@@ -287,7 +292,7 @@ def last_model(conversation_id: str) -> str | None:
     stored = found["last_model"] if found else None
     if stored is None:
         return None
-    return stored if stored.startswith("ollama:") else f"gemini:{stored.removeprefix('gemini:')}"
+    return stored if stored.startswith(("ollama:", "anthropic:")) else f"gemini:{stored.removeprefix('gemini:')}"
 
 
 def for_conversation(conversation_id: str) -> dict:

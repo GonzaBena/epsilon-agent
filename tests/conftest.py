@@ -2,7 +2,7 @@ import pytest
 
 from epsilon import state
 from epsilon.ai import llm
-from epsilon.ai.providers import gemini, ollama
+from epsilon.ai.providers import anthropic, gemini, ollama
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +45,16 @@ def block_real_gemini_client(monkeypatch):
         raise RuntimeError("Un test intentó crear un cliente real de Gemini")
 
     monkeypatch.setattr(gemini.genai, "Client", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def block_real_anthropic_client(monkeypatch):
+    """Ningún test crea un cliente real de Anthropic."""
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó crear un cliente real de Anthropic")
+
+    monkeypatch.setattr(anthropic.anthropic, "Anthropic", forbidden)
 
 
 @pytest.fixture(autouse=True)

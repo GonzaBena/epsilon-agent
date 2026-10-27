@@ -48,7 +48,7 @@ def chat_reply(content="listo", calls=(), prompt=10, evaluated=4):
 
 def test_the_registry_knows_ollama():
     assert isinstance(providers.get("ollama"), ollama.OllamaProvider)
-    assert providers.names() == ["gemini", "ollama"]
+    assert providers.names() == ["gemini", "ollama", "anthropic"]
 
 
 # --- generate ----------------------------------------------------------------------

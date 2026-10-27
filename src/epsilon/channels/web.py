@@ -1184,9 +1184,10 @@ def create_app() -> FastAPI:
         }
 
     def ai_ready() -> bool:
-        # Gemini necesita su clave (solo se mira si está, nunca su valor); Ollama es local y no lleva.
+        # Gemini y Anthropic necesitan su clave (solo se mira si está, nunca su valor); Ollama es local y no lleva.
         provider, _ = llm.parse_model(llm.model_for("chat"))
-        return provider != "gemini" or bool(os.environ.get("GEMINI_API_KEY"))
+        key = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}.get(provider)
+        return key is None or bool(os.environ.get(key))
 
     def thinking_supported() -> bool:
         # Ollama pregunta por HTTP: si no contesta, el selector simplemente no se muestra.

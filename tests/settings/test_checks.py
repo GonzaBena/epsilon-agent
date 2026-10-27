@@ -43,7 +43,7 @@ def test_secrets_never_reach_the_message(monkeypatch):
 
 
 def test_known_targets():
-    assert set(checks.CHECKS) == {"gemini", "ollama", "telegram"}
+    assert set(checks.CHECKS) == {"gemini", "ollama", "anthropic", "telegram"}
 
 
 def test_telegram_check_uses_the_saved_token_not_a_running_one(monkeypatch, tmp_path):

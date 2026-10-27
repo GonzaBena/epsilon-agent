@@ -318,6 +318,25 @@
                 <p class="result" id="result-gemini" role="status"></p>
               </div>
             </div>
+            <div class="sub" aria-labelledby="s-anthropic">
+              <h4 id="s-anthropic">Anthropic</h4>
+              <p class="help">Modelos Claude. La clave se obtiene en la consola de Anthropic. Se elige con <code>anthropic:claude-sonnet-5-5</code>.</p>
+              <div class="field">
+                <label for="f-ANTHROPIC_API_KEY">Clave de Anthropic</label>
+                <div class="secret-row">
+                  <input id="f-ANTHROPIC_API_KEY" data-key="ANTHROPIC_API_KEY" type="password"
+                         autocomplete="new-password" spellcheck="false"
+                         aria-describedby="hint-ANTHROPIC_API_KEY err-ANTHROPIC_API_KEY">
+                  <button type="button" class="ghost danger" data-clear="ANTHROPIC_API_KEY" hidden>Borrar</button>
+                </div>
+                <p class="hint" id="hint-ANTHROPIC_API_KEY"></p>
+                <p class="error" id="err-ANTHROPIC_API_KEY" role="alert"></p>
+              </div>
+              <div class="test-row">
+                <button type="button" class="secondary" data-test="anthropic">Probar conexión con Anthropic</button>
+                <p class="result" id="result-anthropic" role="status"></p>
+              </div>
+            </div>
             <div class="sub" aria-labelledby="s-ollama">
               <h4 id="s-ollama">Ollama</h4>
               <p class="help">Modelos que corren en tu PC, sin clave y sin costo.</p>

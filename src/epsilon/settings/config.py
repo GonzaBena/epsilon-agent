@@ -149,7 +149,7 @@ def _model_id(value: str) -> str:
         provider, name = "gemini", value
     elif provider not in known:
         raise ValueError(
-            "Escribilo como proveedor:modelo (por ejemplo gemini:gemini-3.1-flash-lite u ollama:llama3.1:8b). "
+            "Escribilo como proveedor:modelo (por ejemplo gemini:gemini-3.1-flash-lite ollama:llama3.1:8b o anthropic:claude-sonnet-5-5). "
             f"Proveedores: {', '.join(known)}."
         )
     if not re.fullmatch(r"[\w.\-:/]+", name, re.ASCII) or len(provider) + len(name) + 1 > 100:
@@ -311,6 +311,17 @@ SETTINGS = (
     Setting("AI_MODEL_ASK", "Modelo de /ia", live=True, validate=_model_id),
     Setting("AI_MODEL_SUMMARY", "Modelo para resumir archivos", live=True, validate=_model_id),
     Setting("AI_MODEL_CSV", "Modelo de imagen a CSV", live=True, validate=_model_id),
+    Setting(
+        "ANTHROPIC_API_KEY",
+        "Clave de Anthropic",
+        secret=True,
+        live=True,
+        validate=_matching(
+            r"[\w\-]{20,200}",
+            "La clave de Anthropic no tiene un formato válido "
+            "(letras, números, _ y -; entre 20 y 200 caracteres).",
+        ),
+    ),
     Setting(
         "AI_THINKING_EFFORT",
         "Esfuerzo de razonamiento de la IA",

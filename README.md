@@ -38,6 +38,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | Variable                                                     | Para qué sirve                                                                                                          |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | `GEMINI_API_KEY`                                             | Clave de Gemini. Sin ella no se pueden leer imágenes ni resumir.                                                        |
+| `ANTHROPIC_API_KEY`                                          | Opcional: clave de Anthropic. Con ella podés elegir modelos Claude (`anthropic:claude-sonnet-5-5`) en el botón del modelo. |
 | `GEMINI_MODEL`                                               | Modelo de Gemini a usar si no elegiste otro (por defecto, `gemini-3.1-flash-lite`).                                                                   |
 | `DATA_DIR`                                                   | Carpeta donde se guardan notas, archivos y conversaciones (por defecto, `~/epsilon-data`). Queda fuera del repositorio. |
 | `WEB_PORT`                                                   | Puerto de la web local (por defecto, 8765).                                                                             |

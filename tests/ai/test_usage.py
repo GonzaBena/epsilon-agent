@@ -471,3 +471,9 @@ def test_last_model_ignores_other_conversations_and_non_chat_calls(tmp_path, mon
     chat_call("ollama:qwen3", action="Resumen")  # un resumen no cambia el modelo de la charla
 
     assert usage.last_model(CID) == "gemini:modelo-a"
+
+
+def test_anthropic_models_are_priced_with_their_provider():
+    assert usage.price("anthropic:claude-sonnet-5-5") == (2.0, 10.0)
+    assert usage.price("anthropic:claude-desconocido") is None
+    assert usage.stored_name("anthropic:claude-sonnet-5-5") == "anthropic:claude-sonnet-5-5"
