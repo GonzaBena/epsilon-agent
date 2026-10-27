@@ -220,7 +220,7 @@ def test_telegram_is_marked_running_only_after_it_connects(monkeypatch):
 def test_the_telegram_menu_shows_only_the_everyday_commands():
     # El resto sigue andando y figura en /ayuda; el menú es solo lo de todos los días.
     assert [c.command for c in telegram.COMMANDS] == [
-        "ver", "tareas", "recordar", "volumen", "musica", "rutinas", "ia", "nuevo", "chat", "ayuda"
+        "ver", "tareas", "recordar", "volumen", "musica", "rutinas", "ia", "menu", "nuevo", "chat", "ayuda"
     ]
 
 

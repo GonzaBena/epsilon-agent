@@ -597,6 +597,7 @@ TOOLS = (
         "/menu",
         name="menu",
         help="ajustes del bot, como la voz (con botones)",
+        menu="Ajustes del bot, con botones",
         writes=True,
     ),
     Tool(
