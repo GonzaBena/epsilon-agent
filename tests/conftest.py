@@ -38,6 +38,32 @@ def activity_never_lands_in_the_real_data_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def settings_never_land_in_the_real_data_dir(monkeypatch, tmp_path):
+    """Un test que lee o guarda settings.json sin apuntar DATA_DIR a su carpeta no toca tus ajustes reales.
+    Además, cada test arranca con el store vacío (sus valores en memoria son globales)."""
+    from epsilon.data import notes
+    from epsilon.settings import store
+
+    real = notes.DATA_DIR
+    original = store._path
+    monkeypatch.setattr(store, "_path", lambda name: tmp_path / f"stray-{name}" if notes.DATA_DIR == real else original(name))
+    store.reset()
+    yield
+    store.reset()
+
+
+@pytest.fixture
+def tmp_data(monkeypatch, tmp_path):
+    """DATA_DIR en tmp_path y el store de ajustes vacío."""
+    from epsilon.data import notes
+    from epsilon.settings import store
+
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path)
+    store.reset()
+    return tmp_path
+
+
+@pytest.fixture(autouse=True)
 def block_real_gemini_client(monkeypatch):
     """Ni siquiera las llamadas de prueba (llm.check) pueden salir a la red sin querer."""
 
