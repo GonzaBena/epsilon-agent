@@ -569,7 +569,7 @@ def test_welcome_greeting_keeps_its_line_breaks_and_the_picture_is_big():
     assert "white-space: pre-line" in css_rule(".welcome-greeting")
     columns = css_rule(".welcome-hero")
     assert re.search(r"minmax\(0, (1[8-9]|2\d)rem\)", columns)  # columna de la imagen: 18 rem o más
-    assert re.search(r"max-height: (2[6-9]|3\d)rem", css_rule(".welcome-avatar"))
+    assert re.search(r"max-height: (1[8-9]|2\d|3\d)rem", css_rule(".welcome-avatar"))  # 18 rem o más
 
 
 def test_onboarding_is_a_real_form_so_enter_submits_it():

@@ -604,7 +604,9 @@ body.view-telegram {
 /* Lo que desaparece también sale del orden de tabulación (visibility), pero recién
    cuando termina el desvanecimiento. */
 /* Contraído a íconos: sin títulos de grupo y con todos los íconos, aunque un grupo esté plegado. */
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .nav-head {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .nav-head {
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -617,10 +619,15 @@ body.view-telegram {
     opacity 0.1s ease,
     visibility 0s linear var(--t);
 }
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .nav-items {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .nav-items {
   display: flex;
 }
-.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open) .side-left .nav-group + .nav-group {
+.shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
+  .side-left
+  .nav-group
+  + .nav-group {
   margin-top: 0;
 }
 .shell:is([data-left="collapsed"], .is-narrow):not(.drawer-open)
@@ -888,7 +895,7 @@ body.booting .log {
 }
 .welcome-avatar {
   width: 100%;
-  max-height: 28rem;
+  max-height: 20rem;
   object-fit: contain;
 }
 @media (max-width: 36rem) {
