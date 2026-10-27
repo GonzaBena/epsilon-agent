@@ -615,6 +615,29 @@ def set_plugin_settings(items: list[Setting]) -> None:
         BY_KEY[item.key] = item
         if item.secret:
             _plugin_secret_keys.add(item.key)
+    if SETTINGS_READY:
+        _move_plugin_values(items)
+
+
+# Lo pone main.setup_settings cuando settings.json ya está listo. Antes (y en los tests que no lo
+# piden), registrar un plugin no toca el entorno ni escribe archivos.
+SETTINGS_READY = False
+
+
+def _move_plugin_values(items) -> None:
+    """Pasa a settings.json los ajustes de un plugin que estaban en el .env y regenera los archivos
+    de referencia. Nunca rompe el registro del plugin: un error se anota y sigue."""
+    try:
+        before = set(ENV_AT_START)
+        _forget_env_file_values(items)
+        moved = [key for key in ENV_AT_START if key not in before]
+        if moved:
+            store.migrate_keys(ENV_AT_START, moved)
+        from epsilon.settings import generate  # acá: generate importa este módulo
+
+        generate.write_generated()
+    except Exception as e:  # noqa: BLE001 - el plugin se registra igual
+        logging.getLogger(__name__).warning("No pude pasar los ajustes del plugin a settings.json: %s", redact(repr(e)))
 
 
 def reset_plugin_settings() -> None:

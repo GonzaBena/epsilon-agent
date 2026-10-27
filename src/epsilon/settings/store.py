@@ -11,10 +11,13 @@ que entienden los validadores («si», «6»).
 
 from dataclasses import dataclass
 import difflib
+import logging
 import os
 from pathlib import Path
 import tempfile
 import threading
+
+from dotenv import dotenv_values
 
 from epsilon.data import notes
 from epsilon.settings import config, jsonc
@@ -29,6 +32,10 @@ SECRET_WARNING = "las claves van en la pantalla de Configuración, no en este ar
 BOOTSTRAP_WARNING = "Este ajuste va en el .env: se lee antes que este archivo."
 UNKNOWN = "No existe este ajuste."
 REPEATED = "Está repetido: vale el último."
+NOT_MIGRATED = "El valor del .env no sirve y no se pasó a este archivo"
+MIGRATED_HEADER = "// Tus ajustes. Lo que no está acá usa el valor de fábrica (mirá settings_default.json)."
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,6 +54,7 @@ _applied: dict[str, str] = {}  # lo que usa el proceso
 _issues: list[Issue] = []
 _broken: str | None = None  # motivo, con número de línea
 _stamp: tuple[int, int] | None = None  # (mtime_ns, tamaño) de la última lectura; None = no existía
+_migrate_issues: list[Issue] = []  # lo del .env que no se pudo pasar (sobrevive a las relecturas)
 
 
 # --- Rutas ---------------------------------------------------------------------
@@ -223,7 +231,7 @@ def saved(key: str) -> str | None:
 
 def issues() -> list[Issue]:
     with _lock:
-        return list(_issues)
+        return list(_issues) + list(_migrate_issues)
 
 
 def broken() -> str | None:
@@ -321,3 +329,115 @@ def reset() -> None:
     with _lock:
         _saved, _applied, _issues = {}, {}, []
         _broken, _stamp = None, None
+        _migrate_issues.clear()
+
+
+# --- Pasar el .env a settings.json (una vez) ----------------------------------------
+
+
+def _migratable(keys) -> list[Setting]:
+    """Los ajustes de `keys` que van en settings.json, en el orden del registro."""
+    wanted = set(keys)
+    return [s for s in config.all_settings() if s.key in wanted and s.name and not s.secret and not s.bootstrap]
+
+
+def _add_values(text: str, env_values: dict[str, str], settings: list[Setting], present: set[str]) -> tuple[str, list[str]]:
+    """Agrega al texto los valores del .env que validan y no están ya. Sin candado."""
+    moved = []
+    for s in settings:
+        if s.name in present:
+            continue
+        raw = (env_values.get(s.key) or "").strip()
+        if not raw:
+            continue  # vacío en el .env: no estaba definido
+        try:
+            value = config.to_json(s, config.from_json(s, raw))
+            config.from_json(s, value)  # lo que va al archivo tiene que leerse igual
+        except Exception as e:  # un validador que se queja: queda el de fábrica y se avisa (sin el valor)
+            _migrate_issues.append(Issue(s.name, f"{NOT_MIGRATED}: {e}" if str(e) else NOT_MIGRATED + "."))
+            continue
+        if value is None or value == "" or value == []:
+            continue
+        text = jsonc.set_value(text, s.name, value)
+        moved.append(s.key)
+    return text, moved
+
+
+def migrate(env_values: dict[str, str]) -> list[str]:
+    """Si settings.json no existe, lo crea con los ajustes que estaban en el .env (las claves y lo
+    de arranque se quedan allá). Devuelve las claves pasadas. Si ya existe, no lo toca."""
+    with _lock:
+        path = settings_path()
+        if path.exists():
+            return []
+        text = f'{MIGRATED_HEADER}\n{{\n  "{SCHEMA_KEY}": "./settings.schema.json"\n}}\n'
+        text, moved = _add_values(text, env_values, _migratable(env_values), set())
+        _replace(path, text)
+        return moved
+
+
+def migrate_keys(env_values: dict[str, str], keys) -> list[str]:
+    """Agrega a settings.json (lo crea si falta) las claves de `keys` que todavía no tiene, sin
+    pisar ninguna, y aplica lo nuevo. Para los ajustes de un plugin que aparece en pleno uso. Si
+    el archivo está roto, no lo toca."""
+    settings = _migratable(keys)
+    if not settings:
+        return []
+    with _lock:
+        path = settings_path()
+        text, _ = _read()
+        if text is None:
+            text = f'{MIGRATED_HEADER}\n{{\n  "{SCHEMA_KEY}": "./settings.schema.json"\n}}\n'
+        try:
+            present = set(jsonc.loads(text))
+        except Exception:
+            return []
+        text, moved = _add_values(text, env_values, settings, present)
+        if moved:
+            _replace(path, text)
+            _load(starting=False)
+        return moved
+
+
+def leftover_env() -> list[str]:
+    """Las claves de ajustes de settings.json que siguen escritas en el .env (solo los nombres,
+    nunca los valores): la pantalla las lista para que la persona las borre."""
+    path = config.ENV_FILE
+    try:
+        found = set(dotenv_values(path)) if path.exists() else set()
+    except OSError:
+        return []
+    return [s.key for s in _migratable(found)]
+
+
+# --- El vigía: relee el archivo cuando cambia --------------------------------------
+
+_watcher: threading.Thread | None = None
+_stop_watching = threading.Event()
+
+
+def _watch(interval: float, stop: threading.Event) -> None:
+    while not stop.wait(interval):
+        try:
+            refresh()
+        except Exception as e:  # una pasada que falla no frena al vigía
+            log.warning("No pude releer settings.json: %s", config.redact(repr(e)))
+
+
+def start_watcher(interval: float = 2.0) -> threading.Thread:
+    """Un hilo daemon que llama a refresh() cada `interval` segundos."""
+    global _watcher, _stop_watching
+    stop_watcher()
+    _stop_watching = threading.Event()
+    _watcher = threading.Thread(target=_watch, args=(interval, _stop_watching), name="ajustes-vigia", daemon=True)
+    _watcher.start()
+    return _watcher
+
+
+def stop_watcher(timeout: float = 5) -> None:
+    """Frena el vigía (si hay uno) y espera a que termine."""
+    global _watcher
+    _stop_watching.set()
+    if _watcher is not None:
+        _watcher.join(timeout)
+    _watcher = None

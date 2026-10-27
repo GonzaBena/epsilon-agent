@@ -52,6 +52,18 @@ def settings_never_land_in_the_real_data_dir(monkeypatch, tmp_path):
     store.reset()
 
 
+@pytest.fixture(autouse=True)
+def settings_setup_is_per_test(monkeypatch):
+    """main() prepara settings.json: que no pase los valores del .env real de este proceso, que
+    registrar un plugin después no escriba archivos y que el vigía no siga corriendo."""
+    from epsilon.settings import config, store
+
+    monkeypatch.setattr(config, "ENV_AT_START", {})
+    monkeypatch.setattr(config, "SETTINGS_READY", False)
+    yield
+    store.stop_watcher()
+
+
 @pytest.fixture
 def tmp_data(monkeypatch, tmp_path):
     """DATA_DIR en tmp_path y el store de ajustes vacío."""

@@ -6,7 +6,7 @@ from epsilon import core, state, tools
 from epsilon.connectors import manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.plugins import channels as plugin_channels
 from epsilon.routines import engine
-from epsilon.settings import config
+from epsilon.settings import config, generate, store as settings_store
 from epsilon.skills import factory as skills_factory
 
 # Canales disponibles: nombre -> módulo. Para sumar uno incluido se agrega una línea acá; los de
@@ -247,12 +247,31 @@ def autostart_connectors() -> None:
                 print(f"No pude arrancar el conector {entry['name']}: {config.redact(str(e))}")
 
 
+def setup_settings() -> None:
+    """settings.json al arrancar: pasa una vez lo que había en el .env, lo lee, escribe los
+    archivos de referencia (valores de fábrica y schema) y lo vigila. Nunca impide arrancar: si
+    un paso falla se avisa (sin secretos) y se sigue con los valores de fábrica."""
+    steps = (
+        ("pasar los ajustes del .env a settings.json", lambda: settings_store.migrate(config.ENV_AT_START)),
+        ("leer settings.json", settings_store.load_initial),
+        ("escribir settings_default.json y su schema", generate.write_generated),
+        ("vigilar settings.json", lambda: settings_store.start_watcher(interval=2.0)),
+    )
+    for what, step in steps:
+        try:
+            step()
+        except Exception as e:  # noqa: BLE001 - los ajustes nunca tumban el arranque
+            print(f"No pude {what}: {config.redact(repr(e))}. Sigo con los valores de fábrica.")
+    config.SETTINGS_READY = True
+
+
 def main():
     """Arranca la web (siempre) y los demás canales que estén configurados.
 
     La web va en el hilo principal: es el punto de control por defecto y maneja
     las señales de apagado. Telegram y compañía van en hilos aparte, así que si
     uno falla (token inválido, se cae Telegram) la web sigue funcionando."""
+    setup_settings()
     install_log_redaction()
     refresh_plugins()
     enabled = enabled_channels(config.environ())
