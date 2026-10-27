@@ -557,6 +557,17 @@ def create_app() -> FastAPI:
                 }
                 for tool in tools.TOOLS
                 if tool.name and not tool.channel and tool.web
+            ]
+            # Las skills que se pueden usar (prendidas y confirmadas) también se escriben con «/».
+            + [
+                {
+                    "name": skill.name,
+                    "usage": f"{skill.name} pedido",
+                    "desc": config.redact(skill.description) or "Skill",
+                    "skill": True,
+                }
+                for skill in skill_store.list_all()
+                if skill.usable
             ],
             "link_commands": tools.link_commands(),
         }

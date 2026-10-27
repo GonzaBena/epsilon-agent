@@ -5,6 +5,7 @@ import pytest
 from epsilon import core
 from epsilon.data import conversations
 from epsilon.channels import web
+from epsilon.skills import store as skill_store
 from tests.channels.web.helpers import attachment_html, chat_html, js, make_conversations, page, right_panel, static_path, tool_rows
 
 
@@ -43,8 +44,18 @@ def test_command_suggestions_only_offer_commands_the_core_knows(client):
 
     assert {c["name"] for c in commands} >= {"ver", "buscar", "ayuda"}
     for command in commands:
-        assert command["name"] in core.COMMANDS, command["name"]
+        if not command.get("skill"):
+            assert command["name"] in core.COMMANDS, command["name"]
         assert command["desc"]
+
+
+def test_command_suggestions_include_usable_skills(client):
+    # Una skill prendida se usa con «/nombre»: tiene que aparecer al escribir «/».
+    skill_store.save("informe", "---\nname: informe\ndescription: Arma informes\n---\nHacé un informe.")
+
+    commands = client.get("/api/tools").json()["commands"]
+
+    assert any(c["name"] == "informe" and c["skill"] for c in commands)
 
 
 def test_the_tools_panel_skips_what_the_menu_and_the_shortcuts_already_offer(client):
