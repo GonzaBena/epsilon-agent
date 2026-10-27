@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import contextvars
 import json
+import re
 import threading
 from datetime import date, datetime, timedelta
 
@@ -38,7 +39,8 @@ def price(model: str) -> tuple[float, float] | None:
     de Gemini. Un modelo local (Ollama) es gratis y de precio conocido."""
     if model.startswith("ollama:"):
         return (0.0, 0.0)
-    return PRICES.get(model.removeprefix("gemini:"))
+    # Anthropic publica versiones con fecha («claude-haiku-4-5-20251001»): valen lo mismo que el nombre sin ella.
+    return PRICES.get(re.sub(r"-\d{8}$", "", model.removeprefix("gemini:")))
 
 
 def stored_name(model_id: str) -> str:

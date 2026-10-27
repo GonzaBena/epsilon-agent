@@ -481,3 +481,8 @@ def test_anthropic_models_are_priced_with_their_provider():
 
 def test_haiku_4_5_has_a_price():
     assert usage.price("anthropic:claude-haiku-4-5") == (1.0, 5.0)
+
+
+def test_a_dated_anthropic_name_costs_the_same_as_the_plain_one():
+    assert usage.price("anthropic:claude-haiku-4-5-20251001") == (1.0, 5.0)
+    assert usage.price("anthropic:claude-desconocido-20251001") is None
