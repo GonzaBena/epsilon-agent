@@ -337,7 +337,11 @@ TOOLS = (
         usage="nombre con extensión en la primera línea y el contenido en las siguientes",
         ai_help="crear un archivo de texto NUEVO (csv, txt, md o json) con el contenido que vos escribís; nunca pisa uno existente",
         ai_arg="primera línea: nombre.ext (por ejemplo gastos.csv); desde la segunda línea: el contenido",
-        ai_tips="un CSV lleva el encabezado en la primera línea del contenido y una fila por línea, separado por comas.",
+        ai_tips=(
+            "un CSV lleva el encabezado en la primera línea del contenido y una fila por línea, separado por comas. "
+            "Guardá solo datos reales (los que te dio la persona o una herramienta): nunca inventes filas. "
+            "Si los datos están en un conector, usá la herramienta del conector que exporta, no esta."
+        ),
         writes=True,
         ai="write",
         ai_group="archivos",

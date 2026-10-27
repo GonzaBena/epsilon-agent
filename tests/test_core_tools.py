@@ -1378,3 +1378,10 @@ def test_create_file_refuses_a_bad_extension_without_writing(script):
     (sent,) = results(script.seen[1][0])
     assert "Extensión no permitida" in sent and "No se creó nada" in sent
     assert not (notes.DATA_DIR / "files").exists()
+
+
+def test_create_file_explains_the_format_when_name_and_content_come_glued(script):
+    reply = core._create_file("cobros.csv, id,monto 1,10")
+
+    assert reply.failed and "PRIMERA línea" in reply.text and "No se creó nada" in reply.text
+    assert not (notes.DATA_DIR / "files").exists()

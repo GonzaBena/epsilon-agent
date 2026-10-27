@@ -269,6 +269,12 @@ def _save_named(args: str) -> Reply:
 def _create_file(args: str) -> Reply:
     """Herramienta de la IA: primera línea = nombre.ext, el resto = contenido. Archivo nuevo, nunca pisa."""
     name, _, text = args.partition("\n")
+    if "\n" not in args.strip() or " " in name.strip() or "," in name:  # nombre y contenido pegados en una línea
+        return Reply(
+            "Formato: la PRIMERA línea es solo el nombre con extensión (por ejemplo gastos.csv) y el contenido va desde "
+            f"la segunda línea. No se creó nada. Recibí: {args[:60]!r}",
+            failed=True,
+        )
     try:
         path = notes.create_file(name, text)
     except ValueError as error:
