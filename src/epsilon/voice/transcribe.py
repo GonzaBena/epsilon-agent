@@ -1,8 +1,6 @@
 import ctypes
 import gc
 import json
-import math
-import os
 import re
 import shutil
 from pathlib import Path
@@ -22,9 +20,6 @@ from epsilon.settings import config
 
 MODEL = "large-v3-turbo"
 
-MAX_BYTES = 25 * 1024 * 1024  # un audio más pesado se rechaza antes de abrir nada
-MAX_SECONDS = 10 * 60  # y uno más largo, apenas se sabe cuánto dura (antes de transcribirlo)
-DEFAULT_IDLE_MINUTES = 10  # tiempo sin usarse antes de sacar el modelo de la memoria
 
 
 class VoiceError(Exception):
@@ -48,19 +43,13 @@ class VoiceDownloading(VoiceError):
 
 def language() -> str | None:
     """Idioma del audio. Español por defecto; «auto» o vacío = que Whisper lo detecte."""
-    value = os.environ.get("WHISPER_LANGUAGE", "es").strip().lower()
+    value = config.value("WHISPER_LANGUAGE").strip().lower()
     return None if value in ("", "auto") else value
 
 
 def idle_seconds() -> float:
     """Segundos sin uso antes de descargar el modelo. Un valor roto vuelve al de siempre."""
-    try:
-        minutes = float(os.environ.get("WHISPER_IDLE_MINUTES", ""))
-    except ValueError:
-        minutes = 0
-    if not math.isfinite(minutes) or minutes <= 0 or minutes > 24 * 60:
-        minutes = DEFAULT_IDLE_MINUTES
-    return minutes * 60
+    return config.number("WHISPER_IDLE_MINUTES") * 60
 
 
 # --- Las piezas que tocan faster-whisper (los tests las reemplazan) ------------------------------
@@ -93,7 +82,7 @@ def _download():
 
 def _build_model():
     """Carga el modelo en memoria. CPU por defecto; WHISPER_DEVICE=cuda usa la GPU."""
-    device = os.environ.get("WHISPER_DEVICE", "cpu").strip().lower() or "cpu"
+    device = config.value("WHISPER_DEVICE").strip().lower() or "cpu"
     compute_type = "int8" if device == "cpu" else "float16"
     return _whisper_module().WhisperModel(MODEL, device=device, compute_type=compute_type, local_files_only=True)
 
@@ -307,7 +296,7 @@ _ACCENTED = {"a": "aáàä", "e": "eéèë", "i": "iíìï", "o": "oóòö", "u"
 
 def assistant_names() -> list[str]:
     """Los nombres con que se le habla por voz (ASSISTANT_NAME; vacío = los de siempre)."""
-    raw = os.environ.get("ASSISTANT_NAME", "").strip() or DEFAULT_NAMES
+    raw = config.value("ASSISTANT_NAME").strip() or DEFAULT_NAMES
     return [name.strip() for name in raw.split(",") if name.strip()]
 
 
@@ -368,8 +357,9 @@ def audio_to_text(path: Path) -> str:
         size = path.stat().st_size
     except OSError:
         raise VoiceError("No encontré el audio.") from None
-    if size > MAX_BYTES:
-        raise VoiceError(f"El audio pesa demasiado (máximo {MAX_BYTES // (1024 * 1024)} MB).")
+    max_mb = config.number("VOICE_MAX_AUDIO_MB")
+    if size > max_mb * 1024 * 1024:
+        raise VoiceError(f"El audio pesa demasiado (máximo {max_mb} MB).")
 
     global _last_used
     with _lock:
@@ -377,8 +367,9 @@ def audio_to_text(path: Path) -> str:
         try:
             # segments es perezoso: la duración se sabe ya, antes de gastar tiempo transcribiendo.
             segments, info = model.transcribe(str(path), language=language(), vad_filter=True)
-            if info.duration > MAX_SECONDS:
-                raise VoiceError(f"El audio es muy largo (máximo {MAX_SECONDS // 60} minutos).")
+            max_minutes = config.number("VOICE_MAX_AUDIO_MINUTES")
+            if info.duration > max_minutes * 60:
+                raise VoiceError(f"El audio es muy largo (máximo {max_minutes} minutos).")
             text = " ".join(part for part in (s.text.strip() for s in segments) if part)
         except VoiceError:
             raise

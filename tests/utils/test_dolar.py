@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from epsilon.settings import config
 from epsilon.utils import dolar
 
 REAL_GET = dolar._get  # el conftest bloquea dolar._get en cada test; esta es la verdadera
@@ -41,7 +42,7 @@ def test_cache_expires(monkeypatch):
     monkeypatch.setattr(dolar.time, "monotonic", lambda: now[0])
 
     dolar.text()
-    now[0] += dolar.CACHE_SECONDS + 1
+    now[0] += config.number("DOLLAR_CACHE_SECONDS") + 1
     dolar.text()
 
     assert len(calls) == 2

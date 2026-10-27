@@ -40,8 +40,13 @@ from epsilon.voice import tts, transcribe
 # Una sola sesión: recargar la página no pierde un «Guardar» pendiente.
 SESSION_ID = "web"
 
-# Mismo tope que Telegram, para que ambos canales acepten lo mismo.
-MAX_UPLOAD = 20 * 1024 * 1024
+
+
+def max_upload() -> int:
+    """Bytes que acepta un archivo subido (WEB_MAX_UPLOAD_MB; por defecto el mismo tope que Telegram)."""
+    return config.number("WEB_MAX_UPLOAD_MB") * 1024 * 1024
+
+
 MODELS_TIMEOUT = 3.0  # segundos que se espera a cada proveedor para listar sus modelos
 # Cuánto se recuerda la lista de modelos de un proveedor (segundos). Los remotos (Gemini) cambian poco y cada
 # consulta es una llamada a internet; los locales (Ollama) no se recuerdan: bajar un modelo tiene que verse al toque.
@@ -387,14 +392,15 @@ class PinIn(BaseModel):
 
 
 def read_image_or_pdf(file: UploadFile) -> tuple[bytes, str]:
-    """Los bytes y el tipo de un archivo subido. Mismos tipos que acepta Telegram: imágenes y PDFs, hasta MAX_UPLOAD."""
+    """Los bytes y el tipo de un archivo subido. Mismos tipos que acepta Telegram: imágenes y PDFs, hasta WEB_MAX_UPLOAD_MB."""
     mime = file.content_type or ""
     if not (mime.startswith("image/") or mime == "application/pdf"):
         raise HTTPException(415, "Solo imágenes y PDFs")
     # Leemos un byte de más para saber si se pasó del tope sin cargar todo.
-    data = file.file.read(MAX_UPLOAD + 1)
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "Ese archivo pesa más de 20 MB")
+    limit = max_upload()
+    data = file.file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"Ese archivo pesa más de {limit // (1024 * 1024)} MB")
     return data, mime
 
 
@@ -521,8 +527,8 @@ def create_app() -> FastAPI:
     @app.get("/api/welcome")
     def get_welcome():
         """El saludo y las ideas de la pantalla de bienvenida (sin modelo)."""
-        user = os.environ.get("USER_NAME", "").strip()
-        assistant = os.environ.get("AGENT_NAME", "").strip() or "Epsilon"
+        user = config.value("USER_NAME").strip()
+        assistant = config.value("AGENT_NAME").strip() or "Epsilon"
         first = not conversations.list_all(1)  # la primera vez es cuando todavía no hay ninguna conversación
         return {
             "greeting": welcome.greeting(user, assistant, clock.now().hour, first),
@@ -688,9 +694,10 @@ def create_app() -> FastAPI:
         texto en el cuadro y vos decidís si lo mandás. El audio es dato: no se guarda."""
         if not (file.content_type or "").startswith("audio/"):
             raise HTTPException(415, "Solo audio")
-        data = file.file.read(MAX_UPLOAD + 1)
-        if len(data) > MAX_UPLOAD:
-            raise HTTPException(413, "Ese audio pesa más de 20 MB")
+        limit = max_upload()
+        data = file.file.read(limit + 1)
+        if len(data) > limit:
+            raise HTTPException(413, f"Ese audio pesa más de {limit // (1024 * 1024)} MB")
 
         path = None
         try:
@@ -1151,7 +1158,7 @@ def create_app() -> FastAPI:
         key = f"{name.upper()}_ENABLED"
         try:
             if body.enabled:
-                if not main.check_configured(name, os.environ):
+                if not main.check_configured(name, config.environ()):
                     raise main.ChannelError(main.not_configured_message(name))
                 config.update({key: "si"}, [])
                 main.start_channel(name)
@@ -1200,7 +1207,7 @@ def create_app() -> FastAPI:
     def get_usage():
         """Gasto de IA: por período y las peticiones de hoy. Solo lecturas del registro."""
         data = usage.report()
-        raw = os.environ.get("USD_ARS", "").strip()
+        raw = config.value("USD_ARS").strip()
         try:
             rate = float(raw) if raw else None
         except ValueError:
@@ -1333,7 +1340,7 @@ def create_app() -> FastAPI:
             "errors": errors,
             "default": llm.default_model(),
             "favorites": favorites.load(),
-            "overrides": [task for task in llm.TASKS if os.environ.get(f"AI_MODEL_{task.upper()}")],
+            "overrides": [task for task in llm.TASKS if config.value(f"AI_MODEL_{task.upper()}")],
         }
 
     @app.put("/api/models/favorites")
@@ -1456,7 +1463,7 @@ def run():
     import uvicorn  # acá adentro: importarlo es lento y solo hace falta al arrancar
 
     try:
-        port = read_port(os.environ)
+        port = read_port(config.environ())
     except ValueError as e:
         raise SystemExit(str(e))
 

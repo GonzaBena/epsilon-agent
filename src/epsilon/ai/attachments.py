@@ -1,4 +1,3 @@
-import os
 import re
 
 from epsilon.ai import llm, summarize
@@ -8,8 +7,7 @@ from epsilon.settings import config
 # Los archivos que se mencionan con «@» en un chat con IA: se leen de la biblioteca y viajan al modelo
 # solo en ese mensaje. No conoce ningún canal ni llama al modelo. El navegador (app.js) usa el mismo patrón.
 
-DEFAULT_FILES = 5
-DEFAULT_MB = 15  # el tope de una petición a Gemini es ~20 MB y los bytes viajan en base64
+# El tope de una petición a Gemini es ~20 MB y los bytes viajan en base64 (por eso CHAT_MAX_MB es 15 por defecto).
 MB = 1024 * 1024
 
 # «@» al inicio o después de un espacio (así «juan@correo.com» no cuenta), con la ruta pelada o entre comillas.
@@ -17,21 +15,12 @@ MENTION = r'(?<!\S)@(?:"([^"\n]+)"|([^\s"]+))'
 _TRAILING = ".,;:!?)"
 
 
-def _setting(key: str, default: int, high: int) -> int:
-    """Un entero del entorno; si falta, no es un número o está fuera de rango, el predeterminado."""
-    try:
-        value = int(os.environ.get(key) or default)
-    except ValueError:
-        return default
-    return value if 1 <= value <= high else default
-
-
 def max_files() -> int:
-    return _setting("CHAT_MAX_FILES", DEFAULT_FILES, 20)
+    return config.number("CHAT_MAX_FILES")
 
 
 def max_bytes() -> int:
-    return _setting("CHAT_MAX_MB", DEFAULT_MB, 100) * MB
+    return config.number("CHAT_MAX_MB") * MB
 
 
 def mentions(text: str) -> list[str]:
@@ -79,7 +68,7 @@ def load(paths: list[str]) -> list:
         )
     for (rel, path), size in zip(files, sizes):
         is_text = path.suffix.lower() in library.TEXT_EXT
-        if size > (summarize.MAX_TEXT if is_text else summarize.MAX_FILE):
+        if size > (summarize.max_text() if is_text else summarize.max_file()):
             raise ValueError(f"«{rel}» es demasiado grande.")
 
     parts: list = []

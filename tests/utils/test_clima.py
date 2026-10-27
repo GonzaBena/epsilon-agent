@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from epsilon.settings import config
 from epsilon.utils import clima
 
 REAL_GET = clima._get  # el conftest bloquea clima._get en cada test; esta es la verdadera
@@ -54,7 +55,7 @@ def test_cache_expires(monkeypatch):
     monkeypatch.setattr(clima.time, "monotonic", lambda: now[0])
 
     clima.text("Rosario")
-    now[0] += clima.CACHE_SECONDS + 1
+    now[0] += config.number("WEATHER_CACHE_SECONDS") + 1
     clima.text("Rosario")
 
     assert len(calls) == 2

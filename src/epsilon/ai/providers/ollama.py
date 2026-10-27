@@ -1,5 +1,4 @@
 import base64
-import os
 from urllib.parse import urlsplit
 
 import httpx
@@ -15,24 +14,20 @@ from epsilon.ai.messages import (
     parse_call,
 )
 from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
+from epsilon.settings import config
 
 # ÚNICO lugar que habla con Ollama (el servidor local de modelos), por HTTP directo. No hay clave: la
 # dirección es OLLAMA_URL. Los errores no incluyen ni la ruta ni el cuerpo de la respuesta, solo host y puerto.
 
 DEFAULT_URL = "http://127.0.0.1:11434"
-DEFAULT_NUM_CTX = 8192
 
 
 def _base_url() -> str:
-    return (os.environ.get("OLLAMA_URL") or DEFAULT_URL).rstrip("/")
+    return (config.value("OLLAMA_URL") or DEFAULT_URL).rstrip("/")
 
 
 def _num_ctx() -> int:
-    try:
-        val = int(os.environ.get("OLLAMA_NUM_CTX") or DEFAULT_NUM_CTX)
-        return val if val > 0 else DEFAULT_NUM_CTX
-    except ValueError:
-        return DEFAULT_NUM_CTX
+    return config.number("OLLAMA_NUM_CTX")
 
 
 def _request(

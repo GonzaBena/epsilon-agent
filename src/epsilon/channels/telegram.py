@@ -4,7 +4,6 @@ from dataclasses import asdict
 from datetime import datetime
 import html
 import itertools
-import os
 from pathlib import Path
 import re
 import tempfile
@@ -199,8 +198,8 @@ async def deliver(text: str, first, rest, markup):
 
 # Mientras el núcleo trabaja: Telegram apaga el «escribiendo…» a los 5 segundos, así que se renueva; y si la
 # espera se alarga aparece un mensaje de progreso (editado en el lugar, borrado al terminar). Segundos.
-PROGRESS_AFTER = 3.0  # cuánto se espera antes de mostrar el mensaje de progreso
-TYPING_EVERY = 4.0  # cada cuánto se renueva «escribiendo…»
+# Cuánto se espera antes de mostrar el mensaje de progreso (TELEGRAM_PROGRESS_AFTER) y cada cuánto se renueva
+# «escribiendo…» (TELEGRAM_TYPING_EVERY) son ajustes: se leen al usarlos.
 EDIT_EVERY = 1.0  # Telegram limita las ediciones: como mucho una por segundo en un chat
 TICK = 0.5  # cada cuánto el vigilante mira si hay algo para mostrar
 
@@ -220,11 +219,12 @@ def progress_text(event: dict) -> str | None:
 
 
 async def watch(bot, chat_id: int, events: "asyncio.Queue[dict]") -> None:
-    """Corre junto al núcleo hasta que lo cancelen: renueva «escribiendo…» y, pasado PROGRESS_AFTER, muestra un
+    """Corre junto al núcleo hasta que lo cancelen: renueva «escribiendo…» y, pasado TELEGRAM_PROGRESS_AFTER, muestra un
     mensaje con el paso en curso. Dibujar nunca puede romper la respuesta: lo que falle se avisa y se sigue."""
     clock = time.monotonic
     start = last_typing = last_edit = clock()
     wanted, shown, message_id = "⏳ Trabajando…", None, None
+    typing_every, progress_after = config.number("TELEGRAM_TYPING_EVERY"), config.number("TELEGRAM_PROGRESS_AFTER")
     try:
         while True:
             try:
@@ -234,10 +234,10 @@ async def watch(bot, chat_id: int, events: "asyncio.Queue[dict]") -> None:
                 pass
             now = clock()
             try:
-                if now - last_typing >= TYPING_EVERY:
+                if now - last_typing >= typing_every:
                     last_typing = now
                     await bot.send_chat_action(chat_id, ChatAction.TYPING)
-                if now - start >= PROGRESS_AFTER and wanted != shown and now - last_edit >= EDIT_EVERY:
+                if now - start >= progress_after and wanted != shown and now - last_edit >= EDIT_EVERY:
                     last_edit, shown = now, wanted
                     if message_id is None:
                         # Si la respuesta llega mientras viaja, el envío termina igual y hay que borrarlo.
@@ -361,7 +361,7 @@ def should_speak(said: str | None) -> bool:
     """¿Corresponde responder con una nota de voz sintetizada?"""
     if not config.enabled("TTS_ENABLED"):
         return False
-    mode = os.environ.get("TTS_MODE", "siempre").strip().lower()
+    mode = config.value("TTS_MODE").strip().lower()
     if mode == "solo_voz":
         return bool(said and "🎙" in said)
     return True
@@ -733,7 +733,7 @@ def polling_options(in_main_thread: bool) -> dict:
 
 def run():
     try:
-        token, allowed_user_id = read_config(os.environ)
+        token, allowed_user_id = read_config(config.environ())
     except ValueError as e:
         raise SystemExit(str(e))
 

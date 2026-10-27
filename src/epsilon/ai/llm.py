@@ -1,5 +1,4 @@
 import contextvars
-import os
 from contextlib import contextmanager
 
 from epsilon.ai import images, providers, usage
@@ -58,7 +57,7 @@ def model_for(task_name: str | None = None) -> str:
 
     Cada tarea puede tener el suyo (AI_MODEL_CHAT…); si no, rige el predeterminado."""
     name = task_name if task_name is not None else _task.get()
-    if name in TASKS and (own := os.environ.get(f"AI_MODEL_{name.upper()}")):
+    if name in TASKS and (own := config.value(f"AI_MODEL_{name.upper()}")):
         return _full(own)
     return default_model()
 
@@ -149,7 +148,7 @@ def check(provider: str = "gemini") -> str:
     if default_provider == provider:
         model = name
     elif provider == "gemini":
-        model = os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL
+        model = config.value("GEMINI_MODEL") or DEFAULT_MODEL
     else:
         model = ""
     return providers.get(provider).check(model)

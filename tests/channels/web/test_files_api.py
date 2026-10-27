@@ -37,6 +37,6 @@ def test_files_rejects_other_types(client):
 
 
 def test_files_rejects_files_over_the_upload_limit(client, monkeypatch):
-    monkeypatch.setattr("epsilon.channels.web.MAX_UPLOAD", 10)
+    monkeypatch.setenv("WEB_MAX_UPLOAD_MB", "1")
 
-    assert post_file(client, data=b"0" * 11).status_code == 413
+    assert post_file(client, data=b"0" * (1024 * 1024 + 1)).status_code == 413

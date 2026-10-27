@@ -105,8 +105,8 @@ def test_load_pdf_goes_as_bytes_with_its_type():
 
 
 def test_load_rejects_text_over_the_summary_limit(monkeypatch):
-    monkeypatch.setattr(attachments.summarize, "MAX_TEXT", 10)
-    put("a.md", "x" * 50)
+    monkeypatch.setenv("SUMMARY_MAX_CHARS", "10000")  # el mínimo permitido
+    put("a.md", "x" * 10_001)
 
     with pytest.raises(ValueError, match="demasiado grande"):
         attachments.load(["a.md"])

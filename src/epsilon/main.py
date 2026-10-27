@@ -1,6 +1,5 @@
 import importlib
 import logging
-import os
 import threading
 
 from epsilon import core, state, tools
@@ -147,7 +146,7 @@ def start_channel(name: str) -> None:
     with _control:
         try:
             channel = load(name)
-            configured = check_configured(name, os.environ)
+            configured = check_configured(name, config.environ())
         except ChannelError as e:
             state.set(name, "stopped", str(e))
             raise
@@ -256,7 +255,7 @@ def main():
     uno falla (token inválido, se cae Telegram) la web sigue funcionando."""
     install_log_redaction()
     refresh_plugins()
-    enabled = enabled_channels(os.environ)
+    enabled = enabled_channels(config.environ())
 
     try:
         core.register_routine_executor()
@@ -282,7 +281,7 @@ def main():
                     state.set(name, "skipped")
                 continue
             # Apagado a propósito (lo dejaste así desde la web) o sin configurar.
-            state.set(name, "off" if switched_off(name) and load(name).is_configured(os.environ) else "skipped")
+            state.set(name, "off" if switched_off(name) and load(name).is_configured(config.environ()) else "skipped")
 
     primary, *others = enabled
 

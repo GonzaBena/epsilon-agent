@@ -165,7 +165,7 @@ def test_result_is_redacted_and_truncated(script, lights, monkeypatch):  # noqa:
 
     (sent,) = results(script.seen[1][0])
     assert key not in sent
-    assert len(sent) < core.MAX_RESULT_CHARS + 100
+    assert len(sent) < 4000 + 100
 
 
 # --- Al reabrir: lo autorizado era la herramienta de antes ---------------------------------------------------
@@ -434,7 +434,7 @@ def test_c_result_is_redacted_and_truncated(lights):
     lights.result = lambda name, args: "x" * 9000
     reply = say("/c luces apagar habitacion=a")
 
-    assert len(reply.text) < core.MAX_RESULT_CHARS + 200
+    assert len(reply.text) < 4000 + 200
 
 
 def test_c_connector_error_is_shown_as_text(lights):

@@ -11,7 +11,6 @@ from epsilon.utils import clock
 # `_get` es el ÚNICO punto de red; cada ciudad se guarda en memoria unos minutos para no repetir pedidos.
 
 URL = "https://wttr.in/{city}?format=j1&lang=es"
-CACHE_SECONDS = 600  # 10 minutos
 TIMEOUT = 10.0
 DAY_LABELS = ("Hoy", "Mañana")
 
@@ -40,10 +39,12 @@ def _get(city: str) -> dict:
 
 
 def weather(city: str) -> dict:
-    """Los datos de la ciudad, de la caché si tienen menos de CACHE_SECONDS."""
+    """Los datos de la ciudad, de la caché si tienen menos de WEATHER_CACHE_SECONDS."""
+    from epsilon.settings import config  # acá adentro: config importa este módulo (valid_city)
+
     key = city.lower()
     cached = _cache.get(key)
-    if cached and time.monotonic() - cached[0] < CACHE_SECONDS:
+    if cached and time.monotonic() - cached[0] < config.number("WEATHER_CACHE_SECONDS"):
         return cached[1]
     data = _get(city)
     _cache[key] = (time.monotonic(), data)

@@ -4,6 +4,7 @@ import pytest
 
 from epsilon.data import notes
 from epsilon.routines import notify, runner
+from epsilon.settings import config
 
 
 @pytest.fixture(autouse=True)
@@ -102,7 +103,7 @@ def test_without_an_executor_a_normal_step_fails_clearly(quiet):
 
 
 def test_the_budget_runs_out(quiet, monkeypatch):
-    ticks = iter([0, 0, runner.RUN_BUDGET + 1, runner.RUN_BUDGET + 2])
+    ticks = iter([0, 0, config.number("ROUTINES_MAX_RUN_SECONDS") + 1, config.number("ROUTINES_MAX_RUN_SECONDS") + 2])
     monkeypatch.setattr(runner, "_clock", lambda: next(ticks))
 
     results = runner.run_chain(rule(("volumen", "10"), ("volumen", "20")))

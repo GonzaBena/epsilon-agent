@@ -6,6 +6,8 @@ import re
 import shlex
 import unicodedata
 
+from epsilon.settings import config
+
 # Consultas simples sobre un CSV guardado: filtrar filas, sumar, promediar, agrupar, ordenar. Sin modelo y sin
 # SQL: la consulta es una línea corta que un modelo chico puede escribir sin errores, y lo único que hace es
 # leer el archivo. Sin canales ni núcleo: recibe una ruta que ya validó quien llama.
@@ -17,7 +19,6 @@ import unicodedata
 # Los valores con espacios van entre comillas: comercio~"mercado libre".
 
 MAX_BYTES = 5 * 1024 * 1024  # un CSV de tickets pesa KB; más que esto no es para esta herramienta
-MAX_ROWS = 30  # filas que se muestran de una consulta
 MAX_GROUPS = 20
 OPERATORS = (">=", "<=", "!=", "=", ">", "<", "~")
 FILTER = re.compile(r"(?P<column>.+?)(?P<op>>=|<=|!=|=|>|<|~)(?P<value>.*)", re.DOTALL)
@@ -279,6 +280,7 @@ def query(table: Table, text: str) -> str:
         raise ValueError(f"No conozco la operación «{words[0]}». Hay: cuenta, suma, promedio, min, max, ordenar.")
     if not rows:
         return "Ninguna fila cumple eso."
-    body = _table(table.columns, [[row[c] for c in table.columns] for row in rows[:MAX_ROWS]])
-    header = f"{len(rows)} filas" + (f" (muestro las primeras {MAX_ROWS})" if len(rows) > MAX_ROWS else "")
+    shown = config.number("FILES_TABLE_MAX_ROWS")  # filas que se muestran de una consulta
+    body = _table(table.columns, [[row[c] for c in table.columns] for row in rows[:shown]])
+    header = f"{len(rows)} filas" + (f" (muestro las primeras {shown})" if len(rows) > shown else "")
     return f"{header}:\n\n{body}"

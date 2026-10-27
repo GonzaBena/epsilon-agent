@@ -11,9 +11,8 @@ from epsilon.utils import navegador, navegador_reglas as reglas
 # bloquean. Falla cerrado: si no se puede determinar el sitio, el rótulo o la pestaña, pregunta.
 # Ver docs/superpowers/specs/2026-10-22-navegador-design.md (guardrails 3, 7, 8 y 9).
 
-MAX_BROWSER_ACTIONS = 40  # acciones del navegador por mensaje
-MAX_NEW_TABS = 5  # pestañas nuevas por mensaje
-MAX_SEARCHES = 3  # búsquedas en Google por mensaje: elegir entre los resultados, no buscar veinte veces
+# Los topes por mensaje son ajustes (BROWSER_MAX_ACTIONS, BROWSER_MAX_NEW_TABS, BROWSER_MAX_SEARCHES: elegir entre
+# los resultados, no buscar veinte veces) y se leen al usarlos.
 ACTING = ("nav_abrir", "nav_clic", "nav_escribir")
 CONTEXT_SEPARATOR = " — "  # navegador.py le suma al rótulo de un botón repetido el texto de su tarjeta, tras este separador
 LINK_BLOCKED = "Ese enlace lleva a un sitio bloqueado o a esta red: no lo toco."
@@ -79,13 +78,14 @@ def review(tool: tools.Tool, args: str, turn: chat.Turn) -> Review:
     """Qué hace falta además de lo que dicen los permisos: nada, preguntar o bloquear. `shown` va siempre que
     hay algo que mostrar, para que la pregunta de permiso diga el sitio y el elemento reales aunque el permiso sea «preguntar»."""
     tool_id = tools.ai_id(tool)
-    if tool.ai_group == "navegador" and turn.browser_actions >= MAX_BROWSER_ACTIONS:
+    if tool.ai_group == "navegador" and turn.browser_actions >= config.number("BROWSER_MAX_ACTIONS"):
         return Review("block", "Llegué al tope de acciones del navegador para este mensaje.")
-    if tool_id == "nav_abrir" and turn.browser_tabs >= MAX_NEW_TABS:
+    if tool_id == "nav_abrir" and turn.browser_tabs >= config.number("BROWSER_MAX_NEW_TABS"):
         return Review("block", "Llegué al tope de pestañas nuevas para este mensaje.")
     if tool_id == "nav_buscar":  # la pregunta muestra qué sale hacia Google, armado por el código
-        if turn.browser_searches >= MAX_SEARCHES:
-            return Review("block", f"Ya busqué {MAX_SEARCHES} veces en este mensaje: elegí entre esos resultados o preguntale a la persona.")
+        searches = config.number("BROWSER_MAX_SEARCHES")
+        if turn.browser_searches >= searches:
+            return Review("block", f"Ya busqué {searches} veces en este mensaje: elegí entre esos resultados o preguntale a la persona.")
         return Review(shown=f"Buscar en Google: «{' '.join(args.split())[:200]}»")
     acting = Review()
     if not config.enabled("BROWSER_GUARD"):

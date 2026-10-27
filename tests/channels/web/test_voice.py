@@ -67,8 +67,8 @@ def test_transcribe_accepts_only_audio(client, fake_voice):
 
 
 def test_transcribe_rejects_big_audio_before_transcribing(client, monkeypatch, fake_voice):
-    monkeypatch.setattr(web, "MAX_UPLOAD", 10)
-    reply = transcribe_audio(client, data=b"x" * 11)
+    monkeypatch.setenv("WEB_MAX_UPLOAD_MB", "1")
+    reply = transcribe_audio(client, data=b"x" * (1024 * 1024 + 1))
 
     assert reply.status_code == 413
     assert "path" not in fake_voice

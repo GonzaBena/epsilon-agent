@@ -1,6 +1,5 @@
 import collections
 import json
-import os
 from pathlib import Path
 import re
 import shutil
@@ -13,6 +12,7 @@ import uuid
 # Sintetiza respuestas de texto a audio localmente sin gastar tokens ni enviar datos afuera.
 # Complementa a transcribe.py (Whisper local para entrada).
 
+from epsilon.settings import config
 from epsilon.voice import kokoro_engine
 
 DEFAULT_ENGINE = "kokoro"
@@ -20,7 +20,6 @@ DEFAULT_KOKORO_VOICE = "af_bella"
 DEFAULT_PIPER_VOICE = "es_AR-daniela-high"
 DEFAULT_VOICE = DEFAULT_KOKORO_VOICE
 DEFAULT_VOICES_DIR = Path.home() / ".local/share/piper-voices"
-DEFAULT_MAX_CHARS = 600
 DEFAULT_SPEED = 1.0
 DEFAULT_LENGTH_SCALE = 1.0526  # 1 / 0.95 (velocidad 0.95 en Piper)
 
@@ -48,7 +47,7 @@ class VoiceNotFoundError(TTSError):
 
 def engine() -> str:
     """Motor de voz activo: 'kokoro' o 'piper'."""
-    eng = os.environ.get("TTS_ENGINE", "").strip().lower()
+    eng = config.value("TTS_ENGINE").strip().lower()
     return eng if eng in ("kokoro", "piper") else DEFAULT_ENGINE
 
 
@@ -61,7 +60,7 @@ def is_installed() -> bool:
 
 def voices_dir() -> Path:
     """Carpeta donde residen los modelos onnx de voces de Piper."""
-    custom = os.environ.get("TTS_VOICES_DIR", "").strip()
+    custom = config.value("TTS_VOICES_DIR").strip()
     return Path(custom).expanduser() if custom else DEFAULT_VOICES_DIR
 
 
@@ -120,8 +119,9 @@ def list_voices(custom_dir: Path | None = None) -> list[dict]:
 
 def default_voice() -> str:
     """Nombre o id de la voz configurada por defecto."""
-    custom = os.environ.get("TTS_VOICE", "").strip()
-    if custom:
+    custom = config.value("TTS_VOICE").strip()
+    # El valor de fábrica del ajuste es la voz de Kokoro: con Piper, si nadie eligió otra, rige la de Piper.
+    if custom and custom != config.BY_KEY["TTS_VOICE"].default:
         return custom
     return DEFAULT_PIPER_VOICE if engine() == "piper" else DEFAULT_KOKORO_VOICE
 
@@ -211,10 +211,7 @@ def clean_for_speech(text: str, max_chars: int | None = None) -> str:
 
     limit = max_chars
     if limit is None:
-        try:
-            limit = int(os.environ.get("TTS_MAX_CHARS", DEFAULT_MAX_CHARS))
-        except ValueError:
-            limit = DEFAULT_MAX_CHARS
+        limit = config.number("TTS_MAX_CHARS")
 
     if len(s) > limit:
         # Cortar en el último punto, coma o espacio antes del límite
@@ -238,34 +235,16 @@ def piper_binary() -> str:
 
 def speed() -> float:
     """Velocidad de habla para la síntesis (multiplicador estándar, ej: 1.0)."""
-    if raw_speed := os.environ.get("TTS_SPEED", "").strip():
-        try:
-            val = float(raw_speed)
-            if 0.2 <= val <= 3.0:
-                return val
-        except ValueError:
-            pass
-    return DEFAULT_SPEED
+    val = config.number("TTS_SPEED")  # None: vacío o roto, se usa el de siempre
+    return DEFAULT_SPEED if val is None else val
 
 
 def length_scale() -> float:
     """Multiplicador de duración de fonemas para modular la velocidad del habla en Piper."""
-    if raw_scale := os.environ.get("TTS_LENGTH_SCALE", "").strip():
-        try:
-            val = float(raw_scale)
-            if 0.2 <= val <= 3.0:
-                return val
-        except ValueError:
-            pass
-
-    if raw_speed := os.environ.get("TTS_SPEED", "").strip():
-        try:
-            val = float(raw_speed)
-            if 0.2 <= val <= 3.0:
-                return round(1.0 / val, 4)
-        except ValueError:
-            pass
-
+    if (scale := config.number("TTS_LENGTH_SCALE")) is not None:
+        return scale
+    if (val := config.number("TTS_SPEED")) is not None:
+        return round(1.0 / val, 4)
     return DEFAULT_LENGTH_SCALE
 
 

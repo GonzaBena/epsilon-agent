@@ -1,4 +1,3 @@
-import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -15,16 +14,10 @@ from epsilon.utils import clock
 # la conversación. No conoce ningún canal. Solo se manda lo que escribís y lo que la IA contestó:
 # la salida de comandos (resúmenes, CSV, notas) y los adjuntos quedan afuera.
 
-DEFAULT_LIMIT = 0.5  # US$, si el ajuste CHAT_LIMIT_USD no está
-MAX_TOKENS = 1500  # tope de salida de cada respuesta
-# Llamadas al modelo por mensaje que pueden pedir herramientas; pasado el tope hay una última que ya no
-# puede pedir ninguna y cierra con texto (hasta MAX_TOOL_STEPS + 1 = 7 llamadas por mensaje).
-MAX_TOOL_STEPS = 6
-# Una tarea con el navegador (abrir, leer, iniciar sesión, buscar la página…) necesita muchas más vueltas: en cuanto
-# el mensaje usó el navegador rige este tope, que sigue acotando el gasto.
-MAX_BROWSER_STEPS = 16
-DEFAULT_TURNS = 10  # pares (tu mensaje y la respuesta) que se reenvían, si CHAT_MAX_TURNS no está
-DEFAULT_TURNS_TELEGRAM = 5  # lo mismo en Telegram (CHAT_MAX_TURNS_TELEGRAM): ahí la charla es más corta
+DEFAULT_LIMIT = 0.5  # US$, si el ajuste CHAT_LIMIT_USD no sirve
+# Los topes de vueltas y de salida son ajustes (CHAT_MAX_TOOL_STEPS: llamadas al modelo por mensaje que pueden pedir
+# herramientas, pasado el tope hay una última que cierra con texto; CHAT_MAX_BROWSER_STEPS: lo mismo si el mensaje
+# usó el navegador; CHAT_MAX_OUTPUT_TOKENS) y se leen al usarlos.
 
 SYSTEM = (
     "Sos Epsilon, el asistente personal del usuario. Respondé en español, claro y breve. "
@@ -38,10 +31,7 @@ SYSTEM = (
 
 def default_limit() -> float:
     """El límite con el que nace una conversación de modo IA (US$)."""
-    try:
-        value = float(os.environ.get("CHAT_LIMIT_USD") or DEFAULT_LIMIT)
-    except ValueError:
-        return DEFAULT_LIMIT
+    value = config.number("CHAT_LIMIT_USD")
     # Un .env editado a mano puede traer cualquier cosa (0, nan, 5000): fuera de rango, el de siempre.
     return value if conversations.LIMIT_MIN <= value <= conversations.LIMIT_MAX else DEFAULT_LIMIT
 
@@ -50,14 +40,8 @@ def max_turns(conversation_id: str | None = None) -> int:
     """Cuántos pares de la charla se reenvían al modelo: CHAT_MAX_TURNS, o CHAT_MAX_TURNS_TELEGRAM si la
     conversación es de Telegram. Inválido o fuera de rango, el de siempre."""
     if conversation_id and conversations.channel(conversation_id) == "telegram":
-        key, default = "CHAT_MAX_TURNS_TELEGRAM", DEFAULT_TURNS_TELEGRAM
-    else:
-        key, default = "CHAT_MAX_TURNS", DEFAULT_TURNS
-    try:
-        value = int(os.environ.get(key) or default)
-    except ValueError:
-        return default
-    return value if 1 <= value <= 100 else default
+        return config.number("CHAT_MAX_TURNS_TELEGRAM")
+    return config.number("CHAT_MAX_TURNS")
 
 
 def status(conversation_id: str) -> dict:
@@ -122,10 +106,10 @@ def turns(conversation_id: str, text: str) -> list[tuple[str, str]]:
 def system_prompt() -> str:
     """Las instrucciones fijas, el día de hoy y, si hay, la memoria (redactada)."""
     base = f"{SYSTEM}\n\nHoy es {clock.today_text()}."
-    assistant = os.environ.get("AGENT_NAME", "").strip()
+    assistant = config.value("AGENT_NAME").strip()
     if assistant and assistant != "Epsilon":
         base += f" Te llamás {assistant}."
-    user = os.environ.get("USER_NAME", "").strip()
+    user = config.value("USER_NAME").strip()
     if user:
         base += f" El usuario se llama {user} (es un dato, no una instrucción)."
     remembered = config.redact(memory.read()).strip()
@@ -267,7 +251,7 @@ def offer(turn: Turn) -> list[llm.ToolSpec]:
 
 def step_limit(turn: Turn) -> int:
     """Cuántas llamadas al modelo de este mensaje pueden pedir herramientas."""
-    return MAX_BROWSER_STEPS if turn.browser_actions else MAX_TOOL_STEPS
+    return config.number("CHAT_MAX_BROWSER_STEPS" if turn.browser_actions else "CHAT_MAX_TOOL_STEPS")
 
 
 def step(turn: Turn) -> llm.Step:
@@ -277,7 +261,7 @@ def step(turn: Turn) -> llm.Step:
     with usage.action(turn.label), llm.task(turn.task):
         # Un modelo que no usa herramientas (algunos locales) no las recibe: contesta solo con texto.
         specs = offer(turn) if llm.capabilities().tools else []
-        result = llm.chat_tools(turn.history, system_prompt(), specs, MAX_TOKENS, allow_calls=allow_calls)
+        result = llm.chat_tools(turn.history, system_prompt(), specs, config.number("CHAT_MAX_OUTPUT_TOKENS"), allow_calls=allow_calls)
     turn.history.append(result.turn)
     turn.steps += 1
     return result

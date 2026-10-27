@@ -121,9 +121,9 @@ def test_upload_rejects_other_file_types(client, tmp_path):
 
 
 def test_upload_rejects_files_over_the_limit(client, monkeypatch, tmp_path):
-    monkeypatch.setattr(web, "MAX_UPLOAD", 10)
+    monkeypatch.setenv("WEB_MAX_UPLOAD_MB", "1")
 
-    reply = upload(client, data=b"x" * 11)
+    reply = upload(client, data=b"x" * (1024 * 1024 + 1))
 
     assert reply.status_code == 413
     assert not (tmp_path / "files").exists()

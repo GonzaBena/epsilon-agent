@@ -2,11 +2,12 @@ import time
 
 import httpx
 
+from epsilon.settings import config
+
 # Cotizaciones del dólar en Argentina desde DolarApi (pública, sin clave). Sin modelo y sin gasto.
 # `_get` es el ÚNICO punto de red; el resultado se guarda en memoria unos minutos para no repetir pedidos.
 
 URL = "https://dolarapi.com/v1/dolares"
-CACHE_SECONDS = 600  # 10 minutos
 TIMEOUT = 8.0
 # Qué casas se muestran y en qué orden (clave de la API -> cómo se nombra).
 HOUSES = {
@@ -34,9 +35,9 @@ def _get() -> list[dict]:
 
 
 def rates() -> list[dict]:
-    """Las cotizaciones, de la caché si tienen menos de CACHE_SECONDS."""
+    """Las cotizaciones, de la caché si tienen menos de DOLLAR_CACHE_SECONDS."""
     global _cache
-    if _cache and time.monotonic() - _cache[0] < CACHE_SECONDS:
+    if _cache and time.monotonic() - _cache[0] < config.number("DOLLAR_CACHE_SECONDS"):
         return _cache[1]
     data = _get()
     _cache = (time.monotonic(), data)

@@ -121,8 +121,8 @@ def _check_step(step: dict) -> dict:
     if tool in ACTIONS:
         args = parse_do(f"{tool} {args}")["arg"]
     elif tool == "esperar":
-        if not args.isdigit() or not 1 <= int(args) <= steps_mod.MAX_WAIT:
-            raise ValueError(f"«esperar» lleva los segundos a esperar, de 1 a {steps_mod.MAX_WAIT}.")
+        if not args.isdigit() or not 1 <= int(args) <= steps_mod.max_wait():
+            raise ValueError(f"«esperar» lleva los segundos a esperar, de 1 a {steps_mod.max_wait()}.")
     kept = {"tool": tool, "args": args}
     if isinstance(step.get("version"), str) and len(step["version"]) <= 80:
         kept["version"] = step["version"]  # la versión del conector que la persona vio al confirmar (la anota el núcleo)

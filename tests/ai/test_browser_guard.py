@@ -2,6 +2,7 @@ import pytest
 
 from epsilon import tools
 from epsilon.ai import browser_guard as guard, chat
+from epsilon.settings import config
 from epsilon.utils import navegador
 
 
@@ -190,7 +191,7 @@ def test_a_clean_turn_leaves_other_tools_alone(turn):
 
 
 def test_tab_cap_blocks_the_next_opening(turn):
-    for _ in range(guard.MAX_NEW_TABS):
+    for _ in range(config.number("BROWSER_MAX_NEW_TABS")):
         guard.after_run(tool("navegador.abrir"), "https://music.youtube.com/", turn)
 
     review = guard.review(tool("navegador.abrir"), "https://music.youtube.com/", turn)
@@ -199,7 +200,7 @@ def test_tab_cap_blocks_the_next_opening(turn):
 
 
 def test_action_cap_blocks_any_browser_action(turn, page):
-    for _ in range(guard.MAX_BROWSER_ACTIONS):
+    for _ in range(config.number("BROWSER_MAX_ACTIONS")):
         guard.after_run(tool("navegador.clic"), "abcdef 1", turn)
 
     assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"
@@ -229,7 +230,7 @@ def test_with_the_guard_off_blocked_links_and_the_caps_still_hold(turn, page, mo
 
     assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"
     page.href = ""
-    turn.browser_actions = guard.MAX_BROWSER_ACTIONS
+    turn.browser_actions = config.number("BROWSER_MAX_ACTIONS")
     assert guard.review(tool("navegador.clic"), "abcdef 1", turn).verdict == "block"
 
 
@@ -244,16 +245,24 @@ def test_search_question_shows_what_goes_to_google(turn):
 
 def test_search_cap_blocks_the_fourth_search_even_with_the_guard_off(turn, monkeypatch):
     monkeypatch.setenv("BROWSER_GUARD", "no")
-    for _ in range(guard.MAX_SEARCHES):
+    for _ in range(config.number("BROWSER_MAX_SEARCHES")):
         guard.after_run(tool("navegador.buscar"), "algo", turn)
 
     review = guard.review(tool("navegador.buscar"), "algo más", turn)
 
     assert review.verdict == "block" and "preguntale a la persona" in review.message
-    assert turn.browser_actions == guard.MAX_SEARCHES  # también cuentan como acciones del navegador
+    assert turn.browser_actions == config.number("BROWSER_MAX_SEARCHES")  # también cuentan como acciones del navegador
 
 
 def test_search_results_taint_the_turn(turn):
     guard.after_run(tool("navegador.buscar"), "algo", turn)
 
     assert turn.tainted and turn.browser_tabs == 0  # la pestaña de resultados se cierra: no cuenta como nueva
+
+
+def test_the_search_cap_follows_the_setting(turn, monkeypatch):
+    monkeypatch.setenv("BROWSER_MAX_SEARCHES", "1")
+    assert guard.review(tool("navegador.buscar"), "algo", turn).verdict == "run"
+    guard.after_run(tool("navegador.buscar"), "algo", turn)
+
+    assert guard.review(tool("navegador.buscar"), "algo más", turn).verdict == "block"

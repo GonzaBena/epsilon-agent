@@ -1,8 +1,9 @@
-import os
 from pathlib import Path
 import shutil
 import tempfile
 import urllib.request
+
+from epsilon.settings import config
 
 try:
     import kokoro_onnx
@@ -92,7 +93,7 @@ _KOKORO_INSTANCE = None
 
 def models_dir() -> Path:
     """Carpeta donde residen el modelo ONNX y el archivo voices.bin de Kokoro."""
-    custom = os.environ.get("KOKORO_MODELS_DIR", "").strip()
+    custom = config.value("KOKORO_MODELS_DIR").strip()
     return Path(custom).expanduser() if custom else DEFAULT_KOKORO_DIR
 
 
@@ -258,7 +259,7 @@ def synthesize(text: str, voice: str = "af_bella", speed: float = 1.0) -> Path:
     voice_name = voice.strip() or DEFAULT_KOKORO_VOICE
 
     # El fonetizador para pronunciar en español debe ser 'es'
-    lang = os.environ.get("TTS_LANG", "").strip() or "es"
+    lang = config.value("TTS_LANG").strip() or "es"
     resolved_voice = resolve_voice_style(kokoro, voice_name)
 
     samples, sample_rate = kokoro.create(

@@ -9,9 +9,14 @@ from epsilon.skills import runtime, store
 # de una conversación guardada tiene un «ámbito» en memoria, único por llamada: los permisos y el «Sí, por el
 # resto de la conversación» valen solo para esa pregunta. No conoce ningún canal.
 
-MAX_QUESTION = 1000  # caracteres: sin límite de costo por conversación, el tope de entrada acota el gasto
 SCOPE_PREFIX = "ia:"
 _calls = count(1)
+
+
+def max_question() -> int:
+    """Caracteres de una pregunta (ASK_MAX_QUESTION_CHARS): sin límite de costo por conversación, el tope de
+    entrada acota el gasto."""
+    return config.number("ASK_MAX_QUESTION_CHARS")
 
 
 def is_scope(conversation_id: str | None) -> bool:
@@ -22,8 +27,9 @@ def is_scope(conversation_id: str | None) -> bool:
 def begin(question: str) -> chat.Turn:
     """El turno de una pregunta. Levanta ValueError si es demasiado larga."""
     question = question.strip()
-    if len(question) > MAX_QUESTION:
-        raise ValueError(f"La pregunta es muy larga ({len(question)} de {MAX_QUESTION} caracteres).")
+    limit = max_question()
+    if len(question) > limit:
+        raise ValueError(f"La pregunta es muy larga ({len(question)} de {limit} caracteres).")
     history = [llm.text_turn("user", config.redact(question))]
     return chat.preload(chat.Turn(f"{SCOPE_PREFIX}{next(_calls)}", history, label="Pregunta", task="ask"), question)
 
@@ -31,13 +37,14 @@ def begin(question: str) -> chat.Turn:
 def check_request(request: str) -> str:
     """El pedido de `/<skill>` sin espacios de más. Levanta ValueError si es demasiado largo."""
     request = request.strip()
-    if len(request) > MAX_QUESTION:
-        raise ValueError(f"El pedido es muy largo ({len(request)} de {MAX_QUESTION} caracteres).")
+    limit = max_question()
+    if len(request) > limit:
+        raise ValueError(f"El pedido es muy largo ({len(request)} de {limit} caracteres).")
     return request
 
 
 def begin_skill(skill: store.Skill, request: str) -> chat.Turn:
-    """El turno de `/<skill> pedido` fuera de un chat de modo IA. El tope de MAX_QUESTION vale para el pedido
+    """El turno de `/<skill> pedido` fuera de un chat de modo IA. El tope de ASK_MAX_QUESTION_CHARS vale para el pedido
     (el cuerpo de la skill ya tiene el suyo)."""
     text = runtime.compose(skill, check_request(request))
     history = [llm.text_turn("user", config.redact(text))]

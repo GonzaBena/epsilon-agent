@@ -12,15 +12,14 @@ from epsilon.settings import config
 
 # Los procesos de los conectores MCP. Todos viven en UN hilo con su ciclo asyncio (`_loop`), creado la primera vez
 # que hace falta; las funciones públicas son sincrónicas y le mandan el trabajo con `run_coroutine_threadsafe`.
-# Perezoso: un conector arranca la primera vez que se lo usa y se cierra solo tras IDLE_CLOSE s sin uso (`tick`).
+# Perezoso: un conector arranca la primera vez que se lo usa y se cierra solo tras CONNECTORS_IDLE_CLOSE_SECONDS s sin uso (`tick`).
 # El único punto que lanza un proceso es `_open` (los tests lo bloquean y usan un conector falso).
 
-IDLE_CLOSE = 600       # segundos sin uso hasta cerrarlo
-MAX_RUNNING = 3        # conectores abiertos a la vez (PCs chicas)
-CALL_TIMEOUT = 30      # segundos por llamada (y para descubrir herramientas o leer un recurso)
-OPEN_TIMEOUT = 60      # arrancar puede tardar más: `uvx`/`npx` bajan el paquete la primera vez
+# Los tiempos y topes de los conectores son ajustes y se leen al usarlos: CONNECTORS_IDLE_CLOSE_SECONDS (sin uso hasta
+# cerrarlo), CONNECTORS_MAX_RUNNING (abiertos a la vez, PCs chicas), CONNECTORS_CALL_TIMEOUT_SECONDS (por llamada, y
+# para descubrir herramientas o leer un recurso), CONNECTORS_OPEN_TIMEOUT_SECONDS (arrancar puede tardar más:
+# `uvx`/`npx` bajan el paquete la primera vez).
 MAX_DESCRIPTION = 300  # caracteres de la descripción de una herramienta (la escribe el conector: es dato)
-MAX_RESULT_CHARS = 4000  # el mismo tope que core.MAX_RESULT_CHARS (un test vigila que coincidan)
 MAX_ERROR = 300        # caracteres del motivo de un error
 TICK_EVERY = 30        # cada cuánto el hilo mira los inactivos
 BASE_ENV = ("PATH", "HOME", "LANG")  # lo único del entorno de Epsilon que hereda un conector
@@ -113,8 +112,14 @@ def _run(coro, timeout: float):
         raise ConnectorError("El conector no respondió a tiempo.") from None
 
 
+def max_result_chars() -> int:
+    """El mismo tope que el núcleo (TOOLS_MAX_RESULT_CHARS): lo que vuelve de un conector se recorta a esto."""
+    return config.number("TOOLS_MAX_RESULT_CHARS")
+
+
 def _wait() -> float:
-    return OPEN_TIMEOUT + 2 * CALL_TIMEOUT + 15  # abrir + descubrir + la llamada, con margen para cerrar
+    # abrir + descubrir + la llamada, con margen para cerrar
+    return config.number("CONNECTORS_OPEN_TIMEOUT_SECONDS") + 2 * config.number("CONNECTORS_CALL_TIMEOUT_SECONDS") + 15
 
 
 # --- Texto seguro -------------------------------------------------------------------------------------------------
@@ -326,7 +331,7 @@ async def _discover(name: str, slot: _Slot, link: Link, env: dict[str, str]) -> 
     Se llama con `slot.lock` tomado y `slot.ready` apagado. Si falla, cierra acá mismo (sin `_fail`, que vuelve a
     tomar el candado)."""
     try:
-        found = await asyncio.wait_for(link.list_tools(), CALL_TIMEOUT)
+        found = await asyncio.wait_for(link.list_tools(), config.number("CONNECTORS_CALL_TIMEOUT_SECONDS"))
     except ConnectorError as error:
         raise ConnectorError(_clean(str(error), env, MAX_ERROR)) from None
     except BaseException as error:  # noqa: BLE001
@@ -405,12 +410,12 @@ async def _reserve(name: str, slot: _Slot) -> None:
     así dos aperturas a la vez no ven las dos el mismo lugar libre."""
     while True:
         running = [(n, s) for n, s in _slots.items() if n != name and (s.link is not None or s.opening)]
-        if len(running) < MAX_RUNNING:
+        if len(running) < config.number("CONNECTORS_MAX_RUNNING"):
             slot.opening += 1
             return
         idle = [(s.last_used, n, s) for n, s in running if s.link is not None and s.busy == 0 and not s.opening]
         if not idle:
-            raise ConnectorError(f"Ya hay {MAX_RUNNING} conectores trabajando; probá de nuevo en un rato.")
+            raise ConnectorError(f"Ya hay {config.number('CONNECTORS_MAX_RUNNING')} conectores trabajando; probá de nuevo en un rato.")
         _, _, victim = min(idle, key=lambda item: item[0])
         async with victim.lock:
             if victim.busy == 0:
@@ -434,7 +439,7 @@ async def _ensure(name: str, slot: _Slot, entry: dict) -> tuple[Link, list[str] 
                 if slot.link is None or not slot.link.alive:  # si no, lo abrió otro mientras esperábamos
                     await _close(slot)  # uno que se murió solo
                     try:
-                        link = await asyncio.wait_for(_open(list(entry["argv"]), minimal_env(env)), OPEN_TIMEOUT)
+                        link = await asyncio.wait_for(_open(list(entry["argv"]), minimal_env(env)), config.number("CONNECTORS_OPEN_TIMEOUT_SECONDS"))
                     except BaseException as error:  # noqa: BLE001
                         if isinstance(error, asyncio.CancelledError):
                             raise
@@ -480,11 +485,11 @@ async def _use(name: str, work, tool: str | None = None, expected_hash: str | No
             _check_tool(name, slot, tool, expected_hash)
         slot.last_used = time.monotonic()
         try:
-            return await asyncio.wait_for(work(link), CALL_TIMEOUT)
+            return await asyncio.wait_for(work(link), config.number("CONNECTORS_CALL_TIMEOUT_SECONDS"))
         except ConnectorError as error:  # error de la herramienta: el conector sigue bien
             raise ConnectorError(_clean(str(error), env, MAX_ERROR)) from None
         except TimeoutError:
-            raise await _fail(name, slot, link, f"El conector «{name}» tardó más de {CALL_TIMEOUT} s y lo detuve.") from None
+            raise await _fail(name, slot, link, f"El conector «{name}» tardó más de {config.number("CONNECTORS_CALL_TIMEOUT_SECONDS")} s y lo detuve.") from None
         except Exception as error:  # noqa: BLE001 - se rompió la conexión (el proceso se murió)
             if slot.link is not link:  # lo cerró otro a propósito (stop) mientras tanto
                 raise ConnectorError(f"El conector «{name}» se apagó mientras trabajaba.") from None
@@ -526,11 +531,12 @@ async def _stop(name: str) -> None:
 
 
 async def _tick(now: float) -> None:
+    idle_close = config.number("CONNECTORS_IDLE_CLOSE_SECONDS")
     for slot in list(_slots.values()):
-        if slot.link is None or slot.busy or now - slot.last_used <= IDLE_CLOSE:
+        if slot.link is None or slot.busy or now - slot.last_used <= idle_close:
             continue
         async with slot.lock:
-            if slot.link is not None and not slot.busy and now - slot.last_used > IDLE_CLOSE:
+            if slot.link is not None and not slot.busy and now - slot.last_used > idle_close:
                 await _close(slot)
 
 
@@ -548,7 +554,7 @@ def call(name: str, tool: str, args: dict, expected_hash: str | None = None) -> 
     distinta o ya no la tiene, no se la llama. None (la persona con /c o un botón: no hay permiso guardado) = sin control."""
     env = _entry(name).get("env", {})
     text = _run(_use(name, lambda link: link.call(tool, args), tool, expected_hash), _wait())
-    return _clean(text if isinstance(text, str) else "", env, MAX_RESULT_CHARS)
+    return _clean(text if isinstance(text, str) else "", env, max_result_chars())
 
 
 def read_resource(name: str, uri: str) -> str | None:
@@ -584,7 +590,7 @@ def stop_all() -> None:
 
 
 def tick(now: float) -> None:
-    """Cierra los conectores que llevan más de IDLE_CLOSE s sin uso (y sin llamadas en curso)."""
+    """Cierra los conectores que llevan más de CONNECTORS_IDLE_CLOSE_SECONDS s sin uso (y sin llamadas en curso)."""
     if _loop_ref is not None:
         _run(_tick(now), 30)
 

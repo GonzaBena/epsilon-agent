@@ -206,7 +206,7 @@ def test_turns_do_not_trim_a_short_talk(monkeypatch):
 def test_max_turns_falls_back_when_invalid(bad, monkeypatch):
     monkeypatch.setenv("CHAT_MAX_TURNS", bad)
 
-    assert chat.max_turns() == chat.DEFAULT_TURNS
+    assert chat.max_turns() == 10
 
 
 def test_status_reports_how_many_pairs_are_trimmed(monkeypatch):
@@ -261,7 +261,7 @@ def test_telegram_max_turns_falls_back_when_invalid(bad, monkeypatch):
     monkeypatch.setenv("CHAT_MAX_TURNS_TELEGRAM", bad)
     cid = _telegram_talk(1)
 
-    assert chat.max_turns(cid) == chat.DEFAULT_TURNS_TELEGRAM == 5
+    assert chat.max_turns(cid) == 5
 
 
 def test_status_counts_trimmed_pairs_with_the_telegram_limit(monkeypatch):
@@ -363,11 +363,12 @@ def test_step_caps_the_output_tokens(captured):
     assert 0 < captured[0]["max_tokens"] <= 2000
 
 
-def test_step_forbids_calls_after_the_cap_but_keeps_the_declarations(captured):
+def test_step_forbids_calls_after_the_cap_but_keeps_the_declarations(captured, monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TOOL_STEPS", "2")
     turn = chat.begin(CID, "hola")
-    turn.steps = chat.MAX_TOOL_STEPS - 1
+    turn.steps = 1
     chat.step(turn)
-    turn.steps = chat.MAX_TOOL_STEPS
+    turn.steps = 2
     chat.step(turn)
 
     # El historial trae llamadas y respuestas de herramientas: sin declaraciones Gemini puede rechazarlo.
@@ -540,11 +541,22 @@ def test_step_does_not_offer_a_group_whose_actions_are_all_blocked(captured, mon
 
 def test_a_message_that_used_the_browser_gets_more_steps():
     turn = chat.begin(CID, "hola")
-    assert chat.step_limit(turn) == chat.MAX_TOOL_STEPS
+    assert chat.step_limit(turn) == 6
 
     turn.browser_actions = 1
 
-    assert chat.step_limit(turn) == chat.MAX_BROWSER_STEPS > chat.MAX_TOOL_STEPS
+    assert chat.step_limit(turn) == 16
+
+
+def test_the_step_limits_follow_the_settings(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TOOL_STEPS", "2")
+    monkeypatch.setenv("CHAT_MAX_BROWSER_STEPS", "9")
+    turn = chat.begin(CID, "hola")
+    assert chat.step_limit(turn) == 2
+
+    turn.browser_actions = 1
+
+    assert chat.step_limit(turn) == 9
 
 
 def test_system_prompt_names_the_user_and_the_assistant_as_data(monkeypatch):

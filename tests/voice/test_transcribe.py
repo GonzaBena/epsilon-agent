@@ -73,15 +73,17 @@ def test_a_missing_file_is_a_clear_error(voice, tmp_path):
 
 
 def test_a_huge_file_is_refused_before_loading_anything(voice, audio, monkeypatch):
-    monkeypatch.setattr(transcribe, "MAX_BYTES", 3)  # el audio de prueba pesa 5
+    monkeypatch.setenv("VOICE_MAX_AUDIO_MB", "1")
+    audio.write_bytes(b"x" * (1024 * 1024 + 1))  # un byte más que el mínimo permitido
 
     with pytest.raises(transcribe.VoiceError, match="pesa demasiado"):
         transcribe.audio_to_text(audio)
     assert voice.builds == []  # ni siquiera se cargó el modelo
 
 
-def test_a_long_audio_is_refused_without_transcribing_it(voice, audio):
-    voice.duration = transcribe.MAX_SECONDS + 1
+def test_a_long_audio_is_refused_without_transcribing_it(voice, audio, monkeypatch):
+    monkeypatch.setenv("VOICE_MAX_AUDIO_MINUTES", "1")
+    voice.duration = 61
 
     with pytest.raises(transcribe.VoiceError, match="muy largo"):
         transcribe.audio_to_text(audio)
@@ -235,7 +237,7 @@ def test_the_idle_minutes_are_configurable(voice, audio, monkeypatch):
 def test_a_garbage_idle_setting_falls_back_to_the_default(voice, audio, monkeypatch):
     for bad in ("abc", "", "-5", "0"):
         monkeypatch.setenv("WHISPER_IDLE_MINUTES", bad)
-        assert transcribe.idle_seconds() == transcribe.DEFAULT_IDLE_MINUTES * 60, bad
+        assert transcribe.idle_seconds() == 10 * 60, bad
 
 
 def test_a_timer_is_armed_after_each_use_and_does_not_keep_the_process_alive(voice, audio):

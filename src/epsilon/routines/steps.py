@@ -1,6 +1,8 @@
 import json
 import re
 
+from epsilon.settings import config
+
 # Los pasos de una rutina: PURO (sin hilos, reloj, archivos ni procesos). Un paso es `{"tool", "args"}`: una herramienta
 # de Epsilon con sus argumentos puestos de antemano. Los argumentos pueden llevar plantillas: `{{paso N}}` (lo que devolvió
 # el paso N, que tiene que ser anterior) y `{{disparador}}` (qué hizo saltar una rutina de condición). Lo que se sustituye
@@ -8,13 +10,24 @@ import re
 
 MAX_STEPS = 10
 MAX_OUTPUT = 1000  # caracteres de la salida de un paso que viajan a los siguientes
-MAX_WAIT = 60  # segundos que puede esperar un paso `esperar`
 
 # Pasos que solo existen dentro de las rutinas (no son comandos ni herramientas de la IA).
 LOCAL = {
     "avisar": {"label": "Avisar", "hint": "el texto de la notificación", "done": "Avisó"},
-    "esperar": {"label": "Esperar", "hint": f"segundos (1 a {MAX_WAIT})", "done": "Esperó"},
+    "esperar": {"label": "Esperar", "hint": "segundos", "done": "Esperó"},
 }
+
+
+def max_wait() -> int:
+    """Segundos que puede esperar un paso `esperar` (ROUTINES_MAX_WAIT_SECONDS)."""
+    return config.number("ROUTINES_MAX_WAIT_SECONDS")
+
+
+def hint(tool_id: str) -> str:
+    """Qué va en el argumento de un paso propio de las rutinas (el de `esperar` dice hasta cuánto)."""
+    if tool_id == "esperar":
+        return f"segundos (1 a {max_wait()})"
+    return LOCAL[tool_id]["hint"]
 ALIASES = {"abrir": "nav_abrir"}
 
 TEMPLATE = re.compile(r"\{\{\s*(paso\s+\d+|disparador)\s*\}\}")

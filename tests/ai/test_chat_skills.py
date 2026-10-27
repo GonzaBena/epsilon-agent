@@ -3,6 +3,7 @@ import pytest
 from epsilon import core, tools
 from epsilon.ai import chat, permissions
 from epsilon.data import notes
+from epsilon.settings import config
 from epsilon.skills import runtime, store
 
 SKILL = "---\nname: {name}\ndescription: {desc}\n---\nHacé {name} así."
@@ -32,10 +33,10 @@ def test_catalog_lists_only_usable_skills_capped():
 
 
 def test_catalog_is_capped_in_count():
-    for i in range(runtime.MAX_LISTED + 5):
+    for i in range(config.number("SKILLS_MAX_LISTED") + 5):
         make(f"s{i:02d}")
 
-    assert len(runtime.catalog().splitlines()) == runtime.MAX_LISTED
+    assert len(runtime.catalog().splitlines()) == config.number("SKILLS_MAX_LISTED")
 
 
 def test_catalog_skips_changed_on_disk():

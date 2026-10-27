@@ -17,7 +17,6 @@ from epsilon.settings import config
 
 LOG_FILE = "routines.log"
 LOG_CHARS = 200
-RUN_BUDGET = 300  # segundos máximos por ejecución
 
 _stop = threading.Event()
 _guard = threading.Lock()
@@ -75,8 +74,8 @@ def _step(rule_id: object, step: dict, outputs: dict[int, str], trigger: str) ->
         _tell(message, rule_id)
         return StepResult(True, message)
     if tool == "esperar":
-        if not args.strip().isdigit() or not 1 <= int(args) <= steps.MAX_WAIT:
-            return StepResult(False, f"«esperar» lleva segundos, de 1 a {steps.MAX_WAIT}.")
+        if not args.strip().isdigit() or not 1 <= int(args) <= steps.max_wait():
+            return StepResult(False, f"«esperar» lleva segundos, de 1 a {steps.max_wait()}.")
         if _stop.wait(int(args)):
             return StepResult(False, "Epsilon se está apagando.")
         return StepResult(True, f"Esperé {int(args)} s.")
@@ -97,7 +96,7 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
     outputs: dict[int, str] = {}
     results: list[StepResult] = []
     for number, step in enumerate(rule["steps"], 1):
-        if _clock() - started > RUN_BUDGET:
+        if _clock() - started > config.number("ROUTINES_MAX_RUN_SECONDS"):
             result = StepResult(False, "Se pasó del tiempo máximo de la rutina.")
         else:
             activity.begin()

@@ -32,7 +32,6 @@ TIMEOUT = 5.0
 LOAD_TRIES = 20  # al abrir: cuántas veces se mira si la pestaña cargó (de a medio segundo)
 SETTLE_PAUSE = 0.7  # tras un clic: pausa para que la página empiece a navegar antes de preguntarle si cargó
 SETTLE_TRIES = 10  # y cuántas veces se mira si terminó de cargar (de a medio segundo)
-SCROLL_PIXELS = 600  # cuánto baja o sube `leer … abajo|arriba`
 LAUNCH_WAIT = 15.0  # segundos que se espera a que un Chromium recién lanzado abra el puerto
 LOG_FILE = "browser.log"
 LOG_RESULT_CHARS = 120
@@ -42,8 +41,6 @@ BOOKMARKS_FILE = Path.home() / ".config/chromium/Default/Bookmarks"  # los marca
 MAX_BOOKMARKS = 2000
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
-MAX_TEXT = 3000  # caracteres de texto que devuelve `read`
-MAX_ELEMENTS = 40  # elementos que lista `read`
 MAX_TYPED = 500  # caracteres que acepta `type_text`
 KINDS = {"button": "botón", "link": "enlace", "input": "campo"}
 
@@ -564,7 +561,7 @@ def _collect(tab: Tab) -> tuple[dict, list[Element]]:
     data = result.get("result", {}).get("value")
     if not isinstance(data, dict) or not isinstance(data.get("elements"), list):
         raise NavegadorError("No pude leer la página.")
-    found = [e for e in data["elements"] if isinstance(e, dict) and e.get("kind") != "password"][:MAX_ELEMENTS]
+    found = [e for e in data["elements"] if isinstance(e, dict) and e.get("kind") != "password"][: config.number("BROWSER_MAX_READ_ELEMENTS")]
     elements = [
         Element(
             n,
@@ -596,7 +593,8 @@ def read(args: str) -> str:
         _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": "mouseMoved", "x": now.x, "y": now.y})
         time.sleep(0.5)
     elif direction:
-        delta = SCROLL_PIXELS if direction == "abajo" else -SCROLL_PIXELS
+        pixels = config.number("BROWSER_SCROLL_PIXELS")  # cuánto baja o sube `leer … abajo|arriba`
+        delta = pixels if direction == "abajo" else -pixels
         _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": "mouseWheel", "x": 300.0, "y": 300.0, "deltaX": 0, "deltaY": delta})
         time.sleep(0.4)
     data, elements = _collect(tab)
@@ -608,7 +606,7 @@ def read(args: str) -> str:
     lines += [f"{e.n}: {KINDS.get(e.kind, 'elemento')} «{e.label}»" + (f" ({e.state})" if e.state else "") for e in elements]
     if data.get("more") is True:
         lines.append(f"(Hay más abajo: leer con «{tab.short} abajo» para ver el resto.)")
-    lines += ["Texto:", str(data.get("text", ""))[:MAX_TEXT]]  # al final: si el resultado se recorta, se pierde texto y no números
+    lines += ["Texto:", str(data.get("text", ""))[: config.number("BROWSER_MAX_READ_CHARS")]]  # al final: si el resultado se recorta, se pierde texto y no números
     return "\n".join(lines)
 
 

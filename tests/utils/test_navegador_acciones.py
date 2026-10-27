@@ -1,5 +1,6 @@
 import pytest
 
+from epsilon.settings import config
 from epsilon.utils import navegador
 from tests.utils.test_navegador import FakeChromium, page
 
@@ -245,7 +246,7 @@ def test_read_scrolls_with_the_mouse_wheel_and_never_with_script(monkeypatch):
     navegador.read("AAAA11 arriba")
 
     wheels = fake.sent("Input.dispatchMouseEvent")
-    assert [(w["type"], w["deltaY"]) for w in wheels] == [("mouseWheel", navegador.SCROLL_PIXELS), ("mouseWheel", -navegador.SCROLL_PIXELS)]
+    assert [(w["type"], w["deltaY"]) for w in wheels] == [("mouseWheel", config.number("BROWSER_SCROLL_PIXELS")), ("mouseWheel", -config.number("BROWSER_SCROLL_PIXELS"))]
     assert [p["expression"] for p in fake.sent("Runtime.evaluate")] == [navegador.READ_JS] * 2
 
 

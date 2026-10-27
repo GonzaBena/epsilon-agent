@@ -148,7 +148,7 @@ def run(button_id: int) -> str:
     except Exception as error:  # noqa: BLE001 - cualquier falla inesperada vuelve como texto, no como un 500
         print(f"Error en el botón {button_id}: {config.redact(repr(error))}")
         raise StoreError("No pude ejecutar el botón.") from None
-    return config.redact(text)[:manager.MAX_RESULT_CHARS]
+    return config.redact(text)[:manager.max_result_chars()]
 
 
 def suggestions(connector: str) -> list[dict]:

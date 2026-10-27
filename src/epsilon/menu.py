@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import hashlib
-import os
 import re
 
 from epsilon.ai import favorites, llm
@@ -100,7 +99,7 @@ def render(name: str = MAIN, note: str = "") -> tuple[str, list[tuple[str, str]]
             buttons += _model_buttons()
             if not buttons:
                 hint = "No tenés modelos favoritos. Marcalos en la web: en el selector de modelo, con la estrella o Ctrl+F."
-            elif os.environ.get("AI_MODEL_CHAT"):
+            elif config.value("AI_MODEL_CHAT"):
                 hint += "\n⚠️ AI_MODEL_CHAT manda en el chat: tocar un favorito cambia AI_MODEL, no ese."
         else:
             buttons.append((f"{PREFIX}{item}", SCREENS[item].label))

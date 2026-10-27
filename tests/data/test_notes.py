@@ -162,7 +162,7 @@ def test_create_file_makes_a_new_text_file_and_never_overwrites(tmp_path, monkey
     ("sin_extension", "hola", "Extensión no permitida"),
     (".csv", "hola", "Extensión no permitida"),
     ("a.txt", "  \n", "vacío"),
-    ("a.txt", "x" * (notes.MAX_CREATE_CHARS + 1), "demasiado largo"),
+    ("a.txt", "x" * 100_001, "demasiado largo"),
 ])
 def test_create_file_rejects_what_does_not_fit(tmp_path, monkeypatch, name, text, message):
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path.resolve())

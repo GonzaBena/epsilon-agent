@@ -168,7 +168,6 @@ def save_file(original_name: str, data: bytes, folder: str | None = None) -> Pat
 
 # Lo que la IA puede crear con «crear_archivo»: solo texto, nunca algo que se ejecute.
 CREATE_EXT = (".csv", ".txt", ".md", ".json")
-MAX_CREATE_CHARS = 100_000
 
 
 def create_file(name: str, text: str) -> Path:
@@ -182,8 +181,11 @@ def create_file(name: str, text: str) -> Path:
         raise ValueError("Falta un nombre de archivo válido.")
     if not text.strip():
         raise ValueError("El contenido está vacío.")
-    if len(text) > MAX_CREATE_CHARS:
-        raise ValueError(f"El contenido es demasiado largo ({len(text)} caracteres, el máximo es {MAX_CREATE_CHARS}).")
+    from epsilon.settings import config  # acá adentro: config importa este módulo (FILES_MAX_CREATE_CHARS)
+
+    limit = config.number("FILES_MAX_CREATE_CHARS")
+    if len(text) > limit:
+        raise ValueError(f"El contenido es demasiado largo ({len(text)} caracteres, el máximo es {limit}).")
     return save_file(clean + ext, text.encode("utf-8"))
 
 

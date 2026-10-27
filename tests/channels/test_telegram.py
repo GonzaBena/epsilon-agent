@@ -3,6 +3,7 @@ import pytest
 from epsilon import core, tools
 from epsilon.data import conversations
 from epsilon.channels import telegram
+from epsilon.settings import config
 
 
 # --- Configuración: faltar algo no rompe al importar, solo al arrancar -------
@@ -1007,8 +1008,10 @@ class ProgressBot:
 @pytest.fixture
 def waiting(monkeypatch):
     """Tiempos cortos para el test y un núcleo lento que emite `events` (uno cada `pause` segundos)."""
-    monkeypatch.setattr(telegram, "PROGRESS_AFTER", 0.05)
-    monkeypatch.setattr(telegram, "TYPING_EVERY", 0.05)
+    # Los ajustes reales tienen un mínimo (0.5 y 1 s): el test mira el reloj más de cerca, así que se cambia la lectura.
+    real = config.number
+    quick = {"TELEGRAM_PROGRESS_AFTER": 0.05, "TELEGRAM_TYPING_EVERY": 0.05}
+    monkeypatch.setattr(config, "number", lambda key: quick.get(key, real(key)))
     monkeypatch.setattr(telegram, "EDIT_EVERY", 0.01)
     monkeypatch.setattr(telegram, "TICK", 0.01)
     bot = ProgressBot()

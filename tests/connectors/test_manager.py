@@ -6,6 +6,7 @@ import pytest
 
 from epsilon import core
 from epsilon.connectors import manager, store
+from epsilon.settings import config
 from tests.connectors.fakes import FakeLink, install, tool
 
 
@@ -18,6 +19,12 @@ def wait_for(condition, seconds: float = 2.0) -> None:
     while not condition():
         assert time.monotonic() < end, "no pasó a tiempo"
         time.sleep(0.005)
+
+
+def short_timeout(monkeypatch, key, seconds):
+    """El ajuste real tiene un mínimo (5 s): para no esperar tanto, el test cambia lo que se lee."""
+    real = config.number
+    monkeypatch.setattr(config, "number", lambda name: seconds if name == key else real(name))
 
 
 def in_thread(fn, *args):
@@ -154,7 +161,7 @@ def test_idle_connector_is_closed_by_tick(monkeypatch):
     add("luces")
     manager.call("luces", "saludar", {})
 
-    manager.tick(time.monotonic() + manager.IDLE_CLOSE + 1)
+    manager.tick(time.monotonic() + config.number("CONNECTORS_IDLE_CLOSE_SECONDS") + 1)
 
     assert link.closed
     assert manager.status("luces") == "dormido"
@@ -174,7 +181,7 @@ def test_tick_does_not_close_a_busy_or_recent_connector(monkeypatch):
 
     thread, out = in_thread(manager.call, "luces", "saludar", {})
     wait_for(lambda: len(link.calls) == 2)
-    manager.tick(time.monotonic() + manager.IDLE_CLOSE + 1)  # ocupado: no se cierra
+    manager.tick(time.monotonic() + config.number("CONNECTORS_IDLE_CLOSE_SECONDS") + 1)  # ocupado: no se cierra
     thread.join()
 
     assert out == {"result": "ok"}
@@ -199,7 +206,7 @@ def test_max_running_closes_the_least_recently_used(monkeypatch):
 
 
 def test_max_running_with_all_busy_refuses(monkeypatch):
-    monkeypatch.setattr(manager, "MAX_RUNNING", 1)
+    monkeypatch.setenv("CONNECTORS_MAX_RUNNING", "1")
     busy = FakeLink(delay=0.3)
     other = FakeLink()
     install(monkeypatch, {"aa": busy, "bb": other})
@@ -217,7 +224,7 @@ def test_max_running_with_all_busy_refuses(monkeypatch):
 
 
 def test_call_timeout_returns_spanish_error_and_stops_connector(monkeypatch):
-    monkeypatch.setattr(manager, "CALL_TIMEOUT", 0.05)
+    short_timeout(monkeypatch, "CONNECTORS_CALL_TIMEOUT_SECONDS", 0.05)
     link = FakeLink(delay=1.0)
     install(monkeypatch, {"luces": link})
     add("luces")
@@ -297,11 +304,15 @@ def test_results_never_show_env_values_and_are_trimmed(monkeypatch):
     text = manager.call("luces", "saludar", {})
 
     assert "supersecreto123" not in text
-    assert len(text) <= manager.MAX_RESULT_CHARS
+    assert len(text) <= manager.max_result_chars()
 
 
-def test_result_limit_matches_core():
-    assert manager.MAX_RESULT_CHARS == core.MAX_RESULT_CHARS
+def test_result_limit_matches_core(monkeypatch):
+    # Los dos leen el mismo ajuste: cambiarlo mueve a ambos.
+    assert manager.max_result_chars() == config.number("TOOLS_MAX_RESULT_CHARS") == 4000
+    monkeypatch.setenv("TOOLS_MAX_RESULT_CHARS", "500")
+    assert manager.max_result_chars() == 500
+    assert core._cap("x" * 600) == "x" * 500
 
 
 def test_concurrent_calls_both_complete(monkeypatch):
@@ -326,7 +337,7 @@ def test_call_racing_with_idle_close_reopens(monkeypatch):
     add("luces")
     manager.call("luces", "saludar", {})
 
-    closer, _ = in_thread(manager.tick, time.monotonic() + manager.IDLE_CLOSE + 1)
+    closer, _ = in_thread(manager.tick, time.monotonic() + config.number("CONNECTORS_IDLE_CLOSE_SECONDS") + 1)
     link.close_started.wait(2)
     caller, out = in_thread(manager.call, "luces", "saludar", {"otra": True})  # entra mientras se cierra
     closer.join()
@@ -397,10 +408,10 @@ def test_max_running_holds_with_concurrent_opens_of_different_connectors(monkeyp
         thread.join()
 
     outs = [out for _, out in runs]
-    assert stats["peak"] <= manager.MAX_RUNNING
-    assert sum(1 for out in outs if out.get("result") == "ok") == manager.MAX_RUNNING  # los otros, todos abriéndose
+    assert stats["peak"] <= config.number("CONNECTORS_MAX_RUNNING")
+    assert sum(1 for out in outs if out.get("result") == "ok") == config.number("CONNECTORS_MAX_RUNNING")  # los otros, todos abriéndose
     assert all("trabajando" in str(out["error"]) for out in outs if "error" in out)
-    assert sum(1 for name in names if manager.status(name) == "activo") <= manager.MAX_RUNNING
+    assert sum(1 for name in names if manager.status(name) == "activo") <= config.number("CONNECTORS_MAX_RUNNING")
 
 
 def test_full_and_idle_concurrent_opens_evict_without_going_over(monkeypatch):
@@ -417,8 +428,8 @@ def test_full_and_idle_concurrent_opens_evict_without_going_over(monkeypatch):
         thread.join()
 
     assert [out for _, out in runs] == [{"result": "ok"}, {"result": "ok"}]
-    assert stats["peak"] <= manager.MAX_RUNNING
-    assert sum(1 for name in names if manager.status(name) == "activo") == manager.MAX_RUNNING
+    assert stats["peak"] <= config.number("CONNECTORS_MAX_RUNNING")
+    assert sum(1 for name in names if manager.status(name) == "activo") == config.number("CONNECTORS_MAX_RUNNING")
 
 
 def test_hook_that_calls_back_into_the_manager_does_not_freeze_it(monkeypatch):

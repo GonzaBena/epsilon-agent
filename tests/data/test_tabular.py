@@ -200,7 +200,7 @@ def test_cells_with_bars_do_not_break_the_markdown_table(table):
 def test_only_the_first_rows_are_shown(tmp_path, monkeypatch):
     path = tmp_path / "n.csv"
     path.write_text("n\n" + "\n".join(str(i) for i in range(50)) + "\n", encoding="utf-8")
-    monkeypatch.setattr(tabular, "MAX_ROWS", 5)
+    monkeypatch.setenv("FILES_TABLE_MAX_ROWS", "5")
 
     result = tabular.query(tabular.load(path), "n>=0")
 

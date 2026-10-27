@@ -5,13 +5,20 @@ from pathlib import Path
 from epsilon.ai import llm, usage
 from epsilon.ai.messages import File
 from epsilon.data import notes
+from epsilon.settings import config
 
 
-# Tope para notas de texto (~300 KB son unos 75.000 tokens). Ajustalo a gusto.
-MAX_TEXT = 300_000
-# Tope para PDFs e imágenes que se mandan al modelo (chequeá el límite real
-# de Gemini en su documentación, puede cambiar).
-MAX_FILE = 15 * 1024 * 1024
+
+def max_text() -> int:
+    """Tope para notas de texto en caracteres (~300 KB son unos 75.000 tokens): SUMMARY_MAX_CHARS."""
+    return config.number("SUMMARY_MAX_CHARS")
+
+
+def max_file() -> int:
+    """Tope en bytes para PDFs e imágenes que se mandan al modelo (SUMMARY_MAX_FILE_MB; chequeá el límite real
+    de Gemini en su documentación, puede cambiar)."""
+    return config.number("SUMMARY_MAX_FILE_MB") * 1024 * 1024
+
 
 PROMPT = (
     "Resumí el contenido en español, en viñetas cortas. "
@@ -50,9 +57,9 @@ def summarize_and_save(path: Path) -> tuple[str, str]:
 
     # Controles de tamaño ANTES de llamar al modelo: es plata que no se gasta.
     if path.suffix.lower() in (".md", ".txt"):
-        if size > MAX_TEXT:
+        if size > max_text():
             raise ValueError("La nota es demasiado larga para resumirla.")
-    elif size > MAX_FILE:
+    elif size > max_file():
         raise ValueError("El archivo es demasiado grande para resumirlo.")
 
     text = summarize(path)

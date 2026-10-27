@@ -1,3 +1,4 @@
+from epsilon.settings import config
 from epsilon.skills import store
 
 # Usar una skill: el texto que le llega a la IA y el estado en el que se puede usar. No importa el núcleo:
@@ -5,7 +6,6 @@ from epsilon.skills import store
 # de la persona para ESE pedido; nunca cambian los permisos ni las reglas de seguridad.
 
 
-MAX_LISTED = 20  # cuántas skills van en el prompt de la IA
 MAX_LIST_DESC = 160  # y cuánto de cada descripción
 
 
@@ -50,7 +50,7 @@ def catalog() -> str:
         if len(description) > MAX_LIST_DESC:
             description = description[: MAX_LIST_DESC - 1] + "…"
         lines.append(f"- {skill.name}: {description}")
-    return "\n".join(lines[:MAX_LISTED])
+    return "\n".join(lines[: config.number("SKILLS_MAX_LISTED")])
 
 
 def use(name: str) -> str:

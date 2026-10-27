@@ -5,6 +5,7 @@ from google.genai import errors, types
 
 from epsilon.ai.messages import ModelError, File, Message, Step, ToolSpec, call_arguments, parse_call
 from epsilon.ai.providers.base import Capabilities, ChatResult, GenerateResult, Provider
+from epsilon.settings import config
 
 # ÚNICO lugar que habla con Gemini. El cliente se guarda en una variable antes de usarlo:
 # encadenar `genai.Client(...).models.x()` lo cierra antes de tiempo.
@@ -48,7 +49,7 @@ def _declaration(tool: ToolSpec) -> types.FunctionDeclaration:
 
 
 def _thinking_config() -> types.ThinkingConfig | None:
-    effort = (os.environ.get("AI_THINKING_EFFORT") or "medio").strip().lower()
+    effort = (config.value("AI_THINKING_EFFORT") or "medio").strip().lower()
     if effort in ("desactivado", "off", "none", "0"):
         return types.ThinkingConfig(thinking_budget=0)
     if hasattr(types, "ThinkingLevel"):
