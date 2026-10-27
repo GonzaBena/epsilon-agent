@@ -111,9 +111,11 @@ def _sites(value: str) -> str:
 
 
 def _minutes(value: str) -> str:
-    if not re.fullmatch(r"\d{1,4}", value, re.ASCII) or not 1 <= int(value) <= 1440:
-        raise ValueError("Los minutos tienen que ser un número entero entre 1 y 1440.")
-    return str(int(value))
+    """Minutos entre 1 y 1440, con decimales si hace falta (punto o coma): 1,5 es un minuto y medio."""
+    value = value.replace(",", ".")
+    if not re.fullmatch(r"\d{1,4}(\.\d{1,4})?", value, re.ASCII) or not 1 <= float(value) <= 1440:
+        raise ValueError("Los minutos tienen que ser un número entre 1 y 1440 (puede llevar decimales, como 1,5).")
+    return str(float(value)) if "." in value else str(int(value))
 
 
 def _rate(value: str) -> str:
@@ -229,7 +231,7 @@ class Setting:
     section: str = ""  # primer tramo del nombre
     help: str = ""  # una línea, para el comentario y el schema
     loosens: bool = False  # subirlo (o prenderlo) afloja una defensa o un tope de gasto
-    safer: str = ""  # hacia dónde es más seguro: «lower» (números), «si»/«no» (bool), «more»/«fewer» (listas)
+    safer: str = ""  # hacia dónde es más seguro: «lower» (números), «si»/«no» (bool), «more»/«fewer» (listas), «never» (ninguno)
     bootstrap: bool = False  # se lee antes que settings.json: vive solo en el .env
 
 
@@ -520,7 +522,8 @@ _JSON_FIELDS: dict[str, dict] = {
         choices=("desactivado", "bajo", "medio", "alto"),
         help="Cuánto razona la IA antes de contestar (más razonamiento cuesta más)",
     ),
-    "OLLAMA_URL": _J(name="ai.ollama_url", help="Dirección donde corre Ollama"),
+    # Sin lado seguro: llevarlo a otra máquina podría mandar las charlas a otro lado. Siempre al reiniciar.
+    "OLLAMA_URL": _J(name="ai.ollama_url", loosens=True, safer="never", help="Dirección donde corre Ollama"),
     "USER_NAME": _J(name="general.user_name", help="Tu nombre, para el saludo"),
     "AGENT_NAME": _J(name="general.agent_name", help="Cómo querés llamar al asistente"),
     "WEB_PORT": _J(name="web.port", kind="int", minimum=1, maximum=65535, help="Puerto de la web local (hace falta reiniciar)"),

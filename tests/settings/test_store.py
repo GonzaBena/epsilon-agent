@@ -156,6 +156,24 @@ def test_tightens(key, old, new, expected):
     assert store.tightens(config.BY_KEY[key], old, new) is expected
 
 
+@pytest.mark.parametrize("old,new", [
+    ("http://127.0.0.1:11434", "http://192.168.0.9:11434"), ("http://otra:11434", "http://127.0.0.1:11434"), ("", "http://x:1"),
+])
+def test_the_ollama_address_never_tightens(old, new):
+    # Mandar Ollama a otra máquina podría llevar las charlas a otro lado: ningún cambio va en caliente.
+    s = config.BY_KEY["OLLAMA_URL"]
+    assert s.loosens and s.safer == "never" and store.tightens(s, old, new) is False
+
+
+def test_a_new_ollama_address_waits_for_the_restart(tmp_path):
+    write_file(tmp_path, "{}")
+    store.load_initial()
+    write_file(tmp_path, '{"ai.ollama_url": "http://192.168.0.9:11434"}', bump=True)
+    store.refresh()
+    assert store.applied("OLLAMA_URL") is None and store.saved("OLLAMA_URL") == "http://192.168.0.9:11434"
+    assert config.value("OLLAMA_URL") == "http://127.0.0.1:11434"
+
+
 def test_write_keeps_comments_and_concurrent_edit(tmp_path):
     write_file(tmp_path, '{\n  // mío\n  "ai.model": "gemini:x"\n}\n')
     store.load_initial()
@@ -198,6 +216,17 @@ def test_write_refuses_broken_file(tmp_path):
     assert error.value.errors == {
         "settings.json": "El archivo tiene un error (línea 1): arreglalo a mano antes de guardar desde acá."
     }
+
+
+@pytest.mark.parametrize("text", ["[]", "3", '"hola"', "null"])
+def test_write_refuses_a_file_that_is_not_an_object(tmp_path, text):
+    write_file(tmp_path, text)
+    store.load_initial()
+    assert store.broken()
+    with pytest.raises(config.ConfigError) as error:
+        store.write({"USER_NAME": "Ana"}, [])
+    assert store.settings_path().read_text() == text
+    assert "arreglalo a mano" in error.value.errors["settings.json"]
 
 
 def test_write_refuses_secret(tmp_path):

@@ -510,7 +510,7 @@ def test_valid_voice_values_are_saved_normalized(key, value, env_file):
         ("WHISPER_IDLE_MINUTES", "1441"),
         ("WHISPER_IDLE_MINUTES", "diez"),
         ("WHISPER_IDLE_MINUTES", "-5"),
-        ("WHISPER_IDLE_MINUTES", "1.5"),
+        ("WHISPER_IDLE_MINUTES", "0.5"),
         ("WHISPER_DEVICE", "tpu"),
         ("WHISPER_DEVICE", "cpu\nEVIL=1"),
     ],
@@ -529,6 +529,19 @@ def test_language_and_idle_minutes_apply_at_once_but_device_waits_for_a_restart(
     assert config.value("WHISPER_DEVICE") == "cpu"
     assert entry("WHISPER_DEVICE", env_file)["pending_restart"] is True
     assert "modelo de voz" in entry("WHISPER_DEVICE", env_file)["reason"]
+
+
+@pytest.mark.parametrize("raw,saved", [("1,5", "1.5"), ("1.5", "1.5"), ("2", "2")])
+def test_idle_minutes_take_decimals_like_before(raw, saved, env_file):
+    config.update({"WHISPER_IDLE_MINUTES": raw}, [], env_file)
+
+    assert config.value("WHISPER_IDLE_MINUTES") == saved and config.number("WHISPER_IDLE_MINUTES") == float(saved)
+
+
+def test_idle_minutes_read_decimals_from_the_file(tmp_settings):
+    tmp_settings('{"voice.idle_minutes": 1.5}')
+
+    assert store.issues() == [] and config.number("WHISPER_IDLE_MINUTES") == 1.5
 
 
 # --- Voz por Telegram: recibir y confirmar (sí / no) --------------------------

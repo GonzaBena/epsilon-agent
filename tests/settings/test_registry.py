@@ -23,7 +23,15 @@ def test_numbers_have_ranges_and_default_inside():
 def test_loosening_settings_say_which_way_is_safer():
     for s in config.all_settings():
         if s.loosens:
-            assert s.safer, s.key
+            assert s.safer in ("lower", "si", "no", "more", "fewer", "never"), s.key
+
+
+def test_every_numeric_default_reads_back_from_the_file():
+    # Lo que dice settings_default.json de un número tiene que poder escribirse en settings.json.
+    for s in config.all_settings():
+        if s.kind in ("int", "float") and s.default:
+            assert config.from_json(s, config.to_json(s, s.default)), s.key
+            assert config.from_json(s, s.default), s.key
 
 
 def test_every_setting_has_help():

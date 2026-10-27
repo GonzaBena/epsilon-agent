@@ -254,7 +254,10 @@ def _sites(text: str) -> set[str]:
 
 
 def tightens(s: Setting, old: str, new: str) -> bool:
-    """Si pasar de `old` a `new` va hacia el lado seguro del ajuste (`safer`). Pura."""
+    """Si pasar de `old` a `new` va hacia el lado seguro del ajuste (`safer`). Pura. «never»: ningún
+    cambio endurece (todo espera al reinicio)."""
+    if s.safer == "never":
+        return False
     if s.safer == "lower":
         a, b = _number(old or ""), _number(new or "")
         return a is not None and b is not None and b < a
