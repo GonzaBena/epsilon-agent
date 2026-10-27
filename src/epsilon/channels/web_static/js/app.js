@@ -36,7 +36,9 @@ const aiBlocked = document.getElementById("ai-blocked");
 const aiTrimmed = document.getElementById("ai-trimmed");
 
 // --- Estado -----------------------------------------------------------------
-const MAX_UPLOAD = 20 * 1024 * 1024;    // mismo tope que el servidor (20 MB)
+// Tope de un archivo subido, en MB: lo dice el servidor (GET /api/config → max_upload_mb, el ajuste
+// WEB_MAX_UPLOAD_MB). Hasta que contesta, 20 (su valor de fábrica). El servidor lo revisa igual.
+let maxUploadMb = 20;
 
 // La conversación abierta. Las conversaciones viven en el SERVIDOR (archivos en la
 // carpeta de datos); acá solo recordamos cuál tenías abierta. null = no hay servidor
@@ -835,8 +837,8 @@ function pressAction(message, box, action) {
 // --- Archivo adjunto -------------------------------------------------------------
 function setFile(file) {
   if (readOnly) return;
-  if (file.size > MAX_UPLOAD) {
-    addMessage({ role: "bot", error: true, text: "Ese archivo pesa más de 20 MB." });
+  if (file.size > maxUploadMb * 1024 * 1024) {
+    addMessage({ role: "bot", error: true, text: `Ese archivo pesa más de ${maxUploadMb} MB.` });
     return;
   }
   if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
@@ -1838,6 +1840,7 @@ async function checkSetup() {
     const key = state.settings.find((setting) => setting.key === "GEMINI_API_KEY");
     document.getElementById("setup").hidden = !key || key.set;
     voiceOff = state.voice === "apagada";
+    if (Number(state.max_upload_mb) > 0) maxUploadMb = Number(state.max_upload_mb);
     refreshMic();
     maybeOnboard(state.settings);
   } catch {

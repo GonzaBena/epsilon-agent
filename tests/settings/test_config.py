@@ -917,6 +917,17 @@ def test_a_loosening_says_why_it_waits(tmp_settings, env_file):
     )
 
 
+def test_restart_notice_says_now_and_after_for_a_loosening(tmp_settings, env_file):
+    tmp_settings("{}")
+    config.update({"CHAT_MAX_TOOL_STEPS": "20", "WEB_PORT": "9001"}, [], env_file)
+
+    pending = {p["key"]: p for p in config.pending_restart(env_file)}
+
+    assert pending["CHAT_MAX_TOOL_STEPS"]["loosens"] is True
+    assert (pending["CHAT_MAX_TOOL_STEPS"]["now"], pending["CHAT_MAX_TOOL_STEPS"]["next"]) == ("6", "20")
+    assert pending["WEB_PORT"]["loosens"] is False and "now" not in pending["WEB_PORT"]  # no afloja nada
+
+
 def test_tightening_from_the_page_applies_at_once(tmp_settings, env_file):
     tmp_settings('{"browser.guard": false}')
 

@@ -126,6 +126,21 @@
             Si algo falla al arrancar, el motivo aparece en la consola y en la página Canales.</p>
         </section>
 
+        <!-- El archivo de ajustes: abrirlo en el editor y lo que tiene mal (todo lo llena config.js con textContent). -->
+        <section class="settings-file" id="settings-file" aria-labelledby="h-settings-file">
+          <h3 id="h-settings-file">Archivo de ajustes</h3>
+          <p class="hint">Los ajustes viven en <code>settings.json</code>, en tu carpeta de datos. Podés editarlos acá
+            o en el archivo, como prefieras.</p>
+          <div class="settings-file-actions">
+            <button type="button" class="ghost" id="open-settings">Abrir settings.json</button>
+            <button type="button" class="ghost" id="open-defaults">Ver valores por defecto</button>
+          </div>
+          <p class="result" id="open-result" role="status"></p>
+          <p class="settings-broken" id="settings-broken" role="alert" hidden></p>
+          <ul class="settings-issues" id="settings-issues" hidden></ul>
+          <p class="hint" id="settings-leftover" hidden></p>
+        </section>
+
         <form id="form" novalidate autocomplete="off">
 
         <div class="settings-layout">

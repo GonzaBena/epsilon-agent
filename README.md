@@ -119,6 +119,7 @@ podés escribir un texto, adjuntar una imagen o PDF, o dictar con el micrófono.
 | `/conector [conector herramienta args]` | Usa un conector (MCP) sin IA (también `/c`): sin argumentos lista los que hay y sus herramientas; con `/conector luces apagar habitacion=living` (o un objeto JSON) la ejecuta. Lo escribís vos, así que no pide permiso. |
 | `/uso`                 | Tokens y precio gastados, hoy y en total.                                 |
 | `/menu`                | Ajustes del bot con botones: la voz y el modelo de IA (entre tus favoritos). |
+| `/ajustes [defecto]`   | Abre `settings.json` en tu editor (con «defecto», los valores de fábrica). Solo desde la web. |
 | `/nuevo`               | Telegram: empieza una conversación nueva.                                 |
 | `/chat`                | Telegram: abre una charla con la IA (lo que escribís sin `/` va a la IA; los comandos siguen sin usarla). `/nuevo` la cierra. |
 | `/ayuda`               | Muestra la ayuda.                                                         |

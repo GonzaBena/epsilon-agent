@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from epsilon.data import library
+from epsilon.data import library, notes
 from tests.channels.web.helpers import js, page
 
 
@@ -38,6 +38,19 @@ def test_library_lists_items_counts_and_the_root(stocked, tmp_path):
     assert data["counts"] == {"all": 3, "note": 1, "file": 1, "ticket": 1}
     assert data["root"] == str(tmp_path)
     assert isinstance(data["can_reveal"], bool)
+
+
+def test_settings_files_hidden_from_library(stocked, tmp_path, monkeypatch):
+    # Aunque .json llegara a ser una extensión de la biblioteca, los ajustes no se listan ni se abren.
+    monkeypatch.setattr(notes, "summarizable_ext", notes.summarizable_ext | {".json"})
+    (tmp_path / "files" / "datos.json").write_text("{}")  # un .json tuyo sí
+    for name in ("settings.json", "settings_default.json", "settings.schema.json"):
+        (tmp_path / name).write_text("{}")
+        with pytest.raises(ValueError, match="no existe en la biblioteca"):
+            library.resolve(name)
+        assert stocked.get(f"/api/library/text?path={name}").status_code == 404
+    paths = {i["path"] for i in stocked.get("/api/library").json()["items"]}
+    assert "files/datos.json" in paths and not any(p.startswith("settings") for p in paths)
 
 
 def test_library_filter_search_and_paging(stocked):

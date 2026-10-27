@@ -791,11 +791,17 @@ def pending_restart(env_file: Path | None = None) -> list[dict]:
     """Ajustes guardados que todavía no se aplicaron: para el aviso de reinicio.
     Incluye los de settings.json que no están en la página (tunables)."""
     env_saved = _env_saved(env_file)
-    return [
-        {"key": e["key"], "label": e["label"], "reason": e["reason"]}
-        for e in (_entry(s, env_saved) for s in all_settings())
-        if e["pending_restart"]
-    ]
+    pending = []
+    for s in all_settings():
+        e = _entry(s, env_saved)
+        if not e["pending_restart"]:
+            continue
+        item = {"key": e["key"], "label": e["label"], "reason": e["reason"], "loosens": s.loosens}
+        if s.loosens and not s.secret:
+            # Qué usa ahora y qué va a usar: así se ve qué protección se afloja. Nunca para un secreto.
+            item["now"], item["next"] = e["value"], e["saved"] or s.default
+        pending.append(item)
+    return pending
 
 
 # --- Escritura ---------------------------------------------------------------

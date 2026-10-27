@@ -28,6 +28,23 @@ const voiceModelResult = document.getElementById("voice-model-result");
 const DELETE_LABEL = "Borrar el modelo de voz";
 let deleteArmed = false;
 
+// El archivo de ajustes (settings.json): abrirlo en el editor y lo que tiene mal.
+const openSettings = document.getElementById("open-settings");
+const openDefaults = document.getElementById("open-defaults");
+const openResult = document.getElementById("open-result");
+const settingsBroken = document.getElementById("settings-broken");
+const settingsIssues = document.getElementById("settings-issues");
+const settingsLeftover = document.getElementById("settings-leftover");
+const FROM_ENV_TEXT = "Viene del entorno del servicio: no se edita acá.";
+const NO_EDITOR_TEXT = "No se puede abrir desde acá: este equipo no tiene pantalla o un programa para abrirlo.";
+
+// Lo que queda trabado aunque la página no esté ocupada (setBusy lo respeta al soltar).
+const locks = {
+  canOpen: true, // ¿hay con qué abrir el archivo?
+  broken: false, // con el archivo roto, Guardar no se puede usar (no lo pisaríamos)
+  fromEnv: new Set(), // ajustes que vienen del entorno del servicio: no se editan
+};
+
 // El estado de la voz que informa el servidor, dicho en una frase.
 const VOICE_TEXTS = {
   apagada: "Apagada: no se usa ni se descarga el modelo.",
@@ -61,6 +78,15 @@ function make(tag, className, text) {
 function setBusy(value) {
   busy = value;
   for (const button of document.querySelectorAll("button")) button.disabled = value;
+  if (!value) applyLocks();
+}
+
+// Vuelve a trabar lo que no se puede usar, aunque la página no esté ocupada.
+function applyLocks() {
+  openSettings.disabled = !locks.canOpen;
+  openDefaults.disabled = !locks.canOpen;
+  saveButton.disabled = locks.broken;
+  for (const [key, input] of Object.entries(fields)) input.disabled = locks.fromEnv.has(key);
 }
 
 // Muestra un resultado (bien o mal) en un párrafo con role="status".
@@ -94,6 +120,10 @@ function renderRestart(pending) {
   for (const item of pending) {
     const row = make("li");
     row.append(make("strong", "", `${item.label}: `));
+    // Si afloja una protección (y no es una clave), qué usa ahora y qué va a usar al reiniciar.
+    if (item.loosens && item.now !== undefined) {
+      row.append(document.createTextNode(`ahora ${item.now} → al reiniciar ${item.next}. `));
+    }
     row.append(document.createTextNode(item.reason));
     restartList.append(row);
   }
@@ -163,6 +193,9 @@ function renderSetting(setting) {
   const when = setting.live ? "Se aplica al instante." : "Se aplica al reiniciar.";
   const hint = document.getElementById(`hint-${setting.key}`);
 
+  if (setting.from_env) locks.fromEnv.add(setting.key);
+  else locks.fromEnv.delete(setting.key);
+
   if (setting.secret) {
     // El campo real queda vacío. Los puntos son solo el placeholder.
     input.value = "";
@@ -189,6 +222,7 @@ function renderSetting(setting) {
     if (input.getAttribute("role") === "switch") syncSwitch(input);
     input.dataset.original = shown; // para saber después si lo cambiaste
     hint.textContent = setting.pending_restart ? `${when} Guardado: falta reiniciar.` : when;
+    if (setting.from_env) hint.textContent = FROM_ENV_TEXT;
     if (setting.key === "TTS_VOICE") {
       syncVoiceUIFromValue(shown);
     }
@@ -408,8 +442,60 @@ function render(state) {
   renderVoiceModel(state);
   renderTtsVoices(state.tts_voices);
   renderRestart(state.pending_restart);
+  renderSettingsFile(state.settings_file);
   resetClear();
+  if (!busy) applyLocks();
 }
+
+// La tarjeta «Archivo de ajustes»: si está roto, sus avisos y las líneas del .env que sobran.
+function renderSettingsFile(file) {
+  if (!file) return;
+  locks.canOpen = Boolean(file.can_open);
+  locks.broken = Boolean(file.broken);
+  const why = locks.canOpen ? "" : NO_EDITOR_TEXT;
+  openSettings.title = why;
+  openDefaults.title = why;
+  if (!locks.canOpen) show(openResult, why, false);
+
+  settingsBroken.hidden = !file.broken;
+  settingsBroken.textContent = file.broken
+    ? `${file.broken} Arreglalo en el archivo: mientras tanto no se puede guardar desde acá.`
+    : "";
+
+  settingsIssues.replaceChildren();
+  for (const issue of file.issues || []) {
+    settingsIssues.append(make("li", "", `${issue.name}: ${issue.message}`));
+  }
+  settingsIssues.hidden = settingsIssues.childElementCount === 0;
+
+  const leftover = file.leftover_env || [];
+  settingsLeftover.hidden = leftover.length === 0;
+  settingsLeftover.textContent = leftover.length
+    ? `Estas líneas del .env ya no se usan (ahora viven en settings.json); podés borrarlas: ${leftover.join(", ")}.`
+    : "";
+}
+
+// Abrir el archivo en el editor de texto de la PC (el servidor elige cuál; acá solo «cuál de los dos»).
+async function openFile(which) {
+  if (busy || !locks.canOpen) return;
+  setBusy(true);
+  try {
+    const { response, data } = await request("/api/config/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ which }),
+    });
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "No se pudo abrir el archivo.");
+    show(openResult, "Abierto en tu editor. Volvé a cargar esta página para ver los avisos de lo que cambies.", true);
+  } catch (error) {
+    show(openResult, error.message, false);
+  } finally {
+    setBusy(false);
+  }
+}
+
+openSettings.addEventListener("click", () => openFile("settings"));
+openDefaults.addEventListener("click", () => openFile("default"));
 
 // El botón de borrar el modelo solo aparece con la voz apagada y si Epsilon lo bajó.
 function renderVoiceModel(state) {
@@ -458,6 +544,7 @@ function clearErrors() {
 function collectChanges() {
   const changes = {};
   for (const [key, input] of Object.entries(fields)) {
+    if (locks.fromEnv.has(key)) continue; // lo fija el entorno del servicio: no se manda
     const value = input.value.trim();
     if (input.type === "password") {
       if (value) changes[key] = value; // vacío = no tocar
@@ -514,6 +601,10 @@ async function save(changes, clear) {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault(); // sin esto, el formulario recargaría la página
+  if (locks.broken) {
+    show(saveResult, "settings.json tiene un error: arreglalo en el archivo antes de guardar desde acá.", false);
+    return;
+  }
   const changes = collectChanges();
   if (Object.keys(changes).length === 0) {
     show(saveResult, "No hay cambios para guardar.", false);

@@ -15,7 +15,7 @@ from epsilon.ai.messages import WEAK_MODEL_HINT, ModelError
 from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.data import activity, changes, conversations, library, notes, sites, tabular, todo
 from epsilon.memory import store as memory
-from epsilon.settings import config
+from epsilon.settings import config, editor, store as settings_store
 from epsilon.skills import runtime as skill_runtime, store as skill_store
 from epsilon.routines import rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
 from epsilon.utils import clima, clock, dolar, multimedia, navegador, sistema, ventanas
@@ -765,6 +765,25 @@ def _menu(args: str, session: Session) -> Reply:
     return _menu_reply(menu.render())
 
 
+# /ajustes: el archivo se abre en la pantalla de la PC, así que desde Telegram no tiene sentido.
+SETTINGS_ONLY_WEB = "Esto abre un archivo en la pantalla de la PC: usalo desde la web."
+
+
+def _settings_cmd(args: str, session: Session) -> Reply:
+    """/ajustes [defecto]: abre settings.json (o los valores de fábrica) en el editor de texto."""
+    which = {"": "settings", "defecto": "default"}.get(args.strip().lower())
+    if which is None:
+        return Reply("Uso: /ajustes [defecto]")
+    if not session.web:
+        return Reply(SETTINGS_ONLY_WEB)
+    try:
+        editor.open_file(which)
+    except OSError as e:
+        return Reply(config.redact(str(e))[:200].rstrip(".") + ".")
+    name = settings_store.SETTINGS_FILE if which == "settings" else settings_store.DEFAULT_FILE
+    return Reply(f"Abrí {name} en tu editor.")
+
+
 def _menu_action(rest: str) -> Reply:
     try:
         screen = menu.press(rest)
@@ -1506,6 +1525,7 @@ COMMANDS = {
     "skills": _skills_cmd,
     "ticket": _ticket_cmd,
     "menu": _menu,
+    "ajustes": _settings_cmd,
     "ayuda": _help,
     "start": _help,
 }

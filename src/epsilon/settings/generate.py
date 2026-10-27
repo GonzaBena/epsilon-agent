@@ -75,7 +75,7 @@ def comment(s: Setting) -> str:
     if rng := _range(s):
         text += f" ({rng})"
     if s.loosens:
-        text += f". Pide reinicio: {config.LOOSENS_REASON}"
+        text += ". Pide reinicio (afloja una protección)."
     elif not s.live:
         text += f". Pide reinicio: {_one_line(s.reason)}" if s.reason else ". Pide reinicio"
     return text

@@ -11,6 +11,7 @@ import socket
 import tempfile
 import threading
 import time
+from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -25,7 +26,7 @@ from epsilon.ai import chat, favorites, llm, permissions, providers, usage
 from epsilon.connectors import bridge, buttons as connector_buttons, manager as connector_manager, store as connector_store
 from epsilon.data import activity, changes, conversations, library, notes
 from epsilon.routines import rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
-from epsilon.settings import checks, config
+from epsilon.settings import checks, config, editor, store as settings_store
 from epsilon.skills import importer as skill_importer, starter as skill_starter, store as skill_store
 from epsilon.utils import clock, multimedia
 from epsilon.voice import tts, transcribe
@@ -151,6 +152,10 @@ PLUGIN_WARNING = (
 
 class UndoIn(BaseModel):
     confirmed: bool = False  # la persona vio qué va a volver a decir la línea (lo exige el servidor, no solo la página)
+
+
+class OpenSettingsIn(BaseModel):
+    which: Literal["settings", "default"]  # nunca una ruta: solo uno de los dos archivos
 
 
 class RevealIn(BaseModel):
@@ -1188,6 +1193,17 @@ def create_app() -> FastAPI:
             "model": llm.default_model(),  # el predeterminado («proveedor:modelo»), para el botón del encabezado
             "thinking": thinking_supported(),  # si el modelo del chat usa el esfuerzo de razonamiento
             "ai_ready": ai_ready(),  # si un chat nuevo puede arrancar con IA
+            "max_upload_mb": config.number("WEB_MAX_UPLOAD_MB"),  # el tope que la página revisa antes de subir
+            "settings_file": settings_file_state(),
+        }
+
+    def settings_file_state() -> dict:
+        # Los avisos nunca llevan el valor (podría ser una clave): solo el nombre y qué pasa.
+        return {
+            "issues": [{"name": i.name, "message": i.message} for i in settings_store.issues()],
+            "broken": settings_store.broken(),
+            "leftover_env": settings_store.leftover_env(),
+            "can_open": editor.can_open(),
         }
 
     def ai_ready() -> bool:
@@ -1350,6 +1366,15 @@ def create_app() -> FastAPI:
             return {"favorites": favorites.save(body.favorites)}
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
+
+    @app.post("/api/config/open")
+    def open_settings_file(body: OpenSettingsIn):
+        """Abre settings.json (o los valores de fábrica) en el editor de texto de la PC."""
+        try:
+            editor.open_file(body.which)
+        except OSError as e:
+            raise HTTPException(409, config.redact(str(e))) from None
+        return {"ok": True}
 
     @app.post("/api/voice/delete-model")
     def delete_voice_model():

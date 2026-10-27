@@ -109,3 +109,35 @@ def test_the_switch_has_a_style_with_focus_and_reduced_motion():
 
     for needed in (".switch {", '.switch[aria-checked="true"]', ".switch:focus-visible", "prefers-reduced-motion"):
         assert needed in css, needed
+
+
+# --- El archivo de ajustes ---------------------------------------------------
+
+
+def _code(script):
+    """El script sin sus comentarios (la cabecera de config.js nombra innerHTML para prohibirlo)."""
+    return "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("//"))
+
+
+def test_config_page_has_the_buttons_and_uses_textcontent():
+    html, script = page("config.html"), page("config.js")
+    assert 'id="open-settings"' in html and 'id="open-defaults"' in html and 'id="settings-issues"' in html
+    for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert forbidden not in _code(script), forbidden
+    assert "Abrir settings.json" in html and "Ver valores por defecto" in html
+
+
+def test_config_page_draws_the_settings_file_state():
+    script = page("config.js")
+    assert '"/api/config/open"' in script and "state.settings_file" in script
+    assert "${issue.name}: ${issue.message}" in script  # cada aviso como «nombre: motivo»
+    assert "Estas líneas del .env ya no se usan (ahora viven en settings.json); podés borrarlas:" in script
+    assert "saveButton.disabled = locks.broken" in script  # archivo roto: no se guarda desde la página
+    assert "viene del entorno del servicio" in script.lower()
+    assert "ahora ${item.now} → al reiniciar ${item.next}" in script
+
+
+def test_chat_takes_the_upload_limit_from_the_server():
+    script = page("app.js")
+    assert "state.max_upload_mb" in script and "let maxUploadMb = 20;" in script
+    assert "20 * 1024 * 1024" not in script and "más de 20 MB" not in script

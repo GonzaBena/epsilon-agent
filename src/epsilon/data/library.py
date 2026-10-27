@@ -7,6 +7,7 @@ import subprocess
 from epsilon.data import notes, todo
 from epsilon.memory import store as memory
 from epsilon.plugins import channels as plugin_channels
+from epsilon.settings import store as settings_store
 from epsilon.skills import store as skill_store
 
 # La biblioteca es la vista de SOLO LECTURA de lo que hay en DATA_DIR: notas, archivos y tickets.
@@ -26,12 +27,19 @@ KINDS = ("note", "file", "ticket")
 # Canales). Se sigue pudiendo abrir por su ruta (resolve), por ejemplo al mencionarlo con @.
 SYSTEM_FOLDERS = {notes.SUMMARIES_DIR, skill_store.DIR, plugin_channels.FOLDER}
 SYSTEM_NOTES = {f"{memory.NAME}.md", f"{todo.NAME}.md"}
+# Los archivos de ajustes (en la raíz): ni se listan ni se abren desde acá. Se editan con /ajustes o
+# desde Configuración, que los abre en tu editor.
+SYSTEM_FILES = {settings_store.SETTINGS_FILE, settings_store.DEFAULT_FILE, settings_store.SCHEMA_FILE}
+
+
+def _is_settings(rel: Path) -> bool:
+    return len(rel.parts) == 1 and rel.name in SYSTEM_FILES
 
 
 def _is_system(rel: Path) -> bool:
     if any(part.startswith(".") for part in rel.parts):  # ocultos
         return True
-    return rel.parts[0] in SYSTEM_FOLDERS or (len(rel.parts) == 1 and rel.name in SYSTEM_NOTES)
+    return rel.parts[0] in SYSTEM_FOLDERS or (len(rel.parts) == 1 and rel.name in SYSTEM_NOTES) or _is_settings(rel)
 
 # Tope de texto que se manda al abrir una nota: una nota enorme no tiene que trabar la página.
 MAX_TEXT_CHARS = 200_000
@@ -109,7 +117,8 @@ def resolve(rel: str) -> Path:
     Pasa por safe_path (nada fuera de DATA_DIR) y por las mismas reglas que el listado."""
     path = notes.safe_path(rel)
     shown = path.is_file() and path.suffix.lower() in notes.summarizable_ext | {".csv"}
-    if not shown or path.relative_to(notes.DATA_DIR).parts[0] == notes.SUMMARIES_DIR:
+    rel_path = path.relative_to(notes.DATA_DIR)
+    if not shown or rel_path.parts[0] == notes.SUMMARIES_DIR or _is_settings(rel_path):
         raise ValueError("Ese archivo no existe en la biblioteca")
     return path
 

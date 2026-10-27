@@ -154,6 +154,18 @@ def block_real_systemctl(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_editor(monkeypatch):
+    """Ningún test abre un editor de texto ni pregunta cuál hay."""
+    from epsilon.settings import editor
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó lanzar un programa para abrir los ajustes")
+
+    monkeypatch.setattr(editor, "_run", forbidden)
+    monkeypatch.setattr(editor, "_launch", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def block_real_multimedia(monkeypatch):
     """Ningún test toca el volumen ni la música de la máquina de verdad."""
     from epsilon.utils import multimedia

@@ -600,6 +600,13 @@ TOOLS = (
         writes=True,
     ),
     Tool(
+        "/ajustes",
+        name="ajustes",
+        usage="/ajustes [defecto]",
+        help="abrir settings.json en tu editor (con «defecto», los valores de fábrica)",
+        done="",
+    ),
+    Tool(
         "/nuevo",
         name="nuevo",
         menu="Empezar una conversación nueva (lo anterior queda guardado)",

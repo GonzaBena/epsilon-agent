@@ -51,7 +51,7 @@ def test_loosening_comment_says_restart():
 
 def test_comment_says_the_range_or_the_values_and_why_it_restarts():
     s = config.BY_KEY
-    assert generate.comment(s["CHAT_MAX_TOOL_STEPS"]).endswith(f"(entre 1 y 50). Pide reinicio: {config.LOOSENS_REASON}")
+    assert generate.comment(s["CHAT_MAX_TOOL_STEPS"]).endswith("(entre 1 y 50). Pide reinicio (afloja una protección).")
     assert "(valores: desactivado, bajo, medio, alto)" in generate.comment(s["AI_THINKING_EFFORT"])
     assert "(true o false)" in generate.comment(s["VOICE_ENABLED"])
     assert "(lista de sitios)" in generate.comment(s["BROWSER_BLOCKED_SITES"])

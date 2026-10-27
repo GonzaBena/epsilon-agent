@@ -1,3 +1,4 @@
+import json
 import os
 
 import pytest
@@ -343,3 +344,43 @@ def test_config_says_if_a_new_chat_can_start_with_ai(cfg, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY")
     monkeypatch.setenv("AI_MODEL", "ollama:llama3.1:8b")
     assert cfg.get("/api/config").json()["ai_ready"] is True
+
+
+# --- El archivo de ajustes ---------------------------------------------------
+
+
+def test_config_api_reports_issues_without_secret(cfg, tmp_settings):
+    tmp_settings('{"GEMINI_API_KEY": "AIzaSECRETSECRETSECRETSECRET", "chat.max_tool_step": 3}')
+    data = cfg.get("/api/config").json()["settings_file"]
+    assert len(data["issues"]) == 2 and "SECRET" not in json.dumps(data)
+    assert {i["name"] for i in data["issues"]} == {"GEMINI_API_KEY", "chat.max_tool_step"}
+    assert data["broken"] is None and isinstance(data["can_open"], bool)
+    assert data["leftover_env"] == []
+
+
+def test_config_api_reports_a_broken_file(cfg, tmp_settings):
+    tmp_settings('{"user.name": ')
+    assert "línea" in cfg.get("/api/config").json()["settings_file"]["broken"]
+
+
+def test_config_api_says_the_upload_limit(cfg, monkeypatch):
+    monkeypatch.setenv("WEB_MAX_UPLOAD_MB", "7")
+    assert cfg.get("/api/config").json()["max_upload_mb"] == 7
+
+
+def test_open_endpoint(client, monkeypatch):
+    opened = []
+    monkeypatch.setattr(web.editor, "open_file", opened.append)
+    assert client.post("/api/config/open", json={"which": "default"}).json() == {"ok": True}
+    assert client.post("/api/config/open", json={"which": "x"}).status_code == 422
+    assert client.post("/api/config/open", json={"which": "../../etc/passwd"}).status_code == 422
+    assert opened == ["default"]
+
+
+def test_open_endpoint_says_why_it_cannot(client, monkeypatch):
+    def fail(which):
+        raise OSError("Este equipo no tiene un editor de texto para abrir")
+
+    monkeypatch.setattr(web.editor, "open_file", fail)
+    response = client.post("/api/config/open", json={"which": "settings"})
+    assert response.status_code == 409 and "editor" in response.json()["detail"]
