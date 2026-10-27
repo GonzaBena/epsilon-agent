@@ -94,15 +94,24 @@ Todo lo demás vive en `DATA_DIR/settings.json`, un archivo de texto con comenta
 dos archivos que Epsilon regenera solo y no hay que tocar: `settings_default.json` (todos los ajustes con su valor por
 defecto y su explicación) y `settings.schema.json` (para que el editor autocomplete y avise de errores). Para cambiar
 algo: copiá la línea de `settings_default.json` a `settings.json` y editá el valor. Se abre con `/ajustes` o con el botón
-«Abrir settings.json» de Configuración. La primera vez que arranca, Epsilon pasa solo a `settings.json` los ajustes que
-tenías en el `.env`.
+«Abrir settings.json» de Configuración (`/ajustes` es solo de la web; `/ajustes defecto` abre `settings_default.json`).
+La primera vez que arranca, Epsilon pasa solo a `settings.json` los ajustes que tenías en el `.env`. Si borrás
+`settings.json`, en el próximo arranque vuelve a pasar lo que siga escrito en el `.env` (por eso conviene borrar del `.env`
+lo ya pasado: Configuración lista cuáles quedan). Los rangos son más estrictos que antes: un valor del `.env` fuera de
+rango no se pasa (se avisa y rige el valor por defecto).
+
+Una clave (`GEMINI_API_KEY`, un token…) escrita en `settings.json` se ignora y se avisa: las claves van en la pantalla
+de Configuración. Los avisos (clave que no existe, valor inválido, archivo roto) salen en Configuración y en el log
+(solo el nombre y el motivo, nunca el valor).
 
 **Precedencia:** variable de entorno del proceso > `settings.json` > valor por defecto.
 
 **Aplicar cambios.** Un hilo mira el archivo cada 2 s y aplica lo que cambió, sin reiniciar. Los ajustes que AFLOJAN un
 límite (más pasos de herramientas, topes más altos, más sitios permitidos…) piden reiniciar el servicio, salvo que el
 cambio lo ENDUREZCA (`store.tightens`): bajar un tope o bloquear un sitio se aplica al instante, porque nunca da más
-poder. Los pendientes de reinicio aparecen en el aviso de Configuración. Si guardás el archivo roto (una coma de más) con
+poder. Los ajustes que no aflojan nada (nombres, idioma, ciudad…) se aplican al instante. `ai.ollama_url` no tiene lado
+seguro (mandar Ollama a otra máquina podría llevar las charlas a otro lado): cualquier cambio pide reiniciar. Los
+pendientes de reinicio aparecen en el aviso de Configuración. Si guardás el archivo roto (una coma de más) con
 Epsilon andando, se siguen usando los últimos valores buenos y se avisa; al arrancar, un archivo roto se informa con su
 línea. Un valor inválido o fuera de rango se ignora y se avisa, sin tirar el resto.
 
@@ -112,8 +121,12 @@ línea. Un valor inválido o fuera de rango se ignora y se avisa, sin tirar el r
 - Registro: `settings/config.py` (nombre del `.env`, nombre JSON `sección.clave`, tipo, rango, secreto). Se lee siempre con
   `config.value(...)` / `config.number(...)`, nunca con `os.environ` (un test de estructura lo vigila). `config.environ()`
   es lo que reciben los canales y plugins como `env`.
-- `settings/store.py` es el único que escribe `settings.json` (`jsonc.py` lo lee y `editor.py` hace ediciones mínimas sin
-  perder comentarios); `tunables.py` marca cuáles aflojan; `generate.py` arma el default y el schema. Los números sin valor
+- `settings/store.py` es el único que escribe `settings.json` (`store.write` cambia solo las claves tocadas con
+  `jsonc.set_value`/`jsonc.remove`, sin perder comentarios; `jsonc.py` también lo lee). `editor.py` solo lo abre en un
+  editor. `tunables.py` suma los números que antes estaban fijos en el código; `generate.py` arma el default y el schema. Los números sin valor
   por defecto ni valor habitual se omiten de `settings_default.json` pero están en el schema.
-- Plugins: sus ajustes se llaman `plugin.<nombre del plugin>.<clave>` y se migran del `.env` cuando el plugin se registra.
+- Plugins: sus ajustes se llaman `plugin.<nombre del plugin>.<clave en minúsculas>` (`ECO_ARCHIVO` →
+  `plugin.eco.eco_archivo`) y se pasan del `.env` cuando el plugin se registra, UNA vez por clave (quedan anotadas en
+  `DATA_DIR/.settings_plugins.json`): una que borrás de `settings.json` no vuelve. Al registrarse, `settings.json` se
+  vuelve a leer, así sus claves (desconocidas al arrancar) se aplican.
 - `EPSILON_ENV_FILE` sigue sirviendo para probar con otro `.env`.

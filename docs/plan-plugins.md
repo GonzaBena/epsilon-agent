@@ -55,7 +55,7 @@ Epsilon agrega solo `NOMBRE_ENABLED` (el interruptor, «no» por defecto).
 
 Tiene que exponer:
 
-- `is_configured(env) -> bool`: ¿tiene todo lo que necesita? (`env` es `config.environ()`: los ajustes ya resueltos, también los de `settings.json`). Un plugin que lea `os.environ` directo solo ve secretos y arranque; sus ajustes que no son secretos viven en `settings.json` como `plugin.<nombre>.<clave>` (se migran del `.env` al registrarse el plugin).
+- `is_configured(env) -> bool`: ¿tiene todo lo que necesita? (`env` es `config.environ()`: los ajustes ya resueltos, también los de `settings.json`). Un plugin que lea `os.environ` directo solo ve secretos y arranque; sus ajustes que no son secretos viven en `settings.json` como `plugin.<nombre>.<clave en minúsculas>` (se pasan del `.env`, una vez, al registrarse el plugin). Mientras corre, el código del plugin lee esos ajustes con `config.value("ECO_ARCHIVO")` (`from epsilon.settings import config`), nunca con `os.environ`: así ve lo que dice `settings.json` y los cambios en caliente.
 - `run()`: arranca el canal y **bloquea** hasta que termina. Corre en su propio hilo.
 - `stop()`: pide que `run()` termine. Sin `stop` el canal no se podría apagar desde la web (el plugin
   se rechaza al cargarlo).
