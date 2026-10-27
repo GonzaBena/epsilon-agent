@@ -1,6 +1,6 @@
 # Archivo de ajustes propio (`settings.json`, al estilo VS Code)
 
-Fecha: 2026-10-27. Estado: diseño, para revisar.
+Fecha: 2026-10-27. Estado: aprobado.
 
 ## Por qué
 
@@ -83,6 +83,20 @@ un archivo aparte de valores de fábrica para poder volver atrás.
   el prefijo `plugin.<nombre>.` (así nunca chocan con las de Epsilon); los secretos de un plugin siguen en el `.env`.
   Si un plugin aparece después de la migración y su ajuste no secreto está en el `.env`, se copia a `settings.json`
   esa vez, con la misma regla de no pisar. *(Decisión del diseño.)*
+
+### `settings.schema.json` (autocompletado)
+
+- Pedido de la persona: autocompletado de las opciones en el editor. Epsilon genera, junto con
+  `settings_default.json` y desde el mismo registro, un **JSON Schema** (`DATA_DIR/settings.schema.json`): cada clave
+  con su tipo, `description` (la misma explicación que el comentario), `default`, `minimum`/`maximum` y `enum` para los
+  que tienen valores fijos (sí/no, esfuerzo de razonamiento…). `additionalProperties: false`, así el editor marca una
+  clave mal escrita.
+- `settings.json` empieza con `"$schema": "./settings.schema.json"` (lo pone Epsilon al crearlo, y la migración
+  también). Con eso VS Code, y cualquier editor con servidor de JSON (por ejemplo Neovim con `jsonls`), autocompletan y
+  validan. `$schema` es una clave reservada: el lector la ignora y no cuenta como «clave que no existe».
+- Las claves secretas no aparecen en el schema.
+- Detalle a resolver por quien lo construya: VS Code marca los comentarios como error en un `.json` común; ver si
+  alcanza con `"allowComments": true` en el schema o si conviene avisarlo en el comentario de arriba.
 
 ### `settings.json`
 
