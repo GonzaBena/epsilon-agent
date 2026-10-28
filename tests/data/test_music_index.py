@@ -121,3 +121,40 @@ def test_mark_played_without_an_index_does_nothing():
     music_index.mark_played("PLabcdefghij", NOW)
 
     assert music_index.load() == music_index.empty()
+
+
+def big_index(count=24):
+    return {"playlists": [
+        playlist(f"PL{n:010d}", title=f"playlist número {n}", style="rock rápido y bastante largo de describir", uses=["gym", "correr"], energy=4,
+                 artists=["Rammstein", "Metallica", "Slayer", "Megadeth"], played=f"2026-10-{10 + n % 18:02d}T08:00")
+        for n in range(count)
+    ]}
+
+
+def test_view_with_a_limit_drops_artists_then_whole_playlists_but_never_cuts_a_line():
+    index = big_index()
+    full = music_index.view(index, NOW, random.Random(1))
+
+    no_artists = music_index.view(index, NOW, random.Random(1), limit=len(full) - 1)
+    tight = music_index.view(index, NOW, random.Random(1), limit=2000)
+
+    assert "artistas" in full and "artistas" not in no_artists and len(no_artists.splitlines()) == 24  # primero sacó los artistas
+    assert len(tight) <= 2000 and 0 < len(tight.splitlines()) < 24
+    assert all(re.search(r"la pusiste (hoy|ayer|hace \d+ días)$|nunca la pusiste$", line) and "(id: PL" in line for line in tight.splitlines())
+
+
+def test_view_without_a_limit_or_within_it_is_unchanged():
+    index = {"playlists": [playlist(style="rock", uses=["gym"], energy=5)]}
+
+    assert music_index.view(index, NOW) == music_index.view(index, NOW, limit=10_000)
+    assert "artistas: Rammstein" in music_index.view(index, NOW, limit=10_000)
+
+
+def test_view_with_a_limit_keeps_the_ones_that_have_gone_longest_without_playing():
+    index = big_index()
+
+    text = music_index.view(index, NOW, random.Random(1), limit=900)
+
+    full = music_index.view(index, NOW, random.Random(1))
+    ids = lambda t: re.findall(r"\(id: (PL\d+)", t)  # noqa: E731
+    assert 0 < len(ids(text)) < 24 and ids(full)[: len(ids(text))] == ids(text)  # lo que queda es el comienzo: las que hace más que no suenan

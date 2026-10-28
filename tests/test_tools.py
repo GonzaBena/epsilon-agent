@@ -244,3 +244,24 @@ def test_the_help_is_grouped_in_sections_in_order():
 def test_every_section_is_a_known_one():
     for tool in tools.TOOLS:
         assert tool.section in ("", *tools.HELP_SECTIONS), tool.label
+
+
+# --- ítems que se pueden elegir de la salida de una herramienta (rutinas con IA) --------------------------------------
+
+
+def test_items_patterns_extract_the_ids_of_the_real_outputs():
+    playlists = (
+        "- pepito 123 (id: PLgym1234567, 48 canciones): rock; energía 5/5; sirve para: gym; la pusiste hoy\n"
+        "- Celtic (id: PLceltic12345): sin etiquetar; nunca la pusiste"
+    )
+    search = "1. Workout Rock — 50 canciones\n   id: PLrock1234567\n2. Gym Mix\n   id: PLgymmix12345"
+    history = "1. café con jazz — 4 veces\n   id: dQw4w9WgXcQ\n2. lofi — 2 veces\n   id: abc_DEF-123"
+
+    assert tools.items_pattern("musica_playlists").findall(playlists) == ["PLgym1234567", "PLceltic12345"]
+    assert tools.items_pattern("musica_buscar").findall(search) == ["PLrock1234567", "PLgymmix12345"]
+    assert tools.items_pattern("yt_historial").findall(history) == ["dQw4w9WgXcQ", "abc_DEF-123"]
+
+
+def test_tools_without_items_have_no_pattern():
+    for tool_id in ("fecha", "nota", "musica_poner", "volumen", "inventada"):
+        assert tools.items_pattern(tool_id) is None

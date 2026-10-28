@@ -116,23 +116,33 @@ def _ago(played: str, now: datetime) -> str:
     return "la pusiste hoy" if days <= 0 else "la pusiste ayer" if days == 1 else f"la pusiste hace {days} días"
 
 
-def view(index: dict, now: datetime | None = None, rng: random.Random | None = None) -> str:
+def _line(p: dict, now: datetime, artists: bool) -> str:
+    head = f"- {p['title'][:MAX_TITLE]} (id: {p['id']}" + (f", {p['count']} canciones" if p.get("count") else "") + ")"
+    if p.get("style"):
+        head += f": {p['style']}; energía {p.get('energy', '?')}/5; sirve para: {', '.join(p.get('uses') or []) or 'nada en particular'}"
+    else:
+        head += ": sin etiquetar"
+    if artists and p.get("artists"):
+        head += f"; artistas: {', '.join(p['artists'])}"
+    return head + "; " + (_ago(p["played"], now) if p.get("played") else "nunca la pusiste")
+
+
+def view(index: dict, now: datetime | None = None, rng: random.Random | None = None, limit: int | None = None) -> str:
     """El índice como texto para el modelo: una playlist por bloque, con su id para poder ponerla y cuándo se puso por
     última vez. Van ordenadas de la que hace MÁS que no suena (las que nunca sonaron, primero y en orden al azar) a la
     más reciente: así «elegí la primera que encaje» rota sola en vez de poner siempre la misma. Es dato de la persona
-    (y de YouTube), no instrucciones."""
+    (y de YouTube), no instrucciones.
+
+    Con `limit` (caracteres), si el texto no entra se sacan primero los artistas y después se cortan playlists enteras,
+    las más recientes: nunca se corta una línea a la mitad (un id partido no se puede usar)."""
     now = now or datetime.now()
     shuffled = list(index["playlists"])
     (rng or random).shuffle(shuffled)  # el desempate entre las que nunca sonaron (o sonaron el mismo minuto) es al azar
-    lines = []
-    for p in sorted(shuffled, key=lambda p: str(p.get("played") or "")):
-        head = f"- {p['title'][:MAX_TITLE]} (id: {p['id']}" + (f", {p['count']} canciones" if p.get("count") else "") + ")"
-        if p.get("style"):
-            head += f": {p['style']}; energía {p.get('energy', '?')}/5; sirve para: {', '.join(p.get('uses') or []) or 'nada en particular'}"
-        else:
-            head += ": sin etiquetar"
-        if p.get("artists"):
-            head += f"; artistas: {', '.join(p['artists'])}"
-        head += "; " + (_ago(p["played"], now) if p.get("played") else "nunca la pusiste")
-        lines.append(head)
+    ordered = sorted(shuffled, key=lambda p: str(p.get("played") or ""))
+    text = "\n".join(_line(p, now, True) for p in ordered)
+    if limit is None or len(text) <= limit:
+        return text
+    lines = [_line(p, now, False) for p in ordered]
+    while lines and len("\n".join(lines)) > limit:
+        lines.pop()
     return "\n".join(lines)

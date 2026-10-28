@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import re
 from dataclasses import dataclass
 import logging
 
@@ -41,6 +42,7 @@ class Tool:
     section: str = ""  # sección de la ayuda (una de HELP_SECTIONS); vacío = «Otros»
     web: bool = True  # False = la web no lo ofrece ni lo ejecuta (p. ej. /enviar, que solo sirve en Telegram)
     done: str = ""  # lo que hizo, en pasado y en palabras de persona («Guardó una nota»): la página Actividad
+    items: str = ""  # regex con UN grupo que saca de su salida los ítems que se pueden elegir (ids); vacío = no declara ninguno
 
 
 # Las secciones de la ayuda, en orden. Una herramienta sin `section` va en la última.
@@ -449,6 +451,7 @@ TOOLS = (
         ai_name="musica_playlists",
         ai_help="las playlists de la persona en YouTube Music con su id, estilo, energía y para qué sirven (gym, estudiar…), para elegir una por lo que suena y no por el nombre",
         ai_arg="vacío",
+        items=r"\(id: ([A-Za-z0-9_-]{10,64})",
         ai_tips=(
             "Pedido vago («poné música», «algo para el gym»): ELEGÍ vos, no preguntes ni le listes opciones a la persona. "
             "Entre las que encajan (sirve para, estilo, energía, la hora y lo que sepas de sus gustos) tomá la primera de la "
@@ -469,6 +472,7 @@ TOOLS = (
         ai_name="yt_historial",
         ai_help="los videos de YouTube que la persona vio en las últimas semanas (título, veces e id), para poner uno que ya conoce («los videos de café que me gustan»)",
         ai_arg="palabras para filtrar por título (por ejemplo: café); vacío para los más vistos",
+        items=r"id: ([A-Za-z0-9_-]{11})\b",
         ai_tips="elegí uno de la lista y ponelo con poner «video <id>»; contá en una línea cuál y por qué. No lo cites entero ni cuentes qué más viste: es historial privado.",
     ),
     Tool(
@@ -481,6 +485,7 @@ TOOLS = (
         ai_name="musica_buscar",
         ai_help="buscar playlists en YouTube Music y devolver id, título y detalle de las primeras, sin ponerlas",
         ai_arg="qué buscar, en pocas palabras (por ejemplo: workout rock playlist). Para ponerla, poner con «playlist <id>»",
+        items=r"id: ([A-Za-z0-9_-]{10,64})",
     ),
     Tool(
         "/rutina",
@@ -779,6 +784,12 @@ def link_commands() -> list[str]:
 def uses_ai_command(name: str) -> bool:
     """¿Este comando (o alias) llama al modelo? Un nombre desconocido no."""
     return any(tool.uses_ai for tool in TOOLS if name == tool.name or name in tool.aliases)
+
+
+def items_pattern(tool_id: str) -> re.Pattern | None:
+    """El patrón que saca de la salida de una herramienta los ítems que se pueden elegir (None si no declara ninguno)."""
+    found = next((t for t in ai_tools() if ai_id(t) == tool_id and t.items), None)
+    return re.compile(found.items) if found else None
 
 
 def ai_id(tool: Tool) -> str:

@@ -213,3 +213,15 @@ def test_playlists_text_tells_when_each_was_last_played(monkeypatch):
 
     assert "la pusiste hoy" in text and "nunca la pusiste" in text
     assert text.index("Celtic") < text.index("pepito 123")  # la que nunca sonó va antes que la de hoy
+
+
+def test_playlists_text_fits_the_tool_result_cap(monkeypatch):
+    many = [(f"PL{n:010d}", f"playlist número {n}", 30) for n in range(24)]
+    labels = {f"PL{n:010d}": {"estilo": "rock rápido y bastante largo de describir", "usos": ["gym", "correr"], "energia": 4} for n in range(24)}
+    World(monkeypatch, library=many, labels=labels)
+    monkeypatch.setenv("TOOLS_MAX_RESULT_CHARS", "2000")
+
+    text = music.playlists_text(now=NOW)
+
+    assert len(text) <= 2000 and "playlists más" in text
+    assert all(line.endswith(("nunca la pusiste", ")")) or line.startswith(("Tus playlists", "(Hay")) for line in text.splitlines())
