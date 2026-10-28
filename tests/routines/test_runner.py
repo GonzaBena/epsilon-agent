@@ -280,3 +280,100 @@ def test_the_output_of_a_source_step_is_kept_whole_and_the_executor_is_told_the_
 
     assert results[0].text == "x" * 5000 and results[1].text == "5000"  # la fuente no se recorta a MAX_OUTPUT
     assert seen == [{"cap": runner.steps.MAX_SOURCE_OUTPUT}, {}]  # solo la fuente recibe el tope; fecha, no
+
+
+# --- receta vieja: caída a la IA completa -------------------------------------------------------------------------------
+
+from epsilon.routines import store
+
+
+@pytest.fixture
+def saved(quiet):
+    """Una rutina con receta guardada de verdad (para ver que se marca) y un ejecutor de IA que anota lo que corre."""
+    runs = []
+
+    def full(rule, step, outputs):
+        runs.append(step["tool"])
+        return runner.StepResult(True, "Puse algo tranquilo")
+
+    runner.set_ai_executor(full)
+    recipe = [{"tool": "fecha", "args": "", "kind": "fijo"}, {"tool": "volumen", "args": "15", "kind": "fijo"}]
+    rule = store.add(__import__("epsilon.routines.rules", fromlist=["build_ai"]).build_ai(
+        "Despertador", "08:00", "Poné música", {"fecha": "green", "volumen": "green"}, __import__("datetime").datetime(2026, 10, 22, 14, 30), {"fecha", "volumen"}, recipe=recipe,
+    ))
+    yield rule, runs
+    runner.set_ai_executor(None)
+
+
+def test_a_failing_fixed_step_falls_back_to_one_full_ai_run_and_marks_stale(quiet, saved):
+    sent, calls = quiet
+    rule, runs = saved
+    runner.set_executor(lambda tool, args: runner.StepResult(tool != "volumen", "el volumen no responde"))
+
+    runner.run_job(rule)
+
+    assert runs == ["ia"]  # una corrida de la IA completa
+    assert store.rules()[0]["ai"]["stale"] is True
+    assert len(sent) == 1 and "quedó vieja" in sent[0] and "paso 2" in sent[0] and "el volumen no responde" in sent[0] and "Puse algo tranquilo" in sent[0]
+    assert "Volvé a aprenderla" in sent[0]
+
+
+def test_the_fallback_runs_at_most_once(quiet, saved):
+    sent, _ = quiet
+    rule, _runs = saved
+    attempts = []
+    runner.set_executor(lambda tool, args: runner.StepResult(False, "caído"))
+    runner.set_ai_executor(lambda r, step, outputs: (attempts.append(1), runner.StepResult(False, "tampoco anda"))[1])
+
+    runner.run_job(rule)
+
+    assert attempts == [1] and len(sent) == 1 and "tampoco anda" in sent[0] and "quedó vieja" not in sent[0]
+    assert store.rules()[0]["ai"]["stale"] is True  # la receta igual se marca
+
+
+def test_a_stale_rule_runs_full_ai_until_relearned(quiet, saved):
+    _, calls = quiet
+    rule, runs = saved
+    store.mark_stale(rule["id"], True)
+
+    runner.run_job(store.rules()[0])
+
+    assert runs == ["ia"] and calls == []  # ni un paso fijo de la receta
+
+
+def test_a_rule_without_a_recipe_does_not_fall_back(quiet):
+    sent, _ = quiet
+    attempts = []
+    runner.set_ai_executor(lambda r, step, outputs: (attempts.append(1), runner.StepResult(False, "sin conexión"))[1])
+    try:
+        runner.run_job(ai_rule())
+    finally:
+        runner.set_ai_executor(None)
+
+    assert attempts == [1] and len(sent) == 1 and "quedó vieja" not in sent[0] and "sin conexión" in sent[0]
+
+
+def test_a_budget_failure_does_not_mark_the_recipe_stale_or_retry(quiet, saved):
+    sent, _ = quiet
+    rule, runs = saved
+    runner.set_executor(lambda tool, args, **extra: runner.StepResult(True, "ok"))
+    runner.set_ai_executor(lambda r, step, outputs: runner.StepResult(False, "llegó a su tope de hoy", fatal=True))
+    rule = {**rule, "steps": [{"tool": "elegir", "args": "x", "source": 1, "source_tool": "fecha"}], "ai": {**rule["ai"]}}
+    rule["steps"].insert(0, {"tool": "fecha", "args": ""})
+
+    runner.run_job(rule)
+
+    assert store.rules()[0]["ai"]["stale"] is False and len(sent) == 1 and "tope de hoy" in sent[0] and "quedó vieja" not in sent[0]
+
+
+def test_a_test_run_without_an_id_falls_back_without_touching_the_store(quiet):
+    sent, _ = quiet
+    runner.set_executor(lambda tool, args: runner.StepResult(False, "caído"))
+    runner.set_ai_executor(lambda r, step, outputs: runner.StepResult(True, "lo hizo la IA"))
+    try:
+        r = {"name": "Prueba", "steps": [{"tool": "fecha", "args": ""}], "when": {"kind": "daily"}, "ai": {"instruction": "x", "recipe": True, "stale": False, "tools": {"fecha": "green"}}}
+        runner.run_job(r)
+    finally:
+        runner.set_ai_executor(None)
+
+    assert store.rules() == [] and "quedó vieja" in sent[0]

@@ -1529,7 +1529,7 @@ def run_choose(rule: dict, step: dict, outputs: dict[int, str]) -> routine_runne
     if len(options) == 1:  # no hay nada que decidir
         return routine_runner.StepResult(True, options[0])
     if problem := _ai_budget_problem(rule):
-        return routine_runner.StepResult(False, problem)
+        return routine_runner.StepResult(False, problem, fatal=True)
     cid = f"rutina:{rule.get('id', 'prueba')}:{next(_runs)}"
     parts, asked = _choose_prompt(rule, step, options_text)
     picked = None
@@ -1559,7 +1559,7 @@ def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | N
     if step["tool"] != "ia":
         return routine_runner.StepResult(False, f"El paso «{step['tool']}» no se puede correr.")
     if problem := _ai_budget_problem(rule):
-        return routine_runner.StepResult(False, problem)
+        return routine_runner.StepResult(False, problem, fatal=True)
     green = {tool_id for tool_id, state in rule["ai"]["tools"].items() if state == "green"}
     if step.get("only"):
         green &= set(step["only"])

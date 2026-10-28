@@ -6,7 +6,7 @@ import threading
 import time
 
 from epsilon.data import activity, notes
-from epsilon.routines import notify, steps
+from epsilon.routines import notify, steps, store
 from epsilon.settings import config
 
 # Ejecuta la cadena de pasos de UNA rutina, sin modelo. Corre en su propio hilo (nunca en el del reloj), una a la vez por
@@ -31,6 +31,7 @@ _clock = time.monotonic  # aparte para que los tests lo reemplacen
 class StepResult:
     ok: bool
     text: str
+    fatal: bool = False  # falló por algo que repetir con la IA no arregla (sin precio del modelo, tope diario): no hay respaldo
 
 
 def set_executor(fn: Callable[[str, str], StepResult] | None) -> None:
@@ -134,7 +135,7 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
         else:
             activity.begin()
             result = _step(rule, step, outputs, trigger, steps.MAX_SOURCE_OUTPUT if number in sources else None)
-        result = StepResult(result.ok, config.redact(result.text)[:steps.MAX_SOURCE_OUTPUT if number in sources else steps.MAX_OUTPUT])
+        result = StepResult(result.ok, config.redact(result.text)[:steps.MAX_SOURCE_OUTPUT if number in sources else steps.MAX_OUTPUT], result.fatal)
         outputs[number] = result.text
         results.append(result)
         log(rule_id, f"paso {number} {step['tool']} {'ok' if result.ok else 'falló'}", result.text)
@@ -158,18 +159,60 @@ def describe_failure(rule: dict, number: int, result: StepResult) -> str:
     return f"No pude cumplir la rutina {rule.get('id', '')} «{rule.get('name', '')}» (paso {number}, {step['tool']}): {result.text}"
 
 
+def _live_recipe(rule: dict) -> bool:
+    """¿Esta rutina corre una receta (confirmada y no vieja)? Una vieja o sin receta corre la IA completa."""
+    ai = rule.get("ai")
+    return isinstance(ai, dict) and bool(ai.get("recipe")) and not ai.get("stale")
+
+
+def _full_ai(rule: dict) -> dict:
+    """La misma rutina corriendo la IA completa (un solo paso `ia` con la instrucción), sin su receta."""
+    return {**rule, "steps": [{"tool": "ia", "args": rule["ai"]["instruction"]}]}
+
+
+def _summary(rule: dict, result: StepResult) -> str:
+    return " ".join(result.text.split())[:NOTICE_CHARS]
+
+
 def run_job(rule: dict, trigger: str = "") -> None:
-    """Una ejecución completa: la cadena y, si falló, el aviso. Libera la marca de «en curso» al terminar."""
+    """Una ejecución completa: la cadena y, si falló, el aviso. Libera la marca de «en curso» al terminar.
+
+    Una rutina con IA: si su receta falla en un paso, esa vez se cae UNA sola vez a la IA completa, la receta queda marcada
+    como vieja (hasta que la persona confirme una nueva corre la IA completa) y se avisa. Si la IA completa también falla,
+    se avisa el error y no se reintenta."""
     try:
+        if isinstance(rule.get("ai"), dict) and rule["ai"].get("recipe") and rule["ai"].get("stale"):
+            rule = _full_ai(rule)
         results = run_chain(rule, trigger)
         if results and not results[-1].ok:
-            _tell(describe_failure(rule, len(results), results[-1]), rule.get("id"))
+            if _live_recipe(rule) and not results[-1].fatal:
+                _fall_back(rule, trigger, len(results), results[-1])
+            else:
+                _tell(describe_failure(rule, len(results), results[-1]), rule.get("id"))
         elif results and rule.get("ai"):  # una rutina con IA cuenta en una línea qué hizo (nadie la está mirando)
-            line = " ".join(results[-1].text.split())[:NOTICE_CHARS]
-            _tell(f"🤖 {rule.get('name') or rule.get('id')}: {line}", rule.get("id"))
+            _tell(f"🤖 {rule.get('name') or rule.get('id')}: {_summary(rule, results[-1])}", rule.get("id"))
     finally:
         with _guard:
             _running.discard(rule.get("id"))
+
+
+def _fall_back(rule: dict, trigger: str, number: int, failed: StepResult) -> None:
+    """Falló un paso de la receta: marca la receta como vieja y esta vez lo hace la IA completa (una sola vez)."""
+    name, rule_id = rule.get("name") or rule.get("id"), rule.get("id")
+    if isinstance(rule_id, int):
+        store.mark_stale(rule_id, True)
+    log(rule_id, "receta vieja", f"paso {number} falló: {failed.text}")
+    full = _full_ai(rule)
+    results = run_chain(full, trigger)
+    if not results or not results[-1].ok:
+        _tell(describe_failure(full, len(results) or 1, results[-1] if results else failed), rule_id)
+        return
+    reason = " ".join(failed.text.split())[:NOTICE_CHARS]
+    _tell(
+        f"La receta de «{name}» quedó vieja (paso {number} falló: {reason}); esta vez lo hizo la IA: {_summary(rule, results[-1])}. "
+        "Volvé a aprenderla desde Rutinas.",
+        rule_id,
+    )
 
 
 def _launch(job: Callable[[], None]) -> None:
