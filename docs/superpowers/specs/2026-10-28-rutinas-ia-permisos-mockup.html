@@ -1,0 +1,68 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Maqueta: permisos de una rutina con IA</title><style>body{font-family:system-ui,sans-serif;margin:24px;max-width:820px}.mockup{border:1px solid #8884;border-radius:10px;overflow:hidden}.mockup-header{padding:10px 14px;background:#8881;font-weight:600}.mockup-body{padding:14px}.subtitle{opacity:.7}</style></head><body><h2>Permisos de la rutina (B con sugeridas en ámbar)</h2>
+<p class="subtitle">Tocá los botones: sugerida (ámbar) → verde → rojo → normal. Las privadas o que escriben nunca arrancan sugeridas.</p>
+
+<style>
+  .rt { font-size: 14px; max-width: 760px; }
+  .rt .field { border: 1px solid #8884; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .rt .field small { opacity: .65; display: block; margin-bottom: 4px; }
+  .rt .grp { margin: 12px 0 6px; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
+  .rt .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+  .rt .tool { border: 2px solid #8886; border-radius: 8px; padding: 9px 10px; cursor: pointer; user-select: none; background: transparent; color: inherit; text-align: left; font: inherit; }
+  .rt .tool b { display: block; font-size: 13px; }
+  .rt .tool span { font-size: 11px; opacity: .75; }
+  .rt .tool[data-s="ok"]  { border-color: #2e9d57; background: #2e9d5733; }
+  .rt .tool[data-s="no"]  { border-color: #d64545; background: #d6454533; }
+  .rt .tool[data-s="sug"] { border-color: #e8960c; border-style: dashed; background: #e8960c26; }
+  .rt .tool[data-s="ok"]::after  { content: "  ✓ permitida"; font-size: 11px; color: #2e9d57; }
+  .rt .tool[data-s="no"]::after  { content: "  ✕ bloqueada"; font-size: 11px; color: #d64545; }
+  .rt .tool[data-s="sug"]::after { content: "  ✦ sugerida"; font-size: 11px; color: #e8960c; }
+  .rt .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; margin: 8px 0 4px; }
+  .rt .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; border: 2px solid #8886; vertical-align: -1px; }
+  .rt .foot { margin-top: 12px; font-size: 12px; opacity: .8; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Nueva rutina con IA</div>
+  <div class="mockup-body rt">
+    <div class="field"><small>Nombre</small>Despertador</div>
+    <div class="field"><small>Cuándo</small>todos los días 08:00</div>
+    <div class="field"><small>Qué le pedís a la IA</small>Poné música para despertarme</div>
+    <p class="foot" style="margin:0 0 6px">✦ Epsilon marcó como <b>sugeridas</b> las que probablemente hagan falta. No quedan permitidas hasta que las confirmes.</p>
+
+    <div class="legend">
+      <span><span class="dot" style="border-color:#e8960c;border-style:dashed;background:#e8960c26"></span>sugerida</span>
+      <span><span class="dot" style="border-color:#2e9d57;background:#2e9d5733"></span>verde: permitida</span>
+      <span><span class="dot" style="border-color:#d64545;background:#d6454533"></span>rojo: bloqueada</span>
+      <span><span class="dot"></span>normal: no se usaría</span>
+    </div>
+
+    <div class="grp">Música</div>
+    <div class="grid">
+      <button class="tool" data-s="sug" onclick="cyc(this)"><b>Tus playlists</b><span>estilo y cuándo se pusieron</span></button>
+      <button class="tool" data-s="sug" onclick="cyc(this)"><b>Poner música</b><span>playlist, canciones o video</span></button>
+      <button class="tool" data-s="sug" onclick="cyc(this)"><b>Buscar playlists</b><span>públicas en YouTube Music</span></button>
+      <button class="tool" data-s="n" onclick="cyc(this)"><b>Historial de YouTube</b><span>videos que viste (privado)</span></button>
+    </div>
+    <div class="grp">PC</div>
+    <div class="grid">
+      <button class="tool" data-s="sug" onclick="cyc(this)"><b>Volumen</b><span>subir, bajar, silenciar</span></button>
+      <button class="tool" data-s="n" onclick="cyc(this)"><b>Controlar el reproductor</b><span>pausa, siguiente…</span></button>
+      <button class="tool" data-s="n" onclick="cyc(this)"><b>Ventanas abiertas</b><span>títulos (privado)</span></button>
+    </div>
+    <div class="grp">Datos y notas</div>
+    <div class="grid">
+      <button class="tool" data-s="sug" onclick="cyc(this)"><b>Fecha y hora</b><span>para saber que es de mañana</span></button>
+      <button class="tool" data-s="n" onclick="cyc(this)"><b>Clima</b><span></span></button>
+      <button class="tool" data-s="n" onclick="cyc(this)"><b>Leer notas</b><span></span></button>
+      <button class="tool" data-s="n" onclick="cyc(this)"><b>Guardar una nota</b><span>escribe</span></button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function cyc(el) {
+    var next = { n: 'ok', sug: 'ok', ok: 'no', no: 'n' };
+    el.setAttribute('data-s', next[el.getAttribute('data-s')]);
+  }
+</script>
+</body></html>
