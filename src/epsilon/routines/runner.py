@@ -154,6 +154,22 @@ def _routine_label(rule: dict) -> str:
     return f"{name} (prueba)" if "id" not in rule or rule.get("id") == "prueba" else name
 
 
+_told_fatal: set[tuple] = set()  # (rutina, día, motivo) ya avisados: un problema de presupuesto se avisa una vez por día
+
+
+def _tell_failure(rule: dict, number: int, result: StepResult) -> None:
+    """El aviso de un fallo. Un fallo de presupuesto (sin precio del modelo, tope diario) vuelve a pasar en cada disparo hasta
+    que cambie el día o se arregle: se avisa UNA vez por día y por motivo (el resto queda en el registro)."""
+    rule_id = rule.get("id")
+    if result.fatal:
+        key = (rule_id, datetime.now().date().isoformat(), result.text)
+        if key in _told_fatal:
+            log(rule_id, "aviso repetido omitido", result.text)
+            return
+        _told_fatal.add(key)
+    _tell(describe_failure(rule, number, result), rule_id)
+
+
 def describe_failure(rule: dict, number: int, result: StepResult) -> str:
     step = rule["steps"][number - 1]
     return f"No pude cumplir la rutina {rule.get('id', '')} «{rule.get('name', '')}» (paso {number}, {step['tool']}): {result.text}"
@@ -188,7 +204,7 @@ def run_job(rule: dict, trigger: str = "") -> None:
             if _live_recipe(rule) and not results[-1].fatal:
                 _fall_back(rule, trigger, len(results), results[-1])
             else:
-                _tell(describe_failure(rule, len(results), results[-1]), rule.get("id"))
+                _tell_failure(rule, len(results), results[-1])
         elif results and rule.get("ai"):  # una rutina con IA cuenta en una línea qué hizo (nadie la está mirando)
             _tell(f"🤖 {rule.get('name') or rule.get('id')}: {_summary(rule, results[-1])}", rule.get("id"))
     finally:
@@ -205,7 +221,7 @@ def _fall_back(rule: dict, trigger: str, number: int, failed: StepResult) -> Non
     full = _full_ai(rule)
     results = run_chain(full, trigger)
     if not results or not results[-1].ok:
-        _tell(describe_failure(full, len(results) or 1, results[-1] if results else failed), rule_id)
+        _tell_failure(full, len(results) or 1, results[-1] if results else failed)
         return
     reason = " ".join(failed.text.split())[:NOTICE_CHARS]
     _tell(

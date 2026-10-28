@@ -15,6 +15,7 @@ def quiet(tmp_path, monkeypatch):
     monkeypatch.setattr(notify, "_notify_send", sent.append)
     monkeypatch.setattr(runner, "_launch", lambda job: job())
     monkeypatch.setattr(runner, "_running", set())
+    monkeypatch.setattr(runner, "_told_fatal", set())
     runner._stop.clear()
 
     def executor(tool, args):
@@ -377,3 +378,60 @@ def test_a_test_run_without_an_id_falls_back_without_touching_the_store(quiet):
         runner.set_ai_executor(None)
 
     assert store.rules() == [] and "quedó vieja" in sent[0]
+
+
+# --- avisos de presupuesto: una vez por día -----------------------------------------------------------------------------
+
+
+def over_budget(quiet_sent):
+    runner.set_ai_executor(lambda r, step, outputs: runner.StepResult(False, "llegó a su tope de hoy", fatal=True))
+
+
+def test_a_budget_failure_is_told_once_per_day_and_rule_but_logged_every_time(quiet):
+    sent, _ = quiet
+    over_budget(sent)
+    try:
+        for _ in range(3):
+            runner.run_job(ai_rule())
+        runner.run_job({**ai_rule(), "id": 9})  # otra rutina: su propio aviso
+    finally:
+        runner.set_ai_executor(None)
+
+    assert len(sent) == 2 and "tope de hoy" in sent[0]
+    assert log().count("aviso repetido omitido") == 2
+
+
+def test_the_budget_notice_comes_back_on_a_new_day(quiet, monkeypatch):
+    from datetime import datetime as real
+
+    sent, _ = quiet
+    today = {"now": real(2026, 10, 28, 8, 0)}
+
+    class Clock(real):
+        @classmethod
+        def now(cls, tz=None):
+            return today["now"]
+
+    monkeypatch.setattr(runner, "datetime", Clock)
+    over_budget(sent)
+    try:
+        runner.run_job(ai_rule())
+        runner.run_job(ai_rule())
+        today["now"] = real(2026, 10, 29, 8, 0)
+        runner.run_job(ai_rule())
+    finally:
+        runner.set_ai_executor(None)
+
+    assert len(sent) == 2
+
+
+def test_other_failures_are_always_told(quiet):
+    sent, _ = quiet
+    runner.set_ai_executor(lambda r, step, outputs: runner.StepResult(False, "sin conexión"))
+    try:
+        for _ in range(3):
+            runner.run_job(ai_rule())
+    finally:
+        runner.set_ai_executor(None)
+
+    assert len(sent) == 3
