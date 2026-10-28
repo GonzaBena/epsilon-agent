@@ -326,3 +326,73 @@ def test_view_of_a_rule_with_a_broken_ai_block_raises_like_any_broken_rule():
 
     with pytest.raises((KeyError, TypeError, ValueError)):
         rules.view(rule)  # la página la omite (web.routines_view); no la tira
+
+
+# --- receta confirmada -------------------------------------------------------------------------------------------
+
+RECIPE_KNOWN = {"musica_poner", "musica_playlists", "fecha", "nota", "nav_buscar"}
+RECIPE_TOOLS = {"musica_poner": "green", "musica_playlists": "green", "fecha": "green", "nota": "red", "nav_buscar": "green"}
+
+
+def recipe_rule(recipe, tools=None, selectable=lambda tool_id: tool_id == "musica_playlists"):
+    return rules.build_ai("Despertador", "08:00", "Poné música", tools or RECIPE_TOOLS, NOW, RECIPE_KNOWN, recipe=recipe, selectable=selectable)
+
+
+GOOD = [
+    {"tool": "musica_playlists", "args": "", "kind": "fijo"},
+    {"tool": "elegir", "args": "x", "kind": "elegir", "source": 1, "source_tool": "musica_playlists"},
+    {"tool": "musica_poner", "args": "playlist {{paso 2}}", "kind": "fijo"},
+]
+
+
+def test_recipe_is_saved_as_plain_steps_and_marks_the_rule():
+    rule = recipe_rule(GOOD)
+
+    assert [s["tool"] for s in rule["steps"]] == ["musica_playlists", "elegir", "musica_poner"]
+    assert all(not {"kind", "decision", "text"} & set(s) for s in rule["steps"])
+    assert rule["steps"][1]["args"] == "Poné música" and rule["ai"]["recipe"] is True and rule["ai"]["stale"] is False
+
+
+def test_recipe_with_a_non_green_tool_is_rejected():
+    with pytest.raises(ValueError, match="no está en verde"):
+        recipe_rule([*GOOD, {"tool": "nota", "args": "hola", "kind": "fijo"}])
+    with pytest.raises(ValueError, match="no está en verde"):
+        recipe_rule([{"tool": "fecha", "args": "", "kind": "fijo"}, {"tool": "ia", "args": "x", "kind": "fijo", "only": ["nota"]}])
+
+
+def test_free_step_without_a_decision_is_rejected():
+    with pytest.raises(ValueError, match="Decidí qué hacer con el paso 1"):
+        recipe_rule([{"tool": "nav_buscar", "args": "lofi", "kind": "libre"}])
+
+
+def test_free_step_decided_fixed_is_a_plain_step():
+    rule = recipe_rule([{"tool": "nav_buscar", "args": "lofi", "kind": "libre", "decision": "fijo"}])
+
+    assert rule["steps"] == [{"tool": "nav_buscar", "args": "lofi"}]
+
+
+def test_free_step_decided_ia_becomes_an_ia_step_with_only():
+    rule = recipe_rule([{"tool": "nav_buscar", "args": "lofi", "kind": "libre", "decision": "ia"}])
+
+    assert rule["steps"] == [{"tool": "ia", "args": "Poné música", "only": ["nav_buscar"]}]
+
+
+def test_choose_step_needs_a_source_that_declares_items():
+    with pytest.raises(ValueError, match="no ofrece opciones"):
+        recipe_rule(GOOD, selectable=lambda tool_id: False)
+    with pytest.raises(ValueError, match="no es anterior"):
+        recipe_rule([{"tool": "elegir", "args": "x", "kind": "elegir", "source": 1, "source_tool": "musica_playlists"}])
+    with pytest.raises(ValueError, match="es otro"):
+        recipe_rule([{"tool": "fecha", "args": "", "kind": "fijo"}, *GOOD[1:]])
+
+
+def test_an_unknown_kind_or_a_non_dict_step_is_rejected():
+    with pytest.raises(ValueError, match="no existe"):
+        recipe_rule([{"tool": "fecha", "args": "", "kind": "magia"}])
+    with pytest.raises(ValueError, match="no se entiende"):
+        recipe_rule(["fecha"])
+
+
+def test_a_recipe_longer_than_the_step_limit_is_rejected():
+    with pytest.raises(ValueError, match="hasta"):
+        recipe_rule([{"tool": "fecha", "args": "", "kind": "fijo"}] * 11)

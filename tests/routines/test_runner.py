@@ -191,7 +191,7 @@ def test_ia_step_without_an_ai_executor_fails_cleanly(quiet):
 
 
 def test_ia_step_goes_to_the_ai_executor_with_the_rule_and_earlier_outputs(quiet, ai_executor):
-    results = runner.run_chain(rule(("volumen", "15"), ("ia", ""), id=3, ai={"instruction": "x", "tools": {}}))
+    results = runner.run_chain(rule(("volumen", "15"), ("ia", ""), id=3, ai={"instruction": "x", "tools": {"volumen": "green"}}))
 
     assert [r.ok for r in results] == [True, True]
     assert ai_executor == [(3, "ia", {1: "hecho volumen 15"})]
@@ -231,3 +231,29 @@ def test_a_failed_ai_step_sends_the_failure_notice_not_the_summary(quiet):
         runner.set_ai_executor(None)
 
     assert len(sent) == 1 and "tope de hoy" in sent[0] and "paso 1" in sent[0]
+
+
+def test_hand_edited_recipe_with_a_non_green_tool_fails_at_run_time(quiet):
+    sent, calls = quiet
+    edited = rule(("fecha", ""), ("musica_poner", "playlist PLabcdefghij"), id=4, ai={"instruction": "x", "tools": {"fecha": "green", "musica_poner": "red"}})
+
+    runner.run_job(edited)
+
+    assert calls == [("fecha", "")]  # la roja no corrió
+    assert len(sent) == 1 and "musica_poner" in sent[0] and "no está en verde" in sent[0]
+
+
+def test_a_tool_missing_from_the_ai_block_or_a_broken_block_does_not_run(quiet):
+    _, calls = quiet
+
+    for broken in ({"instruction": "x"}, {"instruction": "x", "tools": "roto"}, "roto"):
+        assert [r.ok for r in runner.run_chain(rule(("fecha", ""), ai=broken))] == [False]
+    assert calls == []
+
+
+def test_local_steps_run_in_ai_rules_without_being_green(quiet):
+    sent, _ = quiet
+
+    runner.run_chain(rule(("avisar", "hola"), ai={"instruction": "x", "tools": {}}))
+
+    assert sent == ["⏰ hola"]

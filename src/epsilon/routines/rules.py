@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 import re
 import unicodedata
@@ -202,11 +203,41 @@ def _ai_tools(tools: object, known: set[str] | frozenset[str]) -> dict[str, str]
     return clean
 
 
+def _recipe_chain(recipe: list[dict], instruction: str) -> list[dict]:
+    """Los pasos que se guardan a partir de la receta que la persona confirmó (cada paso trae `kind`; un `libre` trae además
+    su `decision`: «fijo» lo deja como está, «ia» lo deja a cargo de la IA, acotada a esa herramienta). ValueError si falta
+    decidir o si el tipo no existe. Lo que se guarda no lleva `kind`, `decision` ni `text`."""
+    chain = []
+    for number, raw in enumerate(recipe, 1):
+        if not isinstance(raw, dict) or not isinstance(raw.get("tool"), str):
+            raise ValueError(f"El paso {number} de la receta no se entiende.")
+        tool, args, kind = raw["tool"], str(raw.get("args", "")), raw.get("kind") or "fijo"
+        if tool == "elegir":  # un paso `elegir` lo es siempre, diga lo que diga `kind`
+            kind = "elegir"
+        if kind == "elegir":
+            chain.append({"tool": "elegir", "args": instruction, "source": raw.get("source"), "source_tool": raw.get("source_tool")})
+        elif kind == "libre":
+            decision = raw.get("decision")
+            if decision == "fijo":
+                chain.append({"tool": tool, "args": args})
+            elif decision == "ia":
+                chain.append({"tool": "ia", "args": instruction, "only": [tool]})
+            else:
+                raise ValueError(f"Decidí qué hacer con el paso {number} ({tool}): dejarlo fijo o dejárselo a la IA.")
+        elif kind == "fijo":
+            chain.append({"tool": tool, "args": args, **({"only": raw["only"]} if tool == "ia" and isinstance(raw.get("only"), list) else {})})
+        else:
+            raise ValueError(f"El paso {number} de la receta es de un tipo que no existe.")
+    return chain
+
+
 def build_ai(name: str, when_text: str, instruction: str, tools: dict[str, str], now: datetime,
-             known: set[str] | frozenset[str], layout: dict | None = None, recipe: list[dict] | None = None) -> dict:
+             known: set[str] | frozenset[str], layout: dict | None = None, recipe: list[dict] | None = None,
+             selectable: Callable[[str], bool] | None = None) -> dict:
     """Una rutina con IA: el cuándo de siempre + una instrucción en lenguaje natural + las herramientas que la IA puede
     usar (`tools`, solo las verdes). Sin `recipe` es un único paso `ia` (la IA completa en cada ejecución); con una receta
-    confirmada son sus pasos. ValueError con el motivo, en español, si algo no vale."""
+    confirmada (ver `_recipe_chain`) son sus pasos. `selectable(tool_id)`: ¿la herramienta declara ítems que se pueden
+    elegir? (un paso `elegir` solo vale sobre una que sí). ValueError con el motivo, en español, si algo no vale."""
     instruction = " ".join(instruction.split())
     if not instruction:
         raise ValueError("Escribí qué le pedís a la IA.")
@@ -218,13 +249,19 @@ def build_ai(name: str, when_text: str, instruction: str, tools: dict[str, str],
     green = {tool_id for tool_id, state in states.items() if state == "green"}
     chain = [{"tool": "ia", "args": instruction}]
     if recipe is not None:
-        chain = [{**s, "tool": s["tool"], "args": str(s.get("args", ""))} for s in recipe if isinstance(s, dict) and isinstance(s.get("tool"), str)]
+        chain = _recipe_chain(recipe, instruction)
         for number, step in enumerate(chain, 1):
             used = [step["tool"]] if step["tool"] not in steps_mod.AI_STEPS and step["tool"] not in steps_mod.LOCAL else []
             used += step.get("only", []) if step["tool"] == "ia" else []
             for tool_id in used:
                 if tool_id not in green:
                     raise ValueError(f"El paso {number} usa «{str(tool_id)[:40]}», que no está en verde en esta rutina.")
+            if step["tool"] == "elegir":
+                source, source_tool = step.get("source"), step.get("source_tool")
+                if isinstance(source, int) and not isinstance(source, bool) and 1 <= source < number and chain[source - 1]["tool"] != source_tool:
+                    raise ValueError(f"El paso {number} dice elegir entre lo de «{str(source_tool)[:40]}», pero el paso {source} es otro.")
+                if source_tool not in green or (selectable is not None and not selectable(source_tool)):
+                    raise ValueError(f"El paso {number} no puede elegir entre lo de «{str(source_tool)[:40]}»: no ofrece opciones para elegir.")
     rule = _assemble(name, parse_when(when_text.strip(), now), chain, now, known, layout, allow_ai=True)
     rule["ai"] = {"instruction": instruction, "tools": states, "recipe": recipe is not None, "stale": False,
                   "spent": {"day": "", "usd": 0.0}}

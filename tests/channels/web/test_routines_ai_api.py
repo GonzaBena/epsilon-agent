@@ -142,3 +142,62 @@ def test_learn_endpoint_needs_confirmation_and_an_instruction_and_saves_nothing(
 
     assert reply.status_code == 200 and reply.json() == {"results": [{"ok": True, "text": "Puse algo"}], "recipe": None}
     assert store.rules() == []
+
+
+# --- guardar la receta confirmada --------------------------------------------------------------------------------
+
+RECIPE = [
+    {"tool": "musica_playlists", "args": "", "kind": "fijo"},
+    {"tool": "elegir", "args": "x", "kind": "elegir", "source": 1, "source_tool": "musica_playlists"},
+    {"tool": "musica_poner", "args": "playlist {{paso 2}}", "kind": "fijo"},
+]
+RECIPE_TOOLS = {"musica_poner": "green", "musica_playlists": "green", "fecha": "green"}
+
+
+def recipe_body(**extra):
+    return ai_body(**{"ai_tools": RECIPE_TOOLS, "recipe": RECIPE, **extra})
+
+
+def test_saving_a_recipe_requires_confirmation(client):
+    assert client.post("/api/routines", json=recipe_body(confirmed=False)).status_code == 422
+    assert store.rules() == []
+
+
+def test_a_confirmed_recipe_is_saved_and_the_list_says_it_has_one(client):
+    reply = client.post("/api/routines", json=recipe_body())
+
+    assert reply.status_code == 200
+    shown = reply.json()["rules"][0]
+    assert [s["tool"] for s in shown["steps"]] == ["musica_playlists", "elegir", "musica_poner"] and shown["ai"]["has_recipe"] is True
+
+
+def test_a_recipe_with_a_non_green_tool_is_rejected_by_the_server(client):
+    reply = client.post("/api/routines", json=recipe_body(ai_tools={"fecha": "green", "musica_playlists": "green", "musica_poner": "red"}))
+
+    assert reply.status_code == 422 and "verde" in reply.json()["detail"] and store.rules() == []
+
+
+def test_a_free_step_without_a_decision_is_rejected_by_the_server(client):
+    free = [{"tool": "fecha", "args": "", "kind": "libre"}]
+
+    assert client.post("/api/routines", json=recipe_body(recipe=free)).status_code == 422
+
+
+def test_editing_the_instruction_drops_the_recipe(client):
+    client.post("/api/routines", json=recipe_body())
+
+    reply = client.put("/api/routines/1/edit", json=ai_body(ai_tools=RECIPE_TOOLS, instruction="Otra cosa"))
+
+    assert reply.status_code == 200
+    shown = reply.json()["rules"][0]
+    assert shown["ai"]["has_recipe"] is False and [s["tool"] for s in shown["steps"]] == ["ia"]
+
+
+def test_renaming_keeps_the_recipe_and_needs_no_confirmation(client):
+    client.post("/api/routines", json=recipe_body())
+
+    reply = client.put("/api/routines/1/edit", json=ai_body(ai_tools=RECIPE_TOOLS, name="Otra", confirmed=False))
+
+    assert reply.status_code == 200
+    shown = reply.json()["rules"][0]
+    assert shown["name"] == "Otra" and shown["ai"]["has_recipe"] is True and len(shown["steps"]) == 3

@@ -74,6 +74,17 @@ def _notice(raw: str, text: str, trigger: str) -> str:
     return f"⚠ {text}" if "{{disparador}}" in raw else f"⚠ {text} ({trigger})"
 
 
+def _not_green(rule: dict, tool: str) -> str | None:
+    """En una rutina con IA solo corre lo que la persona dejó en verde, aunque la receta (que alguien pudo editar a mano en
+    routines.json) diga otra cosa. None si puede correr."""
+    if "ai" not in rule or tool in steps.LOCAL:
+        return None
+    states = rule["ai"].get("tools") if isinstance(rule["ai"], dict) else None
+    if isinstance(states, dict) and states.get(tool) == "green":
+        return None
+    return f"«{tool}» no está en verde en esta rutina: no la corro."
+
+
 def _step(rule: dict, step: dict, outputs: dict[int, str], trigger: str) -> StepResult:
     rule_id = rule.get("id", "prueba")
     tool = step["tool"]
@@ -96,6 +107,8 @@ def _step(rule: dict, step: dict, outputs: dict[int, str], trigger: str) -> Step
         if _stop.wait(int(args)):
             return StepResult(False, "Epsilon se está apagando.")
         return StepResult(True, f"Esperé {int(args)} s.")
+    if (blocked := _not_green(rule, tool)) is not None:
+        return StepResult(False, blocked)
     if _executor is None:
         return StepResult(False, "No hay un ejecutor de herramientas registrado.")
     try:

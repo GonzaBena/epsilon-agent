@@ -198,6 +198,16 @@ class RoutineStepIn(BaseModel):
     args: str = Field(default="", max_length=3000)
 
 
+class RecipeStepIn(BaseModel):
+    """Un paso de la receta que la persona confirmó. `decision` solo importa si `kind` es «libre»: «fijo» o «ia»."""
+    tool: str = Field(max_length=80)
+    args: str = Field(default="", max_length=3000)
+    kind: str = Field(default="fijo", max_length=10)
+    source: int | None = None
+    source_tool: str | None = Field(default=None, max_length=80)
+    decision: str = Field(default="", max_length=10)
+
+
 class RoutineIn(BaseModel):
     """O bien `text` («cuándo | paso > paso», la misma sintaxis que /rutina), o bien la forma estructurada del editor."""
     text: str = Field(default="", max_length=600)
@@ -207,6 +217,7 @@ class RoutineIn(BaseModel):
     layout: dict = Field(default_factory=dict)
     instruction: str = Field(default="", max_length=1000)  # una rutina con IA: lo que se le pide (rules.build_ai la valida)
     ai_tools: dict[str, str] = Field(default_factory=dict, max_length=100)  # herramienta -> «green» o «red»
+    recipe: list[RecipeStepIn] | None = Field(default=None, max_length=50)  # la receta aprendida y confirmada (None = IA completa)
     confirmed: bool = False  # la persona vio la lista exacta de pasos (la exige el servidor, no solo la página)
 
 
@@ -810,7 +821,11 @@ def create_app() -> FastAPI:
         """La regla que describe el cuerpo, o ValueError con el motivo. Los pasos de conectores quedan con su versión."""
         known = {item["id"] for item in core.routine_catalog()}
         if body.instruction.strip():
-            rule = routine_rules.build_ai(body.name, body.when, body.instruction, body.ai_tools, routines_now(), known, body.layout)
+            recipe = None if body.recipe is None else [step.model_dump() for step in body.recipe]
+            rule = routine_rules.build_ai(
+                body.name, body.when, body.instruction, body.ai_tools, routines_now(), known, body.layout, recipe,
+                selectable=lambda tool_id: tools.items_pattern(tool_id) is not None,
+            )
         elif body.text.strip():
             rule = routine_rules.build(body.text.strip(), routines_now(), known)
         else:
@@ -846,6 +861,12 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "No existe esa rutina")
         try:
             rule = build_routine(body)
+            old_ai = current.get("ai")
+            if (  # renombrar o mover nodos no tira la receta: solo cambiar la instrucción o las herramientas la deja sin efecto
+                body.recipe is None and isinstance(old_ai, dict) and old_ai.get("recipe") and rule.get("ai")
+                and (old_ai["instruction"], old_ai["tools"]) == (rule["ai"]["instruction"], rule["ai"]["tools"])
+            ):
+                rule["steps"], rule["ai"]["recipe"], rule["ai"]["stale"] = current["steps"], True, bool(old_ai.get("stale"))
             if same_plan(rule, current):
                 rule["steps"] = current["steps"]  # lo mismo que ya estaba confirmado: conserva sus versiones
             elif not body.confirmed:
