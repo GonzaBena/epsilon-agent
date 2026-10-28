@@ -197,3 +197,22 @@ def test_the_routine_list_marks_ai_routines_and_their_spend():
     script = page("rutinas.js")
 
     assert "rule.ai" in script and "gastó hoy" in script
+
+
+def test_the_learn_screen_has_its_button_recipe_panel_and_tags():
+    html, editor, css = page("rutinas.html"), page("rutinas-editor.js"), page("style.css")
+
+    for part in ('id="rt-learn"', 'id="rt-recipe"', 'id="rt-recipe-steps"', "Aprender y probar"):
+        assert part in html
+    assert '"/api/routines/learn"' in editor and "recipe: " in editor or "out.recipe" in editor
+    for label in ("fijo", "elige la IA", "libre", "Dejarlo fijo", "Que decida la IA"):
+        assert label in editor  # cada paso dice su tipo con texto, no solo con color
+    for selector in (".rt-tag", ".rt-recipe"):
+        assert selector in css
+    assert "Decidí qué hacer con el paso" in editor  # un libre sin decisión no se guarda desde la página
+
+
+def test_the_list_offers_to_relearn_a_stale_recipe():
+    script = page("rutinas.js")
+
+    assert "receta vieja" in script and "Volver a aprender" in script and "learn: true" in script

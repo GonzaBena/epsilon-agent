@@ -266,13 +266,21 @@
 
               <p class="result fail" id="rt-error" role="alert"></p>
               <div class="routine-new-row rt-modal-footer">
-                <button type="button" class="secondary" id="rt-test">Probar ahora</button>
+                <div class="rt-footer-left">
+                  <button type="button" class="secondary" id="rt-test">Probar ahora</button>
+                  <button type="button" class="secondary" id="rt-learn" hidden>Aprender y probar</button>
+                </div>
                 <div class="rt-footer-right">
                   <button type="button" class="secondary" id="rt-cancel">Cancelar</button>
                   <button type="button" class="send" id="rt-save">Guardar</button>
                 </div>
               </div>
               <ul class="routine-list rt-results" id="rt-results" aria-live="polite"></ul>
+              <div class="rt-recipe" id="rt-recipe" hidden>
+                <h4 class="rt-heading">Receta aprendida</h4>
+                <p class="hint" id="rt-recipe-hint"></p>
+                <ol class="rt-recipe-steps" id="rt-recipe-steps"></ol>
+              </div>
             </div>
 
             <div class="rt-confirm" id="rt-confirm" hidden>

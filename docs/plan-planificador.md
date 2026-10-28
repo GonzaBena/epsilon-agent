@@ -90,3 +90,14 @@ El diseño está en `docs/superpowers/specs/2026-10-24-rutinas-nodos-design.md` 
 `docs/superpowers/plans/2026-10-24-rutinas-nodos.md`. Pendiente a propósito: ramas y condiciones («solo si…»), pasos con IA
 (p. ej. un reporte de mails con un conector de Gmail, con tope de gasto por ejecución) y más activadores.
 
+
+## Actualización: rutinas con IA (2026-10-28)
+
+Las rutinas ahora pueden pedirle algo a la IA («a las 8, poné música para despertarme») sin perder el control ni el costo
+mínimo: la persona marca de antemano qué herramientas puede usar (verde/rojo, sin «preguntar»), la IA corre **una vez** para
+aprender, Epsilon arma sin modelo una receta (pasos fijos, un paso «elegir» con una llamada corta, y pasos «libres» que decide
+la persona), y de ahí en más solo se llama al modelo donde hay que elegir. Si la receta falla, cae una vez a la IA completa y
+avisa. Topes: vueltas por corrida, US$ por día por rutina, y sin precio del modelo no corre. Diseño y plan completos en
+`docs/superpowers/specs/2026-10-28-rutinas-con-ia-design.md` y `docs/superpowers/plans/2026-10-28-rutinas-con-ia.md`; el
+resumen técnico está en la sección Rutinas de `CLAUDE.md`. El «Fuera de alcance» de arriba («que una rutina llame al modelo»)
+quedó superado por esto.

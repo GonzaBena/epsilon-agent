@@ -5722,3 +5722,69 @@ button.claude-icon-wrap {
 .routine-spent {
   margin: 0.25rem 0 0;
 }
+
+/* Receta aprendida: una etiqueta por paso (el texto dice lo mismo que el color). */
+.rt-footer-left {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.rt-recipe {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.rt-recipe-steps {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.rt-recipe-step {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.rt-recipe-text {
+  flex: 1 1 12rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.rt-recipe-step select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+.rt-tag {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.rt-tag[data-kind="fijo"] {
+  border-color: #2e9d57;
+  color: #4cc47a;
+}
+.rt-tag[data-kind="elegir"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.rt-tag[data-kind="libre"] {
+  border-color: #e8960c;
+  border-style: dashed;
+  color: #f0a93a;
+}
+.kind-recipe {
+  color: #4cc47a;
+}
+.kind-stale {
+  color: #f0a93a;
+}

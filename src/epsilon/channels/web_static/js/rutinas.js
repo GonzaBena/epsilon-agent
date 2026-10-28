@@ -191,6 +191,7 @@ function renderRow(rule) {
 
   headerLeft.append(triggerBadge, kindBadge);
   if (rule.ai) headerLeft.append(make("span", "perm-kind kind-ai", "IA"));
+  if (rule.ai && rule.ai.has_recipe) headerLeft.append(make("span", `perm-kind ${rule.ai.stale ? "kind-stale" : "kind-recipe"}`, rule.ai.stale ? "receta vieja" : "con receta"));
   headerLeft.append(nameEl);
 
   const toggle = make("button", "switch");
@@ -243,13 +244,21 @@ function renderRow(rule) {
   remove.setAttribute("aria-label", `Borrar: ${rule.when}. ${whatText(rule)}`);
   remove.addEventListener("click", () => change("DELETE", rule.id, undefined, "Rutina borrada."));
 
+  if (rule.ai && rule.ai.has_recipe && rule.ai.stale) {
+    const relearn = make("button", "secondary routine-relearn", "Volver a aprender");
+    relearn.type = "button";
+    relearn.dataset.focus = `relearn-${rule.id}`;
+    relearn.setAttribute("aria-label", `Volver a aprender la receta de: ${rule.name}`);
+    relearn.addEventListener("click", () => window.routineEditor && window.routineEditor.open(rule, { learn: true }));
+    actions.append(relearn);
+  }
   actions.append(edit, remove);
   footer.append(nextWrap, actions);
 
   item.append(header, pipeline, what);
   if (rule.ai) {
     const spent = rule.ai.spent_today;
-    item.append(make("p", "hint routine-spent", `IA · gastó hoy US$ ${spent.toFixed(3)}${rule.ai.stale ? " · la receta quedó vieja" : ""}`));
+    item.append(make("p", "hint routine-spent", `IA · gastó hoy US$ ${spent.toFixed(3)}${rule.ai.stale ? " · la receta quedó vieja: corre la IA completa hasta que la vuelvas a aprender" : ""}`));
   }
   item.append(footer);
   return item;

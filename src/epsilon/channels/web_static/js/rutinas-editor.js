@@ -34,7 +34,9 @@
   let catalog = []; // GET /api/routines/steps
   let state = emptyState();
   let selected = 0; // el paso elegido (la pizarra lo marca)
-  let pending = ""; // "save" | "test": lo que se está por confirmar
+  let pending = ""; // "save" | "test" | "learn": lo que se está por confirmar
+  let learned = null; // lo que devolvió «Aprender y probar»: {recipe: [...pasos con kind y decision] | null}
+  let existing = false; // la rutina que se edita ya tiene una receta guardada
   let busy = false;
   const listeners = [];
 
@@ -57,7 +59,53 @@
     el("rt-steps-section").hidden = isAi();
     el("rt-ai").hidden = !isAi();
     el("rt-example").hidden = isAi() || state.id !== null;
+    el("rt-learn").hidden = !isAi();
+    renderRecipe();
     changed();
+  }
+
+  // --- la receta aprendida: una etiqueta por paso (con texto, no solo color) y, en los libres, qué hacer ---------------
+
+  const TAG_TEXT = { fijo: "fijo", elegir: "elige la IA", libre: "libre" };
+  const DECISIONS = [
+    ["", "Elegí qué hacer con este paso…"],
+    ["fijo", "Dejarlo fijo (se repite igual)"],
+    ["ia", "Que decida la IA cada vez"],
+  ];
+
+  function recipeStep(step, index) {
+    const item = make("li", "rt-recipe-step");
+    const tag = make("span", "rt-tag", TAG_TEXT[step.kind] || step.kind);
+    tag.dataset.kind = step.kind;
+    item.append(make("span", "rt-step-num", String(index + 1).padStart(2, "0")), tag, make("span", "rt-recipe-text", step.text || step.tool));
+    if (step.kind === "libre") {
+      const choice = make("select");
+      choice.setAttribute("aria-label", `Qué hacer con el paso ${index + 1}`);
+      for (const [value, text] of DECISIONS) choice.append(Object.assign(make("option", "", text), { value, selected: value === (step.decision || "") }));
+      choice.addEventListener("change", () => {
+        step.decision = choice.value;
+        showError("");
+      });
+      item.append(choice);
+    }
+    return item;
+  }
+
+  function renderRecipe() {
+    const box = el("rt-recipe");
+    box.hidden = !isAi() || (!learned && !existing);
+    if (box.hidden) return;
+    const hint = el("rt-recipe-hint");
+    if (!learned) {
+      hint.textContent = "Esta rutina ya tiene una receta guardada: corre sin pensar, salvo donde elige la IA. Si cambiás la instrucción o las herramientas se pierde; «Aprender y probar» arma una nueva.";
+      el("rt-recipe-steps").replaceChildren();
+    } else if (!learned.recipe) {
+      hint.textContent = "La IA no usó ninguna herramienta (o falló): no hay receta que guardar. La rutina va a correr la IA completa en cada ejecución.";
+      el("rt-recipe-steps").replaceChildren();
+    } else {
+      hint.textContent = "Así se repetiría sin gastar: lo «fijo» se repite igual, donde «elige la IA» hace una sola consulta corta, y lo «libre» lo decidís vos. Al guardar queda esta receta.";
+      el("rt-recipe-steps").replaceChildren(...learned.recipe.map(recipeStep));
+    }
   }
 
   modeSelect.addEventListener("change", () => {
@@ -610,14 +658,21 @@
 
   // --- confirmar, guardar y probar ---------------------------------------------------------------------------------
 
-  function payload() {
+  function payload(withRecipe = true) {
     const name = state.name.trim();
     if (!name) throw new Error("Ponele un nombre a la rutina.");
     if (isAi()) {
       const ai = window.routineAI;
       if (!ai.instruction()) throw new Error("Escribí qué le pedís a la IA.");
       if (!ai.greens().length) throw new Error("Dejá en verde al menos una herramienta: sin eso la IA no puede hacer nada.");
-      return { name, when: whenText(state.trigger), instruction: ai.instruction(), ai_tools: ai.tools() };
+      const out = { name, when: whenText(state.trigger), instruction: ai.instruction(), ai_tools: ai.tools() };
+      if (withRecipe && learned && learned.recipe) {
+        learned.recipe.forEach((step, index) => {
+          if (step.kind === "libre" && !step.decision) throw new Error(`Decidí qué hacer con el paso ${index + 1} de la receta.`);
+        });
+        out.recipe = learned.recipe.map(({ tool, args, kind, source, source_tool: sourceTool, decision }) => ({ tool, args, kind, source, source_tool: sourceTool, decision: decision || "" }));
+      }
+      return out;
     }
     if (!state.steps.length) throw new Error("Agregá al menos un paso.");
     for (const [index, step] of state.steps.entries()) {
@@ -637,9 +692,9 @@
 
   function showConfirm(mode) {
     showError("");
-    payload(); // valida antes de mostrar
+    payload(mode === "save"); // valida antes de mostrar
     pending = mode;
-    el("rt-confirm-title").textContent = mode === "test" ? "Se va a ejecutar ahora, una vez" : "Revisá lo que va a hacer";
+    el("rt-confirm-title").textContent = mode === "test" ? "Se va a ejecutar ahora, una vez" : mode === "learn" ? "La IA va a correr de verdad, una vez" : "Revisá lo que va a hacer";
     el("rt-confirm-when").textContent = `Cuándo: ${triggerSentence(state.trigger)}`;
     const hint = el("rt-confirm-hint");
     if (isAi()) {
@@ -647,9 +702,15 @@
       const items = [make("li", "", `Le pedís a la IA: «${ai.instruction()}»`), make("li", "", `Puede usar solo: ${ai.greens().map(ai.label).join(", ")}`)];
       if (ai.reds().length) items.push(make("li", "", `Bloqueadas a propósito: ${ai.reds().map(ai.label).join(", ")}`));
       el("rt-confirm-steps").replaceChildren(...items);
+      if (mode === "save" && learned && learned.recipe) {
+        items.push(...learned.recipe.map((step) => make("li", "", `Receta · ${TAG_TEXT[step.kind]}${step.decision === "ia" ? " (decide la IA)" : step.decision === "fijo" ? " (fijo)" : ""}: ${step.text || step.tool}`)));
+        el("rt-confirm-steps").replaceChildren(...items);
+      }
       hint.textContent = mode === "test"
         ? "La IA va a correr de verdad y puede gastar. Lo que no esté en verde no lo usa."
-        : "La IA decide sola cada vez, sin preguntarte, y puede gastar (hay un tope diario). Solo puede usar las herramientas en verde.";
+        : mode === "learn"
+          ? "La IA corre una vez, de verdad (puede poner música o lo que tengas en verde) y puede gastar. Con lo que haga, Epsilon arma una receta para repetirlo sin gastar; vos la revisás antes de guardarla."
+          : "La IA decide sola cada vez, sin preguntarte, y puede gastar (hay un tope diario). Solo puede usar las herramientas en verde.";
     } else {
       el("rt-confirm-steps").replaceChildren(
         ...state.steps.map((step) => {
@@ -660,7 +721,7 @@
       );
       hint.textContent = "La rutina corre sola, sin preguntarte, con exactamente estos pasos. Si no ves algo que esperabas, volvé y revisalo.";
     }
-    el("rt-confirm-ok").textContent = mode === "test" ? "Confirmar y probar" : "Confirmar y guardar";
+    el("rt-confirm-ok").textContent = mode === "test" || mode === "learn" ? "Confirmar y probar" : "Confirmar y guardar";
     editorBox.hidden = true;
     confirmBox.hidden = false;
     el("rt-confirm-ok").focus();
@@ -692,9 +753,16 @@
     if (busy) return;
     setBusy(true);
     try {
-      const body = JSON.stringify({ ...payload(), confirmed: true });
+      const body = JSON.stringify({ ...payload(pending === "save"), confirmed: true });
       const headers = { "Content-Type": "application/json" };
-      if (pending === "test") {
+      if (pending === "learn") {
+        const data = await request("/api/routines/learn", { method: "POST", headers, body });
+        learned = { recipe: data.recipe };
+        backToEditor();
+        showResults(data.results);
+        renderRecipe();
+        showError("");
+      } else if (pending === "test") {
         const data = await request("/api/routines/test", { method: "POST", headers, body });
         backToEditor();
         showResults(data.results);
@@ -727,6 +795,21 @@
       showError(error.message);
     }
   });
+  el("rt-learn").addEventListener("click", () => {
+    try {
+      showConfirm("learn");
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+  window.routineAI.onChange(() => {
+    // Cambiar la instrucción o las herramientas deja sin efecto lo aprendido (y la receta guardada, en el servidor).
+    if (learned || existing) {
+      learned = null;
+      existing = false;
+      renderRecipe();
+    }
+  });
   el("rt-confirm-ok").addEventListener("click", confirmed);
   el("rt-confirm-back").addEventListener("click", backToEditor);
   el("rt-cancel").addEventListener("click", () => dialog.close());
@@ -752,7 +835,7 @@
 
   // --- abrir ---------------------------------------------------------------------------------------------------------
 
-  async function open(rule) {
+  async function open(rule, options = {}) {
     try {
       catalog = (await request("/api/routines/steps", {})).steps;
     } catch (error) {
@@ -772,6 +855,8 @@
     window.routineAI.load(catalog, rule && rule.ai ? rule.ai.instruction : "", rule && rule.ai ? rule.ai.tools : {});
     modeSelect.disabled = Boolean(rule); // una rutina no cambia de tipo: se borra y se crea la otra
     selected = 0;
+    learned = null;
+    existing = Boolean(rule && rule.ai && rule.ai.has_recipe);
     el("rt-title").textContent = rule ? "Editar rutina" : "Nueva rutina";
     nameInput.value = state.name;
     results.replaceChildren();
@@ -782,7 +867,7 @@
     backToEditor();
     renderSteps();
     dialog.showModal();
-    nameInput.focus();
+    (options.learn && isAi() ? el("rt-learn") : nameInput).focus();
   }
 
   el("routine-open").addEventListener("click", () => open(null));
