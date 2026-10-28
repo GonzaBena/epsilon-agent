@@ -100,6 +100,7 @@ def test_ai_tools_are_the_ones_of_the_spec():
         ("musica", "write"),
         ("ventanas", "read"),
         ("musica_poner", "write"),
+        ("musica_playlists", "read"),
         ("musica_buscar", "read"),
         ("rutina_crear", "write"),
         ("rutina_ver", "read"),
@@ -121,7 +122,7 @@ def test_ai_ids_are_unique_and_kinds_valid():
 
 def test_only_a_few_tools_override_their_default():
     overrides = {tools.ai_id(t): t.ai_default for t in tools.ai_tools() if t.ai_default}
-    assert overrides == {"resumir": "deny", "sistema": "ask", "nav_abrir": "allow", "nav_buscar": "ask", "nav_clic": "allow", "nav_escribir": "allow", "volumen": "allow", "musica": "allow", "ventanas": "ask", "musica_poner": "allow", "musica_buscar": "allow", "rutina_borrar": "ask"}
+    assert overrides == {"resumir": "deny", "sistema": "ask", "nav_abrir": "allow", "nav_buscar": "ask", "nav_clic": "allow", "nav_escribir": "allow", "volumen": "allow", "musica": "allow", "ventanas": "ask", "musica_poner": "allow", "musica_playlists": "allow", "musica_buscar": "allow", "rutina_borrar": "ask"}
 
 
 def test_ai_read_tools_never_write_or_use_ai():

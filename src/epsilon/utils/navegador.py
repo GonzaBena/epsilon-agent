@@ -126,6 +126,20 @@ MUSIC_SEARCH_JS = """(() => {
   return out;
 })()"""
 MUSIC_RESULTS = 8
+# La biblioteca de la persona es la misma página de resultados (los mismos ítems con enlace `playlist?list=`), pero con más tope.
+MUSIC_LIBRARY_JS = MUSIC_SEARCH_JS.replace("out.length >= 20", "out.length >= 60")
+MAX_PLAYLISTS = 50  # cuántas playlists de la biblioteca entran al índice
+INDEX_TRACKS = 15  # y cuántas canciones de cada una se leen
+# Otro código fijo (solo lee): el título y las primeras canciones (título y artista) de la página de UNA playlist.
+PLAYLIST_JS = """(() => {
+  const clean = (s, k) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, k);
+  const rows = [...document.querySelectorAll('ytmusic-responsive-list-item-renderer')].filter((e) => !e.closest('ytmusic-guide-renderer'));
+  return rows.slice(0, 15).map((el) => {
+    const title = el.querySelector('.title, yt-formatted-string.title');
+    const cols = [...el.querySelectorAll('.secondary-flex-columns yt-formatted-string, yt-formatted-string.flex-column')];
+    return {title: clean(title ? title.textContent : '', 100), artist: clean(cols[0] ? cols[0].textContent : '', 60)};
+  });
+})()"""
 # Otro código fijo (solo lee, no recibe nada del modelo): dónde están, en la página de YouTube Music que abrió
 # `play_music`, el botón «Reproducir» y el «Aleatorio» de la cabecera de una playlist y el botón de reproducir del
 # primer resultado de una búsqueda. Devuelve posiciones; el clic lo da Python con el mouse. Reconoce los rótulos en
@@ -976,7 +990,7 @@ def play_music(kind: str, value: str, shuffle: bool = False) -> str:
     return f"Sonando en YouTube Music: {title}" + (" (aleatorio)" if shuffle else "")
 
 
-def _music_results(data: object) -> list[tuple[str, str, str]]:
+def _music_results(data: object, limit: int = MUSIC_RESULTS) -> list[tuple[str, str, str]]:
     """(id, título, detalle) de las playlists que devolvió MUSIC_SEARCH_JS: id válido, sin repetir, una sola línea y
     recortado (es dato de otros). El detalle es lo que acompaña al título («Playlist • autor • 69 canciones»)."""
     found: list[tuple[str, str, str]] = []
@@ -991,7 +1005,7 @@ def _music_results(data: object) -> list[tuple[str, str, str]]:
         if detail.casefold().startswith("podcast"):  # el mismo enlace lo usan los podcasts: no son música para poner
             continue
         found.append((list_id, title or "(sin título)", detail))
-        if len(found) >= MUSIC_RESULTS:
+        if len(found) >= limit:
             break
     return found
 
@@ -1025,6 +1039,71 @@ def music_search(query: str) -> str:
     for n, (list_id, title, detail) in enumerate(results, 1):
         lines.append(f"{n}. {title}" + (f" — {detail}" if detail else "") + f"\n   id: {list_id}")
     return "\n".join(lines)
+
+
+COUNT = re.compile(r"(\d[\d.,]*)\s*(?:pistas|canciones|songs|tracks)", re.IGNORECASE)
+
+
+def music_library() -> list[tuple[str, str, int]]:
+    """Las playlists de la biblioteca de YouTube Music de la persona: (id, título, cantidad de canciones; 0 si no lo
+    dice). Primero las que armó ella («N pistas») y después las que arma YouTube (mezclas, recaps), hasta
+    MAX_PLAYLISTS. Se lee desde una pestaña DETRÁS con MUSIC_LIBRARY_JS (solo lee) y se cierra."""
+    if not config.enabled("BROWSER_ENABLED"):
+        raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    tab = open_url(f"https://{MUSIC_HOST}/library/playlists", background=True)
+    try:
+        found: list[tuple[str, str, str]] = []
+        for _ in range(PLAY_WAIT):
+            data = _cdp(tab.ws, "Runtime.evaluate", {"expression": MUSIC_LIBRARY_JS, "returnByValue": True}).get("result", {}).get("value")
+            found = _music_results(data, limit=60)
+            if found:
+                break
+            time.sleep(0.5)
+    finally:
+        _close(tab)
+    mine = re.compile(r"\bpistas\b", re.IGNORECASE)
+    found.sort(key=lambda item: 0 if mine.search(item[2]) else 1)  # estable: dentro de cada grupo, el orden de la página
+    rows = []
+    for list_id, title, detail in found[:MAX_PLAYLISTS]:
+        match = COUNT.search(detail)
+        rows.append((list_id, title, int(re.sub(r"\D", "", match.group(1)) or 0) if match else 0))
+    return rows
+
+
+def music_tracks(ids: list[str]) -> dict[str, list[tuple[str, str]]]:
+    """Las primeras INDEX_TRACKS canciones (título, artista) de cada playlist, leídas con PLAYLIST_JS (solo lee) en UNA
+    pestaña DETRÁS que va de página en página con direcciones que arma el código (ids validados). Una que no
+    carga queda con lista vacía: no frena a las demás."""
+    if not config.enabled("BROWSER_ENABLED"):
+        raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    ids = [i for i in ids if reglas.PLAYLIST_ID.fullmatch(i)][:MAX_PLAYLISTS]
+    if not ids:
+        return {}
+    tab = open_url(f"https://{MUSIC_HOST}/library/playlists", background=True)
+    out: dict[str, list[tuple[str, str]]] = {}
+    try:
+        for list_id in ids:
+            _cdp(tab.ws, "Page.navigate", {"url": f"https://{MUSIC_HOST}/playlist?list={list_id}"})
+            time.sleep(SETTLE_PAUSE)
+            rows: list[tuple[str, str]] = []
+            for _ in range(PLAY_WAIT):
+                here = _cdp(tab.ws, "Runtime.evaluate", {"expression": "location.href", "returnByValue": True}).get("result", {}).get("value")
+                if f"list={list_id}" not in str(here):  # todavía es la página anterior: no leer sus canciones como de esta
+                    time.sleep(0.5)
+                    continue
+                data = _cdp(tab.ws, "Runtime.evaluate", {"expression": PLAYLIST_JS, "returnByValue": True}).get("result", {}).get("value")
+                rows = [
+                    (" ".join(str(r.get("title", "")).split())[:100], " ".join(str(r.get("artist", "")).split())[:60])
+                    for r in (data if isinstance(data, list) else []) if isinstance(r, dict) and str(r.get("title", "")).strip()
+                ][:INDEX_TRACKS]
+                if rows:
+                    break
+                time.sleep(0.5)
+            out[list_id] = rows
+    finally:
+        _close(tab)
+    audit("musica", MUSIC_HOST, f"leer {len(out)} playlists", asked=False)
+    return out
 
 
 def tab_host(tab_ref: str) -> str:

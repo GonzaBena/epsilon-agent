@@ -404,7 +404,7 @@ TOOLS = (
         done="Controló la música",
         name="musica",
         usage="/musica [acción]",
-        help="la música o el video de la PC: sin opción dice qué suena (con botones); pausa, play, siguiente, anterior, repetir y aleatorio lo controlan (sin IA)",
+        help="la música o el video de la PC: sin opción dice qué suena (con botones); pausa, play, siguiente, anterior, repetir y aleatorio lo controlan; «playlists» vuelve a leer tus playlists de YouTube Music (puede usar IA para etiquetar lo nuevo)",
         menu="Qué suena y controles de música en la PC",
         insert="/musica ",
         section="PC",
@@ -438,6 +438,17 @@ TOOLS = (
         ai_name="musica_poner",
         ai_help="poner música en YouTube Music: una playlist por su id o una búsqueda de canciones; devuelve qué quedó sonando",
         ai_arg="«playlist <id>» o «canciones <texto>» (por ejemplo: canciones lo-fi para estudiar); «aleatorio» al final lo mezcla. Después contale en una línea qué pusiste",
+    ),
+    Tool(
+        "Música: tus playlists",
+        done="Miró tus playlists de YouTube Music",
+        ai="read",
+        ai_default="allow",  # lee lo de la persona, pero solo lo usa para elegir qué poner; gasta poco (solo etiqueta lo nuevo)
+        ai_group="musica",
+        ai_action="playlists",
+        ai_name="musica_playlists",
+        ai_help="las playlists de la persona en YouTube Music con su id, estilo, energía y para qué sirven (gym, estudiar…), para elegir una por lo que suena y no por el nombre",
+        ai_arg="vacío",
     ),
     Tool(
         "Música: buscar playlists",

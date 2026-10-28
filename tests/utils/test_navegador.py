@@ -1094,3 +1094,79 @@ def test_music_search_respects_the_browser_switch(monkeypatch):
 
     with pytest.raises(navegador.NavegadorError, match="apagado"):
         navegador.music_search("rock")
+
+
+# --- leer la biblioteca y las canciones (índice de playlists) -------------------------------------
+
+LIBRARY = [
+    {"id": "RDATmezcla12345", "title": "Radio mezcla", "text": "Radio mezcla Mix • Atlas3D"},
+    {"id": "PLxAa5N7VaNOyqCIEx26", "title": "gym", "text": "gym Atlas3D • 147 pistas"},
+    {"id": "LRYRRrecap123456", "title": "2025 Recap", "text": "2025 Recap Especialmente para Atlas3D • 1.100 canciones"},
+    {"id": "PLxAa5N7VaNOxW00R4qe", "title": "Celtic", "text": "Celtic Atlas3D • 25 pistas"},
+    {"id": "LM", "title": "Música que te gustó", "text": "Música que te gustó Playlist autogenerada"},  # id corto: no se puede abrir por id
+]
+
+
+class FakeLibrary:
+    """La biblioteca y las páginas de playlist de mentira: Page.navigate cambia de página y los scripts fijos leen de ella."""
+
+    def __init__(self, monkeypatch, tracks, slow=()):
+        self.tracks, self.slow, self.here, self.visited = tracks, set(slow), "https://music.youtube.com/library/playlists", []
+        chromium = FakeChromium(monkeypatch)
+        chromium.tabs.append(page("NEWTAB123456", "", self.here))
+        self.chromium = chromium
+        monkeypatch.setattr(navegador, "_background_tab", lambda url: "NEWTAB123456")
+        monkeypatch.setattr(navegador, "_cdp", self.cdp)
+
+    def cdp(self, ws_url, method, params=None):
+        if method == "Page.navigate":
+            self.here = params["url"]
+            self.visited.append(params["url"])
+            return {}
+        if method == "Runtime.evaluate":
+            expression = params["expression"]
+            if expression == navegador.MUSIC_LIBRARY_JS:
+                return {"result": {"value": LIBRARY}}
+            if expression == "location.href":
+                return {"result": {"value": self.here}}
+            if expression == navegador.PLAYLIST_JS:
+                list_id = self.here.rsplit("list=", 1)[-1]
+                return {"result": {"value": [] if list_id in self.slow else self.tracks.get(list_id, [])}}
+        return FakeChromium.cdp(self.chromium, ws_url, method, params)
+
+
+def test_music_library_puts_the_persons_own_playlists_first_and_parses_the_count(monkeypatch):
+    FakeLibrary(monkeypatch, {})
+
+    assert navegador.music_library() == [
+        ("PLxAa5N7VaNOyqCIEx26", "gym", 147), ("PLxAa5N7VaNOxW00R4qe", "Celtic", 25),
+        ("RDATmezcla12345", "Radio mezcla", 0), ("LRYRRrecap123456", "2025 Recap", 1100),
+    ]
+
+
+def test_music_tracks_reads_each_playlist_with_addresses_the_code_built(monkeypatch):
+    fake = FakeLibrary(monkeypatch, {
+        "PLxAa5N7VaNOyqCIEx26": [{"title": "Break My Heart", "artist": "Dua Lipa"}, {"title": "  ", "artist": "x"}],
+        "PLxAa5N7VaNOxW00R4qe": [{"title": "Song\nB", "artist": "Clannad"}],
+    }, slow={"PLslow12345678"})
+
+    out = navegador.music_tracks(["PLxAa5N7VaNOyqCIEx26", "PLxAa5N7VaNOxW00R4qe", "PLslow12345678", "no/../valido", "LM"])
+
+    assert out == {"PLxAa5N7VaNOyqCIEx26": [("Break My Heart", "Dua Lipa")], "PLxAa5N7VaNOxW00R4qe": [("Song B", "Clannad")], "PLslow12345678": []}
+    assert fake.visited == [f"https://music.youtube.com/playlist?list={i}" for i in ("PLxAa5N7VaNOyqCIEx26", "PLxAa5N7VaNOxW00R4qe", "PLslow12345678")]
+    assert ("GET", "/json/close/NEWTAB123456") in fake.chromium.calls
+
+
+def test_music_tracks_without_valid_ids_opens_nothing(monkeypatch):
+    fake = FakeLibrary(monkeypatch, {})
+
+    assert navegador.music_tracks(["LM", "x"]) == {} and fake.visited == []
+
+
+def test_music_library_and_tracks_respect_the_browser_switch(monkeypatch):
+    FakeLibrary(monkeypatch, {})
+    monkeypatch.setattr(navegador.config, "enabled", lambda key: key != "BROWSER_ENABLED")
+
+    for call in (navegador.music_library, lambda: navegador.music_tracks(["PLxAa5N7VaNOyqCIEx26"])):
+        with pytest.raises(navegador.NavegadorError, match="apagado"):
+            call()

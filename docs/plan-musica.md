@@ -1,6 +1,6 @@
 # Música con criterio: que la IA elija qué poner
 
-Estado: propuesta (2026-10-28). Fases 0 (web apps en `open_url`), 1 (`musica_poner`) y 2 (`musica_buscar`) hechas; `PLAY_JS` probado contra YouTube Music real (búsqueda y playlist, con y sin aleatorio); `Page.navigate` acepta el «¿Salir del sitio?».
+Estado: propuesta (2026-10-28). Fases 0 (web apps en `open_url`), 1 (`musica_poner`), 2 (`musica_buscar`) y 3 (índice de playlists, `musica_playlists`) hechas, todas probadas en vivo; desvíos de la fase 3: la huella es título+cantidad (no las primeras canciones, así no hay que abrir cada página para saber si cambió), el etiquetado usa la tarea `summary` y los 24 h son una constante; `PLAY_JS` probado contra YouTube Music real (búsqueda y playlist, con y sin aleatorio); `Page.navigate` acepta el «¿Salir del sitio?».
 
 ## Qué es
 

@@ -302,7 +302,7 @@ def test_the_groups_go_without_the_denied_actions():
     assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "musica", "rutinas", "navegador"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
-    assert sum(len(spec.actions) for spec in specs.values()) == 30
+    assert sum(len(spec.actions) for spec in specs.values()) == 31
     assert all(isinstance(s, llm.ToolSpec) for s in specs.values())
 
 

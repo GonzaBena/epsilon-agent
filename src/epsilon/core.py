@@ -10,7 +10,7 @@ import threading
 import weakref
 
 from epsilon import menu, tools
-from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, permissions, summarize, usage
+from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, music as music_index_ai, permissions, summarize, usage
 from epsilon.ai.messages import WEAK_MODEL_HINT, ModelError
 from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
 from epsilon.data import activity, changes, conversations, library, notes, sites, tabular, todo
@@ -581,7 +581,22 @@ def _playing_cmd(args: str) -> Reply:
     return Reply(config.redact(text), actions=actions, media=info)
 
 
-_music_cmd = _pc(lambda args: multimedia.music(args))
+_music_player_cmd = _pc(lambda args: multimedia.music(args))
+
+
+def _playlists(force: bool) -> Reply:
+    """El índice de las playlists de YouTube Music (ver ai/music.py). Lo que sale mal (navegador, modelo) vuelve como texto."""
+    try:
+        return Reply(config.redact(music_index_ai.playlists_text(force=force)))
+    except (navegador.NavegadorError, ModelError) as e:
+        return Reply(config.redact(str(e)), failed=True)
+
+
+def _music_cmd(args: str) -> Reply:
+    """/musica: el reproductor (pausa, play, …) y, con «playlists», vuelve a leer tus playlists de YouTube Music (sin pedírselo a la IA)."""
+    if args.strip().lower() == "playlists":
+        return _playlists(force=True)
+    return _music_player_cmd(args)
 _windows_cmd = _pc(lambda args: ventanas.report(args))
 
 def _connector_cmd(args: str) -> Reply:
@@ -1597,6 +1612,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nav_escribir": _nav(_nav_type),
     "musica_poner": _nav(_music_play),
     "musica_buscar": _nav(lambda args: navegador.music_search(_bare(args))),
+    "musica_playlists": lambda args: _playlists(force=False),
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "nota_editar": lambda args: _edit_note(config.redact(args)),
@@ -1612,7 +1628,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "sistema": lambda args: _system_cmd(_bare(args)),
     "volumen": lambda args: _volume_cmd(_bare(args)),
     "sonando": lambda args: _playing_cmd(""),
-    "musica": lambda args: _music_cmd(_bare(args)),
+    "musica": lambda args: _music_player_cmd(_bare(args)),  # la IA no fuerza la lectura de playlists: tiene `musica_playlists`
     "ventanas": lambda args: _windows_cmd(_bare(args)),
     "rutina_crear": lambda args: _routine_create(_bare(args)),
     "rutina_ver": lambda args: _routines_cmd("", Session()),

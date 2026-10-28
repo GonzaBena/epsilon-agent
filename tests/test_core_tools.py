@@ -1412,3 +1412,32 @@ def test_musica_buscar_passes_the_query_to_the_browser(monkeypatch):
     reply = core.AI_RUNNERS["musica_buscar"]("workout rock playlist")
 
     assert reply.text == "1. algo" and seen == ["workout rock playlist"]
+
+
+def test_musica_playlists_tool_shows_the_index_without_forcing_a_read(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.music_index_ai, "playlists_text", lambda force=False: seen.append(force) or "- pepito 123")
+
+    reply = core.AI_RUNNERS["musica_playlists"]("")
+
+    assert reply.text == "- pepito 123" and seen == [False]
+
+
+def test_slash_musica_playlists_forces_the_read_but_the_ai_music_tool_cannot(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.music_index_ai, "playlists_text", lambda force=False: seen.append(force) or "índice")
+    monkeypatch.setattr(core.multimedia, "music", lambda args: f"player:{args}")
+
+    assert core._music_cmd("playlists").text == "índice" and seen == [True]
+    assert core.AI_RUNNERS["musica"]("playlists").text == "player:playlists" and seen == [True]  # sigue siendo del reproductor
+
+
+def test_playlist_errors_come_back_as_text(monkeypatch):
+    def boom(force=False):
+        raise core.navegador.NavegadorError("Chromium no contestó")
+
+    monkeypatch.setattr(core.music_index_ai, "playlists_text", boom)
+
+    reply = core.AI_RUNNERS["musica_playlists"]("")
+
+    assert reply.failed and "Chromium no contestó" in reply.text
