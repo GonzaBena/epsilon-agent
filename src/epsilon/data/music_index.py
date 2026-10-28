@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 import os
+import random
 import re
 
 from epsilon.data import notes
@@ -96,11 +97,35 @@ def parse_labels(text: str, valid_ids: set[str]) -> dict[str, dict]:
     return found
 
 
-def view(index: dict) -> str:
-    """El índice como texto para el modelo: una playlist por bloque, con su id para poder ponerla. Es dato de la
-    persona (y de YouTube), no instrucciones."""
-    lines = []
+def mark_played(list_id: str, now: datetime) -> None:
+    """Anota cuándo se puso una playlist (para variar: la IA prefiere la que hace más que no suena). Un id que no está en
+    el índice, o sin índice, no hace nada."""
+    index = load()
     for p in index["playlists"]:
+        if p["id"] == list_id:
+            p["played"] = now.isoformat(timespec="minutes")
+            save(index)
+            return
+
+
+def _ago(played: str, now: datetime) -> str:
+    try:
+        days = (now.date() - datetime.fromisoformat(played).date()).days
+    except ValueError:
+        return "nunca la pusiste"
+    return "la pusiste hoy" if days <= 0 else "la pusiste ayer" if days == 1 else f"la pusiste hace {days} días"
+
+
+def view(index: dict, now: datetime | None = None, rng: random.Random | None = None) -> str:
+    """El índice como texto para el modelo: una playlist por bloque, con su id para poder ponerla y cuándo se puso por
+    última vez. Van ordenadas de la que hace MÁS que no suena (las que nunca sonaron, primero y en orden al azar) a la
+    más reciente: así «elegí la primera que encaje» rota sola en vez de poner siempre la misma. Es dato de la persona
+    (y de YouTube), no instrucciones."""
+    now = now or datetime.now()
+    shuffled = list(index["playlists"])
+    (rng or random).shuffle(shuffled)  # el desempate entre las que nunca sonaron (o sonaron el mismo minuto) es al azar
+    lines = []
+    for p in sorted(shuffled, key=lambda p: str(p.get("played") or "")):
         head = f"- {p['title'][:MAX_TITLE]} (id: {p['id']}" + (f", {p['count']} canciones" if p.get("count") else "") + ")"
         if p.get("style"):
             head += f": {p['style']}; energía {p.get('energy', '?')}/5; sirve para: {', '.join(p.get('uses') or []) or 'nada en particular'}"
@@ -108,5 +133,6 @@ def view(index: dict) -> str:
             head += ": sin etiquetar"
         if p.get("artists"):
             head += f"; artistas: {', '.join(p['artists'])}"
+        head += "; " + (_ago(p["played"], now) if p.get("played") else "nunca la pusiste")
         lines.append(head)
     return "\n".join(lines)

@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 import json
+import random
+import re
 
 import pytest
 
@@ -77,7 +79,45 @@ def test_parse_labels_ignores_broken_json_unknown_ids_and_bad_labels():
 def test_view_shows_the_id_and_the_label_or_says_it_is_missing():
     index = {"playlists": [playlist(style="rock rápido", uses=["gym", "correr"], energy=5), playlist("PLotra123456", title="sin etiqueta")]}
 
-    text = music_index.view(index)
+    text = music_index.view(index, NOW)
 
-    assert "pepito 123 (id: PLabcdefghij, 48 canciones): rock rápido; energía 5/5; sirve para: gym, correr; artistas: Rammstein, Metallica" in text
+    assert "pepito 123 (id: PLabcdefghij, 48 canciones): rock rápido; energía 5/5; sirve para: gym, correr; artistas: Rammstein, Metallica; nunca la pusiste" in text
     assert "sin etiqueta (id: PLotra123456, 48 canciones): sin etiquetar" in text
+
+
+def test_view_orders_by_how_long_ago_each_was_played_and_says_when():
+    index = {"playlists": [
+        playlist("PLhoy1234567", title="hoy", played="2026-10-28T08:00"),
+        playlist("PLayer123456", title="ayer", played="2026-10-27T08:00"),
+        playlist("PLhace5dias1", title="viejo", played="2026-10-23T08:00"),
+    ]}
+
+    text = music_index.view(index, NOW, random.Random(1))
+
+    assert text.index("viejo") < text.index("ayer") < text.index("hoy")
+    assert "la pusiste hoy" in text and "la pusiste ayer" in text and "la pusiste hace 5 días" in text
+
+
+def test_never_played_come_first_in_a_random_order_that_varies():
+    index = {"playlists": [playlist(f"PLnunca{n:05d}", title=f"nunca{n}") for n in range(6)] + [playlist("PLhoy1234567", title="hoy", played="2026-10-28T08:00")]}
+
+    orders = {tuple(re.findall(r"nunca\d", music_index.view(index, NOW, random.Random(seed)))) for seed in range(8)}
+
+    assert len(orders) > 1  # no siempre la misma primera
+    assert all(music_index.view(index, NOW, random.Random(s)).index("hoy (") > music_index.view(index, NOW, random.Random(s)).index("nunca") for s in range(3))
+
+
+def test_mark_played_stamps_only_that_playlist_and_ignores_unknown_ids():
+    music_index.save({"playlists": [playlist(), playlist("PLotra123456")]})
+
+    music_index.mark_played("PLabcdefghij", NOW)
+    music_index.mark_played("PLdesconocida", NOW)  # no está en el índice: no pasa nada
+
+    by_id = {p["id"]: p for p in music_index.load()["playlists"]}
+    assert by_id["PLabcdefghij"]["played"] == "2026-10-28T10:00" and "played" not in by_id["PLotra123456"]
+
+
+def test_mark_played_without_an_index_does_nothing():
+    music_index.mark_played("PLabcdefghij", NOW)
+
+    assert music_index.load() == music_index.empty()

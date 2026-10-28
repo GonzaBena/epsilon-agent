@@ -13,7 +13,7 @@ from epsilon import menu, tools
 from epsilon.ai import ask, attachments, browser_guard, chat, extract, llm, music as music_index_ai, permissions, summarize, usage
 from epsilon.ai.messages import WEAK_MODEL_HINT, ModelError
 from epsilon.connectors import bridge, manager as connectors, registry as connector_registry, store as connector_store
-from epsilon.data import activity, changes, conversations, library, notes, sites, tabular, todo
+from epsilon.data import activity, changes, conversations, library, music_index as music_store, notes, sites, tabular, todo
 from epsilon.memory import store as memory
 from epsilon.settings import config, editor, store as settings_store
 from epsilon.skills import runtime as skill_runtime, store as skill_store
@@ -1588,7 +1588,10 @@ def _music_play(args: str) -> str:
         kind, value, shuffle = navegador.reglas.parse_play(_bare(args))
     except ValueError as e:
         raise navegador.NavegadorError(str(e)) from None
-    return navegador.play_music(kind, value, shuffle)
+    text = navegador.play_music(kind, value, shuffle)
+    if kind == "playlist":
+        music_store.mark_played(value, datetime.now())  # para que la próxima vez la IA prefiera otra
+    return text
 
 
 def _nav_click(args: str) -> str:

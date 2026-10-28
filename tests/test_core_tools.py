@@ -1441,3 +1441,33 @@ def test_playlist_errors_come_back_as_text(monkeypatch):
     reply = core.AI_RUNNERS["musica_playlists"]("")
 
     assert reply.failed and "Chromium no contestó" in reply.text
+
+
+def test_putting_a_playlist_on_notes_when_it_was_played(monkeypatch):
+    marked = []
+    monkeypatch.setattr(core.navegador, "play_music", lambda kind, value, shuffle: "Sonando")
+    monkeypatch.setattr(core.music_store, "mark_played", lambda list_id, now: marked.append(list_id))
+
+    core.AI_RUNNERS["musica_poner"]("playlist PLabcdefghij")
+    core.AI_RUNNERS["musica_poner"]("canciones lo-fi")  # buscar canciones no es una playlist del índice
+
+    assert marked == ["PLabcdefghij"]
+
+
+def test_a_playlist_that_failed_to_start_is_not_marked_as_played(monkeypatch):
+    marked = []
+
+    def fails(kind, value, shuffle):
+        raise core.navegador.NavegadorError("No encuentro el botón")
+
+    monkeypatch.setattr(core.navegador, "play_music", fails)
+    monkeypatch.setattr(core.music_store, "mark_played", lambda list_id, now: marked.append(list_id))
+
+    assert core.AI_RUNNERS["musica_poner"]("playlist PLabcdefghij").failed and marked == []
+
+
+def test_the_playlists_tool_tells_the_model_to_choose_and_vary():
+    tool = tools.route("musica.playlists")
+
+    for fragment in ("no preguntes", "hace más que no", "UNA línea", "título más parecido"):
+        assert fragment in tool.ai_tips

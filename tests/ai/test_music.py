@@ -138,7 +138,7 @@ def test_playlists_text_refreshes_only_when_missing_or_stale(monkeypatch):
     stale = music.playlists_text(now=NOW + timedelta(hours=30))
 
     assert "pepito 123 (id: PLgym1234567, 48 canciones): rock/metal rápido; energía 5/5; sirve para: gym, correr" in first
-    assert again == first and world.tracks_asked == []
+    assert sorted(again.splitlines()) == sorted(first.splitlines()) and world.tracks_asked == []  # mismas playlists (el orden de las empatadas es al azar)
     assert stale  # venció: volvió a leer la biblioteca (nada cambió, así que no pidió páginas)
 
 
@@ -191,3 +191,25 @@ def test_a_truncated_answer_warns_instead_of_staying_silent(monkeypatch):
     index, warning = music.refresh(NOW)
 
     assert "no etiquetó 2 de 2" in warning and world.tracks_asked == [[GYM, CELTIC]]
+
+
+def test_refresh_keeps_when_a_playlist_was_last_played_even_if_it_changed(monkeypatch):
+    world = World(monkeypatch)
+    music.refresh(NOW)
+    music_index.mark_played(CELTIC, NOW)
+    world.library = [(GYM, "pepito 123", 48), (CELTIC, "Celtic", 26)]  # Celtic cambió: se relee y se vuelve a etiquetar
+
+    index, _ = music.refresh(NOW + timedelta(days=2))
+
+    assert {p["id"]: p for p in index["playlists"]}[CELTIC]["played"] == "2026-10-28T10:00"
+
+
+def test_playlists_text_tells_when_each_was_last_played(monkeypatch):
+    World(monkeypatch)
+    music.playlists_text(now=NOW)
+    music_index.mark_played(GYM, NOW)
+
+    text = music.playlists_text(now=NOW + timedelta(hours=1))
+
+    assert "la pusiste hoy" in text and "nunca la pusiste" in text
+    assert text.index("Celtic") < text.index("pepito 123")  # la que nunca sonó va antes que la de hoy
