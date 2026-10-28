@@ -545,3 +545,14 @@ def test_learn_routine_redacts_the_recipe_it_returns(ai_rule, script, monkeypatc
     learned = core.learn_routine(ai_rule)
 
     assert key not in str(learned)
+
+
+def test_the_daily_cap_sees_what_an_earlier_step_of_the_same_run_spent(ai_rule, script, monkeypatch):
+    # La copia de la regla que toma el motor al disparar dice 0; lo guardado ya tiene el gasto del paso anterior.
+    stale_copy = dict(ai_rule)
+    routine_store.add_spent(ai_rule["id"], 0.06, NOW.date())
+    script.steps = []
+
+    result = core.run_ai_step(stale_copy, stale_copy["steps"][0], {})
+
+    assert not result.ok and "tope de hoy" in result.text and script.seen == []

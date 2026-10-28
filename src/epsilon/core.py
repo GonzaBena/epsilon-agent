@@ -1473,7 +1473,10 @@ def _ai_budget_problem(rule: dict) -> str | None:
     cada rutina tiene un tope diario en US$. Se mira ANTES de llamar al modelo."""
     if not usage.price_known(llm.model_for("ask")):
         return "No conozco el precio del modelo, así que no puedo cuidar el gasto: la rutina con IA no corre. Elegí otro modelo o cargá su precio."
-    spent, cap = routine_rules.spent_today(rule, clock.now().date()), config.number("ROUTINES_AI_DAILY_USD")
+    # Lo gastado se lee de lo GUARDADO, no de la copia que tomó el motor al disparar: lo que gastó un paso de esta misma
+    # corrida (un `elegir`, la IA completa de respaldo) tiene que verlo el siguiente.
+    saved = next((r for r in routine_store.rules() if r.get("id") == rule.get("id")), None) if "id" in rule else None
+    spent, cap = routine_rules.spent_today(saved or rule, clock.now().date()), config.number("ROUTINES_AI_DAILY_USD")
     if spent >= cap:
         return f"Esta rutina llegó a su tope de hoy (US$ {spent:.2f} de US$ {cap:.2f}). Sigue mañana."
     return None
