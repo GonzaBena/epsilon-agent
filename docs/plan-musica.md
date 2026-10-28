@@ -1,6 +1,6 @@
 # Música con criterio: que la IA elija qué poner
 
-Estado: propuesta (2026-10-28). Fases 0 (web apps en `open_url`) y 1 (`musica_poner`) hechas; `PLAY_JS` probado contra YouTube Music real (búsqueda y playlist, con y sin aleatorio); `Page.navigate` acepta el «¿Salir del sitio?».
+Estado: propuesta (2026-10-28). Fases 0 (web apps en `open_url`), 1 (`musica_poner`) y 2 (`musica_buscar`) hechas; `PLAY_JS` probado contra YouTube Music real (búsqueda y playlist, con y sin aleatorio); `Page.navigate` acepta el «¿Salir del sitio?».
 
 ## Qué es
 

@@ -110,6 +110,22 @@ MUSIC_JS = """(() => {
   return {repeat: bar.getAttribute('repeat-mode'), shuffle: bar.hasAttribute('shuffle-on'), title: title ? title.textContent : '',
           repeatAt: center(bar.querySelector('.repeat')), shuffleAt: center(bar.querySelector('.shuffle'))};
 })()"""
+# Otro código fijo (solo lee): las playlists de la página de resultados de YouTube Music (los ítems con un enlace
+# `playlist?list=<id>`): id, título y el texto del ítem («Playlist • autor • 69 canciones»). No recibe nada del modelo:
+# la búsqueda va en la dirección. Todo es dato de otros y se limpia y recorta en Python (ver _music_results).
+MUSIC_SEARCH_JS = """(() => {
+  const clean = (s, k) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, k);
+  const out = [];
+  for (const el of document.querySelectorAll('ytmusic-responsive-list-item-renderer, ytmusic-two-row-item-renderer')) {
+    const a = [...el.querySelectorAll('a[href]')].find((x) => /playlist\\?list=/.test(x.getAttribute('href') || ''));
+    if (!a) continue;
+    const title = el.querySelector('.title, yt-formatted-string.title');
+    out.push({id: (a.getAttribute('href').match(/list=([^&]+)/) || [])[1] || '', title: clean(title ? title.textContent : '', 150), text: clean(el.innerText, 300)});
+    if (out.length >= 20) break;
+  }
+  return out;
+})()"""
+MUSIC_RESULTS = 8
 # Otro código fijo (solo lee, no recibe nada del modelo): dónde están, en la página de YouTube Music que abrió
 # `play_music`, el botón «Reproducir» y el «Aleatorio» de la cabecera de una playlist y el botón de reproducir del
 # primer resultado de una búsqueda. Devuelve posiciones; el clic lo da Python con el mouse. Reconoce los rótulos en
@@ -958,6 +974,57 @@ def play_music(kind: str, value: str, shuffle: bool = False) -> str:
     if not title:
         raise NavegadorError("Toqué reproducir pero no veo que haya empezado: mirá la pestaña " + tab.short + ".")
     return f"Sonando en YouTube Music: {title}" + (" (aleatorio)" if shuffle else "")
+
+
+def _music_results(data: object) -> list[tuple[str, str, str]]:
+    """(id, título, detalle) de las playlists que devolvió MUSIC_SEARCH_JS: id válido, sin repetir, una sola línea y
+    recortado (es dato de otros). El detalle es lo que acompaña al título («Playlist • autor • 69 canciones»)."""
+    found: list[tuple[str, str, str]] = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        list_id = str(item.get("id", ""))
+        if not reglas.PLAYLIST_ID.fullmatch(list_id) or any(list_id == f[0] for f in found):
+            continue
+        title = " ".join(str(item.get("title", "")).split())[:100]
+        detail = " ".join(str(item.get("text", "")).split()).replace(title, "", 1).strip(" ·-—•")[:80]
+        if detail.casefold().startswith("podcast"):  # el mismo enlace lo usan los podcasts: no son música para poner
+            continue
+        found.append((list_id, title or "(sin título)", detail))
+        if len(found) >= MUSIC_RESULTS:
+            break
+    return found
+
+
+def music_search(query: str) -> str:
+    """Busca playlists en YouTube Music: abre los resultados en una pestaña DETRÁS (no interrumpe lo que suena ni le roba
+    el foco a la persona), los lee con MUSIC_SEARCH_JS y la cierra. No reproduce nada: devuelve id, título y detalle
+    para elegir una con `play_music`."""
+    if not config.enabled("BROWSER_ENABLED"):
+        raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    query = " ".join(query.split())
+    if not query:
+        raise NavegadorError("Falta qué buscar.")
+    if len(query) > MAX_QUERY:
+        raise NavegadorError(f"La búsqueda es muy larga: como mucho {MAX_QUERY} caracteres.")
+    tab = open_url(f"https://{MUSIC_HOST}/search?q={quote_plus(query)}", background=True)
+    try:
+        results: list[tuple[str, str, str]] = []
+        for _ in range(PLAY_WAIT):  # los resultados se dibujan un rato después de cargar
+            data = _cdp(tab.ws, "Runtime.evaluate", {"expression": MUSIC_SEARCH_JS, "returnByValue": True}).get("result", {}).get("value")
+            results = _music_results(data)
+            if results:
+                break
+            time.sleep(0.5)
+    finally:
+        _close(tab)
+    audit("musica", MUSIC_HOST, f"buscar {query}"[:100], asked=False)
+    if not results:
+        return f"YouTube Music no devolvió playlists para «{query}»: probá con otras palabras."
+    lines = [f"Playlists de YouTube Music para «{query}» (para ponerla: poner con «playlist <id>»):"]
+    for n, (list_id, title, detail) in enumerate(results, 1):
+        lines.append(f"{n}. {title}" + (f" — {detail}" if detail else "") + f"\n   id: {list_id}")
+    return "\n".join(lines)
 
 
 def tab_host(tab_ref: str) -> str:

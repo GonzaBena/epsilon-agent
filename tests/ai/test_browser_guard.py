@@ -266,3 +266,13 @@ def test_the_search_cap_follows_the_setting(turn, monkeypatch):
     guard.after_run(tool("navegador.buscar"), "algo", turn)
 
     assert guard.review(tool("navegador.buscar"), "algo más", turn).verdict == "block"
+
+
+def test_music_search_counts_toward_the_search_cap_but_does_not_taint_the_turn(turn, monkeypatch):
+    monkeypatch.setenv("BROWSER_MAX_SEARCHES", "1")
+    assert guard.review(tool("musica.buscar"), "rock", turn).verdict == "run"
+    guard.after_run(tool("musica.buscar"), "rock", turn)
+
+    assert not turn.tainted and turn.browser_searches == 1  # de los resultados solo se usa un id, que el código valida
+    assert guard.review(tool("musica.buscar"), "metal", turn).verdict == "block"
+    assert guard.review(tool("navegador.buscar"), "metal", turn).verdict == "block"  # el tope es uno solo

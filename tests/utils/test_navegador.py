@@ -1006,3 +1006,91 @@ def test_an_alert_that_is_not_beforeunload_is_left_alone(monkeypatch):
     navegador._talk(navegador.WS_PREFIX + "page/X", "Page.navigate", {"url": "https://music.youtube.com/"})
 
     assert not any(m["method"] == "Page.handleJavaScriptDialog" for m in socket.sent)
+
+
+# --- buscar playlists (music_search) ------------------------------------------------------------
+
+RESULTS = [
+    {"id": "PLabcdefghij", "title": "pepito 123", "text": "pepito 123 Playlist • Gonza • 48 canciones"},
+    {"id": "RDCLAK5uy_lFuA--WIEukXUJ93Hk", "title": "Heavy metal para entrenar", "text": "Heavy metal para entrenar Playlist • YouTube Music • 69 canciones"},
+    {"id": "PLpodcast1234", "title": "Un podcast", "text": "Un podcast Podcast • Alguien"},
+    {"id": "PLabcdefghij", "title": "repetida", "text": ""},  # el mismo id
+    {"id": "PL/../mala?x=1", "title": "id inválido", "text": ""},
+    {"id": "corto", "title": "id corto", "text": ""},
+    "no es un dict",
+]
+
+
+def test_music_results_keep_valid_unique_ids_and_a_one_line_detail():
+    assert navegador._music_results(RESULTS) == [
+        ("PLabcdefghij", "pepito 123", "Playlist • Gonza • 48 canciones"),
+        ("RDCLAK5uy_lFuA--WIEukXUJ93Hk", "Heavy metal para entrenar", "Playlist • YouTube Music • 69 canciones"),
+    ]
+
+
+def test_music_results_cap_and_clean_what_the_page_wrote():
+    many = [{"id": f"PLid{n:08d}", "title": "t\nlínea falsa\n" + "x" * 300, "text": ""} for n in range(20)]
+
+    found = navegador._music_results(many)
+
+    assert len(found) == navegador.MUSIC_RESULTS
+    assert all("\n" not in title and len(title) <= 100 for _, title, _ in found)
+
+
+@pytest.mark.parametrize("data", [None, {}, "x", 5])
+def test_music_results_of_garbage_are_empty(data):
+    assert navegador._music_results(data) == []
+
+
+def music_search_setup(monkeypatch, results):
+    chromium = FakeChromium(monkeypatch)
+
+    def cdp(ws_url, method, params=None):
+        if method == "Runtime.evaluate" and params["expression"].startswith("(() =>"):
+            assert params["expression"] == navegador.MUSIC_SEARCH_JS  # el único script que corre es el fijo
+            return {"result": {"value": results}}
+        return FakeChromium.cdp(chromium, ws_url, method, params)
+
+    monkeypatch.setattr(navegador, "_cdp", cdp)
+    bg = []
+    monkeypatch.setattr(navegador, "_background_tab", lambda url: bg.append(url) or "NEWTAB123456")
+    chromium.tabs.append(page("NEWTAB123456", "", "https://music.youtube.com/search?q=x"))
+    chromium.bg = bg
+    return chromium
+
+
+def test_music_search_lists_playlists_from_a_background_tab_and_closes_it(monkeypatch):
+    chromium = music_search_setup(monkeypatch, RESULTS)
+
+    text = navegador.music_search("workout  rock\nplaylist")
+
+    assert chromium.bg == ["https://music.youtube.com/search?q=workout+rock+playlist"]
+    assert ("GET", "/json/close/NEWTAB123456") in chromium.calls
+    assert "1. pepito 123 — Playlist • Gonza • 48 canciones\n   id: PLabcdefghij" in text
+    assert "2. Heavy metal para entrenar" in text and "id: RDCLAK5uy_lFuA--WIEukXUJ93Hk" in text
+
+
+def test_music_search_without_results_says_so_and_still_closes_the_tab(monkeypatch):
+    chromium = music_search_setup(monkeypatch, [])
+
+    assert "no devolvió playlists" in navegador.music_search("zzz")
+
+    assert ("GET", "/json/close/NEWTAB123456") in chromium.calls
+
+
+@pytest.mark.parametrize("query", ["", "   ", "x" * 300])
+def test_music_search_rejects_empty_or_huge_queries(monkeypatch, query):
+    chromium = music_search_setup(monkeypatch, RESULTS)
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.music_search(query)
+
+    assert chromium.bg == []
+
+
+def test_music_search_respects_the_browser_switch(monkeypatch):
+    music_search_setup(monkeypatch, RESULTS)
+    monkeypatch.setattr(navegador.config, "enabled", lambda key: key != "BROWSER_ENABLED")
+
+    with pytest.raises(navegador.NavegadorError, match="apagado"):
+        navegador.music_search("rock")

@@ -1364,7 +1364,7 @@ def routine_catalog() -> list[dict]:
 
 
 # Lo que lee una página no decide a dónde se va ni qué se toca, y lo que lee una nota no sale hacia Google.
-NO_TEMPLATE_TOOLS = {"nav_abrir", "nav_clic", "nav_escribir", "nav_buscar", "musica_poner"}
+NO_TEMPLATE_TOOLS = {"nav_abrir", "nav_clic", "nav_escribir", "nav_buscar", "musica_poner", "musica_buscar"}
 
 
 def _is_destructive(tool: tools.Tool) -> bool:
@@ -1596,6 +1596,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nav_clic": _nav(_nav_click),
     "nav_escribir": _nav(_nav_type),
     "musica_poner": _nav(_music_play),
+    "musica_buscar": _nav(lambda args: navegador.music_search(_bare(args))),
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "nota_editar": lambda args: _edit_note(config.redact(args)),

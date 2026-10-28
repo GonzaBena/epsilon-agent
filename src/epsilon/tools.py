@@ -440,6 +440,17 @@ TOOLS = (
         ai_arg="«playlist <id>» o «canciones <texto>» (por ejemplo: canciones lo-fi para estudiar); «aleatorio» al final lo mezcla. Después contale en una línea qué pusiste",
     ),
     Tool(
+        "Música: buscar playlists",
+        done="Buscó playlists en YouTube Music",
+        ai="read",
+        ai_default="allow",  # solo lee los resultados de YouTube Music, sin abrir nada a la vista
+        ai_group="musica",
+        ai_action="buscar",
+        ai_name="musica_buscar",
+        ai_help="buscar playlists en YouTube Music y devolver id, título y detalle de las primeras, sin ponerlas",
+        ai_arg="qué buscar, en pocas palabras (por ejemplo: workout rock playlist). Para ponerla, poner con «playlist <id>»",
+    ),
+    Tool(
         "/rutina",
         name="rutina",
         usage="/rutina [regla]",

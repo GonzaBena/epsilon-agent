@@ -82,6 +82,11 @@ def review(tool: tools.Tool, args: str, turn: chat.Turn) -> Review:
         return Review("block", "Llegué al tope de acciones del navegador para este mensaje.")
     if tool_id == "nav_abrir" and turn.browser_tabs >= config.number("BROWSER_MAX_NEW_TABS"):
         return Review("block", "Llegué al tope de pestañas nuevas para este mensaje.")
+    if tool_id == "musica_buscar":  # solo YouTube Music, armado por el código: sin pregunta, pero con el mismo tope de búsquedas
+        searches = config.number("BROWSER_MAX_SEARCHES")
+        if turn.browser_searches >= searches:
+            return Review("block", f"Ya busqué {searches} veces en este mensaje: elegí entre esos resultados o preguntale a la persona.")
+        return Review()
     if tool_id == "nav_buscar":  # la pregunta muestra qué sale hacia Google, armado por el código
         searches = config.number("BROWSER_MAX_SEARCHES")
         if turn.browser_searches >= searches:
@@ -108,6 +113,9 @@ def review(tool: tools.Tool, args: str, turn: chat.Turn) -> Review:
 def after_run(tool: tools.Tool, args: str, turn: chat.Turn) -> None:
     """Lleva la cuenta tras una acción del navegador y marca el turno como contaminado si lo que leyó o dejó abierto
     es de un sitio de afuera (el sitio que se LEYÓ, no el que quedó después: una página puede navegar justo al terminar)."""
+    if tools.ai_id(tool) == "musica_buscar":
+        turn.browser_searches += 1  # no contamina el turno: de los resultados solo se usa un id, que el código valida
+        return
     if tool.ai_group != "navegador":
         return
     turn.browser_actions += 1

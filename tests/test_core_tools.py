@@ -1403,3 +1403,12 @@ def test_musica_poner_with_an_invalid_id_fails_without_touching_the_browser(monk
     reply = core.AI_RUNNERS["musica_poner"]("playlist https://evil.com/xxxxxxxx")
 
     assert reply.failed and "id de playlist" in reply.text
+
+
+def test_musica_buscar_passes_the_query_to_the_browser(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.navegador, "music_search", lambda query: seen.append(query) or "1. algo")
+
+    reply = core.AI_RUNNERS["musica_buscar"]("workout rock playlist")
+
+    assert reply.text == "1. algo" and seen == ["workout rock playlist"]
