@@ -1,6 +1,6 @@
 import pytest
 
-from epsilon import core
+from epsilon import core, tools
 from epsilon.ai import chat, llm, permissions
 from epsilon.data import notes
 from tests.test_core_tools import results, script, step  # noqa: F401  (script es un fixture)
@@ -273,3 +273,33 @@ def test_register_routine_executor_also_registers_the_ai_one():
     finally:
         runner.set_executor(None)
         runner.set_ai_executor(None)
+
+
+# --- sugerencias y catálogo de la grilla -------------------------------------------------------------------------
+
+
+def test_suggestions_for_play_music_include_music_tools_and_not_private_ones(script):
+    found = core.routine_suggestions("poné música para despertarme")
+
+    assert {"musica_poner", "musica_playlists", "musica_buscar"} <= set(found)
+    assert not {"yt_historial", "ventanas", "nota", "crear_archivo"} & set(found)
+
+
+def test_suggestions_never_include_routine_tools_or_ai_spenders(script):
+    found = set(core.routine_suggestions("cada día a las 8 resumime todo y avisame, poné música y guardá una nota"))
+    spenders = {tools.ai_id(t) for t in tools.ai_tools() if t.uses_ai}
+
+    assert not spenders & found and not {"avisar", "esperar", "elegir"} & found and "nota" not in found
+
+
+def test_suggestions_of_unrelated_text_are_empty_but_the_clock(script):
+    assert core.routine_suggestions("qwxz plmk") == ["fecha"]
+    assert core.routine_suggestions("   ") == []
+
+
+def test_catalog_marks_sensitive_tools(script):
+    by_id = {item["id"]: item for item in core.routine_catalog()}
+
+    assert by_id["yt_historial"]["sensitive"] and by_id["nota"]["sensitive"] and by_id["ventanas"]["sensitive"]
+    assert not by_id["musica_poner"]["sensitive"] and not by_id["fecha"]["sensitive"]
+    assert all("sensitive" in item for item in by_id.values())

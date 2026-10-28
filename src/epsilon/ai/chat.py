@@ -170,14 +170,15 @@ def _description_words(description: str) -> list[str]:
     return [w for w in re.findall(r"[^\W\d_]{4,}", description) if _plain(w) not in DESCRIPTION_STOP]
 
 
-def preload(turn: Turn, text: str) -> Turn:
-    """Suma al turno los grupos que el mensaje nombra (palabras clave de tools.AI_GROUP_INDEX, el nombre de un
-    conector o de una skill), así lo común sale en la primera llamada. Sin modelo: es comparar texto."""
+def groups_named(text: str) -> set[str]:
+    """Los grupos que el texto nombra (palabras clave de tools.AI_GROUP_INDEX, el nombre de un conector o de una skill).
+    Sin modelo: es comparar texto."""
     plain = _plain(text)
 
     def says(word: str) -> bool:  # al comienzo de una palabra: «nota» vale en «notas», no en «anotación»
         return re.search(r"(?<![a-z0-9])" + re.escape(_plain(word)), plain) is not None
 
+    found = set()
     for group in groups():
         words = tools.AI_GROUP_INDEX.get(group, ("", (group,)))[1]
         if group == "skills":
@@ -185,7 +186,13 @@ def preload(turn: Turn, text: str) -> Turn:
         elif group not in tools.AI_GROUP_INDEX:  # un conector: su nombre y las palabras de lo que la persona escribió de él
             words = (*words, *_description_words(tools.group_text(group).partition("): ")[2]))
         if any(says(word) for word in words):
-            turn.groups.add(group)
+            found.add(group)
+    return found
+
+
+def preload(turn: Turn, text: str) -> Turn:
+    """Suma al turno los grupos que el mensaje nombra (ver `groups_named`), así lo común sale en la primera llamada."""
+    turn.groups |= groups_named(text)
     return turn
 
 

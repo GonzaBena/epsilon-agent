@@ -797,6 +797,13 @@ def create_app() -> FastAPI:
         """Los pasos que se pueden elegir ahora (herramientas permitidas, de conectores prendidos, y los propios de las rutinas)."""
         return {"steps": core.routine_catalog()}
 
+    @app.get("/api/routines/suggest")
+    def get_routine_suggestions(text: str = ""):
+        """Qué herramientas propone Epsilon para lo que la persona escribió (sin modelo; nunca las privadas ni las que escriben)."""
+        if len(text) > routine_rules.MAX_INSTRUCTION:
+            raise HTTPException(422, f"La instrucción es larga: como mucho {routine_rules.MAX_INSTRUCTION} caracteres.")
+        return {"tools": core.routine_suggestions(text)}
+
     def build_routine(body: RoutineIn) -> dict:
         """La regla que describe el cuerpo, o ValueError con el motivo. Los pasos de conectores quedan con su versión."""
         known = {item["id"] for item in core.routine_catalog()}

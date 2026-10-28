@@ -1377,9 +1377,25 @@ def routine_catalog() -> list[dict]:
         found.append({
             "id": tool_id, "label": tool.label, "hint": tool.ai_arg or tool.usage, "group": tool.ai_group,
             "destructive": _is_destructive(tool), "schema": connector[2] if connector else None,
+            "sensitive": tool_id.startswith("mcp_") or permissions.default_state(tool) != "allow",
         })
     for tool_id, info in routine_steps.LOCAL.items():
-        found.append({"id": tool_id, "label": info["label"], "hint": routine_steps.hint(tool_id), "group": "rutinas", "destructive": False, "schema": None})
+        found.append({"id": tool_id, "label": info["label"], "hint": routine_steps.hint(tool_id), "group": "rutinas", "destructive": False, "schema": None, "sensitive": False})
+    return found
+
+
+def routine_suggestions(text: str) -> list[str]:
+    """Las herramientas que probablemente haga falta para lo que la persona escribió, sin modelo: las de los grupos que el
+    texto nombra (como `chat.preload`) más `fecha` para saber la hora. NUNCA las sensibles (privadas, que escriben o de
+    conectores): esas las marca la persona a mano. Son solo una propuesta: no quedan permitidas hasta que confirme."""
+    if not text.strip():
+        return []
+    named = chat.groups_named(text)
+    by_id = {tools.ai_id(tool): tool for tool in _catalog_tools()}
+    safe = {item["id"] for item in routine_catalog() if not item["sensitive"]} & set(by_id)
+    found = [tool_id for tool_id, tool in by_id.items() if tool_id in safe and tool.ai_group in named]
+    if "fecha" in safe and "fecha" not in found:
+        found.append("fecha")
     return found
 
 
