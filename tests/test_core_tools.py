@@ -1469,7 +1469,7 @@ def test_a_playlist_that_failed_to_start_is_not_marked_as_played(monkeypatch):
 def test_the_playlists_tool_tells_the_model_to_choose_and_vary():
     tool = tools.route("musica.playlists")
 
-    for fragment in ("no preguntes", "hace más que no", "UNA línea", "título más parecido"):
+    for fragment in ("no preguntes", "hace más que no", "UNA línea", "título más parecido", "NO digas que pusiste"):
         assert fragment in tool.ai_tips
 
 

@@ -212,10 +212,18 @@ def webapp_setup(monkeypatch, tabs=(), launch_opens=True, apps=YT_APP):
             chromium.tabs.append(page("APPWIN123456", "", cmd[1]))
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    chromium.hidden, chromium.fronted = set(), []
+
     def cdp(ws_url, method, params=None):
+        tab_id = ws_url.rsplit("/", 1)[1]
         if method == "Page.navigate":
             chromium.navigated.append((ws_url, params["url"]))
             return {}
+        if method == "Page.bringToFront":
+            chromium.fronted.append(tab_id)
+            return {}
+        if method == "Runtime.evaluate" and params["expression"] == "document.visibilityState":
+            return {"result": {"value": "hidden" if tab_id in chromium.hidden else "visible"}}
         return FakeChromium.cdp(chromium, ws_url, method, params)
 
     monkeypatch.setattr(navegador, "_run", run)
@@ -242,6 +250,30 @@ def test_open_url_reuses_the_page_of_a_site_that_has_a_webapp(monkeypatch):
     assert chromium.launched == []
     assert chromium.navigated == [(existing["webSocketDebuggerUrl"], "https://music.youtube.com/playlist?list=PLabcdefghij")]
     assert tab.id == "OPENAPP1234" and tab.id in navegador._opened
+
+
+def test_open_url_prefers_the_visible_page_when_the_site_has_several_and_brings_it_to_the_front(monkeypatch):
+    # Dos páginas del mismo sitio: la oculta (una pestaña olvidada) y la ventana de la web app. YouTube Music no
+    # reproduce en una página oculta, así que se usa la visible.
+    hidden = page("HIDDEN123456", "YT Music", "https://music.youtube.com/")
+    shown = page("SHOWN1234567", "YT Music", "https://music.youtube.com/")
+    chromium = webapp_setup(monkeypatch, [hidden, shown])
+    chromium.hidden.add("HIDDEN123456")
+
+    tab = navegador.open_url("https://music.youtube.com/playlist?list=PLabcdefghij")
+
+    assert tab.id == "SHOWN1234567" and [u for _, u in chromium.navigated] == ["https://music.youtube.com/playlist?list=PLabcdefghij"]
+    assert chromium.fronted == ["SHOWN1234567"]
+
+
+def test_open_url_falls_back_to_the_first_page_when_all_are_hidden_and_still_brings_it_to_the_front(monkeypatch):
+    a, b = page("HIDDEN111111", "", "https://music.youtube.com/"), page("HIDDEN222222", "", "https://music.youtube.com/")
+    chromium = webapp_setup(monkeypatch, [a, b])
+    chromium.hidden.update({"HIDDEN111111", "HIDDEN222222"})
+
+    tab = navegador.open_url("https://music.youtube.com/")
+
+    assert tab.id == "HIDDEN111111" and chromium.fronted == ["HIDDEN111111"]
 
 
 def test_open_url_without_a_webapp_opens_a_tab_as_always(monkeypatch):
@@ -841,10 +873,11 @@ def test_webapps_without_the_folder_are_just_empty(tmp_path):
 class FakeYTMusic:
     """YouTube Music de mentira: los botones aparecen tras `delay` lecturas y, al tocar uno, arranca una canción."""
 
-    def __init__(self, monkeypatch, spots=None, delay=0, plays=True):
+    def __init__(self, monkeypatch, spots=None, delay=0, plays=True, already_playing=""):
         self.spots = spots if spots is not None else {"play": {"x": 1, "y": 2}, "shuffle": {"x": 3, "y": 4}, "result": {"x": 5, "y": 6}}
         self.delay, self.plays = delay, plays
-        self.title, self.clicks, self.opened, self.shuffled = "", [], [], []
+        self.title, self.clicks, self.opened, self.shuffled = already_playing, [], [], []
+        self.href = "https://music.youtube.com/playlist?list=PLabcdefghij"
         monkeypatch.setattr(navegador, "_webapps", lambda: [])
         self.chromium = FakeChromium(monkeypatch)
         monkeypatch.setattr(navegador, "_cdp", self.cdp)
@@ -858,13 +891,16 @@ class FakeYTMusic:
                     self.delay -= 1
                     return {"result": {"value": {"play": None, "shuffle": None, "result": None}}}
                 return {"result": {"value": self.spots}}
+            if expression == "location.href":
+                return {"result": {"value": self.href}}
             if expression == navegador.MUSIC_JS:
                 value = {"repeat": "NONE", "shuffle": False, "title": self.title, "repeatAt": None, "shuffleAt": None} if self.title else None
                 return {"result": {"value": value}}
         if method == "Input.dispatchMouseEvent" and params["type"] == "mousePressed":
             self.clicks.append((params["x"], params["y"]))
             if self.plays:
-                self.title = "Canción  Uno"
+                self.title = self.title or "Canción  Uno"  # si ya sonaba la misma canción, el título no cambia
+                self.href = "https://music.youtube.com/watch?v=abc&list=PLabcdefghij"  # al reproducir, YouTube Music pasa a /watch
             return {}
         return FakeChromium.cdp(self.chromium, ws_url, method, params)
 
@@ -877,6 +913,14 @@ def test_play_music_opens_the_playlist_the_code_built_and_clicks_play(monkeypatc
     assert yt.chromium.requested == "/json/new?" + quote("https://music.youtube.com/playlist?list=PLabcdefghij", safe="")
     assert yt.clicks == [(1, 2)]
     assert result == "Sonando en YouTube Music: Canción Uno"
+
+
+def test_play_music_recognises_it_started_when_the_first_song_was_already_the_one_playing(monkeypatch):
+    # Volver a poner la misma playlist: arranca por la misma canción y el título no cambia, pero sí pasó a /watch.
+    yt = FakeYTMusic(monkeypatch, already_playing="Canción  Uno")
+
+    assert navegador.play_music("playlist", "PLabcdefghij") == "Sonando en YouTube Music: Canción Uno"
+    assert yt.clicks == [(1, 2)]
 
 
 def test_play_music_shuffle_clicks_the_shuffle_button_of_a_playlist(monkeypatch):

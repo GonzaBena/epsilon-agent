@@ -437,7 +437,7 @@ TOOLS = (
         ai_action="poner",
         ai_name="musica_poner",
         ai_help="poner música en YouTube Music (una playlist por su id o una búsqueda de canciones) o un video de YouTube por su id; devuelve qué quedó sonando",
-        ai_arg="«playlist <id>», «video <id>» (un video de YouTube, por su id) o «canciones <texto>» (por ejemplo: canciones lo-fi para estudiar); «aleatorio» al final lo mezcla. Después contale en una línea qué pusiste",
+        ai_arg="«playlist <id>», «video <id>» (un video de YouTube, por su id) o «canciones <texto>» (por ejemplo: canciones lo-fi para estudiar); «aleatorio» al final lo mezcla (ejemplo: playlist PLxxxxxxxxxx aleatorio). Solo decí que pusiste algo si esta herramienta contestó «Sonando…»",
     ),
     Tool(
         "Música: tus playlists",
@@ -455,7 +455,8 @@ TOOLS = (
             "lista que encaje: están ordenadas de la que hace más que no suena a la más reciente, así se varía sola. Si ninguna "
             "encaja, buscá una pública con buscar. Después poné y contá en UNA línea qué pusiste y por qué. "
             "Si la persona nombra una playlist («poné pepito», «la de metal»), poné la de título más parecido sin preguntar; "
-            "solo si dos son igual de parecidas, preguntá cuál."
+            "solo si dos son igual de parecidas, preguntá cuál. "
+            "NO digas que pusiste algo hasta que musica_poner conteste «Sonando…»: elegir una playlist no es ponerla, tenés que llamar a poner."
         ),
     ),
     Tool(

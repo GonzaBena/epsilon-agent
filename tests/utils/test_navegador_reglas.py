@@ -298,6 +298,12 @@ def test_pick_webapp_matches_the_host_or_a_subdomain_only():
     ("canciones lo-fi para estudiar", ("canciones", "lo-fi para estudiar", False)),
     ("canciones lo-fi aleatorio", ("canciones", "lo-fi", True)),
     ("video dQw4w9WgXcQ", ("video", "dQw4w9WgXcQ", False)),
+    ("playlist PLabcdefghij aleatorio sí", ("playlist", "PLabcdefghij", True)),  # un modelo chico agrega «sí» / «true»
+    ("playlist PLabcdefghij aleatorio si", ("playlist", "PLabcdefghij", True)),
+    ("playlist PLabcdefghij aleatorio true", ("playlist", "PLabcdefghij", True)),
+    ("playlist PLabcdefghij aleatorio no", ("playlist", "PLabcdefghij", False)),
+    ("playlist PLabcdefghij shuffle false", ("playlist", "PLabcdefghij", False)),
+    ("canciones lo-fi aleatorio sí", ("canciones", "lo-fi", True)),
     ("canciones aleatorio", ("canciones", "aleatorio", False)),  # una sola palabra es lo que se busca, no la opción
 ])
 def test_parse_play_understands_both_forms(args, want):

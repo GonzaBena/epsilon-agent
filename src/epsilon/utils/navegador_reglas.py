@@ -290,13 +290,23 @@ def video_id(url: str) -> str | None:
     return values[0] if len(values) == 1 and VIDEO_ID.fullmatch(values[0]) else None
 
 
+SHUFFLE_WORDS = ("aleatorio", "shuffle")
+YES_WORDS = frozenset({"si", "sí", "yes", "true"})
+NO_WORDS = frozenset({"no", "false"})
+
+
 def parse_play(args: str) -> tuple[str, str, bool]:
     """Lo que pidió la IA para poner música: «playlist <id> [aleatorio]» o «canciones <texto> [aleatorio]» →
     (tipo, valor, aleatorio); `video <id>` es un video de YouTube. El id se valida acá (la dirección la arma el código, nunca viene del modelo).
     ValueError con el motivo en español si no se entiende."""
     words = args.split()
-    shuffle = bool(words) and words[-1].lower() in ("aleatorio", "shuffle") and len(words) > 2
-    if shuffle:
+    shuffle = False
+    # «aleatorio» al final; un modelo chico le suma «sí», «true» o «no»: se entiende en vez de rechazar y perder una vuelta.
+    if len(words) > 3 and words[-2].lower() in SHUFFLE_WORDS and words[-1].lower() in YES_WORDS | NO_WORDS:
+        shuffle = words[-1].lower() in YES_WORDS
+        words = words[:-2]
+    elif len(words) > 2 and words[-1].lower() in SHUFFLE_WORDS:
+        shuffle = True
         words = words[:-1]
     kind = words[0].lower() if words else ""
     value = " ".join(words[1:])

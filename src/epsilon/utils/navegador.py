@@ -520,16 +520,29 @@ def read_webapps(folder: Path) -> list[tuple[str, str]]:
     return found
 
 
+def _visible(ws_url: str) -> bool:
+    """¿La página se está viendo (no está en una pestaña de fondo ni en una ventana minimizada)? Si no se puede saber, no."""
+    try:
+        return _cdp(ws_url, "Runtime.evaluate", {"expression": "document.visibilityState", "returnByValue": True}).get("result", {}).get("value") == "visible"
+    except NavegadorError:
+        return False
+
+
 def _webapp_tab(url: str, app_url: str) -> Tab:
     """La página de la web app que sirve para `url`: si ya hay una abierta se navega ahí (cada lanzamiento abriría
     otra ventana); si no, se lanza `omarchy-launch-webapp` con la dirección completa. Chromium la ve como una
     pestaña más (misma sesión de Google). NavegadorError si no sale: quien llama cae a una pestaña normal."""
     app_host = reglas.host_of(app_url)
-    for item in _raw_tabs():
-        if item.get("id") and item.get("webSocketDebuggerUrl") and reglas.matches(reglas.host_of(str(item.get("url", ""))), [app_host]):
-            _cdp(str(item["webSocketDebuggerUrl"]), "Page.navigate", {"url": url})
-            time.sleep(SETTLE_PAUSE)  # que empiece a navegar antes de preguntarle si cargó
-            return _tab(item)
+    pages = [i for i in _raw_tabs() if i.get("id") and i.get("webSocketDebuggerUrl") and reglas.matches(reglas.host_of(str(i.get("url", ""))), [app_host])]
+    if pages:
+        # Con varias del mismo sitio (una pestaña olvidada y la ventana de la web app), la VISIBLE: YouTube Music no
+        # reproduce en una página oculta. Si no hay ninguna visible, la primera, y se la trae al frente.
+        item = next((i for i in pages if _visible(str(i["webSocketDebuggerUrl"]))), pages[0])
+        ws = str(item["webSocketDebuggerUrl"])
+        _cdp(ws, "Page.bringToFront")
+        _cdp(ws, "Page.navigate", {"url": url})
+        time.sleep(SETTLE_PAUSE)  # que empiece a navegar antes de preguntarle si cargó
+        return _tab(item)
     before = {i.get("id") for i in _raw_tabs()}
     if _run(["omarchy-launch-webapp", url]).returncode != 0:
         raise NavegadorError("No pude abrir la web app.")
