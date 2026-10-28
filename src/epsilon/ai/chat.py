@@ -140,6 +140,7 @@ class Turn:
     asked_groups: bool = False  # ya usó `herramientas`: sigue declarada, porque el historial la nombra
     tipped: set[str] = field(default_factory=set)  # herramientas cuyas pistas (Tool.ai_tips) ya recibió en este mensaje
     max_steps: int | None = None  # tope propio de vueltas (una rutina con IA lo trae; el chat usa el de los ajustes)
+    routine: str = ""  # si es una corrida de una rutina con IA: cómo se nombra en la Actividad (no tiene conversación guardada)
     trace: list[tuple[str, str, str, bool]] = field(default_factory=list)  # (herramienta, argumentos, resultado, salió bien) de lo que corrió
 
 

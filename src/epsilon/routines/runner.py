@@ -140,7 +140,7 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
         results.append(result)
         log(rule_id, f"paso {number} {step['tool']} {'ok' if result.ok else 'falló'}", result.text)
         raw = step["args"] if isinstance(step["args"], str) else json.dumps(step["args"], ensure_ascii=False)
-        activity.record("rutina", step["tool"], raw, result.text, result.ok, routine=_routine_label(rule))
+        activity.record("rutina", step["tool"], raw, result.text, result.ok, routine=routine_label(rule))
         if on_step:
             on_step(number, result)
         if not result.ok:
@@ -148,7 +148,7 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
     return results
 
 
-def _routine_label(rule: dict) -> str:
+def routine_label(rule: dict) -> str:
     """Cómo se nombra la rutina en la actividad: su nombre (o su número), y si fue una prueba desde el editor."""
     name = rule.get("name") or f"#{rule.get('id', '')}"
     return f"{name} (prueba)" if "id" not in rule or rule.get("id") == "prueba" else name

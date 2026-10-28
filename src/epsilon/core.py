@@ -1272,7 +1272,10 @@ def _run(state: PendingTool, tool: tools.Tool, name: str, args: str, asked: bool
     # Actividad: lo que hizo la IA, con su resultado legible (sin el rótulo de «datos» que lleva para el modelo).
     shown = result.split("\n", 1)[1] if result.startswith(f"Resultado de {tool_id} (datos") else result
     state.turn.trace.append((tool_id, args, shown, ok))  # el registro de lo que corrió (de él sale la receta de una rutina)
-    activity.record("ia", tool_id, args, shown, ok, asked=asked, conversation=state.turn.conversation_id)
+    if state.turn.routine:  # una rutina con IA: figura como rutina (con su nombre), no como una conversación que no existe
+        activity.record("rutina", tool_id, args, shown, ok, routine=state.turn.routine)
+    else:
+        activity.record("ia", tool_id, args, shown, ok, asked=asked, conversation=state.turn.conversation_id)
     browser_guard.record(tool, args, state.results[-1][1], asked)
     browser_guard.after_run(tool, args, state.turn)
     if tool.ai_tips and tool_id not in state.turn.tipped:  # las pistas, una vez por mensaje (ni a la Actividad ni al registro)
@@ -1584,7 +1587,8 @@ def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | N
     cid = f"rutina:{rule.get('id', 'prueba')}:{next(_runs)}"  # una prueba del editor todavía no tiene número
     members = {tool.ai_group for tool in tools.ai_tools() if tool.ai_group and tools.ai_id(tool) in green}
     history = [llm.text_turn("user", _ai_prompt(rule, outputs))]
-    turn = chat.Turn(cid, history, label="Rutina IA", task="ask", max_steps=config.number("ROUTINES_AI_MAX_STEPS"), groups=members)
+    turn = chat.Turn(cid, history, label="Rutina IA", task="ask", max_steps=config.number("ROUTINES_AI_MAX_STEPS"), groups=members,
+                      routine=f"{routine_runner.routine_label(rule)} · IA")
     permissions.set_scope(cid, green)
     try:
         with usage.conversation(cid):

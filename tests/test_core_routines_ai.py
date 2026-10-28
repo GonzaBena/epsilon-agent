@@ -556,3 +556,14 @@ def test_the_daily_cap_sees_what_an_earlier_step_of_the_same_run_spent(ai_rule, 
     result = core.run_ai_step(stale_copy, stale_copy["steps"][0], {})
 
     assert not result.ok and "tope de hoy" in result.text and script.seen == []
+
+
+def test_tools_run_by_an_ai_routine_are_logged_as_the_routine_with_its_name_and_no_conversation(ai_rule, script):
+    from epsilon.data import activity
+
+    script.steps = [step(calls=[("consultar.fecha", "")]), step("Listo")]
+
+    run(ai_rule)
+
+    (entry,) = [e for e in activity.read()["items"] if e["tool"] == "fecha"]
+    assert entry["who"] == "rutina" and entry["routine"] == f"{ai_rule['name']} · IA" and "conversation" not in entry
