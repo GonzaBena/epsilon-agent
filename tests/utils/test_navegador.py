@@ -1,4 +1,5 @@
 import json
+import subprocess
 from urllib.parse import quote, unquote
 
 import pytest
@@ -20,6 +21,7 @@ class FakeChromium:
         monkeypatch.setattr(navegador, "_resolve", lambda host: self.addresses.get(host, ["142.250.0.1"]))
         self.pending = {}  # id de pestaña -> lista de "estado|dirección" que va devolviendo location.href
         monkeypatch.setattr(navegador, "_cdp", self.cdp)
+        monkeypatch.setattr(navegador, "_webapps", lambda: [])  # sin web apps de Omarchy, salvo que el test las pida
         monkeypatch.setattr(navegador.time, "sleep", lambda seconds: None)
 
     def cdp(self, ws_url, method, params=None):
@@ -192,6 +194,89 @@ def test_open_url_returns_the_tab_and_remembers_it(monkeypatch):
     tab = navegador.open_url("https://music.youtube.com/")
 
     assert tab.host == "music.youtube.com" and tab.id in navegador._opened
+
+
+# --- web apps de Omarchy ---------------------------------------------------------------------------
+
+YT_APP = [("Youtube Music", "https://music.youtube.com/")]
+
+
+def webapp_setup(monkeypatch, tabs=(), launch_opens=True, apps=YT_APP):
+    chromium = FakeChromium(monkeypatch, tabs)
+    monkeypatch.setattr(navegador, "_webapps", lambda: apps)
+    chromium.launched, chromium.navigated = [], []
+
+    def run(cmd):
+        chromium.launched.append(cmd)
+        if launch_opens:
+            chromium.tabs.append(page("APPWIN123456", "", cmd[1]))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def cdp(ws_url, method, params=None):
+        if method == "Page.navigate":
+            chromium.navigated.append((ws_url, params["url"]))
+            return {}
+        return FakeChromium.cdp(chromium, ws_url, method, params)
+
+    monkeypatch.setattr(navegador, "_run", run)
+    monkeypatch.setattr(navegador, "_cdp", cdp)
+    return chromium
+
+
+def test_open_url_launches_the_webapp_with_the_full_address(monkeypatch):
+    chromium = webapp_setup(monkeypatch)
+
+    tab = navegador.open_url("https://music.youtube.com/playlist?list=PLabcdefghij")
+
+    assert chromium.launched == [["omarchy-launch-webapp", "https://music.youtube.com/playlist?list=PLabcdefghij"]]
+    assert not any(path.startswith("/json/new") for _, path in chromium.calls)
+    assert tab.id == "APPWIN123456" and tab.id in navegador._opened
+
+
+def test_open_url_reuses_the_page_of_a_site_that_has_a_webapp(monkeypatch):
+    existing = page("OPENAPP1234", "YT Music", "https://music.youtube.com/")
+    chromium = webapp_setup(monkeypatch, [existing])
+
+    tab = navegador.open_url("https://music.youtube.com/playlist?list=PLabcdefghij")
+
+    assert chromium.launched == []
+    assert chromium.navigated == [(existing["webSocketDebuggerUrl"], "https://music.youtube.com/playlist?list=PLabcdefghij")]
+    assert tab.id == "OPENAPP1234" and tab.id in navegador._opened
+
+
+def test_open_url_without_a_webapp_opens_a_tab_as_always(monkeypatch):
+    chromium = webapp_setup(monkeypatch, apps=[])
+
+    navegador.open_url("https://music.youtube.com/")
+
+    assert chromium.launched == [] and any(path.startswith("/json/new") for _, path in chromium.calls)
+
+
+def test_open_url_does_not_use_webapps_when_the_setting_is_off(monkeypatch):
+    chromium = webapp_setup(monkeypatch)
+    monkeypatch.setattr(navegador.config, "enabled", lambda key: key != "BROWSER_USE_WEBAPPS")
+
+    navegador.open_url("https://music.youtube.com/")
+
+    assert chromium.launched == [] and any(path.startswith("/json/new") for _, path in chromium.calls)
+
+
+def test_open_url_falls_back_to_a_tab_if_the_webapp_window_never_shows_up(monkeypatch):
+    chromium = webapp_setup(monkeypatch, launch_opens=False)
+
+    tab = navegador.open_url("https://music.youtube.com/")
+
+    assert tab.id == "NEWTAB123456" and any(path.startswith("/json/new") for _, path in chromium.calls)
+
+
+def test_open_url_checks_the_address_before_launching_a_webapp(monkeypatch):
+    chromium = webapp_setup(monkeypatch)
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["music.youtube.com"] if key == "BROWSER_BLOCKED_SITES" else [])
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.open_url("https://music.youtube.com/")
+
+    assert chromium.launched == []
 
 
 # --- abrir Chromium si está cerrado ------------------------------------------------------------
@@ -736,3 +821,15 @@ def test_search_snippets_drop_the_breadcrumb_that_repeats_the_address(monkeypatc
     lines = navegador.search("x").splitlines()
 
     assert lines[3] == "   Circuito para crear aulas." and lines[4].startswith("2. ") and len(lines) == 6
+
+
+def test_webapps_are_read_from_the_desktop_files(tmp_path):
+    (tmp_path / "yt.desktop").write_text("[Desktop Entry]\nName=Youtube Music\nExec=omarchy-launch-webapp https://music.youtube.com/\n")
+    (tmp_path / "otro.desktop").write_text("[Desktop Entry]\nName=Alacritty\nExec=alacritty\n")
+    (tmp_path / "nota.txt").write_text("Exec=omarchy-launch-webapp https://x.com/")
+
+    assert navegador.read_webapps(tmp_path) == [("Youtube Music", "https://music.youtube.com/")]
+
+
+def test_webapps_without_the_folder_are_just_empty(tmp_path):
+    assert navegador.read_webapps(tmp_path / "nada") == []

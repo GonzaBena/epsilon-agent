@@ -1,5 +1,6 @@
 import ipaddress
 import re
+import shlex
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -236,3 +237,37 @@ def pick_alias(query: str, aliases: dict[str, str]) -> str | None:
             if best is None or key > best[0]:
                 best = (key, url)
     return best[1] if best else None
+
+
+def parse_desktop(text: str) -> tuple[str, str] | None:
+    """(nombre, dirección) de una web app de un `.desktop` (`Exec=omarchy-launch-webapp <url>` o `--app=<url>`).
+    Solo http/https: un `file:`, un `chrome:` o un programa cualquiera no es una web app."""
+    name, exec_line = "", ""
+    for line in text.splitlines():
+        if line.startswith("Name=") and not name:
+            name = line[5:].strip()
+        elif line.startswith("Exec=") and not exec_line:
+            exec_line = line[5:].strip()
+    try:
+        words = shlex.split(exec_line)
+    except ValueError:
+        return None
+    url = ""
+    for i, word in enumerate(words):
+        if word.startswith("--app="):
+            url = word[6:]
+        elif word.rsplit("/", 1)[-1] == "omarchy-launch-webapp" and i + 1 < len(words):
+            url = words[i + 1]
+        if url:
+            break
+    if not url.startswith(("http://", "https://")) or not host_of(url):
+        return None
+    return (name or host_of(url), url)
+
+
+def pick_webapp(host: str, apps: list[tuple[str, str]]) -> str | None:
+    """La dirección de la web app que sirve para ese sitio (el mismo o un subdominio suyo), o None."""
+    for _, url in apps:
+        if matches(host, [host_of(url)]):
+            return url
+    return None

@@ -1,6 +1,6 @@
 # Música con criterio: que la IA elija qué poner
 
-Estado: propuesta (2026-10-28). Nada construido todavía.
+Estado: propuesta (2026-10-28). Fase 0 (web apps en `open_url`) hecha.
 
 ## Qué es
 

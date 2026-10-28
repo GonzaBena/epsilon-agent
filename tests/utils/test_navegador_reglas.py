@@ -255,3 +255,38 @@ def test_pick_alias_finds_the_name_inside_the_request(query, url):
 @pytest.mark.parametrize("query", ["facultad", "notas", "youtube"])
 def test_pick_alias_needs_every_word_of_the_name(query):
     assert reglas.pick_alias(query, ALIASES) is None
+
+
+# --- web apps de Omarchy (.desktop) ------------------------------------------------------------
+
+
+def desktop(exec_line: str, name: str = "App") -> str:
+    return f"[Desktop Entry]\nName={name}\nType=Application\nExec={exec_line}\n"
+
+
+@pytest.mark.parametrize("exec_line, url", [
+    ("omarchy-launch-webapp https://music.youtube.com/", "https://music.youtube.com/"),
+    ('omarchy-launch-webapp "https://web.whatsapp.com/"', "https://web.whatsapp.com/"),
+    ("omarchy-launch-webapp https://a.com/ %U", "https://a.com/"),
+    ("chromium --app=https://b.com/x --class=B", "https://b.com/x"),
+    ("/usr/bin/omarchy-launch-webapp http://c.com", "http://c.com"),
+])
+def test_parse_desktop_finds_the_webapp_address(exec_line, url):
+    assert reglas.parse_desktop(desktop(exec_line, "Mi app")) == ("Mi app", url)
+
+
+@pytest.mark.parametrize("exec_line", [
+    "alacritty", "omarchy-launch-webapp", "omarchy-launch-webapp file:///etc/passwd",
+    "chromium --app=chrome://settings", "omarchy-launch-webapp javascript:alert(1)", "",
+])
+def test_parse_desktop_ignores_what_is_not_an_http_webapp(exec_line):
+    assert reglas.parse_desktop(desktop(exec_line)) is None
+
+
+def test_pick_webapp_matches_the_host_or_a_subdomain_only():
+    apps = [("YT Music", "https://music.youtube.com/"), ("Wsp", "https://web.whatsapp.com/")]
+    assert reglas.pick_webapp("music.youtube.com", apps) == "https://music.youtube.com/"
+    assert reglas.pick_webapp("web.whatsapp.com", apps) == "https://web.whatsapp.com/"
+    assert reglas.pick_webapp("youtube.com", apps) is None
+    assert reglas.pick_webapp("eviltmusic.youtube.com.malo.com", apps) is None
+    assert reglas.pick_webapp("", apps) is None

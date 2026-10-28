@@ -21,7 +21,7 @@ from epsilon.utils import navegador_reglas as reglas
 
 # El navegador de la IA: habla con el Chromium de la persona por su puerto de depuración (CDP), SOLO en
 # 127.0.0.1:9222. Sin modelo. Los ÚNICOS puntos que tocan algo de afuera son `_http`, `_cdp`, `_resolve`, `_run`,
-# `_history` y `_bookmarks` (los tests los bloquean). Las reglas de seguridad (sitios bloqueados, pestañas ocultas, direcciones) viven acá y
+# `_history`, `_bookmarks` y `_webapps` (los tests los bloquean). Las reglas de seguridad (sitios bloqueados, pestañas ocultas, direcciones) viven acá y
 # en navegador_reglas.py, nunca dependen de lo que diga el modelo. Ver docs/superpowers/specs/2026-10-22-navegador-design.md.
 
 PORT = 9222
@@ -39,6 +39,8 @@ HISTORY_FILE = Path.home() / ".config/chromium/Default/History"  # el historial 
 HISTORY_ROWS = 5000  # cuántas direcciones se miran (las más visitadas)
 BOOKMARKS_FILE = Path.home() / ".config/chromium/Default/Bookmarks"  # los marcadores de Chromium: se leen, jamás se escriben
 MAX_BOOKMARKS = 2000
+APPS_FOLDER = Path.home() / ".local/share/applications"  # los .desktop: de ahí salen las web apps de Omarchy (solo lectura)
+MAX_APPS = 500
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
 
 MAX_TYPED = 500  # caracteres que acepta `type_text`
@@ -413,13 +415,66 @@ def _background_tab(url: str) -> str:
     return str(result["targetId"])
 
 
+def _webapps() -> list[tuple[str, str]]:
+    """Punto único (bloqueado en los tests): las web apps de Omarchy de la persona."""
+    return read_webapps(APPS_FOLDER)
+
+
+def read_webapps(folder: Path) -> list[tuple[str, str]]:
+    """Las web apps (nombre, dirección http(s)) de los `.desktop` de la carpeta. Solo se leen; sin la carpeta, nada."""
+    found: list[tuple[str, str]] = []
+    try:
+        files = sorted(folder.glob("*.desktop"))[:MAX_APPS]
+    except OSError:
+        return found
+    for file in files:
+        try:
+            app = reglas.parse_desktop(file.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if app:
+            found.append(app)
+    return found
+
+
+def _webapp_tab(url: str, app_url: str) -> Tab:
+    """La página de la web app que sirve para `url`: si ya hay una abierta se navega ahí (cada lanzamiento abriría
+    otra ventana); si no, se lanza `omarchy-launch-webapp` con la dirección completa. Chromium la ve como una
+    pestaña más (misma sesión de Google). NavegadorError si no sale: quien llama cae a una pestaña normal."""
+    app_host = reglas.host_of(app_url)
+    for item in _raw_tabs():
+        if item.get("id") and item.get("webSocketDebuggerUrl") and reglas.matches(reglas.host_of(str(item.get("url", ""))), [app_host]):
+            _cdp(str(item["webSocketDebuggerUrl"]), "Page.navigate", {"url": url})
+            time.sleep(SETTLE_PAUSE)  # que empiece a navegar antes de preguntarle si cargó
+            return _tab(item)
+    before = {i.get("id") for i in _raw_tabs()}
+    if _run(["omarchy-launch-webapp", url]).returncode != 0:
+        raise NavegadorError("No pude abrir la web app.")
+    for _ in range(LOAD_TRIES):
+        for item in _raw_tabs():
+            if item.get("id") not in before and reglas.matches(reglas.host_of(str(item.get("url", ""))), [app_host]):
+                return _tab(item)
+        time.sleep(0.5)
+    raise NavegadorError("La web app no apareció.")
+
+
 def open_url(url: str, background: bool = False) -> Tab:
     """Abre la dirección en una pestaña nueva (al frente, o con `background` detrás, sin quitarle el foco a nadie).
+    Si el sitio tiene una web app de Omarchy (BROWSER_USE_WEBAPPS), usa su ventana en vez de una pestaña.
     Revisa la dirección antes y la dirección final después."""
     ensure_running()
     url = url.strip()
     _check_destination(url)
-    if background:
+    tab = None
+    app_url = None if background or not config.enabled("BROWSER_USE_WEBAPPS") else reglas.pick_webapp(reglas.host_of(url), _webapps())
+    if app_url:
+        try:
+            tab = _webapp_tab(url, app_url)
+        except NavegadorError:
+            tab = None  # sin web app que ande, la pestaña de siempre
+    if tab is not None:
+        tab_id = tab.id
+    elif background:
         tab_id = _background_tab(url)
         tab = Tab(tab_id, "", url, reglas.host_of(url))
     else:

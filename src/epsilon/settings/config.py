@@ -475,6 +475,13 @@ SETTINGS = (
         validate=_yes_no,
     ),
     Setting(
+        "BROWSER_USE_WEBAPPS",
+        "Abrir los sitios con tu web app de Omarchy, si tienen",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    Setting(
         "BROWSER_GUARD",
         "Guardia del navegador (preguntar en sitios que no son de confianza)",
         live=True,
@@ -565,6 +572,7 @@ _JSON_FIELDS: dict[str, dict] = {
     "TTS_MAX_CHARS": _J(name="tts.max_chars", kind="int", minimum=50, maximum=5000, help="Largo máximo del texto que se pasa a audio"),
     "TELEGRAM_ENABLED": _J(name="channels.telegram_enabled", kind="bool", help="Canal de Telegram prendido"),
     "BROWSER_ENABLED": _J(name="browser.enabled", kind="bool", loosens=True, safer="no", help="Dejar que la IA use tu Chromium"),
+    "BROWSER_USE_WEBAPPS": _J(name="browser.use_webapps", kind="bool", help="Abrir un sitio con su web app de Omarchy (ventana propia) en vez de una pestaña"),
     "BROWSER_GUARD": _J(name="browser.guard", kind="bool", loosens=True, safer="si", help="Preguntar antes de actuar en sitios que no son de confianza"),
     "BROWSER_TRUSTED_SITES": _J(
         name="browser.trusted_sites", kind="list", loosens=True, safer="fewer",
