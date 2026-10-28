@@ -1364,7 +1364,7 @@ def routine_catalog() -> list[dict]:
 
 
 # Lo que lee una página no decide a dónde se va ni qué se toca, y lo que lee una nota no sale hacia Google.
-NO_TEMPLATE_TOOLS = {"nav_abrir", "nav_clic", "nav_escribir", "nav_buscar"}
+NO_TEMPLATE_TOOLS = {"nav_abrir", "nav_clic", "nav_escribir", "nav_buscar", "musica_poner"}
 
 
 def _is_destructive(tool: tools.Tool) -> bool:
@@ -1567,6 +1567,15 @@ def _nav_open(args: str) -> str:
     return f"Abrí la pestaña {tab.short}: {_nav_title(tab) or tab.host}"
 
 
+def _music_play(args: str) -> str:
+    """musica_poner: «playlist <id>» o «canciones <texto>». Lo que no se entiende vuelve como texto, sin tocar el navegador."""
+    try:
+        kind, value, shuffle = navegador.reglas.parse_play(_bare(args))
+    except ValueError as e:
+        raise navegador.NavegadorError(str(e)) from None
+    return navegador.play_music(kind, value, shuffle)
+
+
 def _nav_click(args: str) -> str:
     ref, n = navegador.parse_ref(args)
     return navegador.click(ref, n)
@@ -1586,6 +1595,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "nav_buscar": _nav(lambda args: navegador.search(args)),
     "nav_clic": _nav(_nav_click),
     "nav_escribir": _nav(_nav_type),
+    "musica_poner": _nav(_music_play),
     "nota": lambda args: _save("+ " + config.redact(_bare(args))),
     "nota_nombrada": lambda args: _save_named(config.redact(args)),
     "nota_editar": lambda args: _edit_note(config.redact(args)),

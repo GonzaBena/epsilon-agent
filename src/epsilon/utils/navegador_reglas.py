@@ -271,3 +271,27 @@ def pick_webapp(host: str, apps: list[tuple[str, str]]) -> str | None:
         if matches(host, [host_of(url)]):
             return url
     return None
+
+
+PLAYLIST_ID = re.compile(r"[A-Za-z0-9_-]{10,64}")
+
+
+def parse_play(args: str) -> tuple[str, str, bool]:
+    """Lo que pidió la IA para poner música: «playlist <id> [aleatorio]» o «canciones <texto> [aleatorio]» →
+    (tipo, valor, aleatorio). El id se valida acá (la dirección la arma el código, nunca viene del modelo).
+    ValueError con el motivo en español si no se entiende."""
+    words = args.split()
+    shuffle = bool(words) and words[-1].lower() in ("aleatorio", "shuffle") and len(words) > 2
+    if shuffle:
+        words = words[:-1]
+    kind = words[0].lower() if words else ""
+    value = " ".join(words[1:])
+    if kind == "playlist":
+        if not PLAYLIST_ID.fullmatch(value):
+            raise ValueError("Ese id de playlist no es válido: usá el que dio playlists o buscar (solo letras, números, «_» y «-»).")
+    elif kind == "canciones":
+        if not value:
+            raise ValueError("Falta qué poner: «canciones <texto>», por ejemplo «canciones lo-fi para estudiar».")
+    else:
+        raise ValueError("Pedí «playlist <id>» o «canciones <texto>» (y opcional «aleatorio» al final).")
+    return kind, value, shuffle

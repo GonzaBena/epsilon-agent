@@ -833,3 +833,105 @@ def test_webapps_are_read_from_the_desktop_files(tmp_path):
 
 def test_webapps_without_the_folder_are_just_empty(tmp_path):
     assert navegador.read_webapps(tmp_path / "nada") == []
+
+
+# --- poner música (play_music) -----------------------------------------------------------------
+
+
+class FakeYTMusic:
+    """YouTube Music de mentira: los botones aparecen tras `delay` lecturas y, al tocar uno, arranca una canción."""
+
+    def __init__(self, monkeypatch, spots=None, delay=0, plays=True):
+        self.spots = spots if spots is not None else {"play": {"x": 1, "y": 2}, "shuffle": {"x": 3, "y": 4}, "result": {"x": 5, "y": 6}}
+        self.delay, self.plays = delay, plays
+        self.title, self.clicks, self.opened, self.shuffled = "", [], [], []
+        monkeypatch.setattr(navegador, "_webapps", lambda: [])
+        self.chromium = FakeChromium(monkeypatch)
+        monkeypatch.setattr(navegador, "_cdp", self.cdp)
+        monkeypatch.setattr(navegador, "music_shuffle", lambda want, expect=None: self.shuffled.append(want) or want)
+
+    def cdp(self, ws_url, method, params=None):
+        if method == "Runtime.evaluate":
+            expression = params["expression"]
+            if expression == navegador.PLAY_JS:  # el único código que corre es el fijo
+                if self.delay > 0:
+                    self.delay -= 1
+                    return {"result": {"value": {"play": None, "shuffle": None, "result": None}}}
+                return {"result": {"value": self.spots}}
+            if expression == navegador.MUSIC_JS:
+                value = {"repeat": "NONE", "shuffle": False, "title": self.title, "repeatAt": None, "shuffleAt": None} if self.title else None
+                return {"result": {"value": value}}
+        if method == "Input.dispatchMouseEvent" and params["type"] == "mousePressed":
+            self.clicks.append((params["x"], params["y"]))
+            if self.plays:
+                self.title = "Canción  Uno"
+            return {}
+        return FakeChromium.cdp(self.chromium, ws_url, method, params)
+
+
+def test_play_music_opens_the_playlist_the_code_built_and_clicks_play(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+
+    result = navegador.play_music("playlist", "PLabcdefghij")
+
+    assert yt.chromium.requested == "/json/new?" + quote("https://music.youtube.com/playlist?list=PLabcdefghij", safe="")
+    assert yt.clicks == [(1, 2)]
+    assert result == "Sonando en YouTube Music: Canción Uno"
+
+
+def test_play_music_shuffle_clicks_the_shuffle_button_of_a_playlist(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+
+    assert navegador.play_music("playlist", "PLabcdefghij", shuffle=True).endswith("(aleatorio)")
+    assert yt.clicks == [(3, 4)]
+
+
+def test_play_music_searches_songs_with_an_escaped_address_and_clicks_the_first_result(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+
+    navegador.play_music("canciones", "lo-fi & jazz\nsuave", shuffle=True)
+
+    assert yt.chromium.requested == "/json/new?" + quote("https://music.youtube.com/search?q=lo-fi+%26+jazz+suave", safe="")
+    assert yt.clicks == [(5, 6)] and yt.shuffled == [True]
+
+
+def test_play_music_waits_for_the_buttons_to_be_drawn(monkeypatch):
+    yt = FakeYTMusic(monkeypatch, delay=3)
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert yt.clicks == [(1, 2)]
+
+
+def test_play_music_explains_when_youtube_changed(monkeypatch):
+    yt = FakeYTMusic(monkeypatch, spots={"play": None, "shuffle": None, "result": None})
+
+    with pytest.raises(navegador.NavegadorError, match="puede que YouTube Music haya cambiado"):
+        navegador.play_music("playlist", "PLabcdefghij")
+
+    assert yt.clicks == []
+
+
+def test_play_music_says_so_when_nothing_started(monkeypatch):
+    FakeYTMusic(monkeypatch, plays=False)
+
+    with pytest.raises(navegador.NavegadorError, match="no veo que haya empezado"):
+        navegador.play_music("playlist", "PLabcdefghij")
+
+
+@pytest.mark.parametrize("kind, value", [("playlist", "x"), ("playlist", "PL/../x?a=1&b=2"), ("canciones", "  "), ("video", "abc"), ("playlist", "https://evil.com/xxxxxx")])
+def test_play_music_never_builds_an_address_from_bad_input(monkeypatch, kind, value):
+    yt = FakeYTMusic(monkeypatch)
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.play_music(kind, value)
+
+    assert not hasattr(yt.chromium, "requested") and yt.clicks == []
+
+
+def test_play_music_respects_the_browser_switch(monkeypatch):
+    FakeYTMusic(monkeypatch)
+    monkeypatch.setattr(navegador.config, "enabled", lambda key: key != "BROWSER_ENABLED")
+
+    with pytest.raises(navegador.NavegadorError, match="apagado"):
+        navegador.play_music("playlist", "PLabcdefghij")

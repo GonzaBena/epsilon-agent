@@ -299,10 +299,10 @@ def test_the_groups_go_without_the_denied_actions():
     permissions.save(states)
 
     specs = {spec.name: spec for spec in chat._specs()}
-    assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "rutinas", "navegador"]
+    assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "musica", "rutinas", "navegador"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
-    assert sum(len(spec.actions) for spec in specs.values()) == 28
+    assert sum(len(spec.actions) for spec in specs.values()) == 29
     assert all(isinstance(s, llm.ToolSpec) for s in specs.values())
 
 
@@ -311,7 +311,7 @@ def test_a_plain_hello_gets_only_the_group_index(captured):
 
     (index,) = captured[0]["tools"]
     assert index.name == chat.GROUPS_TOOL
-    assert index.actions == ("notas", "archivos", "memoria", "consultar", "pc", "rutinas", "navegador")
+    assert index.actions == ("notas", "archivos", "memoria", "consultar", "pc", "musica", "rutinas", "navegador")
     assert "- navegador: " in index.description and "iniciar sesión" not in index.description  # solo la línea corta
     full = sum(len(s.description) + len(s.arg_description) for s in chat._specs())
     assert len(index.description) < full / 5  # lo que se ahorra un «hola»

@@ -110,7 +110,24 @@ MUSIC_JS = """(() => {
   return {repeat: bar.getAttribute('repeat-mode'), shuffle: bar.hasAttribute('shuffle-on'), title: title ? title.textContent : '',
           repeatAt: center(bar.querySelector('.repeat')), shuffleAt: center(bar.querySelector('.shuffle'))};
 })()"""
-# El TERCER (y último) código fijo: lee la página de resultados de Google (los enlaces con título `h3`, que es lo que
+# Otro código fijo (solo lee, no recibe nada del modelo): dónde están, en la página de YouTube Music que abrió
+# `play_music`, el botón «Reproducir» y el «Aleatorio» de la cabecera de una playlist y el botón de reproducir del
+# primer resultado de una búsqueda. Devuelve posiciones; el clic lo da Python con el mouse. Reconoce los rótulos en
+# español e inglés porque eso es lo que Chromium de la persona muestra.
+PLAY_JS = """(() => {
+  const center = (el) => {
+    const r = el && el.getBoundingClientRect();
+    return r && r.width > 0 && r.height > 0 && r.top >= 0 && r.top < innerHeight ? {x: r.left + r.width / 2, y: r.top + r.height / 2} : null;
+  };
+  const label = (el) => ((el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).replace(/\\s+/g, ' ').trim().toLowerCase();
+  const head = document.querySelector('ytmusic-responsive-header-renderer, ytmusic-detail-header-renderer, ytmusic-immersive-header-renderer');
+  const find = (root, re) => root ? [...root.querySelectorAll('button, a, yt-button-renderer, ytmusic-play-button-renderer')].find((el) => re.test(label(el)) && center(el)) : null;
+  const card = document.querySelector('ytmusic-card-shelf-renderer, ytmusic-responsive-list-item-renderer');
+  return {play: center(find(head, /^(reproducir|play)\\b/)), shuffle: center(find(head, /(aleatori|shuffle)/)),
+          result: center(card && card.querySelector('ytmusic-play-button-renderer'))};
+})()"""
+PLAY_WAIT = 12  # cuántas veces se espera (de a medio segundo) a que YouTube Music dibuje los botones
+# El TERCER código fijo: lee la página de resultados de Google (los enlaces con título `h3`, que es lo que
 # viene siendo estable) y si Google pidió el captcha. No toca nada y no recibe nada del modelo: la búsqueda va en la
 # dirección. El texto de cada resultado es dato y se limpia y recorta en Python (ver search).
 SEARCH_URL = "https://www.google.com/search?hl=es&q="
@@ -859,6 +876,61 @@ def music_shuffle(want: bool | None, expect: str | None = None) -> bool:
             raise NavegadorError("No pude cambiar el aleatorio en YouTube Music.")
     audit("musica", tab.host, f"aleatorio {'sí' if target else 'no'}", asked=False)
     return target
+
+
+def _play_spots(tab: Tab) -> dict:
+    """Dónde están los botones de reproducir de la página (ver PLAY_JS); vacío si todavía no se dibujaron."""
+    data = _cdp(tab.ws, "Runtime.evaluate", {"expression": PLAY_JS, "returnByValue": True}).get("result", {}).get("value")
+    return data if isinstance(data, dict) else {}
+
+
+def play_music(kind: str, value: str, shuffle: bool = False) -> str:
+    """Pone música en YouTube Music: una playlist por id o una búsqueda de canciones. La dirección la arma ESTE código
+    (el id ya validado por `reglas.parse_play`; el texto va escapado en la búsqueda) y abre con `open_url`, así que usa
+    la web app de Omarchy si hay. Después toca con el mouse el botón de reproducir (o el de aleatorio) que ubica
+    PLAY_JS y confirma mirando el título de la barra del reproductor. Devuelve qué quedó sonando."""
+    if not config.enabled("BROWSER_ENABLED"):
+        raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    if kind == "playlist":
+        if not reglas.PLAYLIST_ID.fullmatch(value):
+            raise NavegadorError("Ese id de playlist no es válido.")
+        url, button = f"https://{MUSIC_HOST}/playlist?list={value}", "shuffle" if shuffle else "play"
+    elif kind == "canciones":
+        text = " ".join(value.split())[:MAX_QUERY]
+        if not text:
+            raise NavegadorError("Falta qué poner.")
+        url, button = f"https://{MUSIC_HOST}/search?q={quote_plus(text)}", "result"
+    else:
+        raise NavegadorError("Solo sé poner una playlist o canciones.")
+    tab = open_url(url)
+    if tab.host != MUSIC_HOST:
+        raise NavegadorError("La página no quedó en YouTube Music.")
+    spot = None
+    for _ in range(PLAY_WAIT):  # YouTube Music dibuja los botones un rato después de cargar
+        spot = _play_spots(tab).get(button)
+        if spot:
+            break
+        time.sleep(0.5)
+    if not spot:
+        raise NavegadorError(
+            "No encuentro el botón de reproducir: puede que YouTube Music haya cambiado. "
+            "Probá con leer y clic sobre la pestaña " + tab.short + "."
+        )
+    try:
+        before = str(_music_state(tab).get("title", ""))
+    except NavegadorError:
+        before = ""  # todavía no había reproductor
+    try:
+        state = _music_click(tab, spot, lambda s: bool(str(s.get("title", "")).strip()) and not _same_song(str(s.get("title", "")), before))
+    except NavegadorError:
+        state = {}  # sin barra de reproductor: no arrancó nada
+    title = " ".join(str(state.get("title", "")).split())[:100]
+    if kind == "canciones" and shuffle:
+        music_shuffle(True)
+    audit("musica", MUSIC_HOST, f"poner {kind} {value}"[:100], asked=False)
+    if not title:
+        raise NavegadorError("Toqué reproducir pero no veo que haya empezado: mirá la pestaña " + tab.short + ".")
+    return f"Sonando en YouTube Music: {title}" + (" (aleatorio)" if shuffle else "")
 
 
 def tab_host(tab_ref: str) -> str:

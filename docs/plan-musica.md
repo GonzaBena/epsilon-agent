@@ -1,6 +1,6 @@
 # Música con criterio: que la IA elija qué poner
 
-Estado: propuesta (2026-10-28). Fase 0 (web apps en `open_url`) hecha.
+Estado: propuesta (2026-10-28). Fases 0 (web apps en `open_url`) y 1 (`musica_poner`) hechas; los selectores de `PLAY_JS` falta probarlos contra YouTube Music real.
 
 ## Qué es
 

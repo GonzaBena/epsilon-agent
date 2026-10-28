@@ -1385,3 +1385,21 @@ def test_create_file_explains_the_format_when_name_and_content_come_glued(script
 
     assert reply.failed and "PRIMERA línea" in reply.text and "No se creó nada" in reply.text
     assert not (notes.DATA_DIR / "files").exists()
+
+
+def test_musica_poner_passes_the_parsed_request_to_the_browser(monkeypatch):
+    calls = []
+    monkeypatch.setattr(core.navegador, "play_music", lambda kind, value, shuffle: calls.append((kind, value, shuffle)) or "Sonando")
+
+    reply = core.AI_RUNNERS["musica_poner"]("canciones lo-fi para estudiar aleatorio")
+
+    assert reply.text == "Sonando" and not reply.failed
+    assert calls == [("canciones", "lo-fi para estudiar", True)]
+
+
+def test_musica_poner_with_an_invalid_id_fails_without_touching_the_browser(monkeypatch):
+    monkeypatch.setattr(core.navegador, "play_music", lambda *a: pytest.fail("no debía abrir nada"))
+
+    reply = core.AI_RUNNERS["musica_poner"]("playlist https://evil.com/xxxxxxxx")
+
+    assert reply.failed and "id de playlist" in reply.text

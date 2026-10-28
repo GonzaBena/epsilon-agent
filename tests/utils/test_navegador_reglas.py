@@ -290,3 +290,22 @@ def test_pick_webapp_matches_the_host_or_a_subdomain_only():
     assert reglas.pick_webapp("youtube.com", apps) is None
     assert reglas.pick_webapp("eviltmusic.youtube.com.malo.com", apps) is None
     assert reglas.pick_webapp("", apps) is None
+
+
+@pytest.mark.parametrize("args, want", [
+    ("playlist PLabcdefghij", ("playlist", "PLabcdefghij", False)),
+    ("Playlist PLabcdefghij aleatorio", ("playlist", "PLabcdefghij", True)),
+    ("canciones lo-fi para estudiar", ("canciones", "lo-fi para estudiar", False)),
+    ("canciones lo-fi aleatorio", ("canciones", "lo-fi", True)),
+    ("canciones aleatorio", ("canciones", "aleatorio", False)),  # una sola palabra es lo que se busca, no la opción
+])
+def test_parse_play_understands_both_forms(args, want):
+    assert reglas.parse_play(args) == want
+
+
+@pytest.mark.parametrize("args", [
+    "", "playlist", "playlist corto", "playlist PL/../../x?y=1&zzzz", "playlist https://evil.com/x", "canciones", "video abc",
+])
+def test_parse_play_rejects_what_the_code_cannot_build_a_safe_address_from(args):
+    with pytest.raises(ValueError):
+        reglas.parse_play(args)

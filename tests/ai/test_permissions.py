@@ -26,7 +26,7 @@ def test_defaults_follow_the_kind_and_resumir_is_denied():
         "nota": "ask", "nota_nombrada": "ask", "nota_editar": "ask", "crear_archivo": "ask", "recordar": "ask", "editar": "ask",
         "olvidar": "deny", "resumir": "deny", "skill_usar": "allow",
         "nav_pestanas": "allow", "nav_leer": "allow", "nav_abrir": "allow", "nav_buscar": "ask", "nav_clic": "allow", "nav_escribir": "allow",
-        "volumen": "allow", "sonando": "allow", "musica": "allow", "ventanas": "ask",
+        "volumen": "allow", "sonando": "allow", "musica": "allow", "ventanas": "ask", "musica_poner": "allow",
         "rutina_crear": "ask", "rutina_ver": "allow", "rutina_borrar": "ask",
     }
 
@@ -65,7 +65,7 @@ def test_broken_file_falls_back_to_defaults(content):
 
     assert loaded["ver"] == "allow"
     assert "xyz" not in loaded
-    assert len(loaded) == 32
+    assert len(loaded) == 33
     if "nota" in content:
         assert loaded["nota"] == "allow"
     else:
@@ -108,7 +108,7 @@ def test_invalid_ai_default_falls_back_to_kind(monkeypatch):
 def test_offered_excludes_denied():
     ids = [tools.ai_id(t) for t in permissions.offered()]
 
-    assert len(ids) == 30
+    assert len(ids) == 31
     assert "olvidar" not in ids and "resumir" not in ids
 
 
