@@ -5625,3 +5625,100 @@ button.claude-icon-wrap {
 .btn-add-fusion-row:hover {
   color: var(--accent);
 }
+
+/* Rutinas con IA: el selector de tipo, el campo de la instrucción y la grilla de herramientas (verde permitida, rojo
+   bloqueada, ámbar punteado sugerida). El estado también va escrito: el color solo no alcanza. */
+.rt-mode-field {
+  margin-bottom: 1.25rem;
+}
+.rt-mode-field select {
+  max-width: 28rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+.rt-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.rt-ai textarea {
+  width: 100%;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  resize: vertical;
+}
+.rt-grp {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.rt-grid-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.5rem;
+}
+.rt-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.rt-tool b {
+  font-size: 0.82rem;
+}
+.rt-tool-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.rt-tool-private {
+  font-style: italic;
+}
+.rt-tool-state {
+  font-size: 0.7rem;
+  min-height: 1em;
+}
+.rt-tool[data-state="ok"] {
+  border-color: #2e9d57;
+  background: #2e9d5733;
+}
+.rt-tool[data-state="ok"] .rt-tool-state {
+  color: #4cc47a;
+}
+.rt-tool[data-state="no"] {
+  border-color: #d64545;
+  background: #d6454533;
+}
+.rt-tool[data-state="no"] .rt-tool-state {
+  color: #ff8a80;
+}
+.rt-tool[data-state="sug"] {
+  border-color: #e8960c;
+  border-style: dashed;
+  background: #e8960c26;
+}
+.rt-tool[data-state="sug"] .rt-tool-state {
+  color: #f0a93a;
+}
+.kind-ai {
+  color: #f0a93a;
+}
+.routine-spent {
+  margin: 0.25rem 0 0;
+}

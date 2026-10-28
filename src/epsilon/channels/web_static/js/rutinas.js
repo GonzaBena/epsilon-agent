@@ -189,7 +189,9 @@ function renderRow(rule) {
   const kindBadge = make("span", "perm-kind", KIND_LABELS[rule.kind] || rule.kind);
   const nameEl = make("strong", "routine-name", rule.name);
 
-  headerLeft.append(triggerBadge, kindBadge, nameEl);
+  headerLeft.append(triggerBadge, kindBadge);
+  if (rule.ai) headerLeft.append(make("span", "perm-kind kind-ai", "IA"));
+  headerLeft.append(nameEl);
 
   const toggle = make("button", "switch");
   toggle.type = "button";
@@ -244,7 +246,12 @@ function renderRow(rule) {
   actions.append(edit, remove);
   footer.append(nextWrap, actions);
 
-  item.append(header, pipeline, what, footer);
+  item.append(header, pipeline, what);
+  if (rule.ai) {
+    const spent = rule.ai.spent_today;
+    item.append(make("p", "hint routine-spent", `IA · gastó hoy US$ ${spent.toFixed(3)}${rule.ai.stale ? " · la receta quedó vieja" : ""}`));
+  }
+  item.append(footer);
   return item;
 }
 

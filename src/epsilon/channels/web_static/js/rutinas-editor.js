@@ -25,6 +25,7 @@
   const results = el("rt-results");
   const confirmBox = el("rt-confirm");
   const editorBox = el("rt-editor");
+  const modeSelect = el("rt-mode");
 
   const DAY_TEXT = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
   const DAY_LONG = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -44,8 +45,26 @@
       trigger: { kind: "daily", time: "08:00", days: [...ALL_DAYS], every: 30, unit: "m", metric: "disco", limit: 90 },
       steps: [],
       layout: {},
+      mode: "steps", // «steps» (pasos fijos) o «ai» (una instrucción para la IA y la grilla de herramientas: rutinas-ia.js)
     };
   }
+
+  const isAi = () => state.mode === "ai";
+
+  // Pasos fijos o IA: muestra una de las dos mitades. La pizarra (rutinas-canvas.js) lo mira en `changed`.
+  function showMode() {
+    modeSelect.value = state.mode;
+    el("rt-steps-section").hidden = isAi();
+    el("rt-ai").hidden = !isAi();
+    el("rt-example").hidden = isAi() || state.id !== null;
+    changed();
+  }
+
+  modeSelect.addEventListener("change", () => {
+    state.mode = modeSelect.value;
+    showError("");
+    showMode();
+  });
 
   const plain = (message) => String(message || "").replaceAll("`", "");
   const toolInfo = (id) => catalog.find((item) => item.id === id);
@@ -594,6 +613,12 @@
   function payload() {
     const name = state.name.trim();
     if (!name) throw new Error("Ponele un nombre a la rutina.");
+    if (isAi()) {
+      const ai = window.routineAI;
+      if (!ai.instruction()) throw new Error("Escribí qué le pedís a la IA.");
+      if (!ai.greens().length) throw new Error("Dejá en verde al menos una herramienta: sin eso la IA no puede hacer nada.");
+      return { name, when: whenText(state.trigger), instruction: ai.instruction(), ai_tools: ai.tools() };
+    }
     if (!state.steps.length) throw new Error("Agregá al menos un paso.");
     for (const [index, step] of state.steps.entries()) {
       const info = toolInfo(step.tool);
@@ -616,13 +641,25 @@
     pending = mode;
     el("rt-confirm-title").textContent = mode === "test" ? "Se va a ejecutar ahora, una vez" : "Revisá lo que va a hacer";
     el("rt-confirm-when").textContent = `Cuándo: ${triggerSentence(state.trigger)}`;
-    el("rt-confirm-steps").replaceChildren(
-      ...state.steps.map((step) => {
-        const info = toolInfo(step.tool);
-        const text = `${labelOf(step.tool)}${step.args ? `: ${step.args}` : ""}${info && info.destructive ? "  ⚠ borra o cambia datos" : ""}`;
-        return make("li", "", text);
-      }),
-    );
+    const hint = el("rt-confirm-hint");
+    if (isAi()) {
+      const ai = window.routineAI;
+      const items = [make("li", "", `Le pedís a la IA: «${ai.instruction()}»`), make("li", "", `Puede usar solo: ${ai.greens().map(ai.label).join(", ")}`)];
+      if (ai.reds().length) items.push(make("li", "", `Bloqueadas a propósito: ${ai.reds().map(ai.label).join(", ")}`));
+      el("rt-confirm-steps").replaceChildren(...items);
+      hint.textContent = mode === "test"
+        ? "La IA va a correr de verdad y puede gastar. Lo que no esté en verde no lo usa."
+        : "La IA decide sola cada vez, sin preguntarte, y puede gastar (hay un tope diario). Solo puede usar las herramientas en verde.";
+    } else {
+      el("rt-confirm-steps").replaceChildren(
+        ...state.steps.map((step) => {
+          const info = toolInfo(step.tool);
+          const text = `${labelOf(step.tool)}${step.args ? `: ${step.args}` : ""}${info && info.destructive ? "  ⚠ borra o cambia datos" : ""}`;
+          return make("li", "", text);
+        }),
+      );
+      hint.textContent = "La rutina corre sola, sin preguntarte, con exactamente estos pasos. Si no ves algo que esperabas, volvé y revisalo.";
+    }
     el("rt-confirm-ok").textContent = mode === "test" ? "Confirmar y probar" : "Confirmar y guardar";
     editorBox.hidden = true;
     confirmBox.hidden = false;
@@ -644,7 +681,7 @@
       ...list.map((result, index) => {
         const item = make("li", "routine-row");
         const info = make("div", "routine-info");
-        info.append(make("strong", "", `${result.ok ? "✔" : "✖"} Paso ${index + 1} · ${labelOf(state.steps[index].tool)}`), make("p", "routine-what", result.text || "(sin salida)"));
+        info.append(make("strong", "", `${result.ok ? "✔" : "✖"} ${isAi() ? "Resultado de la IA" : `Paso ${index + 1} · ${labelOf(state.steps[index].tool)}`}`), make("p", "routine-what", result.text || "(sin salida)"));
         item.append(info);
         return item;
       }),
@@ -728,17 +765,20 @@
       state.id = rule.id;
       state.name = rule.name;
       state.trigger = triggerFromRule(rule);
-      state.steps = rule.steps.map(({ tool, args }) => ({ tool, args }));
+      state.steps = rule.ai ? [] : rule.steps.map(({ tool, args }) => ({ tool, args }));
       state.layout = { ...(rule.layout || {}) };
+      if (rule.ai) state.mode = "ai";
     }
+    window.routineAI.load(catalog, rule && rule.ai ? rule.ai.instruction : "", rule && rule.ai ? rule.ai.tools : {});
+    modeSelect.disabled = Boolean(rule); // una rutina no cambia de tipo: se borra y se crea la otra
     selected = 0;
     el("rt-title").textContent = rule ? "Editar rutina" : "Nueva rutina";
-    el("rt-example").hidden = Boolean(rule);
     nameInput.value = state.name;
     results.replaceChildren();
     showError("");
     fillPick();
     showTrigger();
+    showMode();
     backToEditor();
     renderSteps();
     dialog.showModal();
@@ -751,6 +791,7 @@
   window.routineEditor = {
     open,
     getState: () => state,
+    isAi,
     getSelected: () => selected,
     select,
     getLabel: labelOf,

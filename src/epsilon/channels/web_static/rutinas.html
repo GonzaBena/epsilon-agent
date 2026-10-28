@@ -15,6 +15,7 @@
   <script src="/static/js/palette.js" defer></script>
   <script src="/static/js/shell.js" defer></script>
   <script src="/static/js/rutinas.js" defer></script>
+  <script src="/static/js/rutinas-ia.js" defer></script>
   <script src="/static/js/rutinas-editor.js" defer></script>
   <script src="/static/js/rutinas-canvas.js" defer></script>
 </head>
@@ -184,6 +185,14 @@
                 <input id="rt-name" type="text" maxlength="60" placeholder="Ej: Despertador gradual, Silencio nocturno..." autocomplete="off">
               </div>
 
+              <div class="conn-field rt-mode-field">
+                <label for="rt-mode">Qué hace</label>
+                <select id="rt-mode">
+                  <option value="steps">Pasos fijos (sin IA, sin costo)</option>
+                  <option value="ai">Pedirle a la IA (decide ella; gasta un poco)</option>
+                </select>
+              </div>
+
               <fieldset class="rt-trigger">
                 <legend>Cuándo se ejecuta</legend>
                 <div class="rt-kind-wrap">
@@ -223,7 +232,18 @@
                 <p class="hint">Arrastrá los nodos para acomodarlos; tocá uno para editar su paso. La línea punteada muestra de qué paso sale lo que usa otro.</p>
               </div>
 
-              <div class="rt-steps-section">
+              <div class="rt-ai" id="rt-ai" hidden>
+                <div class="conn-field">
+                  <label for="rt-instruction">Qué le pedís a la IA</label>
+                  <textarea id="rt-instruction" rows="3" maxlength="500" placeholder="Ej: poné música para despertarme, o: resumime las notas de hoy y avisame"></textarea>
+                  <p class="hint" id="rt-instruction-count">0 / 500</p>
+                </div>
+                <h4 class="rt-heading">Qué puede usar</h4>
+                <p class="hint">Tocá una herramienta: verde = permitida, rojo = bloqueada, otra vez = no se usa. Lo sugerido (ámbar, ✦) es solo una propuesta: no queda permitido hasta que lo pases a verde. La IA no puede preguntarte nada mientras corre: lo que no esté en verde no lo usa.</p>
+                <div class="rt-grid" id="rt-grid"></div>
+              </div>
+
+              <div class="rt-steps-section" id="rt-steps-section">
                 <div class="rt-steps-header">
                   <h4 class="rt-heading">Pasos a ejecutar</h4>
                   <p class="hint">Se hacen en orden. Un paso puede usar lo que devolvió uno anterior (botones «Usar»).</p>
@@ -260,7 +280,7 @@
                 <h4 class="rt-heading" id="rt-confirm-title">Revisá lo que va a hacer</h4>
                 <p id="rt-confirm-when"></p>
                 <ol class="rt-confirm-steps" id="rt-confirm-steps"></ol>
-                <p class="hint">La rutina corre sola, sin preguntarte, con exactamente estos pasos. Si no ves algo que esperabas, volvé y revisalo.</p>
+                <p class="hint" id="rt-confirm-hint">La rutina corre sola, sin preguntarte, con exactamente estos pasos. Si no ves algo que esperabas, volvé y revisalo.</p>
               </div>
               <div class="routine-new-row rt-modal-footer">
                 <button type="button" class="secondary" id="rt-confirm-back">Volver</button>

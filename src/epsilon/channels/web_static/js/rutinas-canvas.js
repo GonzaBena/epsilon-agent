@@ -163,11 +163,11 @@
 
   function apply() {
     dialog.classList.toggle("rt-wide", WIDE.matches);
-    board.hidden = !WIDE.matches;
+    board.hidden = !WIDE.matches || editor.isAi(); // una rutina con IA no tiene pasos que dibujar
     draw();
   }
 
-  editor.onChange(draw);
+  editor.onChange(apply);
   WIDE.addEventListener("change", apply);
   dialog.addEventListener("toggle", apply); // al abrir: dibuja con lo que cargó el editor
   apply();

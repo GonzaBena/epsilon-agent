@@ -159,3 +159,41 @@ def test_wide_screens_get_the_board_and_narrow_ones_the_list_over_the_same_data(
     assert 'matchMedia("(min-width: 900px)")' in script and "window.routineEditor" in script and "setLayout" in script
     for selector in (".rt-wide", ".rt-node", ".rt-edge", ".rt-board"):
         assert selector in css
+
+
+# --- rutinas con IA: campo de instrucción y grilla de cuatro estados ------------------------------------------------
+
+
+def test_the_dialog_has_the_ai_mode_instruction_and_tool_grid(client):
+    html = page("rutinas.html")
+
+    for part in ('id="rt-mode"', 'id="rt-ai"', 'id="rt-instruction"', 'id="rt-grid"', 'id="rt-steps-section"', 'id="rt-confirm-hint"'):
+        assert part in html
+    assert html.index("/static/js/rutinas-ia.js") < html.index("/static/js/rutinas-editor.js")
+    assert client.get("/static/js/rutinas-ia.js").status_code == 200
+
+
+def test_the_ai_grid_script_is_safe_and_has_the_four_states():
+    code, css = code_of("rutinas-ia.js"), page("style.css")
+
+    assert "textContent" in code and "/api/routines/suggest" in code
+    for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", ".style.", 'setAttribute("style"', "http://", "https://"):
+        assert forbidden not in code
+    for state in ("sug", "ok", "no", "off"):
+        assert f'data-state="{state}"' in css or state == "off"
+    assert "#2e9d57" in css and "#d64545" in css and "#e8960c" in css  # verde, rojo y ámbar de la maqueta
+    assert "permitida" in code and "bloqueada" in code and "sugerida" in code  # el estado también va escrito
+
+
+def test_the_editor_sends_the_instruction_and_only_decided_tools_and_asks_to_confirm():
+    editor = page("rutinas-editor.js")
+
+    assert "instruction: ai.instruction()" in editor and "ai_tools: ai.tools()" in editor
+    assert "greens()" in editor  # la confirmación lista las herramientas en verde
+    assert "confirmed: true" in editor
+
+
+def test_the_routine_list_marks_ai_routines_and_their_spend():
+    script = page("rutinas.js")
+
+    assert "rule.ai" in script and "gastó hoy" in script
