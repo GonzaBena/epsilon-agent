@@ -1170,3 +1170,161 @@ def test_music_library_and_tracks_respect_the_browser_switch(monkeypatch):
     for call in (navegador.music_library, lambda: navegador.music_tracks(["PLxAa5N7VaNOyqCIEx26"])):
         with pytest.raises(navegador.NavegadorError, match="apagado"):
             call()
+
+
+# --- historial de YouTube y videos ---------------------------------------------------------------
+
+WEBKIT_EPOCH = 11644473600  # segundos entre 1601 y 1970: Chromium guarda las fechas en microsegundos desde 1601
+
+
+def webkit(moment):
+    return int((moment.timestamp() + WEBKIT_EPOCH) * 1_000_000)
+
+
+def history_db(tmp_path, rows):
+    import sqlite3
+
+    source = tmp_path / "History"
+    db = sqlite3.connect(source)
+    db.execute("CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INT, typed_count INT, last_visit_time INT, hidden INT)")
+    db.executemany("INSERT INTO urls (url, title, visit_count, typed_count, last_visit_time, hidden) VALUES (?, ?, ?, 0, ?, ?)", rows)
+    db.commit()
+    db.close()
+    return source
+
+
+from datetime import datetime, timedelta  # noqa: E402
+
+TODAY = datetime(2026, 10, 28, 12, 0)
+
+
+def ago(days):
+    return webkit(TODAY - timedelta(days=days))
+
+
+def test_youtube_history_groups_by_video_and_only_looks_at_recent_weeks(tmp_path):
+    source = history_db(tmp_path, [
+        ("https://www.youtube.com/watch?v=cafe1111111", "Latte art tutorial - YouTube", 3, ago(2), 0),
+        ("https://www.youtube.com/watch?v=cafe1111111&t=40s", "Latte art tutorial - YouTube", 2, ago(1), 0),  # el mismo video
+        ("https://www.youtube.com/watch?v=viejo222222", "Muy viejo - YouTube", 9, ago(90), 0),  # fuera de las semanas
+        ("https://www.youtube.com/watch?v=oculto33333", "Oculto - YouTube", 9, ago(1), 1),
+        ("https://www.youtube.com/results?search_query=x", "Búsqueda", 9, ago(1), 0),  # no es un video
+        ("https://evil.com/watch?v=falso4444444", "Falso", 9, ago(1), 0),
+    ])
+
+    found = navegador.read_youtube_history(source, 28, TODAY)
+
+    assert found == [("cafe1111111", "Latte art tutorial", 5)]
+
+
+def test_youtube_titles_lose_the_notification_count_and_the_site_suffix(tmp_path):
+    source = history_db(tmp_path, [("https://www.youtube.com/watch?v=cafe1111111", "(3) Latte art - YouTube", 1, ago(1), 0)])
+
+    assert navegador.read_youtube_history(source, 28, TODAY) == [("cafe1111111", "Latte art", 1)]
+
+
+def test_youtube_history_without_the_file_says_so(tmp_path):
+    with pytest.raises(navegador.NavegadorError, match="historial"):
+        navegador.read_youtube_history(tmp_path / "nada", 28, TODAY)
+
+
+ROWS = [("cafe1111111", "Latte art tutorial", 5), ("cafe2222222", "Barista campeón: café de especialidad", 2), ("mus3333333", "Rammstein en vivo", 9)]
+
+
+def test_yt_history_lists_most_watched_first_with_their_id(monkeypatch):
+    monkeypatch.setattr(navegador, "_youtube_history", lambda: ROWS)
+
+    text = navegador.youtube_history("")
+
+    assert text.index("Rammstein") < text.index("Latte") < text.index("Barista")
+    assert "id: cafe1111111" in text and "5 veces" in text
+
+
+def test_yt_history_filters_by_words_without_accents_or_case(monkeypatch):
+    monkeypatch.setattr(navegador, "_youtube_history", lambda: ROWS)
+
+    text = navegador.youtube_history("CAFÉ barista")
+
+    assert "Barista campeón" in text and "Latte" not in text and "Rammstein" not in text
+
+
+def test_yt_history_without_matches_says_so(monkeypatch):
+    monkeypatch.setattr(navegador, "_youtube_history", lambda: ROWS)
+
+    assert navegador.youtube_history("jazz") == "No encontré videos de YouTube en tu historial de las últimas semanas que digan «jazz»."
+
+
+def test_yt_history_caps_the_list_and_cleans_titles(monkeypatch):
+    many = [(f"vid{n:08d}", "t\nlínea falsa " + "x" * 300, 1) for n in range(40)]
+    monkeypatch.setattr(navegador, "_youtube_history", lambda: many)
+
+    text = navegador.youtube_history("")
+
+    assert text.count("id: ") == navegador.HISTORY_RESULTS and "\n   línea falsa" not in text
+
+
+def test_yt_history_respects_the_browser_switch_and_blocked_youtube(monkeypatch):
+    monkeypatch.setattr(navegador, "_youtube_history", lambda: ROWS)
+    monkeypatch.setattr(navegador.config, "site_list", lambda key: ["youtube.com"] if key == "BROWSER_BLOCKED_SITES" else [])
+    with pytest.raises(navegador.NavegadorError, match="bloqueado"):
+        navegador.youtube_history("")
+    monkeypatch.undo()
+    monkeypatch.setattr(navegador.config, "enabled", lambda key: key != "BROWSER_ENABLED")
+    with pytest.raises(navegador.NavegadorError, match="apagado"):
+        navegador.youtube_history("")
+
+
+class FakeVideo:
+    """Una página de YouTube de mentira: el video arranca pausado y empieza al hacerle clic (o solo, si `autoplay`)."""
+
+    def __init__(self, monkeypatch, autoplay=False, has_video=True, plays_on_click=True):
+        self.paused, self.clicks, self.autoplay, self.has_video, self.plays_on_click = not autoplay, [], autoplay, has_video, plays_on_click
+        monkeypatch.setattr(navegador, "_webapps", lambda: [])
+        self.chromium = FakeChromium(monkeypatch)
+        monkeypatch.setattr(navegador, "_cdp", self.cdp)
+
+    def cdp(self, ws_url, method, params=None):
+        if method == "Runtime.evaluate" and params["expression"] == navegador.VIDEO_JS:  # el único código que corre es el fijo
+            value = {"paused": self.paused, "title": "Latte art tutorial - YouTube", "at": {"x": 7, "y": 8}} if self.has_video else None
+            return {"result": {"value": value}}
+        if method == "Input.dispatchMouseEvent" and params["type"] == "mousePressed":
+            self.clicks.append((params["x"], params["y"]))
+            if self.plays_on_click:
+                self.paused = False
+            return {}
+        return FakeChromium.cdp(self.chromium, ws_url, method, params)
+
+
+def test_play_video_opens_the_address_the_code_built_and_clicks_if_it_is_paused(monkeypatch):
+    fake = FakeVideo(monkeypatch)
+
+    result = navegador.play_music("video", "dQw4w9WgXcQ")
+
+    assert fake.chromium.requested == "/json/new?" + quote("https://www.youtube.com/watch?v=dQw4w9WgXcQ", safe="")
+    assert fake.clicks == [(7, 8)] and result == "Reproduciendo en YouTube: Latte art tutorial"
+
+
+def test_play_video_does_not_click_if_it_already_autoplays(monkeypatch):
+    fake = FakeVideo(monkeypatch, autoplay=True)
+
+    assert navegador.play_music("video", "dQw4w9WgXcQ").startswith("Reproduciendo")
+    assert fake.clicks == []
+
+
+def test_play_video_says_so_when_it_does_not_start_or_there_is_no_player(monkeypatch):
+    FakeVideo(monkeypatch, plays_on_click=False)
+    with pytest.raises(navegador.NavegadorError, match="no veo que haya empezado"):
+        navegador.play_music("video", "dQw4w9WgXcQ")
+    FakeVideo(monkeypatch, has_video=False)
+    with pytest.raises(navegador.NavegadorError, match="No encuentro el video"):
+        navegador.play_music("video", "dQw4w9WgXcQ")
+
+
+@pytest.mark.parametrize("value", ["corto", "dQw4w9WgXcQ/../x", "https://youtu.be/dQw4w9WgXcQ"])
+def test_play_video_never_builds_an_address_from_a_bad_id(monkeypatch, value):
+    fake = FakeVideo(monkeypatch)
+
+    with pytest.raises(navegador.NavegadorError):
+        navegador.play_music("video", value)
+
+    assert not hasattr(fake.chromium, "requested")

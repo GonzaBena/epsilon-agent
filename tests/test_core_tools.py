@@ -1471,3 +1471,19 @@ def test_the_playlists_tool_tells_the_model_to_choose_and_vary():
 
     for fragment in ("no preguntes", "hace más que no", "UNA línea", "título más parecido"):
         assert fragment in tool.ai_tips
+
+
+def test_yt_historial_passes_the_words_to_the_browser_module(monkeypatch):
+    seen = []
+    monkeypatch.setattr(core.navegador, "youtube_history", lambda query: seen.append(query) or "1. algo")
+
+    assert core.AI_RUNNERS["yt_historial"]("café").text == "1. algo" and seen == ["café"]
+
+
+def test_yt_historial_asks_by_default_and_a_video_can_be_put_on(monkeypatch):
+    assert tools.route("musica.historial").ai_default == "ask"
+    monkeypatch.setattr(core.navegador, "play_music", lambda kind, value, shuffle: f"{kind}:{value}")
+    marked = []
+    monkeypatch.setattr(core.music_store, "mark_played", lambda *a: marked.append(a))
+
+    assert core.AI_RUNNERS["musica_poner"]("video dQw4w9WgXcQ").text == "video:dQw4w9WgXcQ" and marked == []  # un video no es una playlist del índice

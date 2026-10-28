@@ -2,7 +2,7 @@ import ipaddress
 import re
 import shlex
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 # Reglas del navegador de la IA, todas funciones puras: sin red, sin Chromium, sin ajustes. Quien las usa
 # (navegador.py, ai/browser_guard.py) les pasa las listas de sitios y las IP ya resueltas. Fallan cerradas:
@@ -274,11 +274,25 @@ def pick_webapp(host: str, apps: list[tuple[str, str]]) -> str | None:
 
 
 PLAYLIST_ID = re.compile(r"[A-Za-z0-9_-]{10,64}")
+VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+YOUTUBE_HOSTS = ("www.youtube.com", "youtube.com", "m.youtube.com")
+
+
+def video_id(url: str) -> str | None:
+    """El id del video de una dirección `youtube.com/watch?v=…` (sin importar &t= ni &list=); None si no es una."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    if parts.scheme not in SCHEMES or (parts.hostname or "").lower() not in YOUTUBE_HOSTS or parts.path != "/watch":
+        return None
+    values = parse_qs(parts.query).get("v", [])
+    return values[0] if len(values) == 1 and VIDEO_ID.fullmatch(values[0]) else None
 
 
 def parse_play(args: str) -> tuple[str, str, bool]:
     """Lo que pidió la IA para poner música: «playlist <id> [aleatorio]» o «canciones <texto> [aleatorio]» →
-    (tipo, valor, aleatorio). El id se valida acá (la dirección la arma el código, nunca viene del modelo).
+    (tipo, valor, aleatorio); `video <id>` es un video de YouTube. El id se valida acá (la dirección la arma el código, nunca viene del modelo).
     ValueError con el motivo en español si no se entiende."""
     words = args.split()
     shuffle = bool(words) and words[-1].lower() in ("aleatorio", "shuffle") and len(words) > 2
@@ -289,9 +303,12 @@ def parse_play(args: str) -> tuple[str, str, bool]:
     if kind == "playlist":
         if not PLAYLIST_ID.fullmatch(value):
             raise ValueError("Ese id de playlist no es válido: usá el que dio playlists o buscar (solo letras, números, «_» y «-»).")
+    elif kind == "video":
+        if not VIDEO_ID.fullmatch(value):
+            raise ValueError("Ese id de video no es válido: usá el que dio historial (11 letras, números, «_» o «-»).")
     elif kind == "canciones":
         if not value:
             raise ValueError("Falta qué poner: «canciones <texto>», por ejemplo «canciones lo-fi para estudiar».")
     else:
-        raise ValueError("Pedí «playlist <id>» o «canciones <texto>» (y opcional «aleatorio» al final).")
+        raise ValueError("Pedí «playlist <id>», «video <id>» o «canciones <texto>» (y opcional «aleatorio» al final).")
     return kind, value, shuffle

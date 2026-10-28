@@ -21,7 +21,7 @@ from epsilon.utils import navegador_reglas as reglas
 
 # El navegador de la IA: habla con el Chromium de la persona por su puerto de depuración (CDP), SOLO en
 # 127.0.0.1:9222. Sin modelo. Los ÚNICOS puntos que tocan algo de afuera son `_http`, `_cdp`, `_resolve`, `_run`,
-# `_history`, `_bookmarks` y `_webapps` (los tests los bloquean). Las reglas de seguridad (sitios bloqueados, pestañas ocultas, direcciones) viven acá y
+# `_history`, `_bookmarks`, `_webapps` y `_youtube_history` (los tests los bloquean). Las reglas de seguridad (sitios bloqueados, pestañas ocultas, direcciones) viven acá y
 # en navegador_reglas.py, nunca dependen de lo que diga el modelo. Ver docs/superpowers/specs/2026-10-22-navegador-design.md.
 
 PORT = 9222
@@ -39,6 +39,8 @@ HISTORY_FILE = Path.home() / ".config/chromium/Default/History"  # el historial 
 HISTORY_ROWS = 5000  # cuántas direcciones se miran (las más visitadas)
 BOOKMARKS_FILE = Path.home() / ".config/chromium/Default/Bookmarks"  # los marcadores de Chromium: se leen, jamás se escriben
 MAX_BOOKMARKS = 2000
+HISTORY_DAYS = 28  # «las últimas semanas» de yt_historial
+HISTORY_RESULTS = 20
 APPS_FOLDER = Path.home() / ".local/share/applications"  # los .desktop: de ahí salen las web apps de Omarchy (solo lectura)
 MAX_APPS = 500
 MIN_REF = 4  # largo mínimo del id de una pestaña que se nombra
@@ -155,6 +157,13 @@ PLAY_JS = """(() => {
   const first = [...document.querySelectorAll('ytmusic-play-button-renderer')].find((el) => /^(reproducir|play)\\b/i.test(el.getAttribute('aria-label') || '') && !el.closest('tp-yt-paper-item, ytmusic-guide-renderer, ytmusic-player-bar') && center(el));
   return {play: center(find(head, /^(reproducir|play)\\b/)), shuffle: center(find(head, /(aleatori|shuffle)/)),
           result: center(first)};
+})()"""
+# Otro código fijo (solo lee): el video de una página de YouTube (si está pausado, su título y dónde tocarlo).
+VIDEO_JS = """(() => {
+  const v = document.querySelector('video');
+  if (!v) return null;
+  const r = v.getBoundingClientRect();
+  return {paused: v.paused, title: document.title, at: r.width > 0 && r.height > 0 ? {x: r.left + r.width / 2, y: r.top + r.height / 2} : null};
 })()"""
 PLAY_WAIT = 20  # cuántas veces se espera (de a medio segundo) a que YouTube Music dibuje los botones
 # El TERCER código fijo: lee la página de resultados de Google (los enlaces con título `h3`, que es lo que
@@ -941,6 +950,40 @@ def _play_spots(tab: Tab) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _play_video(video: str) -> str:
+    """Pone un video de YouTube (no de YouTube Music) por su id: la dirección la arma el código. Si la página lo deja
+    pausado (la política de autoplay), un clic de mouse en el video lo arranca. Devuelve el título."""
+    if not reglas.VIDEO_ID.fullmatch(video):
+        raise NavegadorError("Ese id de video no es válido.")
+    tab = open_url(f"https://www.youtube.com/watch?v={video}")
+    state: dict = {}
+
+    def look() -> dict:
+        value = _cdp(tab.ws, "Runtime.evaluate", {"expression": VIDEO_JS, "returnByValue": True}).get("result", {}).get("value")
+        return value if isinstance(value, dict) else {}
+
+    for _ in range(PLAY_WAIT):  # el reproductor aparece un rato después de cargar
+        state = look()
+        if state:
+            break
+        time.sleep(0.5)
+    if not state:
+        raise NavegadorError("No encuentro el video en la página: puede que YouTube haya cambiado o que el video no esté disponible.")
+    if state.get("paused") and isinstance(state.get("at"), dict):
+        for kind in ("mouseMoved", "mousePressed", "mouseReleased"):
+            _cdp(tab.ws, "Input.dispatchMouseEvent", {"type": kind, "x": state["at"]["x"], "y": state["at"]["y"], "button": "left", "clickCount": 1})
+        for _ in range(MUSIC_POLLS):
+            time.sleep(0.3)
+            state = look()
+            if not state.get("paused"):
+                break
+    audit("musica", "www.youtube.com", f"poner video {video}", asked=False)
+    if state.get("paused"):
+        raise NavegadorError("Abrí el video pero no veo que haya empezado: mirá la pestaña " + tab.short + ".")
+    title = _clean_video_title(str(state.get("title", "")))[:100]
+    return f"Reproduciendo en YouTube: {title}"
+
+
 def play_music(kind: str, value: str, shuffle: bool = False) -> str:
     """Pone música en YouTube Music: una playlist por id o una búsqueda de canciones. La dirección la arma ESTE código
     (el id ya validado por `reglas.parse_play`; el texto va escapado en la búsqueda) y abre con `open_url`, así que usa
@@ -948,6 +991,8 @@ def play_music(kind: str, value: str, shuffle: bool = False) -> str:
     PLAY_JS y confirma mirando el título de la barra del reproductor. Devuelve qué quedó sonando."""
     if not config.enabled("BROWSER_ENABLED"):
         raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    if kind == "video":
+        return _play_video(value)
     if kind == "playlist":
         if not reglas.PLAYLIST_ID.fullmatch(value):
             raise NavegadorError("Ese id de playlist no es válido.")
@@ -1104,6 +1149,71 @@ def music_tracks(ids: list[str]) -> dict[str, list[tuple[str, str]]]:
         _close(tab)
     audit("musica", MUSIC_HOST, f"leer {len(out)} playlists", asked=False)
     return out
+
+
+def _clean_video_title(title: str) -> str:
+    """El título de una página de YouTube sin « - YouTube» al final ni el «(1) » de las notificaciones al principio."""
+    return re.sub(r"^\(\d+\)\s*", "", re.sub(r"\s*-\s*YouTube$", "", " ".join(title.split())))
+
+
+def _youtube_history() -> list[tuple[str, str, int]]:
+    """Punto único (bloqueado en los tests): los videos de YouTube vistos en las últimas semanas, del historial real."""
+    return read_youtube_history(HISTORY_FILE, HISTORY_DAYS, datetime.now())
+
+
+def read_youtube_history(source: Path, days: int, now: datetime) -> list[tuple[str, str, int]]:
+    """(id, título, veces) de los videos de YouTube (`watch?v=`) que la persona vio en los últimos `days` días, uno por
+    video (las direcciones con &t= o &list= se suman). Como `read_history`: se lee una copia en solo lectura. Es el único
+    lugar que mira las FECHAS del historial; nunca devuelve direcciones de otros sitios."""
+    if not source.is_file():
+        raise NavegadorError("No encuentro el historial de Chromium.")
+    since = int((now.timestamp() - days * 86400 + 11644473600) * 1_000_000)  # Chromium cuenta microsegundos desde 1601
+    with tempfile.TemporaryDirectory() as folder:
+        copy = Path(folder) / "history.db"
+        shutil.copyfile(source, copy)
+        try:
+            db = sqlite3.connect(f"file:{copy}?mode=ro", uri=True)
+            try:
+                rows = db.execute(
+                    "SELECT url, title, visit_count FROM urls WHERE hidden = 0 AND last_visit_time >= ? "
+                    "AND (url LIKE 'https://www.youtube.com/watch?%' OR url LIKE 'https://youtube.com/watch?%' OR url LIKE 'https://m.youtube.com/watch?%') "
+                    "ORDER BY visit_count DESC LIMIT 2000",
+                    (since,),
+                ).fetchall()
+            finally:
+                db.close()
+        except sqlite3.Error:
+            raise NavegadorError("No pude leer el historial de Chromium.") from None
+    videos: dict[str, list] = {}
+    for url, title, visits in rows:
+        video = reglas.video_id(str(url))
+        if not video:
+            continue
+        entry = videos.setdefault(video, [video, "", 0])
+        entry[1] = entry[1] or _clean_video_title(str(title or ""))
+        entry[2] += int(visits)
+    return [(v, t, n) for v, t, n in videos.values()]
+
+
+def youtube_history(query: str) -> str:
+    """Los videos de YouTube que la persona más vio en las últimas semanas (con su id para ponerlos), filtrados por las
+    palabras de `query` (todas, sin importar acentos ni mayúsculas). Hasta HISTORY_RESULTS, los más vistos primero. Los
+    títulos los escribió otro: son dato. Solo lee la copia del historial; no abre nada."""
+    if not config.enabled("BROWSER_ENABLED"):
+        raise NavegadorError("El navegador está apagado (BROWSER_ENABLED=no).")
+    if reglas.matches("www.youtube.com", config.site_list("BROWSER_BLOCKED_SITES")):
+        raise NavegadorError("YouTube está bloqueado: no miro ese historial.")
+    words = reglas.fold(" ".join(query.split())[:MAX_QUERY]).split()
+    rows = [r for r in _youtube_history() if all(w in reglas.fold(r[1]) for w in words)]
+    rows.sort(key=lambda r: -r[2])
+    if not rows:
+        return "No encontré videos de YouTube en tu historial de las últimas semanas" + (f" que digan «{' '.join(words)}»." if words else ".")
+    lines = ["Videos de YouTube que viste en las últimas semanas (los más vistos primero; para ponerlo: poner con «video <id>»):"]
+    for i, (video, title, visits) in enumerate(rows[:HISTORY_RESULTS], 1):
+        short = " ".join(title.split())[:100] or "(sin título)"
+        lines.append(f"{i}. {short} — {visits} veces\n   id: {video}")
+    audit("musica", "www.youtube.com", f"historial {' '.join(words)}"[:100], asked=True)
+    return "\n".join(lines)
 
 
 def tab_host(tab_ref: str) -> str:

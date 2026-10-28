@@ -436,8 +436,8 @@ TOOLS = (
         ai_group="musica",
         ai_action="poner",
         ai_name="musica_poner",
-        ai_help="poner música en YouTube Music: una playlist por su id o una búsqueda de canciones; devuelve qué quedó sonando",
-        ai_arg="«playlist <id>» o «canciones <texto>» (por ejemplo: canciones lo-fi para estudiar); «aleatorio» al final lo mezcla. Después contale en una línea qué pusiste",
+        ai_help="poner música en YouTube Music (una playlist por su id o una búsqueda de canciones) o un video de YouTube por su id; devuelve qué quedó sonando",
+        ai_arg="«playlist <id>», «video <id>» (un video de YouTube, por su id) o «canciones <texto>» (por ejemplo: canciones lo-fi para estudiar); «aleatorio» al final lo mezcla. Después contale en una línea qué pusiste",
     ),
     Tool(
         "Música: tus playlists",
@@ -457,6 +457,18 @@ TOOLS = (
             "Si la persona nombra una playlist («poné pepito», «la de metal»), poné la de título más parecido sin preguntar; "
             "solo si dos son igual de parecidas, preguntá cuál."
         ),
+    ),
+    Tool(
+        "Música: videos de YouTube que viste",
+        done="Miró los videos de YouTube que viste",
+        ai="read",
+        ai_default="ask",  # es el historial de la persona: la IA pregunta antes de mirarlo
+        ai_group="musica",
+        ai_action="historial",
+        ai_name="yt_historial",
+        ai_help="los videos de YouTube que la persona vio en las últimas semanas (título, veces e id), para poner uno que ya conoce («los videos de café que me gustan»)",
+        ai_arg="palabras para filtrar por título (por ejemplo: café); vacío para los más vistos",
+        ai_tips="elegí uno de la lista y ponelo con poner «video <id>»; contá en una línea cuál y por qué. No lo cites entero ni cuentes qué más viste: es historial privado.",
     ),
     Tool(
         "Música: buscar playlists",
@@ -711,8 +723,8 @@ AI_GROUP_INDEX: dict[str, tuple[str, tuple[str, ...]]] = {
         ("volumen", "music", "cancion", "tema", "suena", "sonando", "paus", "play", "pone", "pon ", "siguiente", "anterior", "ventana", "spotify", "video", "repet", "aleatori"),
     ),
     "musica": (
-        "poner música: una playlist o canciones en YouTube Music",
-        ("music", "cancion", "playlist", "pone", "pon ", "lista de", "album", "disco de", "gym", "gimnasio", "escuchar"),
+        "poner música: una playlist o canciones en YouTube Music, o un video de YouTube que ya viste",
+        ("music", "cancion", "playlist", "pone", "pon ", "lista de", "album", "disco de", "gym", "gimnasio", "escuchar", "video", "youtube", "yt"),
     ),
     "skills": ("las skills de la persona (las de tus instrucciones)", ("skill",)),
     "rutinas": (

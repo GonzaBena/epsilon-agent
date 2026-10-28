@@ -297,6 +297,7 @@ def test_pick_webapp_matches_the_host_or_a_subdomain_only():
     ("Playlist PLabcdefghij aleatorio", ("playlist", "PLabcdefghij", True)),
     ("canciones lo-fi para estudiar", ("canciones", "lo-fi para estudiar", False)),
     ("canciones lo-fi aleatorio", ("canciones", "lo-fi", True)),
+    ("video dQw4w9WgXcQ", ("video", "dQw4w9WgXcQ", False)),
     ("canciones aleatorio", ("canciones", "aleatorio", False)),  # una sola palabra es lo que se busca, no la opción
 ])
 def test_parse_play_understands_both_forms(args, want):
@@ -304,8 +305,26 @@ def test_parse_play_understands_both_forms(args, want):
 
 
 @pytest.mark.parametrize("args", [
-    "", "playlist", "playlist corto", "playlist PL/../../x?y=1&zzzz", "playlist https://evil.com/x", "canciones", "video abc",
+    "", "playlist", "playlist corto", "playlist PL/../../x?y=1&zzzz", "playlist https://evil.com/x", "canciones", "video abc", "video https://youtu.be/dQw4w9WgXcQ", "video dQw4w9WgXc", "video dQw4w9WgXcQQ",
 ])
 def test_parse_play_rejects_what_the_code_cannot_build_a_safe_address_from(args):
     with pytest.raises(ValueError):
         reglas.parse_play(args)
+
+
+@pytest.mark.parametrize("url, want", [
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s&list=PLx", "dQw4w9WgXcQ"),
+    ("https://m.youtube.com/watch?list=PLx&v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+])
+def test_video_id_of_a_youtube_watch_address(url, want):
+    assert reglas.video_id(url) == want
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.youtube.com/", "https://www.youtube.com/watch?v=corto", "https://www.youtube.com/watch?v=dQw4w9WgXcQ%2Fx",
+    "https://evil.com/watch?v=dQw4w9WgXcQ", "https://music.youtube.com/watch?v=dQw4w9WgXcQ", "https://www.youtube.com/shorts/dQw4w9WgXcQ", "no es url",
+])
+def test_video_id_ignores_anything_else(url):
+    assert reglas.video_id(url) is None
