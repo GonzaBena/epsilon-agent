@@ -28,6 +28,32 @@ app local. Todo sale de tu navegador con tu sesión.
 
 ## Piezas
 
+### 0. Abrir en la web app, no en una pestaña (`navegador.py`, sirve para todo `abrir`)
+
+La persona tiene web apps de Omarchy (`~/.local/share/applications/*.desktop` con
+`Exec=omarchy-launch-webapp <url>`, p. ej. «Youtube Music» → `https://music.youtube.com/`). Son `chromium --app=<url>`:
+el MISMO Chromium y perfil (misma sesión de Google) en su propia ventana, y por CDP se ven como una página más
+(comprobado: la ventana de WhatsApp aparece en `/json` como `page https://web.whatsapp.com/`). Así que manejarlas no
+cambia nada; lo que cambia es cómo se abren.
+
+- **Descubrir (sin procesos).** `_webapps()`, un punto único nuevo (bloqueado en los tests como `_history`), lee los
+  `.desktop` de `~/.local/share/applications/` y saca nombre y dirección de `omarchy-launch-webapp <url>` o
+  `--app=<url>`. Solo http/https; la dirección pasa por las mismas reglas que cualquier otra (bloqueados, red local).
+  `reglas.pick_webapp(host, apps)` (pura) dice si un sitio tiene web app.
+- **Abrir.** `open_url` (y por lo tanto `nav_abrir` y `musica_poner`) sigue este orden:
+  1. Si ya hay una página de ese sitio (ventana de web app o pestaña), se usa esa: `Page.navigate` a la dirección
+     pedida. No se abre otra ventana (cada `--app` abre una nueva).
+  2. Si el sitio tiene web app, se lanza con `_run(["omarchy-launch-webapp", url])` (la dirección completa, p. ej. la
+     de la playlist, así abre directo ahí), sin shell y con argumentos fijos. Si Chromium estaba cerrado, lo arranca
+     con `chromium-flags.conf`, que ya tiene el puerto. Se espera la página nueva comparando los ids de `/json` antes y
+     después (mismo sitio, `LOAD_TRIES`) y se anota como abierta por Epsilon, como hoy.
+  3. Si no, la pestaña de siempre (`/json/new`).
+- **Ajuste** `BROWSER_USE_WEBAPPS` (por defecto `si`). Con `no`, todo como hoy.
+- **No cambia:** `nav_buscar` sigue abriendo Google en una pestaña de fondo (no es una web app y no debe robar el
+  foco). Abrir una web app sí toma el foco (como abrir una pestaña con `/json/new`).
+- **Tests:** `pick_webapp` con `.desktop` de ejemplo (Exec con comillas, con `%U`, sin URL, `file:`), reusar una página
+  existente antes que lanzar, lanzar con argumentos fijos, y `_webapps` bloqueado.
+
 ### 1. Gustos en la memoria (sin código)
 
 Las preferencias van en `memory.md`, no en `settings.json` (la IA no tiene acceso a los ajustes, y así sigue):
@@ -92,7 +118,8 @@ Detalles:
   dirección la arma el código: `music.youtube.com/playlist?list=<id>` (o `watch?v=` para un video de YouTube). Busca el
   botón «Reproducir» / «Aleatorio» con un script fijo que solo devuelve su posición y lo toca con un clic real
   (`Input.dispatchMouseEvent`, como `_music_click`). Reusa la pestaña de YouTube Music si hay una; si no, abre una.
-  Confirma que arrancó mirando el título del reproductor (`MUSIC_JS`).
+  Confirma que arrancó mirando el título del reproductor (`MUSIC_JS`). Abre vía `open_url`, así que usa la web app de
+  YouTube Music si existe (pieza 0).
 - **`buscar`** ordena los resultados de modo que el modelo pueda elegir; arma la búsqueda el modelo («workout rock
   playlist»), pero la dirección y la lectura las hace el código. Tope de búsquedas por mensaje, como `nav_buscar`.
 - **`historial`** usa la copia de solo lectura que ya hace `_history`, filtrando `youtube.com/watch` y agrupando por
@@ -127,6 +154,7 @@ Tres vueltas del modelo, contra ~10 haciéndolo con `leer`/`clic`.
 
 ## Fases (una por vez, cada una con sus tests y su commit)
 
+0. **Web apps en `open_url`** (pieza 0). Chica, y mejora también el `abrir` de hoy.
 1. **`musica_poner`** (playlist por id, canciones por texto, aleatorio). Ya sirve sola para «poné lo-fi».
 2. **`musica_buscar`** (playlists públicas).
 3. **Índice** (`music_playlists` + `music_index.py` + etiquetado) y `musica_playlists`. La parte más grande.
