@@ -139,6 +139,8 @@ class Turn:
     groups: set[str] = field(default_factory=set)  # grupos de herramientas que ya viajan enteros (ver `offer`)
     asked_groups: bool = False  # ya usó `herramientas`: sigue declarada, porque el historial la nombra
     tipped: set[str] = field(default_factory=set)  # herramientas cuyas pistas (Tool.ai_tips) ya recibió en este mensaje
+    max_steps: int | None = None  # tope propio de vueltas (una rutina con IA lo trae; el chat usa el de los ajustes)
+    trace: list[tuple[str, str, str, bool]] = field(default_factory=list)  # (herramienta, argumentos, resultado, salió bien) de lo que corrió
 
 
 def begin(conversation_id: str, text: str, parts: list | None = None) -> Turn:
@@ -251,6 +253,8 @@ def offer(turn: Turn) -> list[llm.ToolSpec]:
 
 def step_limit(turn: Turn) -> int:
     """Cuántas llamadas al modelo de este mensaje pueden pedir herramientas."""
+    if turn.max_steps is not None:
+        return turn.max_steps
     return config.number("CHAT_MAX_BROWSER_STEPS" if turn.browser_actions else "CHAT_MAX_TOOL_STEPS")
 
 

@@ -51,3 +51,43 @@ def test_the_loop_does_not_apply_chat_cost_limits_to_a_routine_scope(script):
     reply = core._loop(turn(), [], core.Session(), False)
 
     assert reply.text == "Hoy es hoy"
+
+
+def test_run_records_each_call_in_the_trace(script, monkeypatch):
+    monkeypatch.setattr(core.navegador, "play_music", lambda kind, value, shuffle: "Sonando en YouTube Music: algo")
+    permissions.set_scope(SCOPE, {"musica_poner", "fecha"})
+    script.steps = [
+        step(calls=[("consultar.fecha", ""), ("musica.poner", "playlist PLabcdefghij")]),
+        step("Listo"),
+    ]
+    t = turn()
+
+    core._loop(t, [], core.Session(), False)
+
+    assert [(tool, args, ok) for tool, args, _, ok in t.trace] == [("fecha", "", True), ("musica_poner", "playlist PLabcdefghij", True)]
+    assert t.trace[1][2] == "Sonando en YouTube Music: algo"  # el texto legible, sin el rótulo de «datos»
+
+
+def test_a_failing_tool_is_traced_with_ok_false(script, monkeypatch):
+    def boom(kind, value, shuffle):
+        raise core.navegador.NavegadorError("No encuentro el botón")
+
+    monkeypatch.setattr(core.navegador, "play_music", boom)
+    permissions.set_scope(SCOPE, {"musica_poner"})
+    script.steps = [step(calls=[("musica.poner", "playlist PLabcdefghij")]), step("No pude")]
+    t = turn()
+
+    core._loop(t, [], core.Session(), False)
+
+    assert [(tool, ok) for tool, _, _, ok in t.trace] == [("musica_poner", False)]
+    assert "No encuentro el botón" in t.trace[0][2]
+
+
+def test_blocked_calls_are_not_traced(script):
+    permissions.set_scope(SCOPE, {"fecha"})
+    script.steps = [step(calls=[("notas.guardar", "x")]), step("Listo")]
+    t = turn()
+
+    core._loop(t, [], core.Session(), False)
+
+    assert t.trace == []

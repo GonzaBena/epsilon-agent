@@ -4,6 +4,7 @@ from epsilon import tools
 from epsilon.ai import chat, llm, permissions, usage
 from epsilon.data import conversations, notes
 from epsilon.memory import store
+from epsilon.settings import config
 
 CID = "20261020-120000-aaaa"
 OTHER = "20261020-120001-bbbb"
@@ -587,3 +588,17 @@ def test_specs_in_scope_only_declare_the_allowed_tools():
         assert len(chat._specs()) > 1  # el resto de las conversaciones no cambia
     finally:
         permissions.clear_scope("rutina:1:1")
+
+
+def test_step_limit_uses_the_turns_own_cap_when_it_has_one():
+    plain = chat.Turn("c1", [])
+    capped = chat.Turn("c1", [], max_steps=2)
+
+    assert chat.step_limit(plain) == config.number("CHAT_MAX_TOOL_STEPS")
+    assert chat.step_limit(capped) == 2
+    capped.browser_actions = 3  # usar el navegador no le sube el tope a una rutina
+    assert chat.step_limit(capped) == 2
+
+
+def test_a_turn_starts_with_an_empty_trace():
+    assert chat.Turn("c1", []).trace == []

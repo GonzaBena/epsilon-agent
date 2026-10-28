@@ -25,7 +25,7 @@ def _int(key: str, name: str, default: str, low: int, high: int, help: str, what
     )
 
 
-def _float(key: str, name: str, default: str, low: float, high: float, help: str, what: str) -> Setting:
+def _float(key: str, name: str, default: str, low: float, high: float, help: str, what: str, *, loosens: bool = False) -> Setting:
     return Setting(
         key,
         help,
@@ -38,6 +38,8 @@ def _float(key: str, name: str, default: str, low: float, high: float, help: str
         maximum=high,
         section=name.partition(".")[0],
         help=help,
+        loosens=loosens,
+        safer="lower" if loosens else "",
     )
 
 
@@ -70,6 +72,8 @@ TUNABLES: tuple[Setting, ...] = (
     _int("CONNECTORS_OPEN_TIMEOUT_SECONDS", "connectors.open_timeout_seconds", "60", 10, 600, "Segundos que se espera a que un conector arranque", "Los segundos", loosens=False),
     _int("ROUTINES_MAX_RUN_SECONDS", "routines.max_run_seconds", "300", 30, 3600, "Segundos máximos que puede durar una rutina entera", "Los segundos", loosens=False),
     _int("ROUTINES_MAX_WAIT_SECONDS", "routines.max_wait_seconds", "60", 1, 600, "Segundos máximos de un paso «esperar» en una rutina", "Los segundos", loosens=False),
+    _int("ROUTINES_AI_MAX_STEPS", "routines.ai_max_steps", "6", 1, 20, "Cuántas vueltas con herramientas puede dar la IA en una ejecución de una rutina con IA", "Las vueltas de la IA", loosens=True),
+    _float("ROUTINES_AI_DAILY_USD", "routines.ai_daily_usd", "0.05", 0.01, 50, "Lo máximo que puede gastar por día cada rutina con IA (en US$); al llegar se salta hasta mañana", "El tope diario", loosens=True),
     _int("DOLLAR_CACHE_SECONDS", "utilities.dollar_cache_seconds", "600", 60, 86400, "Segundos que se recuerda la cotización del dólar antes de pedirla de nuevo", "Los segundos", loosens=False),
     _int("WEATHER_CACHE_SECONDS", "utilities.weather_cache_seconds", "600", 60, 86400, "Segundos que se recuerda el clima antes de pedirlo de nuevo", "Los segundos", loosens=False),
     _int("WEB_MAX_UPLOAD_MB", "web.max_upload_mb", "20", 1, 200, "Tamaño máximo de un archivo que subís desde la web, en MB", "El tamaño", loosens=False),

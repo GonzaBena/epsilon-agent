@@ -64,6 +64,8 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `BROWSER_GUARD`                                               | Guardia del navegador: con `no` la IA no pregunta por sitios que no son de confianza (siguen los bloqueos y los topes; por defecto, `si`). |
 | `BROWSER_USE_WEBAPPS`                                          | Abrir un sitio con su web app de Omarchy (ventana propia, misma sesión) en vez de una pestaña, si la tiene; con `no`, siempre una pestaña (por defecto, `si`). |
 | `ROUTINES_ENABLED`                                            | Rutinas: con `no` Epsilon no cumple ninguna de las programadas con `/rutina` (siguen guardadas; por defecto, `si`). |
+| `ROUTINES_AI_MAX_STEPS`                                       | Rutinas con IA: cuántas vueltas con herramientas puede dar la IA en cada ejecución (por defecto, 6). |
+| `ROUTINES_AI_DAILY_USD`                                       | Rutinas con IA: lo máximo que gasta cada una por día, en US$; al llegar se salta hasta mañana (por defecto, 0.05). |
 | `BROWSER_TRUSTED_SITES`                                       | Sitios donde la IA actúa sin preguntar, separados por coma (por defecto, `music.youtube.com,youtube.com`).              |
 | `BROWSER_BLOCKED_SITES`                                       | Sitios que la IA nunca ve ni toca (por defecto, `accounts.google.com,myaccount.google.com,mail.google.com`).           |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |

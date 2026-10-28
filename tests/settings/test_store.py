@@ -240,3 +240,16 @@ def test_duplicate_key_warns(tmp_path):
     write_file(tmp_path, '{"general.user_name": "A", "general.user_name": "B"}')
     store.load_initial()
     assert store.applied("USER_NAME") == "B" and any("repetido" in i.message for i in store.issues())
+
+
+def test_ai_routine_caps_exist_with_their_defaults_and_ranges():
+    assert config.number("ROUTINES_AI_MAX_STEPS") == 6 and config.number("ROUTINES_AI_DAILY_USD") == 0.05
+    steps, daily = config.BY_KEY["ROUTINES_AI_MAX_STEPS"], config.BY_KEY["ROUTINES_AI_DAILY_USD"]
+    assert (steps.minimum, steps.maximum, daily.minimum, daily.maximum) == (1, 20, 0.01, 50)
+    assert steps.name == "routines.ai_max_steps" and daily.name == "routines.ai_daily_usd"
+
+
+def test_raising_the_ai_routine_caps_waits_for_a_restart_but_lowering_applies_at_once():
+    daily, steps = config.BY_KEY["ROUTINES_AI_DAILY_USD"], config.BY_KEY["ROUTINES_AI_MAX_STEPS"]
+    assert store.tightens(daily, "0.05", "0.02") is True and store.tightens(daily, "0.05", "0.5") is False
+    assert store.tightens(steps, "6", "3") is True and store.tightens(steps, "6", "9") is False

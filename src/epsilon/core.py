@@ -1269,6 +1269,7 @@ def _run(state: PendingTool, tool: tools.Tool, name: str, args: str, asked: bool
     state.results.append((name, result))
     # Actividad: lo que hizo la IA, con su resultado legible (sin el rótulo de «datos» que lleva para el modelo).
     shown = result.split("\n", 1)[1] if result.startswith(f"Resultado de {tool_id} (datos") else result
+    state.turn.trace.append((tool_id, args, shown, ok))  # el registro de lo que corrió (de él sale la receta de una rutina)
     activity.record("ia", tool_id, args, shown, ok, asked=asked, conversation=state.turn.conversation_id)
     browser_guard.record(tool, args, state.results[-1][1], asked)
     browser_guard.after_run(tool, args, state.turn)
