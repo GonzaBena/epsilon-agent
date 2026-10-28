@@ -257,3 +257,26 @@ def test_local_steps_run_in_ai_rules_without_being_green(quiet):
     runner.run_chain(rule(("avisar", "hola"), ai={"instruction": "x", "tools": {}}))
 
     assert sent == ["⏰ hola"]
+
+
+def test_a_recipe_step_with_a_tool_not_in_green_does_not_run(quiet):
+    sent, calls = quiet
+
+    results = runner.run_chain(rule(("musica_poner", "playlist PLabcdefghij"), id=5, ai={"instruction": "x", "tools": {"musica_poner": "red"}}))
+
+    assert [r.ok for r in results] == [False] and calls == [] and "no está en verde" in results[0].text
+
+
+def test_the_output_of_a_source_step_is_kept_whole_and_the_executor_is_told_the_cap(quiet):
+    _, calls = quiet
+    seen = []
+    runner.set_executor(lambda tool, args, **extra: (seen.append(extra), runner.StepResult(True, "x" * 5000))[1])
+    runner.set_ai_executor(lambda rule, step, outputs: runner.StepResult(True, str(len(outputs[1]))))
+    chain = [("musica_playlists", ""), ("elegir", "x"), ("fecha", "")]
+    r = rule(*chain, id=6, ai={"instruction": "x", "tools": {"musica_playlists": "green", "fecha": "green"}})
+    r["steps"][1].update(source=1, source_tool="musica_playlists")
+
+    results = runner.run_chain(r)
+
+    assert results[0].text == "x" * 5000 and results[1].text == "5000"  # la fuente no se recorta a MAX_OUTPUT
+    assert seen == [{"cap": runner.steps.MAX_SOURCE_OUTPUT}, {}]  # solo la fuente recibe el tope; fecha, no

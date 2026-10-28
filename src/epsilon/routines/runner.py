@@ -85,7 +85,7 @@ def _not_green(rule: dict, tool: str) -> str | None:
     return f"«{tool}» no está en verde en esta rutina: no la corro."
 
 
-def _step(rule: dict, step: dict, outputs: dict[int, str], trigger: str) -> StepResult:
+def _step(rule: dict, step: dict, outputs: dict[int, str], trigger: str, cap: int | None = None) -> StepResult:
     rule_id = rule.get("id", "prueba")
     tool = step["tool"]
     if tool in steps.AI_STEPS:  # un paso con IA: lo corre el núcleo, que sabe de modelos, permisos y gasto
@@ -112,8 +112,10 @@ def _step(rule: dict, step: dict, outputs: dict[int, str], trigger: str) -> Step
     if _executor is None:
         return StepResult(False, "No hay un ejecutor de herramientas registrado.")
     try:
-        version = step.get("version")
-        return _executor(tool, args) if version is None else _executor(tool, args, version=version)
+        extra = {} if step.get("version") is None else {"version": step["version"]}
+        if cap:  # lo que devuelve es la lista de la que un paso `elegir` va a decidir: tiene que verse entera
+            extra["cap"] = cap
+        return _executor(tool, args, **extra)
     except Exception as e:  # un paso con problemas corta la cadena, no al programa
         log(rule_id, f"error en {tool}", repr(e))
         return StepResult(False, f"No pude ejecutar {tool}.")
@@ -125,13 +127,14 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
     started = _clock()
     outputs: dict[int, str] = {}
     results: list[StepResult] = []
+    sources = {s.get("source") for s in rule["steps"] if s["tool"] == "elegir"}  # pasos de los que otro elige
     for number, step in enumerate(rule["steps"], 1):
         if _clock() - started > config.number("ROUTINES_MAX_RUN_SECONDS"):
             result = StepResult(False, "Se pasó del tiempo máximo de la rutina.")
         else:
             activity.begin()
-            result = _step(rule, step, outputs, trigger)
-        result = StepResult(result.ok, config.redact(result.text)[:steps.MAX_OUTPUT])
+            result = _step(rule, step, outputs, trigger, steps.MAX_SOURCE_OUTPUT if number in sources else None)
+        result = StepResult(result.ok, config.redact(result.text)[:steps.MAX_SOURCE_OUTPUT if number in sources else steps.MAX_OUTPUT])
         outputs[number] = result.text
         results.append(result)
         log(rule_id, f"paso {number} {step['tool']} {'ok' if result.ok else 'falló'}", result.text)
