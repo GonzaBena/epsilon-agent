@@ -1491,7 +1491,7 @@ def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | N
     green = {tool_id for tool_id, state in rule["ai"]["tools"].items() if state == "green"}
     if step.get("only"):
         green &= set(step["only"])
-    cid = f"rutina:{rule['id']}:{next(_runs)}"
+    cid = f"rutina:{rule.get('id', 'prueba')}:{next(_runs)}"  # una prueba del editor todavía no tiene número
     members = {tool.ai_group for tool in tools.ai_tools() if tool.ai_group and tools.ai_id(tool) in green}
     history = [llm.text_turn("user", _ai_prompt(rule, outputs))]
     turn = chat.Turn(cid, history, label="Rutina IA", task="ask", max_steps=config.number("ROUTINES_AI_MAX_STEPS"), groups=members)
@@ -1504,7 +1504,8 @@ def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | N
         return routine_runner.StepResult(False, "No pude correr la rutina con IA.")
     finally:
         permissions.clear_scope(cid)
-        routine_store.add_spent(rule["id"], usage.for_conversation(cid)["cost"], clock.now().date())
+        if "id" in rule:  # lo que se prueba sin guardar no tiene contador
+            routine_store.add_spent(rule["id"], usage.for_conversation(cid)["cost"], clock.now().date())
     if trace is not None:
         trace.extend(turn.trace)
     return routine_runner.StepResult(reply.ai, reply.text)

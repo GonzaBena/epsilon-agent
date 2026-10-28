@@ -205,6 +205,8 @@ class RoutineIn(BaseModel):
     when: str = Field(default="", max_length=100)
     steps: list[RoutineStepIn] = Field(default_factory=list, max_length=50)
     layout: dict = Field(default_factory=dict)
+    instruction: str = Field(default="", max_length=1000)  # una rutina con IA: lo que se le pide (rules.build_ai la valida)
+    ai_tools: dict[str, str] = Field(default_factory=dict, max_length=100)  # herramienta -> «green» o «red»
     confirmed: bool = False  # la persona vio la lista exacta de pasos (la exige el servidor, no solo la página)
 
 
@@ -807,7 +809,9 @@ def create_app() -> FastAPI:
     def build_routine(body: RoutineIn) -> dict:
         """La regla que describe el cuerpo, o ValueError con el motivo. Los pasos de conectores quedan con su versión."""
         known = {item["id"] for item in core.routine_catalog()}
-        if body.text.strip():
+        if body.instruction.strip():
+            rule = routine_rules.build_ai(body.name, body.when, body.instruction, body.ai_tools, routines_now(), known, body.layout)
+        elif body.text.strip():
             rule = routine_rules.build(body.text.strip(), routines_now(), known)
         else:
             rule = routine_rules.build_from(body.name, body.when, [step.model_dump() for step in body.steps], routines_now(), known, body.layout)
@@ -816,7 +820,10 @@ def create_app() -> FastAPI:
 
     def same_plan(a: dict, b: dict) -> bool:
         """¿Hacen lo mismo? Cuándo y pasos (herramienta y argumentos); el nombre y la pizarra no cuentan."""
-        key = lambda rule: (rule["when"], [(s["tool"], s["args"]) for s in rule["steps"]])  # noqa: E731
+        key = lambda rule: (  # noqa: E731
+            rule["when"], [(s["tool"], s["args"]) for s in rule["steps"]],
+            rule.get("ai") and (rule["ai"]["instruction"], rule["ai"]["tools"]),
+        )
         return key(a) == key(b)
 
     @app.post("/api/routines")
@@ -824,8 +831,8 @@ def create_app() -> FastAPI:
         """Crea una rutina. Con `text` usa la sintaxis de /rutina; con pasos exige `confirmed`. Si no se entiende, 422 con el motivo."""
         try:
             rule = build_routine(body)
-            if not body.text.strip() and not body.confirmed:
-                raise ValueError("Falta confirmar los pasos antes de guardar la rutina.")
+            if (body.instruction.strip() or not body.text.strip()) and not body.confirmed:
+                raise ValueError("Falta confirmar lo que va a hacer la rutina antes de guardarla.")
             routine_store.add(rule)
         except (ValueError, routine_store.StoreError) as e:
             raise HTTPException(422, str(e)) from None
@@ -842,7 +849,7 @@ def create_app() -> FastAPI:
             if same_plan(rule, current):
                 rule["steps"] = current["steps"]  # lo mismo que ya estaba confirmado: conserva sus versiones
             elif not body.confirmed:
-                raise ValueError("Falta confirmar los pasos antes de guardar los cambios.")
+                raise ValueError("Falta confirmar lo que va a hacer la rutina antes de guardar los cambios.")
             routine_store.replace(rule_id, rule)
         except (ValueError, routine_store.StoreError) as e:
             raise HTTPException(422, str(e)) from None
