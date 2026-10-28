@@ -155,3 +155,55 @@ def test_is_saved():
     assert permissions.is_saved("nota") is True
     permissions.reset("nota")
     assert permissions.is_saved("nota") is False
+
+
+# --- Ámbitos: una lista cerrada de herramientas, sin «preguntar» (rutinas con IA) ----------------
+
+
+@pytest.fixture
+def scope():
+    permissions._scopes.clear()
+    yield "rutina:1:1"
+    permissions._scopes.clear()
+
+
+def test_scope_runs_only_listed_tools_and_never_asks(scope):
+    permissions.set_scope(scope, {"musica_poner"})
+
+    assert permissions.decide(scope, "musica_poner") == "run"
+    assert permissions.decide(scope, "nota") == "block"  # `nota` pregunta globalmente, pero acá nadie puede contestar
+    assert permissions.decide(scope, "ver") == "block"  # ni siquiera una lectura permitida globalmente
+    assert permissions.decide(scope, "yt_historial") == "block"
+
+
+def test_scope_does_not_leak_to_other_conversations(scope):
+    permissions.set_scope(scope, {"musica_poner"})
+
+    assert permissions.decide("otra", "ver") == "run"
+    assert permissions.decide("otra", "nota") == "ask"
+    assert permissions.in_scope(scope) and not permissions.in_scope("otra")
+
+
+def test_offered_in_scope_is_the_allowed_tools_only(scope):
+    permissions.set_scope(scope, {"musica_poner", "fecha"})
+
+    assert sorted(tools.ai_id(t) for t in permissions.offered(scope)) == ["fecha", "musica_poner"]
+    assert len(permissions.offered()) > 2  # sin ámbito, todas las no bloqueadas
+
+
+def test_clear_scope_restores_the_global_rules(scope):
+    permissions.set_scope(scope, {"musica_poner"})
+    permissions.clear_scope(scope)
+
+    assert permissions.decide(scope, "ver") == "run" and not permissions.in_scope(scope)
+    permissions.clear_scope(scope)  # sin ámbito: no pasa nada
+
+
+def test_a_tool_denied_globally_stays_blocked_in_scope(scope):
+    states = permissions.load()
+    states["musica_poner"] = "deny"
+    permissions.save(states)
+    permissions.set_scope(scope, {"musica_poner"})
+
+    assert permissions.decide(scope, "musica_poner") == "block"
+    assert permissions.offered(scope) == []

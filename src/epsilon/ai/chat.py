@@ -191,12 +191,12 @@ def _describe(tool: tools.Tool) -> str:
     return tool.ai_help or tool.help or tool.panel or tool.label
 
 
-def _specs() -> list[llm.ToolSpec]:
+def _specs(conversation_id: str | None = None) -> list[llm.ToolSpec]:
     """Las herramientas que se le ofrecen al modelo: las no bloqueadas, con su descripción. Las de un grupo
     (tools.AI_GROUPS, o el de un conector) van juntas en una sola, con la lista de acciones; un grupo sin acciones permitidas no se ofrece."""
     specs: dict[str, llm.ToolSpec] = {}
     members: dict[str, list[tools.Tool]] = {}
-    for tool in permissions.offered():
+    for tool in permissions.offered(conversation_id):
         if tool.ai_group == "skills" and not skill_runtime.catalog():  # sin skills que usar, el grupo no se ofrece
             continue
         if not tool.ai_group:
@@ -217,9 +217,9 @@ def _specs() -> list[llm.ToolSpec]:
 GROUPS_TOOL = "herramientas"
 
 
-def groups() -> list[str]:
+def groups(conversation_id: str | None = None) -> list[str]:
     """Los grupos que hoy se pueden ofrecer (con alguna acción permitida), en el orden de siempre."""
-    return [spec.name for spec in _specs() if spec.actions]
+    return [spec.name for spec in _specs(conversation_id) if spec.actions]
 
 
 def brief(group: str) -> str:
@@ -233,7 +233,7 @@ def brief(group: str) -> str:
 def offer(turn: Turn) -> list[llm.ToolSpec]:
     """Lo que viaja en esta llamada: las herramientas sueltas, los grupos ya cargados en el turno y, para pedir
     los demás, `herramientas` con una línea por grupo. Así un «hola» no paga las descripciones de todo."""
-    specs = _specs()
+    specs = _specs(turn.conversation_id)
     shown = [spec for spec in specs if not spec.actions or spec.name in turn.groups]
     rest = [spec.name for spec in specs if spec.actions and spec.name not in turn.groups]
     if rest or turn.asked_groups:

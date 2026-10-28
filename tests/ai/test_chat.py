@@ -576,3 +576,14 @@ def test_system_prompt_leaves_out_default_or_missing_names(monkeypatch):
     prompt = chat.system_prompt()
 
     assert "El usuario se llama" not in prompt and "Te llamás" not in prompt
+
+
+def test_specs_in_scope_only_declare_the_allowed_tools():
+    permissions.set_scope("rutina:1:1", {"musica_poner"})
+    try:
+        specs = {spec.name: spec for spec in chat._specs("rutina:1:1")}
+        assert list(specs) == ["musica"] and specs["musica"].actions == ("poner",)
+        assert chat.groups("rutina:1:1") == ["musica"]
+        assert len(chat._specs()) > 1  # el resto de las conversaciones no cambia
+    finally:
+        permissions.clear_scope("rutina:1:1")

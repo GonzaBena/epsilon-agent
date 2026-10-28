@@ -15,6 +15,7 @@ FILE = "permissions.json"
 KIND_DEFAULTS = {"read": "allow", "write": "ask", "delete": "deny"}
 
 _granted: dict[str, set[str]] = {}  # conversación -> herramientas ya permitidas en esa sesión
+_scopes: dict[str, frozenset[str]] = {}  # «ámbito» -> las únicas herramientas que puede usar (rutinas con IA)
 _lock = threading.Lock()
 _file_lock = threading.Lock()  # guardar y volver al inicial, de a uno (el gancho de los conectores corre en otro hilo)
 
@@ -104,11 +105,36 @@ def _browser_off(tool: tools.Tool) -> bool:
     return tool.ai_group == "navegador" and not config.enabled("BROWSER_ENABLED")
 
 
+def set_scope(scope_id: str, allowed: set[str]) -> None:
+    """Un ámbito es un turno de IA SIN nadie que conteste (una rutina a las 8): solo puede usar `allowed`, y lo demás se
+    bloquea; nunca «preguntar». Vale hasta `clear_scope`."""
+    with _lock:
+        _scopes[scope_id] = frozenset(allowed)
+
+
+def clear_scope(scope_id: str) -> None:
+    with _lock:
+        _scopes.pop(scope_id, None)
+
+
+def in_scope(scope_id: str) -> bool:
+    with _lock:
+        return scope_id in _scopes
+
+
+def _scope_of(scope_id: str | None) -> frozenset[str] | None:
+    with _lock:
+        return _scopes.get(scope_id) if scope_id else None
+
+
 def decide(conversation_id: str, tool_id: str, version: str | None = None) -> str:
     """«run», «ask» o «block» para esta herramienta en esta conversación. `version` (el hash de un conector):
-    el «siempre» solo vale para esa versión."""
+    el «siempre» solo vale para esa versión. En un ámbito (ver `set_scope`) solo hay «run» o «block»: corre si la
+    herramienta está en su lista y no está bloqueada en /permisos; no existe «ask»."""
     if any(tools.ai_id(tool) == tool_id and _browser_off(tool) for tool in tools.ai_tools()):
         return "block"
+    if (allowed := _scope_of(conversation_id)) is not None:
+        return "run" if tool_id in allowed and load().get(tool_id) != "deny" else "block"
     state = load().get(tool_id)
     if state == "allow":
         return "run"
@@ -124,11 +150,13 @@ def grant(conversation_id: str, tool_id: str, version: str | None = None) -> Non
         _granted.setdefault(conversation_id, set()).add(_key(tool_id, version))
 
 
-def offered() -> list[tools.Tool]:
-    """Las herramientas que la IA puede ver: todas menos las bloqueadas."""
+def offered(conversation_id: str | None = None) -> list[tools.Tool]:
+    """Las herramientas que la IA puede ver: todas menos las bloqueadas (y, en un ámbito, solo las de su lista)."""
     states = load()
+    allowed = _scope_of(conversation_id)
     # Un conector pudo sumar una herramienta entre las dos lecturas: sin estado guardado, la de su inicial.
     return [
         tool for tool in tools.ai_tools()
         if states.get(tools.ai_id(tool), default_state(tool)) != "deny" and not _browser_off(tool)
+        and (allowed is None or tools.ai_id(tool) in allowed)
     ]

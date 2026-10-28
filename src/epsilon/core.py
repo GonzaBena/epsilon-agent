@@ -1126,7 +1126,7 @@ STALE = "Esa pregunta ya no está vigente. Escribí de nuevo lo que querías."
 def _limit_reason(conversation_id: str) -> str | None:
     """Por qué la conversación no puede seguir gastando (None si puede). Una pregunta de /ia no tiene
     conversación guardada ni límite propio: la acotan los topes de pasos, de salida y de resultados."""
-    if ask.is_scope(conversation_id):
+    if ask.is_scope(conversation_id) or permissions.in_scope(conversation_id):  # no son conversaciones guardadas
         return None
     status = chat.status(conversation_id)
     return status["reason"] if status["blocked"] else None
@@ -1218,8 +1218,11 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
         if tool and decision != "block":  # los guardrails del navegador solo pueden endurecer el permiso
             review = browser_guard.review(tool, args, state.turn)
             decision = {"ask": "ask", "block": "block"}.get(review.verdict, decision)
-        if decision == "run" and tool and tools.ai_id(tool) in ALWAYS_ASK:
+        if decision == "run" and tool and tools.ai_id(tool) in ALWAYS_ASK and not permissions.in_scope(cid):
             decision = "ask"  # ni «permitir» ni «siempre» valen: la persona ve y confirma CADA rutina que la IA arma
+        if decision == "ask" and permissions.in_scope(cid):
+            decision = "block"  # una rutina corre sin nadie: si hubiera que preguntar, no se hace
+            review = browser_guard.Review("block", NO_ASKING)
         if decision == "ask":
             state.index = index
             state.resolved = args
@@ -1242,7 +1245,7 @@ def _load_groups(turn: chat.Turn, call_id: str, args: str) -> str:
     """`herramientas`: suma al turno los grupos pedidos (en la acción o, si un modelo chico los escribió ahí, en el
     argumento) y le dice al modelo qué acciones tiene ahora. Un grupo que no se ofrece no se carga."""
     turn.asked_groups = True
-    offered = chat.groups()
+    offered = chat.groups(turn.conversation_id)
     asked = [call_id.split(".", 1)[1]] if "." in call_id else []
     asked += re.findall(r"[\w-]+", args.lower())
     found = [group for group in dict.fromkeys(asked) if group in offered]
@@ -1649,6 +1652,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
 # cortar, pero al volver no se usa lo que contestó ni se ejecuta ninguna herramienta más (lo que ya se guardó, se queda).
 # Cada handle() registra su propio evento por conversación: una cancelación vieja nunca frena el mensaje siguiente.
 CANCELLED = "Cancelé lo que estaba haciendo."
+NO_ASKING = "Esta rutina no puede preguntar: si la herramienta necesita confirmación, marcala en verde al crearla."
 _cancel_event: ContextVar[threading.Event | None] = ContextVar("cancel_event", default=None)
 _cancels: dict[str, threading.Event] = {}
 _cancels_guard = threading.Lock()
