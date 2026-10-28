@@ -82,3 +82,51 @@ def test_parse_chain_unknown_tool():
 def test_describe_step():
     assert steps.describe_step({"tool": "volumen", "args": "15"}) == "volumen 15"
     assert steps.describe_step({"tool": "avisar", "args": "hola"}) == "avisar: hola"
+
+
+# --- pasos de una rutina con IA (ia / elegir) -------------------------------------------------
+
+KNOWN_AI = {"musica_playlists", "musica_poner"}
+
+
+def test_ia_steps_are_not_valid_in_a_manual_chain():
+    chain = [{"tool": "ia", "args": "Poné música"}]
+
+    with pytest.raises(ValueError, match="no está disponible"):
+        steps.validate_chain(chain, KNOWN_AI)
+    steps.validate_chain(chain, KNOWN_AI, allow_ai=True)  # solo una rutina con IA los usa
+
+
+def test_ia_steps_are_not_in_the_local_catalog_of_manual_steps():
+    assert set(steps.AI_STEPS) == {"ia", "elegir"} and not set(steps.AI_STEPS) & set(steps.LOCAL)
+
+
+def test_elegir_needs_an_earlier_source_that_is_a_known_tool():
+    fetch = {"tool": "musica_playlists", "args": ""}
+    ok = {"tool": "elegir", "args": "Poné música", "source": 1, "source_tool": "musica_playlists"}
+    steps.validate_chain([fetch, ok], KNOWN_AI, allow_ai=True)
+
+    for bad, why in [
+        ({**ok, "source": 2}, "no es anterior"),
+        ({**ok, "source": 0}, "no es anterior"),
+        ({**ok, "source": "1"}, "no es anterior"),
+        ({**ok, "source_tool": "nota"}, "no está disponible"),
+    ]:
+        with pytest.raises(ValueError, match=why):
+            steps.validate_chain([fetch, bad], KNOWN_AI, allow_ai=True)
+
+
+def test_ia_only_must_list_known_tools():
+    steps.validate_chain([{"tool": "ia", "args": "x", "only": ["musica_poner"]}], KNOWN_AI, allow_ai=True)
+
+    with pytest.raises(ValueError, match="no está disponible"):
+        steps.validate_chain([{"tool": "ia", "args": "x", "only": ["nota"]}], KNOWN_AI, allow_ai=True)
+
+
+def test_describe_ai_steps():
+    assert steps.describe_step({"tool": "ia", "args": "Poné música"}) == "IA: Poné música"
+    assert steps.describe_step({"tool": "elegir", "args": "x", "source": 1, "source_tool": "musica_playlists"}) == "elegir con IA entre lo del paso 1"
+
+
+def test_the_source_output_cap_is_bigger_than_the_normal_one():
+    assert steps.MAX_SOURCE_OUTPUT > 6000 > steps.MAX_OUTPUT

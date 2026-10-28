@@ -10,11 +10,21 @@ from epsilon.settings import config
 
 MAX_STEPS = 10
 MAX_OUTPUT = 1000  # caracteres de la salida de un paso que viajan a los siguientes
+MAX_SOURCE_OUTPUT = 12000  # lo mismo para un paso del que «elegir» saca sus opciones: tienen que verse todas
 
 # Pasos que solo existen dentro de las rutinas (no son comandos ni herramientas de la IA).
 LOCAL = {
     "avisar": {"label": "Avisar", "hint": "el texto de la notificación", "done": "Avisó"},
     "esperar": {"label": "Esperar", "hint": "segundos", "done": "Esperó"},
+}
+
+
+# Pasos que solo existen en las rutinas con IA (no se ofrecen en el selector de pasos de una rutina común):
+# `ia` (un turno de IA con las herramientas en verde) y `elegir` (una llamada corta que devuelve UN ítem de la salida
+# de un paso anterior, `source`, cuya herramienta es `source_tool`).
+AI_STEPS = {
+    "ia": {"label": "Pedir a la IA", "hint": "lo que le pedís", "done": "Le pidió algo a la IA"},
+    "elegir": {"label": "Elegir con IA", "hint": "lo que le pedís", "done": "Eligió con IA"},
 }
 
 
@@ -74,18 +84,29 @@ def render_args(args: str, outputs: dict[int, str], trigger: str = "") -> str:
     return render(args, outputs, trigger)
 
 
-def validate_chain(chain: list[dict], known: set[str]) -> None:
+def validate_chain(chain: list[dict], known: set[str], allow_ai: bool = False) -> None:
     """ValueError en español si la cadena no vale: vacía, larga, herramienta desconocida o una referencia a un paso que
-    no es anterior. `known`: ids de herramientas permitidas (las propias de las rutinas se suman solas)."""
+    no es anterior. `known`: ids de herramientas permitidas (las propias de las rutinas se suman solas). Con
+    `allow_ai` (una rutina con IA) valen también los pasos `ia` y `elegir`."""
     if not chain:
         raise ValueError("La rutina necesita al menos un paso.")
     if len(chain) > MAX_STEPS:
         raise ValueError(f"Una rutina puede tener hasta {MAX_STEPS} pasos.")
-    allowed = known | set(LOCAL)
+    allowed = known | set(LOCAL) | (set(AI_STEPS) if allow_ai else set())
     for number, step in enumerate(chain, 1):
         tool = step.get("tool")
         if tool not in allowed:
             raise ValueError(f"El paso {number} usa «{str(tool)[:40]}», que no está disponible para una rutina.")
+        if tool == "ia":
+            for only in step.get("only", []):
+                if only not in known:
+                    raise ValueError(f"El paso {number} usa «{str(only)[:40]}», que no está disponible para una rutina.")
+        if tool == "elegir":
+            source = step.get("source")
+            if isinstance(source, bool) or not isinstance(source, int) or not 1 <= source < number:
+                raise ValueError(f"El paso {number} elige entre lo del paso {str(source)[:10]}, que no es anterior.")
+            if step.get("source_tool") not in known:
+                raise ValueError(f"El paso {number} usa «{str(step.get('source_tool'))[:40]}», que no está disponible para una rutina.")
         for ref in refs(str(step.get("args", ""))):
             if isinstance(ref, int) and not 1 <= ref < number:
                 raise ValueError(f"El paso {number} usa la salida del paso {ref}, que no es anterior.")
@@ -106,4 +127,8 @@ def describe_step(step: dict) -> str:
     """«volumen 15», «avisar: hola»."""
     if step["tool"] == "avisar":
         return f"avisar: {step['args']}"
+    if step["tool"] == "ia":
+        return f"IA: {step['args']}"
+    if step["tool"] == "elegir":
+        return f"elegir con IA entre lo del paso {step['source']}"
     return f"{step['tool']} {step['args']}".strip()

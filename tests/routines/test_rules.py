@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -224,3 +224,105 @@ def test_view_has_name_and_steps_and_keeps_the_old_keys():
 
     assert shown["name"] == "volumen 20" and shown["steps"] == [{"tool": "volumen", "args": "20", "text": "volumen 20"}]
     assert shown["do"] == {"kind": "volumen", "arg": "20"} and shown["when"] == "Todos los días a las 23:00"
+
+
+# --- rutinas con IA ----------------------------------------------------------------------------
+
+KNOWN_AI = {"musica_poner", "musica_playlists", "yt_historial", "fecha", "nota"}
+TOOLS = {"musica_poner": "green", "musica_playlists": "green", "yt_historial": "red"}
+
+
+def make_ai(**extra):
+    args = dict(name="Despertador", when_text="08:00", instruction="Poné música para despertarme", tools=TOOLS, now=NOW, known=KNOWN_AI)
+    return rules.build_ai(**{**args, **extra})
+
+
+def test_build_ai_makes_a_single_ia_step_and_keeps_the_ai_block():
+    rule = make_ai()
+
+    assert rule["steps"] == [{"tool": "ia", "args": "Poné música para despertarme"}]
+    assert rule["when"]["kind"] == "daily" and rule["name"] == "Despertador" and rule["enabled"] is True
+    assert rule["ai"] == {
+        "instruction": "Poné música para despertarme", "tools": TOOLS, "recipe": False, "stale": False,
+        "spent": {"day": "", "usd": 0.0},
+    }
+    assert rule["next_run"] == "2026-10-23T08:00:00"
+
+
+def test_build_ai_works_with_conditions_too():
+    rule = make_ai(when_text="disco>90")
+
+    assert rule["when"]["kind"] == "cond" and rule["tripped"] is False
+
+
+@pytest.mark.parametrize("instruction", ["", "   ", "x" * 501])
+def test_build_ai_rejects_empty_or_long_instructions(instruction):
+    with pytest.raises(ValueError, match="instrucción|le pedís"):
+        make_ai(instruction=instruction)
+
+
+def test_build_ai_needs_a_name_and_a_green_tool():
+    with pytest.raises(ValueError, match="nombre"):
+        make_ai(name="  ")
+    with pytest.raises(ValueError, match="en verde"):
+        make_ai(tools={"musica_poner": "red", "fecha": "red"})
+    with pytest.raises(ValueError, match="en verde"):
+        make_ai(tools={})
+
+
+@pytest.mark.parametrize("tools", [
+    {"herramienta_inventada": "green"}, {"musica_poner": "ask"}, {"musica_poner": "allow"}, {"musica_poner": True}, {1: "green"},
+])
+def test_build_ai_rejects_unknown_tools_and_bad_states(tools):
+    with pytest.raises(ValueError):
+        make_ai(tools={"fecha": "green", **tools} if tools != {1: "green"} else tools)
+
+
+def test_build_ai_with_a_recipe_only_accepts_green_tools():
+    recipe = [{"tool": "musica_playlists", "args": ""}, {"tool": "elegir", "args": "Poné música", "source": 1, "source_tool": "musica_playlists"},
+              {"tool": "musica_poner", "args": "playlist {{paso 2}}"}]
+
+    rule = make_ai(recipe=recipe)
+
+    assert [s["tool"] for s in rule["steps"]] == ["musica_playlists", "elegir", "musica_poner"] and rule["ai"]["recipe"] is True
+    assert rule["steps"][1]["source"] == 1 and rule["steps"][1]["source_tool"] == "musica_playlists"
+    with pytest.raises(ValueError, match="no está en verde"):
+        make_ai(recipe=[*recipe[:2], {"tool": "yt_historial", "args": ""}])  # rojo
+    with pytest.raises(ValueError, match="no está en verde"):
+        make_ai(recipe=[{"tool": "fecha", "args": ""}], tools={"musica_poner": "green"})  # ni verde ni rojo: no se usa
+    with pytest.raises(ValueError, match="no está en verde"):
+        make_ai(recipe=[{"tool": "ia", "args": "x", "only": ["yt_historial"]}])
+
+
+def test_a_manual_rule_still_rejects_ia_steps():
+    with pytest.raises(ValueError, match="no está disponible"):
+        rules.build_from("Mala", "08:00", [{"tool": "ia", "args": "x"}], NOW, KNOWN_AI)
+
+
+def test_spent_today_resets_on_a_new_day_and_survives_broken_data():
+    rule = make_ai()
+    rule["ai"]["spent"] = {"day": "2026-10-22", "usd": 0.02}
+
+    assert rules.spent_today(rule, date(2026, 10, 22)) == 0.02
+    assert rules.spent_today(rule, date(2026, 10, 23)) == 0.0
+    assert rules.spent_today({"steps": []}, date(2026, 10, 22)) == 0.0  # una regla sin IA
+    assert rules.spent_today({"ai": "roto"}, date(2026, 10, 22)) == 0.0
+    assert rules.spent_today({"ai": {"spent": {"day": "2026-10-22", "usd": "mucho"}}}, date(2026, 10, 22)) == 0.0
+
+
+def test_view_exposes_the_ai_block_and_describes_the_ia_step():
+    rule = {**make_ai(), "id": 3}
+    rule["ai"]["spent"] = {"day": rules.clock.now().date().isoformat(), "usd": 0.01}
+
+    shown = rules.view(rule)
+
+    assert shown["ai"] == {"instruction": "Poné música para despertarme", "tools": TOOLS, "has_recipe": False, "stale": False, "spent_today": 0.01}
+    assert shown["steps"][0]["text"] == "IA: Poné música para despertarme"
+    assert rules.view({**rules.build("23:00 | volumen 20", NOW), "id": 1})["ai"] is None
+
+
+def test_view_of_a_rule_with_a_broken_ai_block_raises_like_any_broken_rule():
+    rule = {**make_ai(), "id": 3, "ai": "roto"}
+
+    with pytest.raises((KeyError, TypeError, ValueError)):
+        rules.view(rule)  # la página la omite (web.routines_view); no la tira

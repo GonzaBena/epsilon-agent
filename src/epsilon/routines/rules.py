@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import re
 import unicodedata
 
@@ -13,6 +13,8 @@ from epsilon.utils import clock, multimedia
 ACTIONS = ("avisar", "volumen", "musica")  # las acciones de las rutinas de antes (hoy son los primeros pasos posibles)
 DEFAULT_KNOWN = frozenset({"volumen", "musica"})  # herramientas que `build` acepta si quien llama no dice cuáles hay
 MAX_NAME = 60
+MAX_INSTRUCTION = 500  # largo de lo que se le pide a la IA en una rutina con IA
+TOOL_STATES = ('green', 'red')  # verde: la IA puede usarla; rojo: bloqueada a propósito (normal = no figura)
 MAX_COORD = 5000
 MAX_TEXT = 200  # largo de un aviso
 MAX_IN_MINUTES = 7 * 24 * 60  # «en 30m» como mucho una semana adelante
@@ -124,6 +126,11 @@ def _check_step(step: dict) -> dict:
         if not args.isdigit() or not 1 <= int(args) <= steps_mod.max_wait():
             raise ValueError(f"«esperar» lleva los segundos a esperar, de 1 a {steps_mod.max_wait()}.")
     kept = {"tool": tool, "args": args}
+    if tool in steps_mod.AI_STEPS:  # los pasos de IA llevan sus propios datos (ya validados por validate_chain)
+        if tool == "elegir":
+            kept.update(source=step["source"], source_tool=step["source_tool"])
+        if tool == "ia" and step.get("only"):
+            kept["only"] = list(step["only"])
     if isinstance(step.get("version"), str) and len(step["version"]) <= 80:
         kept["version"] = step["version"]  # la versión del conector que la persona vio al confirmar (la anota el núcleo)
     return kept
@@ -143,8 +150,8 @@ def _layout(layout: dict) -> dict:
 
 
 def _assemble(name: str, when: dict, chain: list[dict], now: datetime, known: set[str] | frozenset[str],
-              layout: dict | None) -> dict:
-    steps_mod.validate_chain(chain, set(known))
+              layout: dict | None, allow_ai: bool = False) -> dict:
+    steps_mod.validate_chain(chain, set(known), allow_ai)
     chain = [_check_step(step) for step in chain]
     name = " ".join(name.split()) or describe_chain(chain)[:MAX_NAME]
     if len(name) > MAX_NAME:
@@ -176,6 +183,64 @@ def build_from(name: str, when_text: str, chain: list[dict], now: datetime, know
         raise ValueError("Ponele un nombre a la rutina.")
     return _assemble(name, parse_when(when_text.strip(), now), [{**s, "tool": s["tool"], "args": str(s.get("args", ""))} for s in chain],
                      now, known, layout)
+
+
+def _ai_tools(tools: object, known: set[str] | frozenset[str]) -> dict[str, str]:
+    """El estado de cada herramienta de una rutina con IA: {id: «green»|«red»}. Las que no figuran, no se usan.
+    ValueError si hay una que no existe, un estado raro, o ninguna en verde."""
+    if not isinstance(tools, dict):
+        raise ValueError("Marcá en verde al menos una herramienta que pueda usar la IA.")
+    clean = {}
+    for tool_id, state in tools.items():
+        if not isinstance(tool_id, str) or tool_id not in known:
+            raise ValueError(f"La herramienta «{str(tool_id)[:40]}» no está disponible para una rutina.")
+        if state not in TOOL_STATES:
+            raise ValueError(f"El estado de «{tool_id}» no es válido: solo verde (permitida) o rojo (bloqueada).")
+        clean[tool_id] = state
+    if "green" not in clean.values():
+        raise ValueError("Marcá en verde al menos una herramienta que pueda usar la IA.")
+    return clean
+
+
+def build_ai(name: str, when_text: str, instruction: str, tools: dict[str, str], now: datetime,
+             known: set[str] | frozenset[str], layout: dict | None = None, recipe: list[dict] | None = None) -> dict:
+    """Una rutina con IA: el cuándo de siempre + una instrucción en lenguaje natural + las herramientas que la IA puede
+    usar (`tools`, solo las verdes). Sin `recipe` es un único paso `ia` (la IA completa en cada ejecución); con una receta
+    confirmada son sus pasos. ValueError con el motivo, en español, si algo no vale."""
+    instruction = " ".join(instruction.split())
+    if not instruction:
+        raise ValueError("Escribí qué le pedís a la IA.")
+    if len(instruction) > MAX_INSTRUCTION:
+        raise ValueError(f"La instrucción es larga: como mucho {MAX_INSTRUCTION} caracteres.")
+    if not name.strip():
+        raise ValueError("Ponele un nombre a la rutina.")
+    states = _ai_tools(tools, known)
+    green = {tool_id for tool_id, state in states.items() if state == "green"}
+    chain = [{"tool": "ia", "args": instruction}]
+    if recipe is not None:
+        chain = [{**s, "tool": s["tool"], "args": str(s.get("args", ""))} for s in recipe if isinstance(s, dict) and isinstance(s.get("tool"), str)]
+        for number, step in enumerate(chain, 1):
+            used = [step["tool"]] if step["tool"] not in steps_mod.AI_STEPS and step["tool"] not in steps_mod.LOCAL else []
+            used += step.get("only", []) if step["tool"] == "ia" else []
+            for tool_id in used:
+                if tool_id not in green:
+                    raise ValueError(f"El paso {number} usa «{str(tool_id)[:40]}», que no está en verde en esta rutina.")
+    rule = _assemble(name, parse_when(when_text.strip(), now), chain, now, known, layout, allow_ai=True)
+    rule["ai"] = {"instruction": instruction, "tools": states, "recipe": recipe is not None, "stale": False,
+                  "spent": {"day": "", "usd": 0.0}}
+    return rule
+
+
+def spent_today(rule: dict, today: date) -> float:
+    """Lo que gastó hoy una rutina con IA (en US$); 0.0 si no tiene IA, si el último gasto es de otro día o si el bloque
+    está roto (alguien editó routines.json a mano)."""
+    try:
+        spent = rule["ai"]["spent"]
+        if spent["day"] != today.isoformat():
+            return 0.0
+        return float(spent["usd"]) if isinstance(spent["usd"], (int, float)) and not isinstance(spent["usd"], bool) else 0.0
+    except (KeyError, TypeError):
+        return 0.0
 
 
 def migrate(rule: dict) -> dict:
@@ -245,6 +310,17 @@ def next_text(rule: dict) -> str:
     return f"{clock.DAYS[when.weekday()][:3]} {when:%d/%m %H:%M}"
 
 
+def _ai_view(rule: dict) -> dict | None:
+    """Lo que la página muestra de una rutina con IA (None si es de pasos fijos). KeyError/TypeError si está rota."""
+    if "ai" not in rule:
+        return None
+    ai = rule["ai"]
+    return {
+        "instruction": ai["instruction"], "tools": dict(ai["tools"]), "has_recipe": bool(ai["recipe"]),
+        "stale": bool(ai["stale"]), "spent_today": spent_today(rule, clock.now().date()),
+    }
+
+
 def view(rule: dict) -> dict:
     """Una regla como la dibuja la página: frase de cuándo, qué hace, si está activa y su próxima vez. KeyError, ValueError
     o TypeError si la regla está rota (alguien editó routines.json a mano)."""
@@ -257,6 +333,7 @@ def view(rule: dict) -> dict:
         "steps": [{"tool": s["tool"], "args": s["args"], "text": describe_step(s)} for s in rule["steps"]],
         "do": {"kind": rule["steps"][0]["tool"], "arg": rule["steps"][0]["args"]},  # compatibilidad: el primer paso
         "layout": rule.get("layout", {}),
+        "ai": _ai_view(rule),
         "trigger": rule["when"],  # el activador tal cual, para que el editor lo vuelva a armar
         "active": bool(rule.get("enabled", True)),
         "next": rule.get("next_run"),  # ISO sin zona (hora de la pared), para que la página cuente cuánto falta

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 import json
 import os
 import threading
@@ -54,9 +54,17 @@ def update(change) -> object:
         return result
 
 
+def _redacted(rule: dict) -> dict:
+    """La regla con las claves tapadas en los argumentos de sus pasos y, si es con IA, también en su instrucción."""
+    clean = {**rule, "steps": [{**step, "args": config.redact(step["args"])} for step in rule["steps"]]}
+    if isinstance(rule.get("ai"), dict):
+        clean["ai"] = {**rule["ai"], "instruction": config.redact(rule["ai"]["instruction"])}
+    return clean
+
+
 def add(rule: dict) -> dict:
     """Guarda una regla nueva (de `rules.build`) y le pone el id. StoreError si ya hay demasiadas."""
-    rule = {**rule, "steps": [{**step, "args": config.redact(step["args"])} for step in rule["steps"]]}
+    rule = _redacted(rule)
 
     def change(all_rules: list[dict]) -> dict:
         if len(all_rules) >= MAX_RULES:
@@ -71,16 +79,43 @@ def add(rule: dict) -> dict:
 def replace(rule_id: int, new: dict) -> dict | None:
     """Cambia nombre, cuándo y pasos de una regla (de `rules.build_from`) conservando su id y si está activa; None si no
     existe. Una condición vuelve a armarse (`tripped`) y un horario recalcula su próxima vez."""
-    new = {**new, "steps": [{**step, "args": config.redact(step["args"])} for step in new["steps"]]}
+    new = _redacted(new)
 
     def change(all_rules: list[dict]) -> dict | None:
         for index, rule in enumerate(all_rules):
             if rule["id"] == rule_id:
                 all_rules[index] = {**new, "id": rule_id, "enabled": rule.get("enabled", True)}
+                old_ai = rule.get("ai")
+                if isinstance(new.get("ai"), dict) and isinstance(old_ai, dict) and isinstance(old_ai.get("spent"), dict):
+                    all_rules[index]["ai"] = {**new["ai"], "spent": old_ai["spent"]}  # lo gastado hoy sigue contando al editarla
                 return all_rules[index]
         return None
 
     return update(change)
+
+
+def add_spent(rule_id: int, usd: float, today: date) -> float:
+    """Suma lo que gastó una rutina con IA y devuelve el total de HOY (el contador arranca de cero cada día). Una regla
+    que no existe, que no es con IA o cuyo bloque `ai` está roto no cambia y devuelve 0.0."""
+    def change(all_rules: list[dict]) -> float:
+        rule = next((r for r in all_rules if r["id"] == rule_id), None)
+        if rule is None or not isinstance(rule.get("ai"), dict):
+            return 0.0
+        total = rules_mod.spent_today(rule, today) + max(0.0, float(usd))
+        rule["ai"]["spent"] = {"day": today.isoformat(), "usd": total}
+        return total
+
+    return update(change)
+
+
+def mark_stale(rule_id: int, stale: bool) -> None:
+    """Marca (o desmarca) la receta de una rutina con IA como vieja. Una regla que no existe o sin IA no cambia."""
+    def change(all_rules: list[dict]) -> None:
+        rule = next((r for r in all_rules if r["id"] == rule_id), None)
+        if rule is not None and isinstance(rule.get("ai"), dict):
+            rule["ai"]["stale"] = stale
+
+    update(change)
 
 
 def remove(rule_id: int) -> bool:
