@@ -444,10 +444,12 @@ def test_products_only_sends_no_service_dates_and_services_send_the_given_ones(r
     _, calls = issue(ready, monkeypatch, concepto="productos")
     assert "FchServDesde" not in sent(calls, "FECAESolicitar")[0]
 
-    _, calls = issue(ready, monkeypatch, concepto="servicios", fecha="2026-10-23", servicio_desde="2026-10-01",
-                     servicio_hasta="2026-10-31", vencimiento_pago="2026-11-10")
+    yesterday = datetime.now(ready.AR_TZ).date() - timedelta(days=1)  # dentro de la ventana de ARCA, sea el día que sea
+    due = yesterday + timedelta(days=18)
+    _, calls = issue(ready, monkeypatch, concepto="servicios", fecha=yesterday.isoformat(), servicio_desde="2026-10-01",
+                     servicio_hasta="2026-10-31", vencimiento_pago=due.isoformat())
     body = sent(calls, "FECAESolicitar")[0]
-    assert "<FchServDesde>20261001</FchServDesde><FchServHasta>20261031</FchServHasta><FchVtoPago>20261110</FchVtoPago>" in body
+    assert f"<FchServDesde>20261001</FchServDesde><FchServHasta>20261031</FchServHasta><FchVtoPago>{due:%Y%m%d}</FchVtoPago>" in body
 
 
 def test_the_activity_goes_last_and_only_when_the_account_has_one(arca, monkeypatch):
@@ -465,7 +467,8 @@ def test_the_code_only_works_once_for_exactly_that_invoice(ready, monkeypatch):
     serve(ready, monkeypatch, {"FECompUltimoAutorizado": LAST})  # sin FECAESolicitar: ninguna de estas confirmaciones puede emitir
     code = the_code(ready.emitir_factura(importe=500, concepto="productos"))
 
-    for changed in [{"importe": 501}, {"importe": 500, "documento": "87654321"}, {"importe": 500, "fecha": "2026-10-22"}]:
+    yesterday = (datetime.now(ready.AR_TZ).date() - timedelta(days=1)).isoformat()  # otra fecha válida: la de hoy es la del código
+    for changed in [{"importe": 501}, {"importe": 500, "documento": "87654321"}, {"importe": 500, "fecha": yesterday}]:
         refused = ready.emitir_factura(concepto="productos", confirmar=code, **changed)
         assert "El código no coincide" in refused and "No se emitió nada" in refused
     assert "El código no coincide" in ready.emitir_factura(importe=500, concepto="productos", confirmar="true")
