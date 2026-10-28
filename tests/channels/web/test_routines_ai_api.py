@@ -131,3 +131,14 @@ def test_routines_list_exposes_ai_info_and_spent_today(client):
     shown = client.get("/api/routines").json()["rules"][0]
 
     assert shown["ai"]["spent_today"] == pytest.approx(0.03) and shown["ai"]["has_recipe"] is False
+
+
+def test_learn_endpoint_needs_confirmation_and_an_instruction_and_saves_nothing(client, monkeypatch):
+    monkeypatch.setattr(core, "learn_routine", lambda rule: {"results": [{"ok": True, "text": "Puse algo"}], "recipe": None})
+
+    assert client.post("/api/routines/learn", json=ai_body(confirmed=False)).status_code == 422
+    assert client.post("/api/routines/learn", json=ai_body(instruction="")).status_code == 422
+    reply = client.post("/api/routines/learn", json=ai_body())
+
+    assert reply.status_code == 200 and reply.json() == {"results": [{"ok": True, "text": "Puse algo"}], "recipe": None}
+    assert store.rules() == []

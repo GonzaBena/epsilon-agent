@@ -867,6 +867,19 @@ def create_app() -> FastAPI:
         results = routine_runner.run_chain(rule)
         return {"results": [{"ok": r.ok, "text": r.text} for r in results]}
 
+    @app.post("/api/routines/learn")
+    def learn_routine(body: RoutineIn):
+        """«Aprender y probar»: corre la IA completa una vez, de verdad, y propone la receta (fijo / elegir / libre). No guarda nada."""
+        try:
+            if not body.instruction.strip():
+                raise ValueError("Escribí qué le pedís a la IA.")
+            rule = build_routine(body)
+            if not body.confirmed:
+                raise ValueError("Falta confirmar lo que va a hacer la rutina antes de aprender.")
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        return core.learn_routine(rule)
+
     @app.put("/api/routines/{rule_id}")
     def pause_or_resume_routine(rule_id: int, body: RoutineEnabledIn):
         try:

@@ -110,7 +110,7 @@ def ai_rule(script, monkeypatch):
     monkeypatch.setattr(core.clock, "now", lambda: NOW)
     known = core._catalog_ids()
     rule = routine_store.add(routine_rules.build_ai(
-        "Despertador", "08:00", "Poné música para despertarme", {"fecha": "green", "musica_poner": "green", "nota": "red"}, NOW, known,
+        "Despertador", "08:00", "Poné música para despertarme", {"fecha": "green", "musica_poner": "green", "musica_playlists": "green", "nota": "red"}, NOW, known,
     ))
     return rule
 
@@ -303,3 +303,61 @@ def test_catalog_marks_sensitive_tools(script):
     assert by_id["yt_historial"]["sensitive"] and by_id["nota"]["sensitive"] and by_id["ventanas"]["sensitive"]
     assert not by_id["musica_poner"]["sensitive"] and not by_id["fecha"]["sensitive"]
     assert all("sensitive" in item for item in by_id.values())
+
+
+# --- aprender: una corrida de la IA -> la receta propuesta --------------------------------------------------------------
+
+PLAYLISTS = (
+    "- pepito (id: PLgym1234567, 48 canciones): rock; la pusiste hoy\n"
+    "- Celtic (id: PLceltic12345, 25 canciones): folk; nunca la pusiste\n"
+    "- Calma (id: PLcalma123456): piano; nunca la pusiste"
+)
+
+
+def test_learn_routine_proposes_the_recipe_of_what_the_ai_did(ai_rule, script, monkeypatch):
+    monkeypatch.setattr(core.music_index_ai, "playlists_text", lambda force=False: PLAYLISTS)
+    monkeypatch.setattr(core.navegador, "play_music", lambda kind, value, shuffle: "Sonando en YouTube Music: Celtic")
+    script.steps = [
+        step(calls=[("consultar.fecha", ""), ("musica.playlists", ""), ("musica.poner", "playlist PLceltic12345")]),
+        step("Puse Celtic, tranquila"),
+    ]
+
+    learned = core.learn_routine(ai_rule)
+
+    assert learned["results"] == [{"ok": True, "text": "Puse Celtic, tranquila"}]
+    assert [(s["tool"], s["args"], s["kind"]) for s in learned["recipe"]] == [
+        ("fecha", "", "fijo"), ("musica_playlists", "", "fijo"), ("elegir", "Poné música para despertarme", "elegir"),
+        ("musica_poner", "playlist {{paso 3}}", "fijo"),
+    ]
+    assert routine_store.rules()[0]["steps"] == ai_rule["steps"]  # no guarda nada
+
+
+def test_learn_routine_returns_no_recipe_when_the_run_failed(ai_rule, script, monkeypatch):
+    def down(*args, **kwargs):
+        raise llm.ModelError("Sin conexión")
+
+    monkeypatch.setattr(llm, "chat_tools", down)
+
+    learned = core.learn_routine(ai_rule)
+
+    assert learned == {"results": [{"ok": False, "text": "Sin conexión"}], "recipe": None}
+
+
+def test_learn_routine_returns_no_recipe_when_the_ai_used_no_tools(ai_rule, script):
+    script.steps = [step("No hace falta nada")]
+
+    assert core.learn_routine(ai_rule)["recipe"] is None
+
+
+def test_stamp_steps_allows_choose_refs_but_not_other_refs_in_a_poner_step(script):
+    choose = {"tool": "elegir", "args": "x", "source": 1, "source_tool": "musica_playlists"}
+    first = {"tool": "musica_playlists", "args": ""}
+
+    ok = core.stamp_steps([first, choose, {"tool": "musica_poner", "args": "playlist {{paso 2}}"}])
+    assert ok[2]["args"] == "playlist {{paso 2}}"
+    with pytest.raises(ValueError, match="no acepta la salida"):
+        core.stamp_steps([first, choose, {"tool": "musica_poner", "args": "playlist {{paso 1}}"}])
+    with pytest.raises(ValueError, match="no acepta la salida"):
+        core.stamp_steps([first, choose, {"tool": "musica_poner", "args": "{{paso 2}} {{paso 1}}"}])
+    with pytest.raises(ValueError, match="no acepta la salida"):
+        core.stamp_steps([first, choose, {"tool": "musica_poner", "args": "{{disparador}}"}])

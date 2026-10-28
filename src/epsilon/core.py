@@ -18,7 +18,7 @@ from epsilon.data import activity, changes, conversations, library, music_index 
 from epsilon.memory import store as memory
 from epsilon.settings import config, editor, store as settings_store
 from epsilon.skills import runtime as skill_runtime, store as skill_store
-from epsilon.routines import rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
+from epsilon.routines import recipe as routine_recipe, rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
 from epsilon.utils import clima, clock, dolar, multimedia, navegador, sistema, ventanas
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
@@ -1418,9 +1418,11 @@ def stamp_steps(chain: list[dict]) -> list[dict]:
         tool, args = step["tool"], step["args"]
         found = by_id.get(tool)
         if routine_steps.refs(args) and (tool in NO_TEMPLATE_TOOLS or (found and _is_destructive(found))):
-            raise ValueError(
-                f"«{tool}» no acepta la salida de otros pasos: lo que lee una página o una nota no debe decidir qué se abre, se toca o se borra."
-            )
+            # Única excepción: la salida de un paso `elegir` (un ítem de una lista cerrada, validado por el código).
+            if not all(isinstance(ref, int) and 1 <= ref <= len(chain) and chain[ref - 1]["tool"] == "elegir" for ref in routine_steps.refs(args)):
+                raise ValueError(
+                    f"«{tool}» no acepta la salida de otros pasos: lo que lee una página o una nota no debe decidir qué se abre, se toca o se borra."
+                )
         if tool == "nav_abrir" and args.strip() and "{{" not in args:
             try:
                 args = navegador.resolve_target(args)
@@ -1509,6 +1511,16 @@ def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | N
     if trace is not None:
         trace.extend(turn.trace)
     return routine_runner.StepResult(reply.ai, reply.text)
+
+
+def learn_routine(rule: dict) -> dict:
+    """«Aprender y probar»: corre UNA vez la IA completa (en serio: puede poner música y gastar) y propone la receta que
+    la repite. No guarda nada. `recipe` es None si la corrida falló o no usó herramientas."""
+    trace: list = []
+    result = run_ai_step(rule, rule["steps"][0], {}, trace)
+    calls = [routine_recipe.Call(tool, args, shown, ok) for tool, args, shown, ok in trace]
+    steps = routine_recipe.classify(rule["ai"]["instruction"], calls, tools.items_pattern) if result.ok else []
+    return {"results": [{"ok": result.ok, "text": config.redact(result.text)}], "recipe": steps or None}
 
 
 def register_routine_executor() -> None:
