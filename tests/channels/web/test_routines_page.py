@@ -223,3 +223,10 @@ def test_long_tool_names_wrap_inside_the_grid_card_and_connector_ones_are_shorte
 
     assert "niceLabel" in script and 'replaceAll("_", " ")' in script and "tool.title = item.label" in script
     assert "overflow-wrap: anywhere" in css and "overflow: hidden" in css
+
+
+def test_the_page_does_not_offer_ia_for_a_free_step_that_feeds_a_choose_and_drops_tools_no_longer_in_the_catalog():
+    editor, grid = page("rutinas-editor.js"), page("rutinas-ia.js")
+
+    assert "feedsChoose" in editor  # el paso que da las opciones de un `elegir` no puede quedar «a cargo de la IA»
+    assert "catalog.some" in grid  # lo guardado que ya no está en el catálogo no se reenvía (si no, no se podría editar)

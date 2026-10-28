@@ -116,7 +116,9 @@
       catalog = items;
       instructionInput.value = instruction;
       counter.textContent = `${instruction.length} / ${MAX}`;
-      marks = new Map(Object.entries(tools));
+      // Lo guardado que ya no está en el catálogo (un conector apagado, algo bloqueado en /permisos) no se muestra ni se reenvía:
+      // si no, la rutina no se podría volver a guardar.
+      marks = new Map(Object.entries(tools).filter(([id]) => catalog.some((item) => item.id === id)));
       suggested = new Set();
       dismissed = new Set();
       draw();

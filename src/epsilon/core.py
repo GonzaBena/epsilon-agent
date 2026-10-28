@@ -1551,6 +1551,21 @@ def run_choose(rule: dict, step: dict, outputs: dict[int, str]) -> routine_runne
     return routine_runner.StepResult(True, picked) if picked else routine_runner.StepResult(False, CHOOSE_FAILED)
 
 
+def connector_versions(tool_ids) -> dict[str, str]:
+    """El hash actual de cada herramienta de conector de la lista (lo que la persona vio al confirmar la rutina)."""
+    return {tool_id: h for tool_id in tool_ids if tool_id.startswith("mcp_") and (h := _connector_hash(tool_id))}
+
+
+def trusted_green(rule: dict) -> set[str]:
+    """Las herramientas que un paso `ia` de esta rutina puede usar de verdad: las verdes que SIGUEN en el catálogo de las
+    rutinas (nada de `rutina_crear`, `enviar` ni lo que gasta IA aunque alguien lo ponga en verde a mano) y, si son de un
+    conector, solo si su versión sigue siendo la que la persona confirmó."""
+    green = {tool_id for tool_id, state in rule["ai"]["tools"].items() if state == "green"} & _catalog_ids()
+    versions = rule["ai"].get("versions")
+    versions = versions if isinstance(versions, dict) else {}
+    return {t for t in green if not t.startswith("mcp_") or (versions.get(t) is not None and versions.get(t) == _connector_hash(t))}
+
+
 def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | None = None) -> routine_runner.StepResult:
     """Corre un paso `ia` de una rutina: UN turno de IA sin nadie que conteste, acotado a las herramientas en verde (y a
     `only` si el paso lo trae), con tope de vueltas y de gasto diario. Anota el gasto en la rutina."""
@@ -1560,7 +1575,7 @@ def run_ai_step(rule: dict, step: dict, outputs: dict[int, str], trace: list | N
         return routine_runner.StepResult(False, f"El paso «{step['tool']}» no se puede correr.")
     if problem := _ai_budget_problem(rule):
         return routine_runner.StepResult(False, problem, fatal=True)
-    green = {tool_id for tool_id, state in rule["ai"]["tools"].items() if state == "green"}
+    green = trusted_green(rule)
     if step.get("only"):
         green &= set(step["only"])
     cid = f"rutina:{rule.get('id', 'prueba')}:{next(_runs)}"  # una prueba del editor todavía no tiene número
@@ -1589,6 +1604,8 @@ def learn_routine(rule: dict) -> dict:
     result = run_ai_step(rule, rule["steps"][0], {}, trace)
     calls = [routine_recipe.Call(tool, args, shown, ok) for tool, args, shown, ok in trace]
     steps = routine_recipe.classify(rule["ai"]["instruction"], calls, tools.items_pattern) if result.ok else []
+    for item in steps:  # lo que el modelo escribió en un argumento no debe llevar una clave hasta la página
+        item["args"], item["text"] = config.redact(str(item["args"])), config.redact(str(item.get("text", "")))
     return {"results": [{"ok": result.ok, "text": config.redact(result.text)}], "recipe": steps or None}
 
 

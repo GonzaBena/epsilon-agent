@@ -826,6 +826,8 @@ def create_app() -> FastAPI:
                 body.name, body.when, body.instruction, body.ai_tools, routines_now(), known, body.layout, recipe,
                 selectable=lambda tool_id: tools.items_pattern(tool_id) is not None,
             )
+            # La versión de cada herramienta de conector en verde que la persona vio: si cambia, la IA ya no la usa.
+            rule["ai"]["versions"] = core.connector_versions(t for t, state in rule["ai"]["tools"].items() if state == "green")
         elif body.text.strip():
             rule = routine_rules.build(body.text.strip(), routines_now(), known)
         else:
@@ -869,6 +871,8 @@ def create_app() -> FastAPI:
                 rule["steps"], rule["ai"]["recipe"], rule["ai"]["stale"] = current["steps"], True, bool(old_ai.get("stale"))
             if same_plan(rule, current):
                 rule["steps"] = current["steps"]  # lo mismo que ya estaba confirmado: conserva sus versiones
+                if isinstance(old_ai, dict) and rule.get("ai") and "versions" in old_ai:
+                    rule["ai"]["versions"] = old_ai["versions"]  # (también las de los conectores: renombrar no reconfirma)
             elif not body.confirmed:
                 raise ValueError("Falta confirmar lo que va a hacer la rutina antes de guardar los cambios.")
             routine_store.replace(rule_id, rule)
@@ -894,7 +898,7 @@ def create_app() -> FastAPI:
         try:
             if not body.instruction.strip():
                 raise ValueError("Escribí qué le pedís a la IA.")
-            rule = build_routine(body)
+            rule = build_routine(body.model_copy(update={"recipe": None}))  # aprender siempre parte de la IA completa
             if not body.confirmed:
                 raise ValueError("Falta confirmar lo que va a hacer la rutina antes de aprender.")
         except ValueError as e:

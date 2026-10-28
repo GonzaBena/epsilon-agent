@@ -73,6 +73,10 @@
     ["ia", "Que decida la IA cada vez"],
   ];
 
+  // ¿Algún paso de la receta elige entre lo que devolvió este? Entonces no puede quedar «a cargo de la IA»: el paso que da
+  // las opciones tiene que correr tal cual.
+  const feedsChoose = (index) => learned.recipe.some((other) => other.kind === "elegir" && other.source === index + 1);
+
   function recipeStep(step, index) {
     const item = make("li", "rt-recipe-step");
     const tag = make("span", "rt-tag", TAG_TEXT[step.kind] || step.kind);
@@ -81,12 +85,15 @@
     if (step.kind === "libre") {
       const choice = make("select");
       choice.setAttribute("aria-label", `Qué hacer con el paso ${index + 1}`);
-      for (const [value, text] of DECISIONS) choice.append(Object.assign(make("option", "", text), { value, selected: value === (step.decision || "") }));
+      const feeds = feedsChoose(index);
+      if (feeds && step.decision === "ia") step.decision = "";
+      for (const [value, text] of feeds ? DECISIONS.filter(([value]) => value !== "ia") : DECISIONS) choice.append(Object.assign(make("option", "", text), { value, selected: value === (step.decision || "") }));
       choice.addEventListener("change", () => {
         step.decision = choice.value;
         showError("");
       });
       item.append(choice);
+      if (feeds) item.append(make("p", "hint", "De este paso sale lo que elige la IA: se repite igual."));
     }
     return item;
   }

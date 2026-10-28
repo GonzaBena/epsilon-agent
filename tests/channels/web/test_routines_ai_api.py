@@ -201,3 +201,27 @@ def test_renaming_keeps_the_recipe_and_needs_no_confirmation(client):
     assert reply.status_code == 200
     shown = reply.json()["rules"][0]
     assert shown["name"] == "Otra" and shown["ai"]["has_recipe"] is True and len(shown["steps"]) == 3
+
+
+# --- revisión final ----------------------------------------------------------------------------------------------------
+
+
+def test_the_versions_of_connector_tools_are_stamped_and_kept_when_only_renaming(client, monkeypatch):
+    monkeypatch.setattr(core, "connector_versions", lambda ids: {"fecha": "v1"})
+    client.post("/api/routines", json=ai_body())
+    assert store.rules()[0]["ai"]["versions"] == {"fecha": "v1"}
+    monkeypatch.setattr(core, "connector_versions", lambda ids: {"fecha": "v2"})  # el conector cambió mientras tanto
+
+    client.put("/api/routines/1/edit", json=ai_body(name="Otra", confirmed=False))  # renombrar no reconfirma: no re-sella
+    assert store.rules()[0]["ai"]["versions"] == {"fecha": "v1"}
+    client.put("/api/routines/1/edit", json=ai_body(instruction="Otra cosa"))  # reconfirmado: sí
+    assert store.rules()[0]["ai"]["versions"] == {"fecha": "v2"}
+
+
+def test_learn_ignores_a_recipe_in_the_body(client, monkeypatch):
+    seen = []
+    monkeypatch.setattr(core, "learn_routine", lambda rule: (seen.append(rule["steps"]), {"results": [], "recipe": None})[1])
+
+    client.post("/api/routines/learn", json=recipe_body())
+
+    assert [s["tool"] for s in seen[0]] == ["ia"]  # corre la IA completa, no el primer paso de una receta

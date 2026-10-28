@@ -495,3 +495,53 @@ def test_the_chosen_id_flows_into_the_next_step_via_the_template(ai_rule, monkey
     assert [r.ok for r in results] == [True, True, True] and results[1].text == "PL0000000007"
     assert put == [("playlist", "PL0000000007")] and len(model.prompts) == 1
     assert all(f"PL{n:010d}" in model.prompts[0][0][0] for n in range(24))  # el paso fuente devolvió las 24, no 1000 caracteres
+
+
+# --- revisión final: lo que decide correr en el paso `ia` -----------------------------------------------------------------
+
+
+def with_tools(rule, **states):
+    return {**rule, "ai": {**rule["ai"], "tools": states}}
+
+
+def test_a_hand_edited_green_outside_the_routine_catalog_is_not_trusted(ai_rule):
+    for tool_id in ("rutina_crear", "enviar", "inventada"):
+        rule = with_tools(ai_rule, fecha="green", **{tool_id: "green"})
+        assert core.trusted_green(rule) == {"fecha"}
+
+
+def test_a_connector_tool_in_green_needs_its_saved_version_to_still_match(ai_rule, monkeypatch):
+    monkeypatch.setattr(core, "_catalog_ids", lambda: {"fecha", "mcp_mp__listar"})
+    monkeypatch.setattr(core, "_connector_hash", lambda tool_id: "h2" if tool_id == "mcp_mp__listar" else None)
+    rule = with_tools(ai_rule, fecha="green", mcp_mp__listar="green")
+
+    assert core.trusted_green(rule) == {"fecha"}  # sin versión guardada: no
+    assert core.trusted_green({**rule, "ai": {**rule["ai"], "versions": {"mcp_mp__listar": "h1"}}}) == {"fecha"}  # cambió: no
+    assert core.trusted_green({**rule, "ai": {**rule["ai"], "versions": {"mcp_mp__listar": "h2"}}}) == {"fecha", "mcp_mp__listar"}
+
+
+def test_ia_step_scope_uses_only_trusted_green_tools(ai_rule, script, monkeypatch):
+    seen = []
+    real = permissions.set_scope
+    monkeypatch.setattr(permissions, "set_scope", lambda cid, allowed: (seen.append(set(allowed)), real(cid, allowed))[1])
+    script.steps = [step("Listo")]
+
+    run(with_tools(ai_rule, fecha="green", rutina_crear="green"))
+
+    assert seen == [{"fecha"}]
+
+
+def test_connector_versions_are_collected_only_for_connector_tools(monkeypatch):
+    monkeypatch.setattr(core, "_connector_hash", lambda tool_id: "abc" if tool_id.startswith("mcp_") else None)
+
+    assert core.connector_versions(["fecha", "mcp_mp__listar"]) == {"mcp_mp__listar": "abc"}
+
+
+def test_learn_routine_redacts_the_recipe_it_returns(ai_rule, script, monkeypatch):
+    key = "AIzaSyD-ejemplo_de_clave_larga_QzXw"
+    monkeypatch.setattr(core.navegador, "play_music", lambda kind, value, shuffle: "Sonando en YouTube Music: x")
+    script.steps = [step(calls=[("musica.poner", f"canciones {key}")]), step("Listo")]
+
+    learned = core.learn_routine(ai_rule)
+
+    assert key not in str(learned)
