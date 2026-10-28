@@ -162,3 +162,72 @@ def test_a_test_run_from_the_editor_is_marked_as_such(quiet):
     runner.run_chain({"name": "Nueva", "steps": [{"tool": "volumen", "args": "20"}]})
 
     assert activity.read()["items"][0]["routine"] == "Nueva (prueba)"
+
+
+# --- pasos con IA ------------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def ai_executor():
+    seen = []
+
+    def execute(rule, step, outputs):
+        seen.append((rule["id"], step["tool"], dict(outputs)))
+        return runner.StepResult(True, "Puse new calm: tranquila y de energía baja")
+
+    runner.set_ai_executor(execute)
+    yield seen
+    runner.set_ai_executor(None)
+
+
+def ai_rule(**extra):
+    return rule(("ia", ""), id=3, ai={"instruction": "Poné música", "tools": {"fecha": "green"}}, **extra)
+
+
+def test_ia_step_without_an_ai_executor_fails_cleanly(quiet):
+    results = runner.run_chain(ai_rule())
+
+    assert [(r.ok, r.text) for r in results] == [(False, "No hay un ejecutor de IA registrado.")]
+
+
+def test_ia_step_goes_to_the_ai_executor_with_the_rule_and_earlier_outputs(quiet, ai_executor):
+    results = runner.run_chain(rule(("volumen", "15"), ("ia", ""), id=3, ai={"instruction": "x", "tools": {}}))
+
+    assert [r.ok for r in results] == [True, True]
+    assert ai_executor == [(3, "ia", {1: "hecho volumen 15"})]
+
+
+def test_run_job_sends_a_one_line_notice_for_ai_rules(quiet, ai_executor):
+    sent, _ = quiet
+
+    runner.run_job(ai_rule())
+
+    assert sent == ["🤖 Prueba: Puse new calm: tranquila y de energía baja"]
+
+
+def test_the_notice_is_one_short_line(quiet, ai_executor):
+    sent, _ = quiet
+    runner.set_ai_executor(lambda rule, step, outputs: runner.StepResult(True, "linea uno\n" + "x" * 500))
+
+    runner.run_job(ai_rule())
+
+    assert len(sent) == 1 and "\n" not in sent[0] and len(sent[0]) < 260
+
+
+def test_a_fixed_rule_sends_no_extra_notice(quiet):
+    sent, _ = quiet
+
+    runner.run_job(rule(("volumen", "15")))
+
+    assert sent == []
+
+
+def test_a_failed_ai_step_sends_the_failure_notice_not_the_summary(quiet):
+    sent, _ = quiet
+    runner.set_ai_executor(lambda rule, step, outputs: runner.StepResult(False, "Esta rutina llegó a su tope de hoy"))
+    try:
+        runner.run_job(ai_rule())
+    finally:
+        runner.set_ai_executor(None)
+
+    assert len(sent) == 1 and "tope de hoy" in sent[0] and "paso 1" in sent[0]

@@ -22,6 +22,8 @@ _stop = threading.Event()
 _guard = threading.Lock()
 _running: set[object] = set()
 _executor: Callable[[str, str], "StepResult"] | None = None
+_ai_executor: Callable[[dict, dict, dict[int, str]], "StepResult"] | None = None
+NOTICE_CHARS = 200
 _clock = time.monotonic  # aparte para que los tests lo reemplacen
 
 
@@ -35,6 +37,12 @@ def set_executor(fn: Callable[[str, str], StepResult] | None) -> None:
     """Quien sabe correr herramientas (el núcleo) se registra acá."""
     global _executor
     _executor = fn
+
+
+def set_ai_executor(fn: Callable[[dict, dict, dict[int, str]], StepResult] | None) -> None:
+    """Quien sabe correr un paso con IA (el núcleo) se registra acá: `fn(rule, step, outputs)`."""
+    global _ai_executor
+    _ai_executor = fn
 
 
 def stop() -> None:
@@ -66,8 +74,17 @@ def _notice(raw: str, text: str, trigger: str) -> str:
     return f"⚠ {text}" if "{{disparador}}" in raw else f"⚠ {text} ({trigger})"
 
 
-def _step(rule_id: object, step: dict, outputs: dict[int, str], trigger: str) -> StepResult:
+def _step(rule: dict, step: dict, outputs: dict[int, str], trigger: str) -> StepResult:
+    rule_id = rule.get("id", "prueba")
     tool = step["tool"]
+    if tool in steps.AI_STEPS:  # un paso con IA: lo corre el núcleo, que sabe de modelos, permisos y gasto
+        if _ai_executor is None:
+            return StepResult(False, "No hay un ejecutor de IA registrado.")
+        try:
+            return _ai_executor(rule, step, outputs)
+        except Exception as e:
+            log(rule_id, f"error en {tool}", repr(e))
+            return StepResult(False, "No pude ejecutar el paso con IA.")
     args = steps.render_args(step["args"], outputs, trigger)
     if tool == "avisar":
         message = _notice(step["args"], args, trigger)
@@ -100,7 +117,7 @@ def run_chain(rule: dict, trigger: str = "", on_step: Callable[[int, StepResult]
             result = StepResult(False, "Se pasó del tiempo máximo de la rutina.")
         else:
             activity.begin()
-            result = _step(rule_id, step, outputs, trigger)
+            result = _step(rule, step, outputs, trigger)
         result = StepResult(result.ok, config.redact(result.text)[:steps.MAX_OUTPUT])
         outputs[number] = result.text
         results.append(result)
@@ -131,6 +148,9 @@ def run_job(rule: dict, trigger: str = "") -> None:
         results = run_chain(rule, trigger)
         if results and not results[-1].ok:
             _tell(describe_failure(rule, len(results), results[-1]), rule.get("id"))
+        elif results and rule.get("ai"):  # una rutina con IA cuenta en una línea qué hizo (nadie la está mirando)
+            line = " ".join(results[-1].text.split())[:NOTICE_CHARS]
+            _tell(f"🤖 {rule.get('name') or rule.get('id')}: {line}", rule.get("id"))
     finally:
         with _guard:
             _running.discard(rule.get("id"))
