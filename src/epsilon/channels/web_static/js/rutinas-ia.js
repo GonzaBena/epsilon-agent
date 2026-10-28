@@ -28,6 +28,16 @@
   let ticket = 0; // descarta la respuesta de una sugerencia vieja
   const listeners = [];
 
+  // «arca.consultar_comprobante_emitido» -> «consultar comprobante emitido» (el conector ya está en el título del grupo);
+  // «/volumen» -> «Volumen». Un nombre largo se parte en la tarjeta (CSS) en vez de salirse.
+  function niceLabel(item) {
+    if (item.id.startsWith("mcp_") && item.label.includes(".")) {
+      const action = item.label.slice(item.label.indexOf(".") + 1).replaceAll("_", " ");
+      return action.charAt(0).toUpperCase() + action.slice(1);
+    }
+    return item.label.replace(/^\/(.)/, (_, c) => c.toUpperCase());
+  }
+
   const changed = () => listeners.forEach((fn) => fn());
   const stateOf = (id) => (marks.get(id) === "green" ? "ok" : marks.get(id) === "red" ? "no" : suggested.has(id) ? "sug" : "off");
 
@@ -51,8 +61,9 @@
 
   function button(item) {
     const state = stateOf(item.id);
-    const label = item.label.replace(/^\/(.)/, (_, c) => c.toUpperCase());
+    const label = niceLabel(item);
     const tool = make("button", "rt-tool");
+    tool.title = item.label; // el nombre completo, al pasar el mouse
     tool.type = "button";
     tool.dataset.state = state;
     tool.dataset.tool = item.id;
@@ -118,7 +129,7 @@
     reds: () => [...marks].filter(([, state]) => state === "red").map(([id]) => id),
     label: (id) => {
       const item = catalog.find((entry) => entry.id === id);
-      return item ? item.label.replace(/^\/(.)/, (_, c) => c.toUpperCase()) : id;
+      return item ? niceLabel(item) : id;
     },
     onChange(fn) {
       listeners.push(fn);

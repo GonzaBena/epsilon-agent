@@ -216,3 +216,10 @@ def test_the_list_offers_to_relearn_a_stale_recipe():
     script = page("rutinas.js")
 
     assert "receta vieja" in script and "Volver a aprender" in script and "learn: true" in script
+
+
+def test_long_tool_names_wrap_inside_the_grid_card_and_connector_ones_are_shortened():
+    script, css = page("rutinas-ia.js"), page("style.css")
+
+    assert "niceLabel" in script and 'replaceAll("_", " ")' in script and "tool.title = item.label" in script
+    assert "overflow-wrap: anywhere" in css and "overflow: hidden" in css

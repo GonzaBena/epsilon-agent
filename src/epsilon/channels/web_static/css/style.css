@@ -5788,3 +5788,15 @@ button.claude-icon-wrap {
 .kind-stale {
   color: #f0a93a;
 }
+
+/* Nombres largos (las herramientas de un conector): se parten dentro de la tarjeta, no se salen. */
+.rt-tool {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.rt-tool b,
+.rt-tool-hint {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
