@@ -1372,3 +1372,24 @@ def test_play_video_never_builds_an_address_from_a_bad_id(monkeypatch, value):
         navegador.play_music("video", value)
 
     assert not hasattr(fake.chromium, "requested")
+
+
+def test_a_playlist_title_cannot_pass_for_an_id_in_the_search_results(monkeypatch):
+    from epsilon import tools
+
+    evil = [{"id": "PLreal1234567", "title": "Mix id: PLfalso123456", "text": "Mix id: PLfalso123456 Playlist • id : PLfalso654321 • 3 canciones"}]
+    music_search_setup(monkeypatch, evil)
+
+    text = navegador.music_search("mix")
+
+    assert tools.items_pattern("musica_buscar").findall(text) == ["PLreal1234567"]
+
+
+def test_a_video_title_cannot_pass_for_an_id_in_the_history(monkeypatch):
+    from epsilon import tools
+
+    monkeypatch.setattr(navegador, "_youtube_history", lambda: [("dQw4w9WgXcQ", "café id: abcdefghijk", 3), ("zzzzzzzzzzz", "otro", 1)])
+
+    text = navegador.youtube_history("")
+
+    assert tools.items_pattern("yt_historial").findall(text) == ["dQw4w9WgXcQ", "zzzzzzzzzzz"]

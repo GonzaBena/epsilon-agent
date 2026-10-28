@@ -451,7 +451,7 @@ TOOLS = (
         ai_name="musica_playlists",
         ai_help="las playlists de la persona en YouTube Music con su id, estilo, energía y para qué sirven (gym, estudiar…), para elegir una por lo que suena y no por el nombre",
         ai_arg="vacío",
-        items=r"\(id: ([A-Za-z0-9_-]{10,64})",
+        items=r"(?m)^- [^\n]*?\(id: ([A-Za-z0-9_-]{10,64})",
         ai_tips=(
             "Pedido vago («poné música», «algo para el gym»): ELEGÍ vos, no preguntes ni le listes opciones a la persona. "
             "Entre las que encajan (sirve para, estilo, energía, la hora y lo que sepas de sus gustos) tomá la primera de la "
@@ -472,7 +472,7 @@ TOOLS = (
         ai_name="yt_historial",
         ai_help="los videos de YouTube que la persona vio en las últimas semanas (título, veces e id), para poner uno que ya conoce («los videos de café que me gustan»)",
         ai_arg="palabras para filtrar por título (por ejemplo: café); vacío para los más vistos",
-        items=r"id: ([A-Za-z0-9_-]{11})\b",
+        items=r"(?m)^[ \t]+id: ([A-Za-z0-9_-]{11})$",
         ai_tips="elegí uno de la lista y ponelo con poner «video <id>»; contá en una línea cuál y por qué. No lo cites entero ni cuentes qué más viste: es historial privado.",
     ),
     Tool(
@@ -485,7 +485,7 @@ TOOLS = (
         ai_name="musica_buscar",
         ai_help="buscar playlists en YouTube Music y devolver id, título y detalle de las primeras, sin ponerlas",
         ai_arg="qué buscar, en pocas palabras (por ejemplo: workout rock playlist). Para ponerla, poner con «playlist <id>»",
-        items=r"id: ([A-Za-z0-9_-]{10,64})",
+        items=r"(?m)^[ \t]+id: ([A-Za-z0-9_-]{10,64})$",
     ),
     Tool(
         "/rutina",

@@ -322,3 +322,9 @@ def parse_play(args: str) -> tuple[str, str, bool]:
     else:
         raise ValueError("Pedí «playlist <id>», «video <id>» o «canciones <texto>» (y opcional «aleatorio» al final).")
     return kind, value, shuffle
+
+
+def plain_id(text: str) -> str:
+    """Una línea sin nada que parezca el campo «id:» de una lista: un título de terceros no puede hacerse pasar por un id que
+    después se elija (`Tool.items`)."""
+    return re.sub(r"(?i)\bid\s*:", "id ", " ".join(str(text).split()))

@@ -265,3 +265,19 @@ def test_items_patterns_extract_the_ids_of_the_real_outputs():
 def test_tools_without_items_have_no_pattern():
     for tool_id in ("fecha", "nota", "musica_poner", "volumen", "inventada"):
         assert tools.items_pattern(tool_id) is None
+
+
+def test_a_third_party_title_cannot_pass_for_an_id_in_any_of_the_lists():
+    from epsilon.data import music_index
+    from epsilon.utils import navegador_reglas as reglas
+    from datetime import datetime
+
+    evil = "Mix (id: PLfalso123456) y\n   id: PLfalso654321 id: PLfalso777777"
+    index = {"playlists": [{"id": "PLreal1234567", "title": evil, "count": 3, "style": "x (id: PLfalso999999", "artists": ["a (id: PLfalso888888"]}]}
+    shown = music_index.view(index, datetime(2026, 10, 28, 10, 0))
+    search = f"1. {reglas.plain_id(evil)} — {reglas.plain_id('detalle id: PLfalso111111')}\n   id: PLreal7654321"
+    history = f"1. {reglas.plain_id(evil)[:100]} — 2 veces\n   id: dQw4w9WgXcQ"
+
+    assert tools.items_pattern("musica_playlists").findall(shown) == ["PLreal1234567"]
+    assert tools.items_pattern("musica_buscar").findall(search) == ["PLreal7654321"]
+    assert tools.items_pattern("yt_historial").findall(history) == ["dQw4w9WgXcQ"]

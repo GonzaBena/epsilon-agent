@@ -1095,7 +1095,7 @@ def music_search(query: str) -> str:
         return f"YouTube Music no devolvió playlists para «{query}»: probá con otras palabras."
     lines = [f"Playlists de YouTube Music para «{query}» (para ponerla: poner con «playlist <id>»):"]
     for n, (list_id, title, detail) in enumerate(results, 1):
-        lines.append(f"{n}. {title}" + (f" — {detail}" if detail else "") + f"\n   id: {list_id}")
+        lines.append(f"{n}. {reglas.plain_id(title)}" + (f" — {reglas.plain_id(detail)}" if detail else "") + f"\n   id: {list_id}")
     return "\n".join(lines)
 
 
@@ -1223,7 +1223,7 @@ def youtube_history(query: str) -> str:
         return "No encontré videos de YouTube en tu historial de las últimas semanas" + (f" que digan «{' '.join(words)}»." if words else ".")
     lines = ["Videos de YouTube que viste en las últimas semanas (los más vistos primero; para ponerlo: poner con «video <id>»):"]
     for i, (video, title, visits) in enumerate(rows[:HISTORY_RESULTS], 1):
-        short = " ".join(title.split())[:100] or "(sin título)"
+        short = reglas.plain_id(" ".join(title.split())[:100]) or "(sin título)"
         lines.append(f"{i}. {short} — {visits} veces\n   id: {video}")
     audit("musica", "www.youtube.com", f"historial {' '.join(words)}"[:100], asked=True)
     return "\n".join(lines)

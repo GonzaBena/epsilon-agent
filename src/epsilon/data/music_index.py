@@ -116,14 +116,20 @@ def _ago(played: str, now: datetime) -> str:
     return "la pusiste hoy" if days <= 0 else "la pusiste ayer" if days == 1 else f"la pusiste hace {days} días"
 
 
+def _safe(text: object) -> str:
+    """Texto de terceros (títulos, artistas, estilos) en una sola línea y sin nada que parezca el campo «id:» de la lista: así
+    lo que se elige de la lista (`Tool.items`) es siempre un id de verdad y no algo que un título escribió."""
+    return re.sub(r"(?i)\bid\s*:", "id ", " ".join(str(text).split()))
+
+
 def _line(p: dict, now: datetime, artists: bool) -> str:
-    head = f"- {p['title'][:MAX_TITLE]} (id: {p['id']}" + (f", {p['count']} canciones" if p.get("count") else "") + ")"
+    head = f"- {_safe(p['title'])[:MAX_TITLE]} (id: {p['id']}" + (f", {p['count']} canciones" if p.get("count") else "") + ")"
     if p.get("style"):
-        head += f": {p['style']}; energía {p.get('energy', '?')}/5; sirve para: {', '.join(p.get('uses') or []) or 'nada en particular'}"
+        head += f": {_safe(p['style'])}; energía {p.get('energy', '?')}/5; sirve para: {_safe(', '.join(p.get('uses') or [])) or 'nada en particular'}"
     else:
         head += ": sin etiquetar"
     if artists and p.get("artists"):
-        head += f"; artistas: {', '.join(p['artists'])}"
+        head += f"; artistas: {_safe(', '.join(p['artists']))}"
     return head + "; " + (_ago(p["played"], now) if p.get("played") else "nunca la pusiste")
 
 
