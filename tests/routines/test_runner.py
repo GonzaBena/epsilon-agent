@@ -319,6 +319,26 @@ def test_a_failing_fixed_step_falls_back_to_one_full_ai_run_and_marks_stale(quie
     assert "Volvé a aprenderla" in sent[0]
 
 
+def test_the_fallback_notice_says_which_steps_were_already_done_and_may_repeat(quiet, saved):
+    sent, _ = quiet
+    rule, _runs = saved
+    runner.set_executor(lambda tool, args: runner.StepResult(tool != "volumen", "el volumen no responde"))
+
+    runner.run_job(rule)
+
+    assert "paso 1 ya se había hecho" in sent[0] and "pudo repetirlo" in sent[0]
+
+
+def test_the_fallback_notice_says_nothing_about_repeats_when_the_first_step_failed(quiet, saved):
+    sent, _ = quiet
+    rule, _runs = saved
+    runner.set_executor(lambda tool, args: runner.StepResult(tool != "fecha", "no hay fecha"))
+
+    runner.run_job(rule)
+
+    assert "quedó vieja" in sent[0] and "ya se había hecho" not in sent[0]
+
+
 def test_the_fallback_runs_at_most_once(quiet, saved):
     sent, _ = quiet
     rule, _runs = saved

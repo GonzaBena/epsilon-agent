@@ -187,4 +187,5 @@ módulo, ponerlo en la carpeta de su capa** (memoria o Obsidian irían en carpet
 - Memoria: el modelo ya la maneja con las herramientas `recordar`/`memoria`/`editar`/`olvidar` (con permisos). No se le pasa a los resúmenes, salvo que el resumen se pida dentro de un chat de modo IA (ahí ya la recibe).
 - Documentación (página Docs dentro de la app + web del proyecto con la instalación): idea
   guardada en `docs/idea-documentacion.md`, para retomar con una V1.
+- Rutinas con IA: hacer idempotentes ciertas herramientas (p. ej. guardar una nota) para que la caída a la IA completa de una receta vieja no repita lo ya hecho; hoy solo se avisa qué pasos pudieron repetirse (`runner._fall_back`).
 - Más proveedores (OpenAI…; Anthropic ya está, sin razonamiento todavía): uno por vez, como un archivo nuevo en `ai/providers/`. Ver `docs/plan-modelos.md`.

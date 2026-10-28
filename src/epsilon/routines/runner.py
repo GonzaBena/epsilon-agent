@@ -224,8 +224,13 @@ def _fall_back(rule: dict, trigger: str, number: int, failed: StepResult) -> Non
         _tell_failure(full, len(results) or 1, results[-1] if results else failed)
         return
     reason = " ".join(failed.text.split())[:NOTICE_CHARS]
+    # la IA completa arranca de cero: lo que los pasos anteriores ya hicieron (guardar una nota…) pudo hacerse dos veces
+    done = "" if number < 2 else (
+        " El paso 1 ya se había hecho y la IA pudo repetirlo." if number == 2
+        else f" Los pasos 1 a {number - 1} ya se habían hecho y la IA pudo repetirlos."
+    )
     _tell(
-        f"La receta de «{name}» quedó vieja (paso {number} falló: {reason}); esta vez lo hizo la IA: {_summary(rule, results[-1])}. "
+        f"La receta de «{name}» quedó vieja (paso {number} falló: {reason}); esta vez lo hizo la IA: {_summary(rule, results[-1])}.{done} "
         "Volvé a aprenderla desde Rutinas.",
         rule_id,
     )
