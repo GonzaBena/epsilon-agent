@@ -935,3 +935,74 @@ def test_play_music_respects_the_browser_switch(monkeypatch):
 
     with pytest.raises(navegador.NavegadorError, match="apagado"):
         navegador.play_music("playlist", "PLabcdefghij")
+
+
+# --- el «¿Salir del sitio?» de YouTube Music al navegar ------------------------------------------
+
+
+class FakeSocket:
+    """Un WebSocket de mentira: devuelve lo que se le arma y anota lo que se le manda."""
+
+    def __init__(self, incoming):
+        self.incoming, self.sent = list(incoming), []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def send(self, text):
+        self.sent.append(json.loads(text))
+
+    def recv(self, timeout=None):
+        if not self.incoming:
+            raise TimeoutError
+        return json.dumps(self.incoming.pop(0))
+
+
+def test_navigate_accepts_the_leave_site_dialog(monkeypatch):
+    socket = FakeSocket([
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "beforeunload"}},
+        {"id": 1, "result": {"frameId": "x"}},
+    ])
+    monkeypatch.setattr(navegador, "connect", lambda *a, **k: socket)
+
+    assert navegador._talk(navegador.WS_PREFIX + "page/X", "Page.navigate", {"url": "https://music.youtube.com/"}) == {"frameId": "x"}
+
+    methods = [m["method"] for m in socket.sent]
+    assert methods[0] == "Page.enable" and "Page.handleJavaScriptDialog" in methods
+    assert next(m for m in socket.sent if m["method"] == "Page.handleJavaScriptDialog")["params"] == {"accept": True}
+
+
+def test_navigate_accepts_a_dialog_that_shows_up_after_the_answer(monkeypatch):
+    socket = FakeSocket([
+        {"id": 1, "result": {}},
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "beforeunload"}},
+    ])
+    monkeypatch.setattr(navegador, "connect", lambda *a, **k: socket)
+
+    navegador._talk(navegador.WS_PREFIX + "page/X", "Page.navigate", {"url": "https://music.youtube.com/"})
+
+    assert any(m["method"] == "Page.handleJavaScriptDialog" for m in socket.sent)
+
+
+def test_other_commands_do_not_touch_dialogs(monkeypatch):
+    socket = FakeSocket([{"id": 1, "result": {"ok": 1}}])
+    monkeypatch.setattr(navegador, "connect", lambda *a, **k: socket)
+
+    assert navegador._talk(navegador.WS_PREFIX + "page/X", "Runtime.evaluate", {"expression": "1"}) == {"ok": 1}
+
+    assert [m["method"] for m in socket.sent] == ["Runtime.evaluate"]
+
+
+def test_an_alert_that_is_not_beforeunload_is_left_alone(monkeypatch):
+    socket = FakeSocket([
+        {"method": "Page.javascriptDialogOpening", "params": {"type": "alert"}},
+        {"id": 1, "result": {}},
+    ])
+    monkeypatch.setattr(navegador, "connect", lambda *a, **k: socket)
+
+    navegador._talk(navegador.WS_PREFIX + "page/X", "Page.navigate", {"url": "https://music.youtube.com/"})
+
+    assert not any(m["method"] == "Page.handleJavaScriptDialog" for m in socket.sent)

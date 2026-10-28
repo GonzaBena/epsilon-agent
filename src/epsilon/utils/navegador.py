@@ -122,11 +122,11 @@ PLAY_JS = """(() => {
   const label = (el) => ((el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '')).replace(/\\s+/g, ' ').trim().toLowerCase();
   const head = document.querySelector('ytmusic-responsive-header-renderer, ytmusic-detail-header-renderer, ytmusic-immersive-header-renderer');
   const find = (root, re) => root ? [...root.querySelectorAll('button, a, yt-button-renderer, ytmusic-play-button-renderer')].find((el) => re.test(label(el)) && center(el)) : null;
-  const card = document.querySelector('ytmusic-card-shelf-renderer, ytmusic-responsive-list-item-renderer');
+  const first = [...document.querySelectorAll('ytmusic-play-button-renderer')].find((el) => /^(reproducir|play)\\b/i.test(el.getAttribute('aria-label') || '') && !el.closest('tp-yt-paper-item, ytmusic-guide-renderer, ytmusic-player-bar') && center(el));
   return {play: center(find(head, /^(reproducir|play)\\b/)), shuffle: center(find(head, /(aleatori|shuffle)/)),
-          result: center(card && card.querySelector('ytmusic-play-button-renderer'))};
+          result: center(first)};
 })()"""
-PLAY_WAIT = 12  # cuántas veces se espera (de a medio segundo) a que YouTube Music dibuje los botones
+PLAY_WAIT = 20  # cuántas veces se espera (de a medio segundo) a que YouTube Music dibuje los botones
 # El TERCER código fijo: lee la página de resultados de Google (los enlaces con título `h3`, que es lo que
 # viene siendo estable) y si Google pidió el captcha. No toca nada y no recibe nada del modelo: la búsqueda va en la
 # dirección. El texto de cada resultado es dato y se limpia y recorta en Python (ver search).
@@ -206,16 +206,43 @@ def _http(method: str, path: str) -> object:
 
 
 def _cdp(ws_url: str, method: str, params: dict | None = None) -> dict:
-    """Una orden del protocolo de Chromium por WebSocket; devuelve su `result`."""
+    """Una orden del protocolo de Chromium por WebSocket; devuelve su `result`. (Punto único que los tests bloquean:
+    el trabajo está en `_talk`.)"""
+    return _talk(ws_url, method, params)
+
+
+DIALOG_WAIT = 1.0  # tras navegar: cuánto se espera un «¿Salir del sitio?» que llegue después de la respuesta
+
+
+def _talk(ws_url: str, method: str, params: dict | None = None) -> dict:
+    """La conexión de `_cdp`. Al NAVEGAR una página (Page.navigate) acepta el «¿Salir del sitio?» (`beforeunload`): YouTube
+    Music lo muestra si suena algo, y quedaría esperando a la persona. Solo ese tipo de diálogo y solo al navegar: lo
+    pedimos nosotros, así que salir de la página es justo lo que se quiere."""
     if not ws_url.startswith(WS_PREFIX):
         raise NavegadorError("Chromium dio una dirección de control que no es de esta compu.")
+    navigating = method == "Page.navigate"
+
+    def dialog(ws, message: dict) -> None:
+        if message.get("method") == "Page.javascriptDialogOpening" and message.get("params", {}).get("type") == "beforeunload":
+            ws.send(json.dumps({"id": 3, "method": "Page.handleJavaScriptDialog", "params": {"accept": True}}))
+
     try:
         with connect(ws_url, open_timeout=TIMEOUT, close_timeout=TIMEOUT) as ws:
+            if navigating:
+                ws.send(json.dumps({"id": 2, "method": "Page.enable", "params": {}}))
             ws.send(json.dumps({"id": 1, "method": method, "params": params or {}}))
             while True:
                 message = json.loads(ws.recv(timeout=TIMEOUT * 2))
+                if navigating:
+                    dialog(ws, message)
                 if message.get("id") == 1:
                     break
+            if navigating:
+                try:
+                    while True:  # el diálogo puede llegar un rato después de la respuesta
+                        dialog(ws, json.loads(ws.recv(timeout=DIALOG_WAIT)))
+                except TimeoutError:
+                    pass
     except (OSError, ValueError, TimeoutError):
         raise NavegadorError("Chromium no contestó la orden. Probá de nuevo.") from None
     if "error" in message:
