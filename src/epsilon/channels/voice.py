@@ -438,13 +438,10 @@ class Prompter:
         self._window = ""  # la ventana que tenía el foco cuando apretaste el atajo
 
     def toggle(self) -> str:
-        """El atajo: abre el campo o, si ya está abierto, lo cierra. «asking», «closed» o «no-window» (no hay ventanita)."""
+        """El atajo: abre el campo; si ya está abierto no hace nada (se cierra con Esc). «asking», «open» o «no-window» (no hay ventanita)."""
         with self._lock:
             if self._open:
-                self._open = False
-                if self._send({"op": "close_input"}):
-                    return "closed"
-                # la ventanita ya no estaba: se intenta abrir de nuevo
+                return "open"
             try:
                 self._window = self._focused()
             except Exception:  # noqa: BLE001

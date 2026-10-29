@@ -356,6 +356,7 @@ class Window:
                     self._call(self.on_closed)
         except (OSError, ValueError):
             pass
+        self._call(self.on_closed)  # sin ventanita no hay campo abierto: el próximo atajo vuelve a intentar
         with self._lock:
             if self._closing is proc:
                 self._closing = None

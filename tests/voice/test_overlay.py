@@ -775,3 +775,13 @@ def test_the_text_written_before_a_tool_is_wiped_when_the_tool_starts(rig):
     rig.feed({"type": "tool", "name": "ver", "state": "running"})
 
     assert rig.last()["title"] == "Usando <ver>…" and rig.last()["text"] == ""
+
+
+def test_a_window_that_dies_counts_as_closed(win):
+    closed = []
+    win.window.on_closed = lambda: closed.append(True)
+    win.window.send({"op": "show", "kind": "info", "title": "x", "heard": "", "text": "", "layout": {}})
+    win.proc.exit()
+
+    wait_for(lambda: closed)
+    assert closed

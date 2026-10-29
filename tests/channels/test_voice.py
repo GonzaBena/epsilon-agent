@@ -1409,21 +1409,19 @@ def test_toggle_reads_the_focused_window_before_asking_the_card_for_input(prompt
     assert prompter.sent[0]["op"] == "input" and "layout" in prompter.sent[0]
 
 
-def test_toggle_while_open_closes_the_input(prompter):
+def test_toggle_while_open_does_nothing(prompter):
     prompter.prompter.toggle()
+    before = list(prompter.sent)
 
-    assert prompter.prompter.toggle() == "closed"
-    assert prompter.sent[-1] == {"op": "close_input"}
+    assert prompter.prompter.toggle() == "open"  # abrirlo de nuevo no tiene sentido: se cierra con Esc
+    assert prompter.sent == before
 
 
-def test_toggle_reopens_when_the_window_process_is_gone(prompter):
+def test_toggle_opens_again_once_the_card_reported_it_closed(prompter):
     prompter.prompter.toggle()
-    prompter.alive = False  # el proceso murió: no recibe nada
+    prompter.prompter.closed()
 
-    assert prompter.prompter.toggle() == "no-window"  # intenta cerrar, falla, intenta abrir y tampoco hay ventanita
-    prompter.alive = True
     assert prompter.prompter.toggle() == "asking"
-    assert prompter.sent[-1]["op"] == "input"
 
 
 def test_without_a_window_it_announces_and_starts_nothing(prompter):
