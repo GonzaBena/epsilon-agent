@@ -1,6 +1,7 @@
 import contextvars
 from collections.abc import Callable
 from contextlib import contextmanager
+from dataclasses import replace
 
 from epsilon.ai import images, providers, usage
 from epsilon.ai.messages import Call, File, Message, ModelError, Result, Step, ToolSpec  # noqa: F401 (los usan los llamadores)
@@ -71,7 +72,16 @@ def current_model(task_name: str | None = None) -> str:
 def capabilities(task_name: str | None = None) -> Capabilities:
     """Lo que puede hacer el modelo de una tarea (herramientas, imágenes, PDFs)."""
     provider, model = parse_model(model_for(task_name))
-    return providers.get(provider).capabilities(model)
+    caps = providers.get(provider).capabilities(model)
+    if caps.images and not images_allowed(provider):
+        caps = replace(caps, images=False)  # así tampoco se le ofrece la captura de pantalla
+    return caps
+
+
+def images_allowed(provider: str) -> bool:
+    """¿Se le pueden mandar imágenes a este proveedor? Ollama corre en la PC: siempre. Los demás, salvo que la
+    persona lo haya apagado (IMAGES_TO_CLOUD)."""
+    return provider == "ollama" or config.enabled("IMAGES_TO_CLOUD")
 
 
 def _ensure_can_read(files: list[File], model_id: str) -> None:
@@ -81,6 +91,11 @@ def _ensure_can_read(files: list[File], model_id: str) -> None:
     caps = capabilities()
     if any(f.mime == "application/pdf" for f in files) and not caps.pdf:
         raise ModelError(f"El modelo «{model_id}» no lee PDFs. Elegí otro en el botón del modelo.")
+    if any(f.mime.startswith("image/") for f in files) and not images_allowed(parse_model(model_id)[0]):
+        raise ModelError(
+            f"Las imágenes no se mandan a «{model_id}» porque está apagado en Configuración "
+            "(«Mandar imágenes también a modelos de la nube»). Elegí un modelo local (Ollama) para esto."
+        )
     if any(f.mime.startswith("image/") for f in files) and not caps.images:
         raise ModelError(f"El modelo «{model_id}» no lee imágenes. Elegí otro en el botón del modelo.")
 

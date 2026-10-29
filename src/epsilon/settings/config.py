@@ -393,6 +393,15 @@ SETTINGS = (
         default="medio",
         validate=_thinking_effort,
     ),
+    # Las imágenes (adjuntos, capturas de pantalla, imagen a CSV) pueden contener cosas privadas: con «no» solo se le
+    # mandan a un modelo local (Ollama) y a uno de la nube se le rechazan antes de llamarlo (ai/llm.py).
+    Setting(
+        "IMAGES_TO_CLOUD",
+        "Mandar imágenes también a modelos de la nube",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
     Setting(
         "OLLAMA_URL",
         "Dirección de Ollama",
@@ -615,6 +624,10 @@ _JSON_FIELDS: dict[str, dict] = {
         help="Cuánto razona la IA antes de contestar (más razonamiento cuesta más)",
     ),
     # Sin lado seguro: llevarlo a otra máquina podría mandar las charlas a otro lado. Siempre al reiniciar.
+    "IMAGES_TO_CLOUD": _J(
+        name="ai.images_to_cloud", kind="bool", loosens=True, safer="no",
+        help="Con «no», las imágenes solo se le mandan a un modelo local (Ollama), nunca a uno de la nube",
+    ),
     "OLLAMA_URL": _J(name="ai.ollama_url", loosens=True, safer="never", help="Dirección donde corre Ollama"),
     "USER_NAME": _J(name="general.user_name", help="Tu nombre, para el saludo"),
     "AGENT_NAME": _J(name="general.agent_name", help="Cómo querés llamar al asistente"),
