@@ -12,7 +12,7 @@ def parse(response):
 
 
 def test_stream_sends_progress_then_the_reply_and_saves_it(client, monkeypatch):
-    def fake_handle(msg, on_event=None):
+    def fake_handle(msg, on_event=None, stream_text=False):
         on_event({"type": "model", "step": 1})
         on_event({"type": "tool", "name": "buscar", "arg": "switch", "state": "running"})
         return core.Reply("Listo", ai=True)
@@ -29,8 +29,27 @@ def test_stream_sends_progress_then_the_reply_and_saves_it(client, monkeypatch):
     assert saved_lines(cid)[-1]["text"] == "Listo"  # se guarda igual que con /api/message
 
 
+def test_stream_asks_core_for_live_text_and_forwards_text_events(client, monkeypatch):
+    asked = []
+
+    def fake_handle(msg, on_event=None, stream_text=False):
+        asked.append(stream_text)
+        on_event({"type": "text", "text": "Ho"})
+        on_event({"type": "text", "text": "Hola"})
+        return core.Reply("Hola", ai=True)
+
+    monkeypatch.setattr(web.core, "handle", fake_handle)
+    cid = new_conversation(client)
+
+    events = parse(client.post("/api/message/stream", json={"text": "hola", "conversation_id": cid}))
+
+    assert asked == [True]
+    assert [e["type"] for e in events] == ["text", "text", "reply"]
+    assert [line["text"] for line in saved_lines(cid)] == ["hola", "Hola"]  # el texto parcial no se guarda
+
+
 def test_stream_turns_a_crash_into_a_short_error_event(client, monkeypatch):
-    def boom(msg, on_event=None):
+    def boom(msg, on_event=None, stream_text=False):
         raise RuntimeError("detalle interno")
 
     monkeypatch.setattr(web.core, "handle", boom)

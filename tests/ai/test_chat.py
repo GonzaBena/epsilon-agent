@@ -307,6 +307,22 @@ def test_the_groups_go_without_the_denied_actions():
     assert all(isinstance(s, llm.ToolSpec) for s in specs.values())
 
 
+def test_step_forwards_on_text_only_when_given(monkeypatch):
+    seen = []
+
+    def fake(history, system, tools, max_tokens=1500, allow_calls=True, **extra):
+        seen.append(extra)
+        return llm.Step("ok", [], "turno-modelo")
+
+    monkeypatch.setattr(llm, "chat_tools", fake)
+    on_text = lambda piece: None  # noqa: E731
+
+    chat.step(chat.begin(CID, "hola"))
+    chat.step(chat.begin(CID, "hola"), on_text=on_text)
+
+    assert seen == [{}, {"on_text": on_text}]
+
+
 def test_a_plain_hello_gets_only_the_group_index(captured):
     chat.step(chat.begin(CID, "hola"))
 

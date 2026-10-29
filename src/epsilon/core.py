@@ -8,6 +8,7 @@ from itertools import count
 from pathlib import Path
 import re
 import threading
+import time
 import weakref
 
 from epsilon import menu, tools
@@ -1154,6 +1155,58 @@ def _chat(msg: Message, session: Session) -> Reply:
     return _loop(turn, [], session, check_limit=False)
 
 
+TEXT_EVERY = 0.1  # segundos mínimos entre dos eventos de texto en vivo (cada uno lleva el texto entero y se redacta)
+_monotonic = time.monotonic  # el reloj de arriba; los tests lo reemplazan
+
+
+class _StreamCancelled(Exception):
+    """La persona canceló mientras el modelo transmitía: sube por el proveedor (que cierra la conexión) hasta _loop."""
+
+
+def _settled(text: str) -> str:
+    """El texto sin la última palabra si todavía se está escribiendo (no termina en un espacio o salto de línea)."""
+    if not text or text[-1].isspace():
+        return text
+    return text[: len(text) - len(text.split()[-1])]
+
+
+class _TextStreamer:
+    """El oyente de texto de UNA vuelta del modelo. Se redacta el texto acumulado y no cada trozo: una clave partida
+    entre dos trozos no se vería entera en ninguno. Y mientras la vuelta sigue, no se muestra la última palabra (una
+    clave es una sola): así ni el comienzo de una clave llega al navegador antes de que la redacción la reconozca.
+    Para no redactar ni mandar el texto entero por cada trozo (casi un token), manda como mucho un evento cada
+    TEXT_EVERY segundos; `flush(final=True)` manda, al cerrar la vuelta, todo lo que quedó esperando."""
+
+    def __init__(self) -> None:
+        self.written = ""
+        self.sent = ""  # lo último que se mandó, sin redactar: para no repetir un evento igual
+        self.last = float("-inf")
+
+    def __call__(self, piece: str) -> None:
+        if _cancelled():  # fuera del try: no es un fallo del oyente, es la persona pidiendo frenar
+            raise _StreamCancelled
+        self.written += piece
+        now = _monotonic()
+        if now - self.last >= TEXT_EVERY:
+            self.last = now
+            self.flush()
+
+    def flush(self, final: bool = False) -> None:
+        shown = self.written if final else _settled(self.written)
+        if not shown or shown == self.sent:
+            return
+        self.sent = shown
+        try:
+            _emit(type="text", text=config.redact(shown))
+        except Exception:  # el texto en vivo es solo para mirar: si algo falla acá (p. ej. el .env), el turno sigue
+            pass
+
+
+def _text_streamer() -> _TextStreamer | None:
+    """El oyente de texto de una vuelta, o None si nadie lo pidió."""
+    return _TextStreamer() if _stream_text.get() and _on_event.get() else None
+
+
 def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_limit: bool) -> Reply:
     """Llama al modelo y ejecuta lo que pide hasta que conteste con texto (o haya que preguntar)."""
     while True:
@@ -1164,8 +1217,13 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
             return Reply(reason, artifacts=artifacts)
         check_limit = True
         _emit(type="model", step=turn.steps + 1)
+        streamer = _text_streamer()
         try:
-            step = chat.step(turn)
+            step = chat.step(turn, on_text=streamer)
+            if streamer:
+                streamer.flush(final=True)  # lo que quedó esperando (el intervalo, la última palabra): el texto siempre llega entero
+        except _StreamCancelled:  # frenó el modelo en pleno texto: ya no se usa nada de lo que dijo
+            return Reply(CANCELLED, artifacts=artifacts)
         except ModelError as e:  # sin conexión, sin clave, el modelo no soporta algo: el mensaje es para el usuario
             return Reply(config.redact(str(e)), artifacts=artifacts)
         except Exception as e:
@@ -1853,6 +1911,8 @@ def _cancelled() -> bool:
 # Quien quiera ver el progreso de un turno de IA (la web, para mostrarlo en vivo) pasa `on_event` a handle().
 # Va en una variable de contexto y no como parámetro por todas las funciones: lo emiten _loop y _run_calls.
 _on_event: ContextVar[Callable[[dict], None] | None] = ContextVar("on_event", default=None)
+# Si quien escucha además quiere el texto de la respuesta a medida que se escribe (la web): lo pide handle().
+_stream_text: ContextVar[bool] = ContextVar("stream_text", default=False)
 EVENT_ARG_CHARS = 80  # cuánto del argumento de una herramienta viaja en el evento (solo para mostrar)
 
 
@@ -1871,11 +1931,14 @@ def _tool_event(name: str, args: str, state: str) -> None:
     _emit(type="tool", name=name, arg=arg, state=state)
 
 
-def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Reply:
+def handle(msg: Message, on_event: Callable[[dict], None] | None = None, stream_text: bool = False) -> Reply:
     """Punto de entrada único: ver _dispatch. `on_event` (opcional) recibe el progreso de un turno de IA:
     {"type": "model", "step": n} al llamar al modelo y {"type": "tool", "name", "arg", "state"}
-    (running | done | blocked) por cada herramienta."""
+    (running | done | blocked) por cada herramienta. Con `stream_text` también {"type": "text", "text"}: lo que
+    el modelo lleva escrito en esa vuelta (acumulado y redactado: cada evento reemplaza al anterior), si el modelo
+    sabe transmitir."""
     token = _on_event.set(on_event)
+    stream_token = _stream_text.set(stream_text)
     event = threading.Event()
     cancel_token = _cancel_event.set(event)
     if msg.conversation_id:
@@ -1891,6 +1954,7 @@ def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Repl
     finally:
         _outbox.reset(outbox_token)
         _on_event.reset(token)
+        _stream_text.reset(stream_token)
         _cancel_event.reset(cancel_token)
         if msg.conversation_id:
             with _cancels_guard:

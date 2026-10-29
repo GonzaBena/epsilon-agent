@@ -1,4 +1,5 @@
 import contextvars
+from collections.abc import Callable
 from contextlib import contextmanager
 
 from epsilon.ai import images, providers, usage
@@ -107,19 +108,26 @@ def generate(parts: list, prompt: str, max_tokens: int = 2000, json_mode: bool =
 
 
 def chat_tools(
-    history: list, system: str, tools: list[ToolSpec], max_tokens: int = 1500, allow_calls: bool = True
+    history: list,
+    system: str,
+    tools: list[ToolSpec],
+    max_tokens: int = 1500,
+    allow_calls: bool = True,
+    on_text: Callable[[str], None] | None = None,
 ) -> Step:
     """Un paso de conversación con herramientas. `history` son Message (text_turn / results_turn / Step.turn).
 
     El modelo solo PIDE las llamadas: Epsilon decide si las ejecuta. Con allow_calls=False las herramientas se
-    siguen declarando (el historial las nombra) pero el modelo no puede pedir ninguna: tiene que cerrar con texto."""
+    siguen declarando (el historial las nombra) pero el modelo no puede pedir ninguna: tiene que cerrar con texto.
+    Con `on_text`, un proveedor que sabe transmitir (Ollama) avisa cada trozo de texto apenas llega; el resultado es el mismo."""
     model_id = model_for()
     provider, model = parse_model(model_id)
     _ensure_can_read([p for m in history for p in m.parts if isinstance(p, File)], model_id)
     for message in history:  # en el lugar: el historial es del turno, así la próxima vuelta ya la manda achicada
         if any(isinstance(p, File) for p in message.parts):
             message.parts = _shrunk(message.parts)
-    result = providers.get(provider).chat(model, history, system, tools, max_tokens, allow_calls)
+    extra = {"on_text": on_text} if on_text else {}  # solo si hay quien escuche: un proveedor sin streaming no lo recibe
+    result = providers.get(provider).chat(model, history, system, tools, max_tokens, allow_calls, **extra)
     _record(model_id, result.input_tokens, result.output_tokens)
     return result.step
 

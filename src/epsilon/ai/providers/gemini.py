@@ -82,7 +82,8 @@ class GeminiProvider(Provider):
         )
         return GenerateResult(response.text, *_tokens(response))
 
-    def chat(self, model, history, system, tools, max_tokens, allow_calls):
+    def chat(self, model, history, system, tools, max_tokens, allow_calls, on_text=None):
+        # Todavía sin streaming: el texto llega entero.
         client = _client()
         response = client.models.generate_content(
             model=model,

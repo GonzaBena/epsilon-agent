@@ -127,6 +127,32 @@ def test_chat_tools_passes_everything_and_returns_the_step(fake):
     assert fake.recorded == [("modelo-a", 12, 8)]
 
 
+def test_chat_tools_forwards_on_text_to_the_provider(monkeypatch):
+    seen = {}
+
+    class Streaming(FakeProvider):
+        def chat(self, model, history, system, tools, max_tokens, allow_calls, on_text=None):
+            seen["on_text"] = on_text
+            return super().chat(model, history, system, tools, max_tokens, allow_calls)
+
+    provider = Streaming()
+    monkeypatch.setattr(llm.providers, "get", lambda name: provider)
+    monkeypatch.setattr(llm.usage, "record", lambda *args: None)
+    monkeypatch.setenv("GEMINI_MODEL", "modelo-a")
+    on_text = lambda piece: None  # noqa: E731
+
+    real_chat_tools([llm.text_turn("user", "hola")], "sistema", SPECS, on_text=on_text)
+
+    assert seen["on_text"] is on_text
+
+
+def test_chat_tools_does_not_pass_on_text_when_absent(fake):
+    # FakeProvider.chat no conoce on_text: sin streaming la fachada no se lo manda.
+    step = real_chat_tools([llm.text_turn("user", "hola")], "sistema", SPECS)
+
+    assert step.text == "listo"
+
+
 def test_conftest_blocks_the_facade():
     with pytest.raises(RuntimeError):
         llm.generate([], "x")

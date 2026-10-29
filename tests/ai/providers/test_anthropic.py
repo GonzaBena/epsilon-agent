@@ -171,3 +171,14 @@ def test_check_and_list_models_do_not_generate(provider, client):
 def test_capabilities(provider):
     caps = provider.capabilities("claude-x")
     assert (caps.tools, caps.images, caps.pdf, caps.thinking) == (True, True, True, False)
+
+
+def test_chat_accepts_and_ignores_on_text(provider, client):
+    client.reply = SimpleNamespace(content=[text("listo")], usage=usage())
+
+    def never(piece):
+        raise AssertionError("Anthropic todavía no transmite")
+
+    result = provider.chat("m", [Message("user", ["hola"])], "sistema", SPECS, 50, True, on_text=never)
+
+    assert result.step.text == "listo"

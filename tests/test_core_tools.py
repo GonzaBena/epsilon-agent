@@ -34,11 +34,14 @@ def script(tmp_path, monkeypatch):
     monkeypatch.setattr(core, "SESSIONS", {})
     for cid in (CID, OTHER):
         conversations.start(cid, "ai", 5)
-    s = SimpleNamespace(steps=[], seen=[], tokens=1000)
+    s = SimpleNamespace(steps=[], seen=[], tokens=1000, pieces=[], streamed=[])
 
-    def fake(history, system, offered, max_tokens=1500, allow_calls=True):
+    def fake(history, system, offered, max_tokens=1500, allow_calls=True, on_text=None):
         s.seen.append((list(history), [t.name for t in offered] if allow_calls else []))
         usage.record("modelo-a", s.tokens, 0)
+        s.streamed.append(on_text is not None)
+        for piece in s.pieces.pop(0) if s.pieces else []:  # `pieces`: los trozos de cada vuelta, si el guion transmite
+            on_text(piece)
         return s.steps.pop(0)
 
     monkeypatch.setattr(llm, "chat_tools", fake)
@@ -687,12 +690,12 @@ def test_every_ai_tool_describes_its_argument_without_command_syntax():
 # --- Progreso en vivo (on_event) ------------------------------------------------------------
 
 
-def say_listening(text, cid=CID):
+def say_listening(text, cid=CID, stream_text=False):
     """Como say(), pero devuelve también los eventos de progreso que vio el oyente."""
     events = []
     conversations.add_message(cid, "user", text)
     msg = core.Message(text=text, session_id=f"web:{cid}", conversation_id=cid)
-    return core.handle(msg, on_event=events.append), events
+    return core.handle(msg, on_event=events.append, stream_text=stream_text), events
 
 
 def test_progress_events_follow_the_turn_in_order(script):
@@ -733,6 +736,143 @@ def test_event_args_are_redacted_short_and_one_line(script, monkeypatch):
     (running,) = [e for e in events if e.get("state") == "running"]
     assert KEY not in running["arg"] and "\n" not in running["arg"]
     assert len(running["arg"]) <= core.EVENT_ARG_CHARS
+
+
+def test_streamed_text_events_are_cumulative(script):
+    script.steps = [step("Hola")]
+    script.pieces = [["Ho", "la"]]
+
+    reply, events = say_listening("hola", stream_text=True)
+
+    assert reply.text == "Hola"
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Hola"]  # «Ho» es una palabra a medias: no se muestra
+    assert script.streamed == [True]
+
+
+def test_streamed_text_events_are_cumulative_across_words(script, monkeypatch):
+    monkeypatch.setattr(core, "TEXT_EVERY", 0)  # un evento por trozo
+    script.steps = [step("Hola de nuevo")]
+    script.pieces = [["Hola ", "de ", "nue", "vo"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Hola ", "Hola de ", "Hola de nuevo"]
+
+
+def test_streamed_text_is_redacted_even_when_a_secret_is_split_across_chunks(script, monkeypatch):
+    monkeypatch.setattr(core, "TEXT_EVERY", 0)  # un evento por trozo
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    script.steps = [step("listo")]
+    script.pieces = [["la clave es " + KEY[:20], KEY[20:], " y ya"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    texts = [e["text"] for e in events if e["type"] == "text"]
+    assert texts == ["la clave es ", "la clave es *** y ", "la clave es *** y ya"]
+    assert all(KEY[:8] not in text for text in texts)  # ni siquiera el comienzo de la clave
+
+
+def fake_clock(monkeypatch, *times):
+    """El reloj del streaming (core._monotonic) devuelve estos instantes, uno por consulta."""
+    ticks = iter(times)
+    monkeypatch.setattr(core, "_monotonic", lambda: next(ticks))
+
+
+def test_streamed_text_events_are_throttled_but_the_last_text_always_arrives(script, monkeypatch):
+    fake_clock(monkeypatch, 0.0, 0.01, 0.02, 0.5)  # el 1.º sale, el 2.º y el 3.º esperan, el 4.º ya pasó el intervalo
+    script.steps = [step("a b c d ")]
+    script.pieces = [["a ", "b ", "c ", "d "]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    assert [e["text"] for e in events if e["type"] == "text"] == ["a ", "a b c d "]
+
+
+def test_the_text_held_back_by_the_throttle_is_flushed_when_the_round_ends(script, monkeypatch):
+    fake_clock(monkeypatch, 0.0, 0.01, 0.02)
+    script.steps = [step("a b c ")]
+    script.pieces = [["a ", "b ", "c "]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    assert [e["text"] for e in events if e["type"] == "text"] == ["a ", "a b c "]  # sin el cierre se quedaba en «a »
+
+
+def test_a_failing_redaction_never_stops_the_turn(script, monkeypatch):
+    real = core.config.redact
+
+    def broken(text, *args, **kwargs):
+        if text == "Ho":  # solo el texto que se está transmitiendo; lo demás del turno redacta normal
+            raise OSError(".env ilegible")
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(core.config, "redact", broken)
+    script.steps = [step("Hola ya")]
+    script.pieces = [["Ho"]]
+
+    reply, events = say_listening("hola", stream_text=True)
+
+    assert reply.text == "Hola ya"  # el turno sigue: el texto en vivo es solo para mirar
+    assert not [e for e in events if e["type"] == "text"]
+
+
+def test_cancelling_while_text_streams_stops_the_model_right_there(script, monkeypatch):
+    reached = []
+
+    def cancelling(history, system, offered, max_tokens=1500, allow_calls=True, on_text=None):
+        on_text("Ho ")
+        core.cancel(CID)
+        on_text("la")  # acá tiene que cortar: así Ollama deja de generar
+        reached.append("siguió")
+        return step("Hola")
+
+    monkeypatch.setattr(llm, "chat_tools", cancelling)
+
+    reply, events = say_listening("hola", stream_text=True)
+
+    assert reply.text == core.CANCELLED and reached == []
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Ho "]
+
+
+def test_a_word_still_being_written_is_held_back_until_it_is_complete(script, monkeypatch):
+    monkeypatch.setattr(core, "TEXT_EVERY", 0)
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    script.steps = [step("listo")]
+    script.pieces = [["Mi clave: " + KEY[:12], KEY[12:] + " ok"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    texts = [e["text"] for e in events if e["type"] == "text"]
+    assert texts == ["Mi clave: ", "Mi clave: *** ", "Mi clave: *** ok"]
+    assert all("AIza" not in text for text in texts)  # el inicio de la clave nunca llegó al navegador
+
+
+def test_no_text_events_without_stream_text(script):
+    script.steps = [step("Hola")]
+    script.pieces = [["Ho", "la"]]
+
+    _, events = say_listening("hola")
+
+    assert not [e for e in events if e["type"] == "text"]
+    assert script.streamed == [False]  # el modelo ni siquiera recibió un oyente de texto
+
+
+def test_streamed_text_of_a_tool_step_is_followed_by_the_tool_event(script):
+    notes.save_note("compras", "- un switch nuevo")
+    script.steps = [step("Miro", calls=[("notas.buscar", "switch")]), step("Lo encontré")]
+    script.pieces = [["Miro"], ["Lo ", "encontré"]]
+
+    _, events = say_listening("¿qué anoté del switch?", stream_text=True)
+
+    assert [(e["type"], e.get("state") or e.get("text") or e.get("step")) for e in events] == [
+        ("model", 1),
+        ("text", "Miro"),
+        ("tool", "running"),
+        ("tool", "done"),
+        ("model", 2),
+        ("text", "Lo "),
+        ("text", "Lo encontré"),
+    ]
 
 
 def test_a_failing_listener_never_stops_the_turn(script):

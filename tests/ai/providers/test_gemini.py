@@ -243,3 +243,14 @@ def test_a_grouped_call_in_the_history_is_resent_with_its_action():
     content = gemini._content(Message("model", calls=[Call("memoria", "pan", "agregar")]))
 
     assert content.parts[0].function_call.args == {"accion": "agregar", "args": "pan"}
+
+
+def test_chat_accepts_and_ignores_on_text(provider, client):
+    client.reply, _ = chat_reply()
+
+    def never(piece):
+        raise AssertionError("Gemini todavía no transmite")
+
+    result = provider.chat("m", [Message("user", ["hola"])], "sistema", SPECS, 1500, True, on_text=never)
+
+    assert result.step.text == "listo"
