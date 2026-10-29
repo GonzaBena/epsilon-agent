@@ -1381,7 +1381,15 @@ class PrompterRig:
         self.sent, self.asked, self.said, self.order = [], [], [], []
         self.alive = True
         self.window_text = window
-        self.prompter = voice.Prompter(self.send, self.ask, lambda: self.order.append("cut"), self.said.append, focused=self.focused, start=lambda work: work())
+        self.card = False  # ¿hay una tarjeta de texto a la vista?
+        self.prompter = voice.Prompter(
+            self.send, self.ask, lambda: self.order.append("cut"), self.said.append, focused=self.focused, start=lambda work: work(),
+            dismiss_card=self.dismiss_card,
+        )
+
+    def dismiss_card(self):
+        had, self.card = self.card, False
+        return had
 
     def send(self, command):
         self.order.append(command["op"])
@@ -1524,3 +1532,11 @@ def test_dismiss_closes_the_card_when_it_is_open_and_does_nothing_otherwise(prom
 
     assert prompter.sent[-1] == {"op": "close_input"}
     assert prompter.prompter.toggle() == "asking"  # y queda cerrado: el próximo atajo abre de nuevo
+
+
+def test_toggle_with_a_typed_answer_on_screen_closes_the_card_instead_of_opening(prompter):
+    prompter.card = True
+
+    assert prompter.prompter.toggle() == "dismissed"
+    assert prompter.sent == [] and prompter.order == []
+    assert prompter.prompter.toggle() == "asking"

@@ -92,6 +92,15 @@ class Presenter:
         with self._lock:
             self._handle(event)
 
+    def dismiss(self) -> bool:
+        """Esconde la tarjeta de un turno escrito que espera a que la cierres. False si no había (la de voz se esconde sola)."""
+        with self._lock:
+            if not (self._stay and self._kind):
+                return False
+            self._cancel_timer()
+            self._hide_now()
+            return True
+
     def close(self) -> None:
         """Deja de esperar para esconderse (se apagó el canal)."""
         with self._lock:
@@ -182,9 +191,12 @@ class Presenter:
 
     def _hide(self) -> None:
         with self._lock:
-            self._timer = None
-            self._last, self._kind, self._heard, self._text = None, "", "", ""
-            self._send({"op": "hide"})
+            self._hide_now()
+
+    def _hide_now(self) -> None:
+        self._timer = None
+        self._last, self._kind, self._heard, self._text = None, "", "", ""
+        self._send({"op": "hide"})
 
 
 # --- El proceso de la ventanita -------------------------------------------------------------------------------------------

@@ -785,3 +785,21 @@ def test_a_window_that_dies_counts_as_closed(win):
 
     wait_for(lambda: closed)
     assert closed
+
+
+def test_dismiss_hides_a_typed_card_that_stays_open(rig):
+    text_turn(rig)
+    rig.feed({"type": "reply", "text": "Anotado."}, turn=1)
+
+    assert rig.presenter.dismiss() is True
+
+    assert rig.last() == {"op": "hide"}
+    assert rig.presenter.dismiss() is False  # ya no hay nada que cerrar
+
+
+def test_dismiss_leaves_a_spoken_card_alone(rig):
+    rig.feed(status("Escuchando…"))
+    before = len(rig.sent)
+
+    assert rig.presenter.dismiss() is False
+    assert len(rig.sent) == before

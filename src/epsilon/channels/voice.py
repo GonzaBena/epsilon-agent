@@ -430,18 +430,21 @@ class Prompter:
         announce: Callable[[str], None],
         focused: Callable[[], str] = focused_window,
         start: Callable[[Callable[[], None]], None] = _in_thread,
+        dismiss_card: Callable[[], bool] = lambda: False,
     ):
         self._send, self._ask, self._cut, self._announce = send, ask, cut, announce
-        self._focused, self._start = focused, start
+        self._focused, self._start, self._dismiss_card = focused, start, dismiss_card
         self._lock = threading.Lock()
         self._open = False
         self._window = ""  # la ventana que tenía el foco cuando apretaste el atajo
 
     def toggle(self) -> str:
-        """El atajo: abre el campo; si ya está abierto no hace nada (se cierra con Esc). «asking», «open» o «no-window» (no hay ventanita)."""
+        """El atajo: abre el campo; si ya está abierto no hace nada (se cierra con Esc). «asking», «open», «dismissed» (cerró la respuesta que seguía a la vista) o «no-window» (no hay ventanita)."""
         with self._lock:
             if self._open:
                 return "open"
+            if self._dismiss_card():  # la respuesta escrita sigue a la vista (no tiene teclado): el atajo la cierra
+                return "dismissed"
             try:
                 self._window = self._focused()
             except Exception:  # noqa: BLE001
@@ -663,7 +666,7 @@ def run() -> None:
     voice = speaker.Speaker(_announce, emit=BUS.emit)
     window = overlay.Window(_announce)
     presenter = overlay.Presenter(window.send)
-    prompter = Prompter(window.send, assistant.ask, lambda: (voice.stop(), assistant.interrupt()), _announce)
+    prompter = Prompter(window.send, assistant.ask, lambda: (voice.stop(), assistant.interrupt()), _announce, dismiss_card=presenter.dismiss)
     window.on_submit, window.on_closed = prompter.submit, prompter.closed
 
     def cut_everything() -> None:

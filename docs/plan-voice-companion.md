@@ -22,7 +22,7 @@ La charla queda guardada en la conversación
 
 Si no tenés micrófono a mano, o tenés que anotar algo sin interrumpirte, apretá **`ALT + C`** (ajuste `VOICE_TEXT_HOTKEY`; vacío lo desactiva):
 la ventanita se abre con un campo de texto. Escribís, **Enter**, y ves «Pensando…», las herramientas y la respuesta mientras se escribe, **sin audio**.
-`Esc` cierra el campo (`ALT + C` con el campo abierto no hace nada); cerrar la tarjeta no corta el turno (la respuesta queda en la conversación).
+`Esc` cierra el campo (`ALT + C` con el campo abierto no hace nada); la respuesta se queda en pantalla hasta que apretás `ALT + C` (la cierra); cerrar la tarjeta no corta el turno (la respuesta queda en la conversación).
 
 - **Sabe dónde estás:** Epsilon lee qué ventana tiene el foco (título, app y espacio) justo antes de abrir el campo y se lo pasa al modelo
   como dato. Así podés decir «recordame agregar esta feature a este proyecto» sin explicar de qué proyecto hablás.
