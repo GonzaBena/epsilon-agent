@@ -405,3 +405,59 @@ def test_a_turn_with_nothing_pronounceable_says_nothing_and_opens_no_player(rig)
     rig.settle()
 
     assert rig.synthesized == [] and rig.players == []
+
+
+# --- Avisos hablados: un fallo del micrófono o de la transcripción también se dice (no solo se escribe) -------------------
+
+
+def test_a_notice_is_spoken_even_though_no_turn_is_going_on(rig):
+    rig.speaker.on_event({"type": "say", "text": "No te escuché: probá de nuevo."})
+    rig.settle()
+
+    assert rig.spoken() == ["No te escuché: probá de nuevo."]
+    assert rig.players[0].finished
+
+
+def test_only_the_first_sentence_of_a_long_technical_notice_is_spoken(rig):
+    text = "No pude grabar: PipeWire no tiene un micrófono predeterminado disponible. Conectá uno y elegilo como entrada en los ajustes de sonido (con «wpctl status» ves los que hay)."
+
+    rig.speaker.on_event({"type": "say", "text": text})
+    rig.settle()
+
+    assert rig.spoken() == ["No pude grabar: PipeWire no tiene un micrófono predeterminado disponible."]
+
+
+def test_a_notice_without_any_full_stop_is_cut_at_a_word_when_it_is_too_long(rig):
+    rig.speaker.on_event({"type": "say", "text": "palabra " * 60})
+    rig.settle()
+
+    (sentence,) = rig.spoken()
+    assert len(sentence) <= speaker.MAX_NOTICE and not sentence.endswith(" ")
+
+
+def test_notices_are_silent_when_the_voice_is_off(rig, monkeypatch):
+    monkeypatch.setenv("VOICE_SPEAK", "no")
+
+    rig.speaker.on_event({"type": "say", "text": "No te escuché: probá de nuevo."})
+    rig.settle()
+
+    assert rig.synthesized == []
+
+
+def test_a_notice_after_an_interruption_is_spoken_normally(rig):
+    start(rig)
+    rig.send({"type": "text", "text": "Hola, ¿cómo estás hoy? Bi"})
+    rig.settle()
+    rig.speaker.stop()
+
+    rig.speaker.on_event({"type": "say", "text": "No te escuché: probá de nuevo."})
+    rig.settle()
+
+    assert rig.spoken()[-1] == "No te escuché: probá de nuevo."
+
+
+def test_a_blank_notice_says_nothing(rig):
+    rig.speaker.on_event({"type": "say", "text": "   "})
+    rig.settle()
+
+    assert rig.synthesized == [] and rig.players == []

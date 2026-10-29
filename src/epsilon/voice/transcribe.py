@@ -266,6 +266,30 @@ def _ensure_model():
     return _model
 
 
+def warm() -> bool:
+    """Carga el modelo en segundo plano, sin esperar el primer audio: el Voice Companion lo llama al empezar a grabar, así cuando
+    la persona termina de hablar ya está listo (cargarlo tarda ~10 s). Solo si la voz está prendida, instalada y YA descargada:
+    nunca baja nada ni lanza un error (si algo falla, el audio mostrará el motivo de verdad). Queda cargado el mismo rato que
+    después de un audio. Devuelve si quedó cargado."""
+    global _last_used
+    if not config.enabled("VOICE_ENABLED"):
+        return False
+    try:
+        _whisper_module()
+    except ImportError:
+        return False
+    if not _cached():
+        return False
+    with _lock:
+        try:
+            _ensure_model()
+        except VoiceError:
+            return False
+        _last_used = _now()
+        _arm_timer(idle_seconds())
+    return True
+
+
 def status() -> str:
     """'apagada', 'cargado', 'descargado', 'descargando', 'sin descargar' o 'no instalado'."""
     if not config.enabled("VOICE_ENABLED"):

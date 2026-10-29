@@ -47,9 +47,11 @@ class Companion:
         on_clip: Callable[[capture.Clip], None] | None = None,
         timer=threading.Timer,
         on_start: Callable[[], None] | None = None,
+        alert: Callable[[str], None] | None = None,
     ):
         self.folder = Path(folder)
         self.announce = announce
+        self.alert = alert or announce  # los problemas (sin micrófono, no te escuché…) también se pueden decir en voz alta
         self.on_clip = on_clip or self._report
         self.on_start = on_start  # se avisa cada vez que empieza una grabación (para cortar lo que estuviera en curso)
         self._timer_factory = timer
@@ -87,6 +89,13 @@ class Companion:
         except Exception:  # un aviso que falla nunca frena la grabación
             pass
 
+    def _warn(self, text: str) -> None:
+        """Un problema: como `_say` pero por el canal de alertas (que además se habla)."""
+        try:
+            self.alert(text)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _cancel_timer(self) -> None:
         if self._timer is not None:
             self._timer.cancel()
@@ -96,7 +105,7 @@ class Companion:
         try:
             self._recording = capture.start(self.folder)
         except capture.CaptureError as e:
-            self._say(str(e))
+            self._warn(str(e))
             return "idle"
         self._generation += 1
         generation = self._generation
@@ -117,11 +126,11 @@ class Companion:
         try:
             clip = capture.stop(recording)
         except capture.CaptureError as e:
-            self._say(str(e))
+            self._warn(str(e))
             return None
         if clip.seconds < MIN_SECONDS:
             capture.discard(clip.path)
-            self._say("No te escuché: probá de nuevo.")
+            self._warn("No te escuché: probá de nuevo.")
             return None
         return clip
 
@@ -132,7 +141,7 @@ class Companion:
                 return
             seconds, source = limit()
             blame = f": lo marca {source}; subilo si querés grabar más" if source else ""
-            self._say(f"Llegué al límite de {seconds} s de grabación{blame}.")
+            self._warn(f"Llegué al límite de {seconds} s de grabación{blame}.")
             clip = self._stop()
         self._deliver(clip)
 
@@ -144,7 +153,7 @@ class Companion:
             self.on_clip(clip)
         except Exception:
             capture.discard(clip.path)
-            self._say("Algo falló al procesar el audio.")
+            self._warn("Algo falló al procesar el audio.")
 
     def _report(self, clip: capture.Clip) -> None:
         """Lo que se hace con el audio hasta que haya transcripción: decir cuánto duró y borrarlo."""
@@ -170,8 +179,10 @@ class Listener:
         announce: Callable[[str], None],
         on_text: Callable[[str], None] | None = None,
         start: Callable[[Callable[[], None]], None] = _in_thread,
+        alert: Callable[[str], None] | None = None,
     ):
         self.announce = announce
+        self.alert = alert or announce  # lo que salió mal se dice además en voz alta
         self.on_text = on_text
         self._start = start
 
@@ -190,15 +201,15 @@ class Listener:
         """El texto, o None si no hubo nada que decir (ya se avisó por qué)."""
         try:
             if capture.is_silent(clip.path):
-                self.announce("No te escuché: probá de nuevo.")
+                self.alert("No te escuché: probá de nuevo.")
                 return None
             self.announce("Transcribiendo…")
             return transcribe.audio_to_text(clip.path, commands=False)  # crudo: la IA recibe lo que dijiste, no un comando
         except transcribe.VoiceError as e:  # el mensaje ya está pensado para la persona
-            self.announce(str(e))
+            self.alert(str(e))
         except Exception as e:  # noqa: BLE001 - nada de lo que pase acá puede tumbar el canal ni mostrar detalles internos
             print(f"Voice Companion: falló al procesar el audio: {config.redact(repr(e))}")
-            self.announce("Algo falló al procesar el audio.")
+            self.alert("Algo falló al procesar el audio.")
         finally:
             capture.discard(clip.path)
         return None
@@ -432,11 +443,23 @@ def _announce(text: str) -> None:
     BUS.emit({"type": "status", "text": text})
 
 
+def _alert(text: str) -> None:
+    """Un problema que la persona tiene que enterarse aunque no mire la pantalla: sale como aviso y además se dice en voz alta."""
+    BUS.emit({"type": "say", "text": text})
+
+
 def notifier(event: dict) -> None:
     """El suscriptor del escritorio: estados, respuesta y errores en UN globo que se va actualizando. El texto en vivo y las
     herramientas no se muestran acá (son para quien quiera verlos, como la ventanita que viene)."""
-    if event.get("type") in ("status", "reply", "error") and event.get("text"):
+    if event.get("type") in ("status", "say", "reply", "error") and event.get("text"):
         notify.desktop(event["text"], tag=TAG)
+
+
+def _warm_up() -> None:
+    try:
+        transcribe.warm()
+    except Exception as e:  # noqa: BLE001 - cargar el modelo de antemano es un favor: si falla, el audio mostrará el motivo
+        print(f"Voice Companion: no pude precalentar la voz: {config.redact(repr(e))}")
 
 
 def run() -> None:
@@ -452,8 +475,12 @@ def run() -> None:
         """Hablarle de nuevo encima de la respuesta: se corta el audio y el turno de la IA que seguía en curso."""
         voice.stop()
         assistant.interrupt()
+        # Whisper tarda ~10 s en cargar: se lo empieza a cargar ya, mientras la persona habla, y cuando termine está listo.
+        threading.Thread(target=_warm_up, name="voice-warm", daemon=True).start()
 
-    companion = Companion(folder, _announce, Listener(_announce, on_text=assistant.ask).handle, on_start=cut_everything)
+    companion = Companion(
+        folder, _announce, Listener(_announce, on_text=assistant.ask, alert=_alert).handle, on_start=cut_everything, alert=_alert
+    )
     hotkey = Hotkey(folder, script, _announce)
     unsubscribes = [BUS.subscribe(notifier), BUS.subscribe(voice.on_event)]
     state.set("companion", "running", "Esperando el atajo.")

@@ -973,3 +973,129 @@ def test_starting_to_record_while_it_talks_cuts_the_audio(speaking, mic):
 
     assert wait_for(lambda: FakeAplay.made[0].killed)
     ask(speaking.socket, "cancel")
+
+
+# --- Paso 7: avisos hablados y modelo precalentado ----------------------------------------------------------------------------
+
+
+def test_problems_go_to_the_alert_and_ordinary_progress_to_the_status(mic, tmp_path):
+    statuses, alerts = [], []
+    companion = voice.Companion(tmp_path, statuses.append, timer=FakeTimer, alert=alerts.append)
+    mic.seconds = 0.1  # demasiado corto para ser una frase
+
+    companion.toggle()
+    companion.toggle()
+
+    assert statuses == ["Escuchando…"]
+    assert alerts == ["No te escuché: probá de nuevo."]
+
+
+def test_a_microphone_error_is_an_alert(mic, tmp_path):
+    statuses, alerts = [], []
+    mic.fail_start = "No pude grabar: no hay micrófono."
+    companion = voice.Companion(tmp_path, statuses.append, timer=FakeTimer, alert=alerts.append)
+
+    companion.toggle()
+
+    assert statuses == [] and alerts == ["No pude grabar: no hay micrófono."]
+
+
+def test_without_a_separate_alert_everything_still_goes_to_the_status(mic, tmp_path):
+    said = []
+    companion = voice.Companion(tmp_path, said.append, timer=FakeTimer)
+    mic.fail_start = "sin micrófono"
+
+    companion.toggle()
+
+    assert said == ["sin micrófono"]
+
+
+def test_the_limit_notice_is_an_alert_too(companion_alerts, monkeypatch):
+    monkeypatch.setattr(voice.config, "number", numbers(VOICE_MAX_RECORD_S=45, VOICE_MAX_AUDIO_MINUTES=10, VOICE_MAX_AUDIO_MB=25))
+    companion_alerts.toggle()
+
+    FakeTimer.made[-1].fire()
+
+    assert any("límite de 45 s" in text for text in companion_alerts.alerts)
+
+
+@pytest.fixture
+def companion_alerts(mic, tmp_path):
+    FakeTimer.made = []
+    instance = voice.Companion(tmp_path, lambda text: None, lambda clip: None, timer=FakeTimer, alert=lambda text: instance.alerts.append(text))
+    instance.alerts = []
+    return instance
+
+
+def test_the_listener_sends_what_went_wrong_to_the_alert(tmp_path, monkeypatch):
+    statuses, alerts = [], []
+    listener = voice.Listener(statuses.append, alert=alerts.append, start=lambda work: work())
+    monkeypatch.setattr(voice.capture, "is_silent", lambda path: False)
+
+    def broken(path, commands=True):
+        raise voice.transcribe.VoiceError("No entendí nada en el audio.")
+
+    monkeypatch.setattr(voice.transcribe, "audio_to_text", broken)
+
+    listener.handle(make_clip(tmp_path))
+
+    assert statuses == ["Transcribiendo…"] and alerts == ["No entendí nada en el audio."]
+
+
+def test_silence_is_an_alert_not_a_status(tmp_path, monkeypatch):
+    statuses, alerts = [], []
+    listener = voice.Listener(statuses.append, alert=alerts.append, start=lambda work: work())
+    monkeypatch.setattr(voice.capture, "is_silent", lambda path: True)
+
+    listener.handle(make_clip(tmp_path))
+
+    assert statuses == [] and alerts == ["No te escuché: probá de nuevo."]
+
+
+def test_the_desktop_shows_alerts_in_the_same_bubble(monkeypatch):
+    shown = []
+    monkeypatch.setattr(voice.notify, "desktop", lambda text, tag="": shown.append((text, tag)) and "")
+
+    voice.notifier({"type": "say", "text": "No te escuché: probá de nuevo."})
+
+    assert shown == [("No te escuché: probá de nuevo.", voice.TAG)]
+
+
+def test_a_microphone_problem_is_spoken_as_well_as_shown(speaking, mic):
+    mic.fail_start = "No pude grabar: no hay un micrófono predeterminado. Conectá uno y fijalo con wpctl."
+
+    assert ask(speaking.socket, "toggle") == "idle"
+
+    assert wait_for(lambda: FakeAplay.made and FakeAplay.made[0].chunks and FakeAplay.made[0].closed)
+    assert b"".join(FakeAplay.made[0].chunks) == b"No pude grabar: no hay un micr\xc3\xb3fono predeterminado."
+    assert any("no hay un micrófono" in text for text in speaking.said)
+
+
+def test_starting_to_record_warms_up_the_transcriber_in_the_background(running, mic, monkeypatch):
+    warmed = []
+    monkeypatch.setattr(voice.transcribe, "warm", lambda: warmed.append(1) or True)
+
+    ask(running.socket, "toggle")
+
+    assert wait_for(lambda: warmed == [1])
+    ask(running.socket, "cancel")
+
+
+def test_warming_up_never_blocks_the_hotkey(running, mic, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(voice.transcribe, "warm", lambda: release.wait(3) or True)
+
+    assert ask(running.socket, "toggle") == "recording"  # contesta al instante aunque cargar el modelo tarde
+
+    release.set()
+    ask(running.socket, "cancel")
+
+
+def test_a_failing_warm_up_never_breaks_recording(running, mic, monkeypatch):
+    def broken():
+        raise RuntimeError("sin memoria")
+
+    monkeypatch.setattr(voice.transcribe, "warm", broken)
+
+    assert ask(running.socket, "toggle") == "recording"
+    ask(running.socket, "cancel")

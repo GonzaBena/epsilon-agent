@@ -581,3 +581,62 @@ def test_a_caller_can_ask_for_the_raw_text_without_spoken_commands(voice, audio)
 
     assert transcribe.audio_to_text(audio) == "/ia tengo tareas para hoy?"
     assert transcribe.audio_to_text(audio, commands=False) == "Hola IA, tengo tareas para hoy?"
+
+
+# --- Precalentar: cargar el modelo mientras la persona todavía está hablando -------------------------------------------------
+
+
+def test_warming_loads_the_model_once_and_the_audio_afterwards_reuses_it(voice, audio):
+    assert transcribe.warm() is True
+    assert voice.builds == [1]
+
+    transcribe.audio_to_text(audio)
+
+    assert voice.builds == [1]  # el audio no lo vuelve a cargar: ya estaba
+
+
+def test_warming_twice_does_not_load_twice(voice):
+    transcribe.warm()
+    transcribe.warm()
+
+    assert voice.builds == [1]
+
+
+def test_warming_does_nothing_when_the_voice_is_off(voice, monkeypatch):
+    monkeypatch.setenv("VOICE_ENABLED", "no")
+
+    assert transcribe.warm() is False
+    assert voice.builds == []
+
+
+def test_warming_never_downloads_the_model(voice, monkeypatch):
+    # Apretar un atajo no tiene que bajar 1,6 GB: eso lo decide el primer audio.
+    monkeypatch.setattr(transcribe, "_cached", lambda: False)
+    monkeypatch.setattr(transcribe, "_start_download", lambda: pytest.fail("no debía bajar nada"))
+
+    assert transcribe.warm() is False
+    assert voice.builds == []
+
+
+def test_warming_without_the_voice_package_is_silent(voice, monkeypatch):
+    def missing():
+        raise ImportError
+
+    monkeypatch.setattr(transcribe, "_whisper_module", missing)
+
+    assert transcribe.warm() is False
+
+
+def test_a_model_that_fails_to_load_is_not_an_error_when_warming(voice, monkeypatch):
+    def broken():
+        raise RuntimeError("sin memoria")
+
+    monkeypatch.setattr(transcribe, "_build_model", broken)
+
+    assert transcribe.warm() is False  # el audio, cuando llegue, mostrará el error de verdad
+
+
+def test_a_warmed_model_still_gets_released_after_the_idle_time(voice):
+    transcribe.warm()
+
+    assert transcribe._timer is not None  # el temporizador de descarga quedó armado

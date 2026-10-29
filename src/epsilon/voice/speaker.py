@@ -16,6 +16,7 @@ from epsilon.voice import tts
 #   - el reproductor: un solo proceso `aplay` con la entrada abierta, así las oraciones suenan seguidas, sin cortes.
 
 MIN_CHARS = 20  # una oración más corta se junta con la siguiente (si no, suena a ametralladora)
+MAX_NOTICE = 160  # un aviso hablado (un problema) es corto: la primera oración, o esto como mucho
 MAX_CHARS = 240  # un tramo sin puntos más largo que esto se corta en una coma o un espacio, para poder empezar a hablar
 
 # Palabras que terminan en punto sin terminar la oración («el Sr. Pérez»). Además, cualquier letra suelta («p. ej.», iniciales).
@@ -189,6 +190,7 @@ class Speaker:
         self._plock = threading.Lock()  # el reproductor
         self._turn: int | None = None
         self._state: _TurnState | None = None
+        self._notices = 0  # los avisos hablados usan "turnos" con número negativo, para no cruzarse con los de la charla
         self._failed: int | None = None  # el turno en que la voz falló (el resto de ese turno se salta)
         self._warned = False
         self._player = None
@@ -206,6 +208,9 @@ class Speaker:
     def on_event(self, event: dict) -> None:
         """Rápido y sin bloquear: solo encola. Lo llama quien publica los eventos."""
         kind, turn = event.get("type"), event.get("turn")
+        if kind == "say":
+            self._notice(str(event.get("text", "")))
+            return
         if kind == "turn" and event.get("state") == "start":
             with self._lock:
                 self._turn, self._state = turn, _TurnState()
@@ -230,6 +235,18 @@ class Speaker:
                 self._end(turn, state)
             elif kind == "turn":
                 self._end(turn, state)
+
+    def _notice(self, text: str) -> None:
+        """Un aviso suelto (un problema con el micrófono o la transcripción): se dice aunque no haya una charla en curso."""
+        short = _first_sentence(text)
+        if not short or not config.enabled("VOICE_SPEAK"):
+            return
+        with self._lock:
+            self._notices -= 1
+            turn = self._notices
+            self._turn, self._state = turn, _TurnState()
+            self._say(turn, self._state, [short])
+            self._end(turn, self._state)
 
     def stop(self) -> None:
         """Interrumpir: corta el audio ya, descarta lo que esperaba y deja de escuchar lo que siga llegando de ese turno."""
@@ -374,6 +391,16 @@ class Speaker:
             self.announce(text)
         except Exception:  # noqa: BLE001
             pass
+
+
+def _first_sentence(text: str) -> str:
+    """La primera oración de un aviso (hasta MAX_NOTICE): en voz alta no se lee un párrafo técnico entero."""
+    text = " ".join(text.split())
+    first = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
+    if len(first) <= MAX_NOTICE:
+        return first
+    cut = first[:MAX_NOTICE]
+    return cut[: cut.rfind(" ")].rstrip() if " " in cut else cut
 
 
 def _clear(q: queue.Queue) -> None:

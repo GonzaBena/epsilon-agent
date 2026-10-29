@@ -166,6 +166,13 @@ Todo lo que se guarda es **crear o agregar**: Epsilon nunca pisa un archivo exis
 La única excepción es **eliminar una conversación** (el tacho en «Recientes», con confirmación): borra su
 archivo de verdad y no se puede deshacer. Lo que esa conversación guardó en tus notas y archivos queda donde está.
 
+### Voice Companion (hablarle con un atajo)
+
+Con `uv sync --extra voz`, prendé *Voice Companion* en la página **Canales**: apretás un atajo (por defecto `ALT + X`, se cambia con
+`VOICE_HOTKEY`), hablás, lo apretás otra vez y Epsilon te contesta **en voz alta** mientras escribe. Puede cambiar de espacio de
+trabajo, abrir apps (`PC_APPS`), anotar cosas o mirar tu pantalla. Por voz lee y escribe sin preguntar, **pero nunca borra, pisa ni cierra
+ventanas**. El audio no se guarda ni sale de tu PC. Guía completa, privacidad y solución de problemas: `docs/plan-voice-companion.md`.
+
 ### Correrlo como servicio
 
 `deploy/epsilon.service` es un servicio de usuario de systemd. Cambiá las dos rutas del archivo

@@ -484,3 +484,22 @@ Hecho: herramienta `pc.captura` (`ai="read"`, permiso inicial **preguntar**, mar
 - Una rutina nunca la usa (`ROUTINE_EXCLUDED_TOOLS`).
 - Sin verificar en vivo: que `grim` capture en esta sesión de Hyprland y que Gemini/Anthropic acepten la imagen dentro del turno de resultados
   (las traducciones están probadas contra los formatos, no contra las APIs reales).
+
+## Estado y hallazgos (paso 7, 2026-10-29) — el plan queda completo
+
+Hecho, todo con falsos (sin tocar el sistema):
+
+- **Whisper ya cargado cuando terminás de hablar**: `transcribe.warm()` se llama en un hilo al empezar a grabar (`cut_everything`), así los
+  ~10 s de carga pasan mientras la persona habla. Solo si la voz está prendida, instalada y **ya descargada** (apretar un atajo nunca baja 1,6 GB),
+  no lanza nunca, y deja el modelo cargado el mismo rato que después de un audio. Reemplaza al ajuste `VOICE_PRELOAD_STT` del plan: no hace falta
+  tener 1,6 GB en memoria permanente.
+- **Los problemas también se hablan**: `Companion` y `Listener` separan el *estado* («Escuchando…», «Dijiste: …») de la *alerta* (sin micrófono, «No te
+  escuché», transcripción fallida, límite de grabación). La alerta sale como evento `say`: el aviso de escritorio la muestra y el `Speaker` la dice
+  **solo la primera oración** (hasta 160 caracteres: en voz alta no se lee un párrafo técnico), aunque no haya una charla en curso (usa «turnos» de
+  número negativo para no cruzarse con los de la charla).
+- **Guía de uso**: `docs/plan-voice-companion.md` (instalación, atajo, micrófono, permisos, apps, privacidad, ajustes y solución de problemas) y una
+  sección en el README.
+
+Quedó afuera a propósito: las confirmaciones habladas del paso 7 original (el modo «YOLO seguro» las vuelve innecesarias para lo cotidiano; lo
+destructivo directamente no se hace por voz), el pitido (`VOICE_BEEP`) y Fish Speech (v2). Sigue siendo una idea de la persona la ventanita con el
+texto en vivo y posición elegible (se suscribe al mismo bus).
