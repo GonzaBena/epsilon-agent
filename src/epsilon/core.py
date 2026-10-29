@@ -1163,10 +1163,19 @@ class _StreamCancelled(Exception):
     """La persona canceló mientras el modelo transmitía: sube por el proveedor (que cierra la conexión) hasta _loop."""
 
 
+def _settled(text: str) -> str:
+    """El texto sin la última palabra si todavía se está escribiendo (no termina en un espacio o salto de línea)."""
+    if not text or text[-1].isspace():
+        return text
+    return text[: len(text) - len(text.split()[-1])]
+
+
 class _TextStreamer:
     """El oyente de texto de UNA vuelta del modelo. Se redacta el texto acumulado y no cada trozo: una clave partida
-    entre dos trozos no se vería entera en ninguno. Para no redactar ni mandar el texto entero por cada trozo (casi un
-    token), manda como mucho un evento cada TEXT_EVERY segundos; `flush` manda lo que quedó esperando al cerrar la vuelta."""
+    entre dos trozos no se vería entera en ninguno. Y mientras la vuelta sigue, no se muestra la última palabra (una
+    clave es una sola): así ni el comienzo de una clave llega al navegador antes de que la redacción la reconozca.
+    Para no redactar ni mandar el texto entero por cada trozo (casi un token), manda como mucho un evento cada
+    TEXT_EVERY segundos; `flush(final=True)` manda, al cerrar la vuelta, todo lo que quedó esperando."""
 
     def __init__(self) -> None:
         self.written = ""
@@ -1182,12 +1191,13 @@ class _TextStreamer:
             self.last = now
             self.flush()
 
-    def flush(self) -> None:
-        if self.written == self.sent:
+    def flush(self, final: bool = False) -> None:
+        shown = self.written if final else _settled(self.written)
+        if not shown or shown == self.sent:
             return
-        self.sent = self.written
+        self.sent = shown
         try:
-            _emit(type="text", text=config.redact(self.written))
+            _emit(type="text", text=config.redact(shown))
         except Exception:  # el texto en vivo es solo para mirar: si algo falla acá (p. ej. el .env), el turno sigue
             pass
 
@@ -1211,7 +1221,7 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         try:
             step = chat.step(turn, on_text=streamer)
             if streamer:
-                streamer.flush()  # lo que el intervalo dejó esperando: el último texto siempre llega
+                streamer.flush(final=True)  # lo que quedó esperando (el intervalo, la última palabra): el texto siempre llega entero
         except _StreamCancelled:  # frenó el modelo en pleno texto: ya no se usa nada de lo que dijo
             return Reply(CANCELLED, artifacts=artifacts)
         except ModelError as e:  # sin conexión, sin clave, el modelo no soporta algo: el mensaje es para el usuario

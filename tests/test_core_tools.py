@@ -745,8 +745,18 @@ def test_streamed_text_events_are_cumulative(script):
     reply, events = say_listening("hola", stream_text=True)
 
     assert reply.text == "Hola"
-    assert [e["text"] for e in events if e["type"] == "text"] == ["Ho", "Hola"]
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Hola"]  # «Ho» es una palabra a medias: no se muestra
     assert script.streamed == [True]
+
+
+def test_streamed_text_events_are_cumulative_across_words(script, monkeypatch):
+    monkeypatch.setattr(core, "TEXT_EVERY", 0)  # un evento por trozo
+    script.steps = [step("Hola de nuevo")]
+    script.pieces = [["Hola ", "de ", "nue", "vo"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Hola ", "Hola de ", "Hola de nuevo"]
 
 
 def test_streamed_text_is_redacted_even_when_a_secret_is_split_across_chunks(script, monkeypatch):
@@ -758,8 +768,8 @@ def test_streamed_text_is_redacted_even_when_a_secret_is_split_across_chunks(scr
     _, events = say_listening("hola", stream_text=True)
 
     texts = [e["text"] for e in events if e["type"] == "text"]
-    assert len(texts) == 3 and all(KEY not in text for text in texts)
-    assert "***" in texts[-1] and texts[-1].endswith(" y ya")
+    assert texts == ["la clave es ", "la clave es *** y ", "la clave es *** y ya"]
+    assert all(KEY[:8] not in text for text in texts)  # ni siquiera el comienzo de la clave
 
 
 def fake_clock(monkeypatch, *times):
@@ -770,22 +780,22 @@ def fake_clock(monkeypatch, *times):
 
 def test_streamed_text_events_are_throttled_but_the_last_text_always_arrives(script, monkeypatch):
     fake_clock(monkeypatch, 0.0, 0.01, 0.02, 0.5)  # el 1.º sale, el 2.º y el 3.º esperan, el 4.º ya pasó el intervalo
-    script.steps = [step("abcd")]
-    script.pieces = [["a", "b", "c", "d"]]
+    script.steps = [step("a b c d ")]
+    script.pieces = [["a ", "b ", "c ", "d "]]
 
     _, events = say_listening("hola", stream_text=True)
 
-    assert [e["text"] for e in events if e["type"] == "text"] == ["a", "abcd"]
+    assert [e["text"] for e in events if e["type"] == "text"] == ["a ", "a b c d "]
 
 
 def test_the_text_held_back_by_the_throttle_is_flushed_when_the_round_ends(script, monkeypatch):
     fake_clock(monkeypatch, 0.0, 0.01, 0.02)
-    script.steps = [step("abc")]
-    script.pieces = [["a", "b", "c"]]
+    script.steps = [step("a b c ")]
+    script.pieces = [["a ", "b ", "c "]]
 
     _, events = say_listening("hola", stream_text=True)
 
-    assert [e["text"] for e in events if e["type"] == "text"] == ["a", "abc"]  # sin el cierre se quedaba en «a»
+    assert [e["text"] for e in events if e["type"] == "text"] == ["a ", "a b c "]  # sin el cierre se quedaba en «a »
 
 
 def test_a_failing_redaction_never_stops_the_turn(script, monkeypatch):
@@ -810,7 +820,7 @@ def test_cancelling_while_text_streams_stops_the_model_right_there(script, monke
     reached = []
 
     def cancelling(history, system, offered, max_tokens=1500, allow_calls=True, on_text=None):
-        on_text("Ho")
+        on_text("Ho ")
         core.cancel(CID)
         on_text("la")  # acá tiene que cortar: así Ollama deja de generar
         reached.append("siguió")
@@ -821,7 +831,20 @@ def test_cancelling_while_text_streams_stops_the_model_right_there(script, monke
     reply, events = say_listening("hola", stream_text=True)
 
     assert reply.text == core.CANCELLED and reached == []
-    assert [e["text"] for e in events if e["type"] == "text"] == ["Ho"]
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Ho "]
+
+
+def test_a_word_still_being_written_is_held_back_until_it_is_complete(script, monkeypatch):
+    monkeypatch.setattr(core, "TEXT_EVERY", 0)
+    monkeypatch.setenv("GEMINI_API_KEY", KEY)
+    script.steps = [step("listo")]
+    script.pieces = [["Mi clave: " + KEY[:12], KEY[12:] + " ok"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    texts = [e["text"] for e in events if e["type"] == "text"]
+    assert texts == ["Mi clave: ", "Mi clave: *** ", "Mi clave: *** ok"]
+    assert all("AIza" not in text for text in texts)  # el inicio de la clave nunca llegó al navegador
 
 
 def test_no_text_events_without_stream_text(script):
