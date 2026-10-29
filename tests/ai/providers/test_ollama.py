@@ -9,6 +9,7 @@ from epsilon.ai.providers import ollama
 
 # conftest reemplaza ollama._request por una función que falla; guardamos la real (importada antes) para probarla.
 from epsilon.ai.providers.ollama import _request as real_request
+from epsilon.ai.providers.ollama import _request_stream as real_request_stream
 
 SPECS = [ToolSpec("ver", "Mira algo", "qué mirar")]
 
@@ -283,3 +284,119 @@ def test_a_grouped_call_in_the_history_is_resent_with_its_action():
     [entry] = ollama._messages([Message("model", calls=[Call("memoria", "pan", "agregar")])])
 
     assert entry["tool_calls"] == [{"function": {"name": "memoria", "arguments": {"accion": "agregar", "args": "pan"}}}]
+
+
+# --- streaming: la respuesta llega por trozos ------------------------------------------------
+
+
+@pytest.fixture
+def stream_server(monkeypatch):
+    """Reemplaza el punto de red del streaming: anota el pedido y entrega los trozos que se le carguen."""
+
+    class StreamServer:
+        sent = []
+        chunks = []
+
+        @staticmethod
+        def request_stream(method, path, body=None, timeout=120.0):
+            StreamServer.sent.append((method, path, body))
+            yield from StreamServer.chunks
+
+    StreamServer.sent, StreamServer.chunks = [], []
+    monkeypatch.setattr(ollama, "_request_stream", StreamServer.request_stream)
+    return StreamServer
+
+
+def piece(content="", **extra):
+    return {"message": {"role": "assistant", "content": content}, **extra}
+
+
+def test_chat_with_on_text_streams_and_returns_the_joined_text(provider, stream_server):
+    stream_server.chunks = [piece("Ho"), piece("la"), piece("", done=True, prompt_eval_count=10, eval_count=4)]
+    seen = []
+
+    result = provider.chat("qwen3", [Message("user", ["hola"])], "sé breve", SPECS, 300, True, on_text=seen.append)
+
+    assert seen == ["Ho", "la"]
+    assert result.step.text == "Hola" and result.step.calls == []
+    assert (result.input_tokens, result.output_tokens) == (10, 4)
+    assert stream_server.sent[0][2]["stream"] is True
+
+
+def test_chat_with_on_text_collects_tool_calls_from_any_chunk(provider, stream_server):
+    call = {"function": {"name": "ver", "arguments": {"args": "casa"}}}
+    stream_server.chunks = [piece("miro"), {"message": {"content": "", "tool_calls": [call]}}, {"done": True}]
+
+    result = provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=lambda t: None)
+
+    assert result.step.calls == [("ver", "casa")]
+    assert result.step.text == "miro"
+
+
+def test_chat_without_on_text_still_uses_the_plain_request(provider, server):
+    server.replies[("POST", "/api/chat")] = chat_reply()
+
+    provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True)
+
+    assert server.sent[0][2]["stream"] is False
+
+
+def test_stream_ignores_thinking_and_chunks_without_message(provider, stream_server):
+    stream_server.chunks = [{"message": {"thinking": "hmm"}}, {"done": True}]
+    seen = []
+
+    result = provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=seen.append)
+
+    assert seen == [] and result.step.text == ""
+
+
+class FakeStream:
+    """Lo que devuelve httpx.stream(...): un contexto con una respuesta que entrega líneas."""
+
+    def __init__(self, status=200, lines=(), data=None, fail=None):
+        self.status_code, self._lines, self._data, self._fail = status, lines, data, fail
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        pass
+
+    def json(self):
+        if self._data is None:
+            raise ValueError("no es json")
+        return self._data
+
+    def iter_lines(self):
+        yield from self._lines
+        if self._fail:
+            raise self._fail
+
+
+def test_request_stream_yields_one_dict_per_line_and_skips_blank_ones(monkeypatch):
+    monkeypatch.setattr(ollama.httpx, "stream", lambda *a, **k: FakeStream(lines=['{"a": 1}', "", '{"a": 2}']))
+
+    assert list(real_request_stream("POST", "/api/chat", {"model": "qwen3"})) == [{"a": 1}, {"a": 2}]
+
+
+def test_request_stream_reports_a_dropped_connection_with_only_host_and_port(monkeypatch):
+    monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:11434/secreto?clave=1")
+    drop = httpx.ReadError("se cortó http://127.0.0.1:11434/secreto?clave=1")
+    monkeypatch.setattr(ollama.httpx, "stream", lambda *a, **k: FakeStream(lines=['{"a": 1}'], fail=drop))
+
+    with pytest.raises(ValueError, match="127.0.0.1:11434") as error:
+        list(real_request_stream("POST", "/api/chat", {"model": "qwen3"}))
+    assert "secreto" not in str(error.value) and "clave" not in str(error.value)
+
+
+def test_request_stream_maps_http_errors_like_request(monkeypatch):
+    monkeypatch.setattr(ollama.httpx, "stream", lambda *a, **k: FakeStream(status=404))
+    with pytest.raises(ValueError, match="ollama pull qwen3"):
+        list(real_request_stream("POST", "/api/chat", {"model": "qwen3"}))
+
+    monkeypatch.setattr(ollama.httpx, "stream", lambda *a, **k: FakeStream(status=400, data={"error": "context size exceeded"}))
+    with pytest.raises(ValueError, match="context size exceeded"):
+        list(real_request_stream("POST", "/api/chat", {"model": "qwen3"}))

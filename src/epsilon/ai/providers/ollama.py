@@ -1,4 +1,6 @@
 import base64
+import json
+from collections.abc import Callable, Iterator
 from urllib.parse import urlsplit
 
 import httpx
@@ -30,17 +32,13 @@ def _num_ctx() -> int:
     return config.number("OLLAMA_NUM_CTX")
 
 
-def _request(
-    method: str, path: str, body: dict | None = None, timeout: float = 120.0
-) -> dict:
-    """El ÚNICO punto de red: pide a Ollama y devuelve el JSON. ValueError con un mensaje claro si falla."""
-    try:
-        response = httpx.request(method, _base_url() + path, json=body, timeout=timeout)
-    except httpx.HTTPError:
-        # Solo el host y el puerto: el texto del error podría traer la dirección completa.
-        raise ModelError(
-            f"No pude conectar con Ollama en {urlsplit(_base_url()).netloc}. ¿Está andando?"
-        ) from None
+def _unreachable() -> ModelError:
+    # Solo el host y el puerto: el texto del error podría traer la dirección completa.
+    return ModelError(f"No pude conectar con Ollama en {urlsplit(_base_url()).netloc}. ¿Está andando?")
+
+
+def _check(response, body: dict | None) -> None:
+    """Convierte un código de error HTTP en un ModelError claro (sin el cuerpo crudo de la respuesta)."""
     if response.status_code == 404 and body and body.get("model"):
         model = body["model"]
         raise ModelError(
@@ -59,10 +57,42 @@ def _request(
         raise ModelError(
             f"Ollama respondió con un error (código {response.status_code}){detail}."
         )
+
+
+def _request(
+    method: str, path: str, body: dict | None = None, timeout: float = 120.0
+) -> dict:
+    """Un punto de red: pide a Ollama y devuelve el JSON. ValueError con un mensaje claro si falla."""
+    try:
+        response = httpx.request(method, _base_url() + path, json=body, timeout=timeout)
+    except httpx.HTTPError:
+        raise _unreachable() from None
+    _check(response, body)
     try:
         return response.json()
     except ValueError:
         raise ModelError("Ollama respondió algo que no entiendo.") from None
+
+
+def _request_stream(
+    method: str, path: str, body: dict | None = None, timeout: float = 120.0
+) -> Iterator[dict]:
+    """El otro punto de red: igual que `_request` pero con la respuesta por trozos (una línea JSON cada uno).
+    Si la conexión se corta a mitad, es el mismo error que si Ollama estuviera apagado."""
+    try:
+        with httpx.stream(method, _base_url() + path, json=body, timeout=timeout) as response:
+            if response.status_code >= 400:
+                response.read()  # el cuerpo del error hay que leerlo antes de mirar su JSON
+            _check(response, body)
+            for line in response.iter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    yield json.loads(line)
+                except ValueError:
+                    raise ModelError("Ollama respondió algo que no entiendo.") from None
+    except httpx.HTTPError:
+        raise _unreachable() from None
 
 
 def _image(file: File) -> str:
@@ -116,6 +146,22 @@ def _tokens(data: dict) -> tuple[int, int]:
     return data.get("prompt_eval_count") or 0, data.get("eval_count") or 0
 
 
+def _collect(chunks: Iterator[dict], on_text: Callable[[str], None]) -> tuple[str, list, dict]:
+    """Junta los trozos de una respuesta por streaming: el texto (avisando cada trozo a `on_text`), las llamadas a
+    herramientas (pueden venir en cualquier trozo) y los conteos de tokens (vienen en el último). Lo que Ollama
+    llama «thinking» (el razonamiento) no es parte de la respuesta y se ignora."""
+    text, calls, counts = "", [], {}
+    for chunk in chunks:
+        message = chunk.get("message") or {}
+        if piece := message.get("content"):
+            text += piece
+            on_text(piece)
+        calls.extend(message.get("tool_calls") or [])
+        if chunk.get("done"):
+            counts = chunk
+    return text, calls, counts
+
+
 class OllamaProvider(Provider):
     name = "ollama"
 
@@ -142,11 +188,11 @@ class OllamaProvider(Provider):
             data.get("message", {}).get("content", ""), *_tokens(data)
         )
 
-    def chat(self, model, history, system, tools, max_tokens, allow_calls):
+    def chat(self, model, history, system, tools, max_tokens, allow_calls, on_text=None):
         body = {
             "model": model,
             "messages": _messages(history, system),
-            "stream": False,
+            "stream": on_text is not None,
             "options": {
                 "num_predict": max_tokens,
                 "temperature": 0,
@@ -155,18 +201,21 @@ class OllamaProvider(Provider):
         }
         if tools and allow_calls:
             body["tools"] = [_tool(t) for t in tools]
-        data = _request("POST", "/api/chat", body)
-        message = data.get("message", {})
-        text = message.get("content") or ""
+        if on_text is None:
+            data = _request("POST", "/api/chat", body)
+            message = data.get("message", {})
+            text, raw_calls, counts = message.get("content") or "", message.get("tool_calls") or [], data
+        else:
+            text, raw_calls, counts = _collect(_request_stream("POST", "/api/chat", body), on_text)
         calls = []
-        for call in message.get("tool_calls") or []:
+        for call in raw_calls:
             function = call.get("function", {})
             calls.append(
                 parse_call(function.get("name", ""), function.get("arguments"))
             )
         turn = Message("model", [text] if text else [], calls)
         return ChatResult(
-            Step(text, [(c.id, c.args) for c in calls], turn), *_tokens(data)
+            Step(text, [(c.id, c.args) for c in calls], turn), *_tokens(counts)
         )
 
     def list_models(self):

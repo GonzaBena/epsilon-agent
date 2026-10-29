@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from epsilon.ai.messages import Message, Step, ToolSpec
@@ -39,9 +40,18 @@ class Provider:
         raise NotImplementedError
 
     def chat(
-        self, model: str, history: list[Message], system: str, tools: list[ToolSpec], max_tokens: int, allow_calls: bool
+        self,
+        model: str,
+        history: list[Message],
+        system: str,
+        tools: list[ToolSpec],
+        max_tokens: int,
+        allow_calls: bool,
+        on_text: Callable[[str], None] | None = None,
     ) -> ChatResult:
-        """Un paso de conversación con herramientas. El modelo solo PIDE las llamadas."""
+        """Un paso de conversación con herramientas. El modelo solo PIDE las llamadas. Con `on_text`, un proveedor
+        que sabe transmitir avisa cada trozo de texto apenas llega; el resultado final es el mismo. Los que no
+        saben lo aceptan y lo ignoran: el texto llega entero."""
         raise NotImplementedError
 
     def check(self, model: str) -> str:

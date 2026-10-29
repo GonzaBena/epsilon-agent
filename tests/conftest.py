@@ -116,6 +116,7 @@ def block_real_ollama(monkeypatch):
         raise RuntimeError("Un test intentó hablar con Ollama de verdad")
 
     monkeypatch.setattr(ollama, "_request", forbidden)
+    monkeypatch.setattr(ollama, "_request_stream", forbidden)
 
 
 @pytest.fixture(autouse=True)
