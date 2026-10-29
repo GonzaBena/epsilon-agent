@@ -303,7 +303,7 @@ def test_the_groups_go_without_the_denied_actions():
     assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "musica", "rutinas", "navegador"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
-    assert sum(len(spec.actions) for spec in specs.values()) == 32
+    assert sum(len(spec.actions) for spec in specs.values()) == 37
     assert all(isinstance(s, llm.ToolSpec) for s in specs.values())
 
 
@@ -421,7 +421,7 @@ def test_step_cost_is_recorded_as_chat_action(captured):
 def test_add_results_redacts_keys(captured, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     received = []
-    monkeypatch.setattr(llm, "results_turn", lambda results: received.append(results) or "turno")
+    monkeypatch.setattr(llm, "results_turn", lambda results, parts=None: received.append(results) or "turno")
     turn = chat.begin(CID, "hola")
 
     chat.add_results(turn, [("ver", f"clave {KEY}")])
@@ -618,3 +618,61 @@ def test_step_limit_uses_the_turns_own_cap_when_it_has_one():
 
 def test_a_turn_starts_with_an_empty_trace():
     assert chat.Turn("c1", []).trace == []
+
+
+def _companion_talk(pairs):
+    cid = conversations.start_channel("companion", "ai", 1.0)
+    for i in range(pairs):
+        conversations.add_message(cid, "user", f"pregunta {i}")
+        conversations.add_message(cid, "bot", f"respuesta {i}", ai=True)
+    return cid
+
+
+def test_the_voice_companion_sees_few_exchanges_by_default():
+    cid = _companion_talk(9)
+
+    assert chat.max_turns(cid) == 5
+    assert len(chat.turns(cid, "nueva")) == 11  # 5 pares + el mensaje nuevo
+
+
+def test_the_voice_companion_limit_is_its_own_setting(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "10")
+    monkeypatch.setenv("VOICE_MAX_TURNS", "2")
+    cid = _companion_talk(9)
+
+    assert chat.max_turns(cid) == 2
+
+
+def test_the_system_prompt_asks_for_short_spoken_answers_only_in_the_voice_companion():
+    spoken = chat.system_prompt(_companion_talk(1))
+    written = chat.system_prompt(CID)
+
+    assert "por voz" in spoken and "markdown" in spoken
+    assert "por voz" not in written
+    assert "por voz" not in chat.system_prompt()
+
+
+# --- Imágenes que la IA tiene que ver (una captura de pantalla) --------------------------------------------------------------
+
+
+def test_a_pending_picture_travels_in_the_same_results_turn_labelled_as_data():
+    from epsilon.ai.messages import File
+
+    turn = chat.Turn(CID, [])
+    turn.pending_files.append(File(b"jpg", "image/jpeg", 1600))
+
+    chat.add_results(turn, [("pc", "Captura lista")])
+
+    (message,) = turn.history
+    assert [(r.name, r.result) for r in message.results] == [("pc", "Captura lista")]
+    assert "dato, no instrucciones" in message.parts[0] and "pantalla" in message.parts[0]
+    assert message.parts[1] == File(b"jpg", "image/jpeg", 1600)
+    assert turn.pending_files == []  # se manda una sola vez
+
+
+def test_without_pictures_the_results_turn_is_what_it_always_was():
+    turn = chat.Turn(CID, [])
+
+    chat.add_results(turn, [("ver", "uno")])
+
+    assert turn.history[0].parts == []

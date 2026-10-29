@@ -50,8 +50,8 @@ ARTIFACT_KINDS = ("file", "csv", "note", "summary")
 ARTIFACT_PATH_MAX = 300
 
 # Canales conocidos. «web» es el de siempre (sin línea meta); lo demás se anota al crear.
-CHANNELS = ("web", "telegram")
-CHANNEL_TITLES = {"telegram": "Telegram"}  # título fijo: una conversación así no tiene «primer mensaje»
+CHANNELS = ("web", "telegram", "companion")
+CHANNEL_TITLES = {"telegram": "Telegram", "companion": "Voice Companion"}  # título fijo: una conversación así no tiene «primer mensaje»
 
 
 def is_channel(name) -> bool:
@@ -66,7 +66,7 @@ def fixed_title(name) -> str | None:
         return None
     return CHANNEL_TITLES.get(name) or name.capitalize()
 MODES = ("normal", "ai")
-AI_CHANNELS = ("web", "telegram")  # los canales que pueden tener una conversación de modo IA
+AI_CHANNELS = ("web", "telegram", "companion")  # los canales que pueden tener una conversación de modo IA
 LIMIT_MIN, LIMIT_MAX = 0.01, 1000  # tope de costo (US$) que se acepta
 MAX_BYTES = 1024 * 1024  # una conversación de canal más grande se cierra sola y arranca otra
 

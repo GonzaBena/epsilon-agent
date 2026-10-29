@@ -1046,3 +1046,12 @@ def test_pinning_a_missing_or_channel_conversation_fails(tmp_path):
     conversations.add_message(cid, "user", "hola")
     with pytest.raises(ValueError):
         conversations.set_pinned(cid, True)
+
+
+def test_the_voice_companion_can_have_an_ai_conversation_with_a_fixed_title():
+    cid = conversations.start_channel("companion", "ai", 0.5)
+
+    assert conversations.mode(cid) == "ai"
+    assert conversations.channel(cid) == "companion"
+    assert conversations.current("companion") == cid
+    assert conversations.fixed_title("companion") == "Voice Companion"

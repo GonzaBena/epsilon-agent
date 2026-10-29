@@ -19,6 +19,7 @@ from epsilon.skills import factory as skills_factory
 CHANNELS = {
     "web": "epsilon.channels.web",
     "telegram": "epsilon.channels.telegram",
+    "companion": "epsilon.channels.voice",  # Voice Companion: apagado por defecto (COMPANION_ENABLED)
 }
 
 

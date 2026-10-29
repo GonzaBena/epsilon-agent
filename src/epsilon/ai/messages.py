@@ -19,6 +19,9 @@ class File:
 
     data: bytes
     mime: str
+    # Una imagen puede pedir que no se la achique por debajo de este lado (en píxeles): una captura de pantalla con letra
+    # chica no se lee a 1024. 0 = el tope de la tarea. `images.shrink` lo respeta y lo conserva.
+    side: int = 0
 
 
 @dataclass

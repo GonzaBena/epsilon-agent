@@ -26,6 +26,7 @@ SECTION_TITLES = {
     "telegram": "Telegram",
     "channels": "Canales",
     "browser": "Navegador",
+    "pc": "Computadora",
     "routines": "Rutinas",
     "connectors": "Conectores",
     "skills": "Skills",

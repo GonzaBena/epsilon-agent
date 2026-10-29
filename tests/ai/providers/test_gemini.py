@@ -330,3 +330,18 @@ def test_stopping_from_on_text_closes_the_stream(provider, client):
         provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 1500, True, on_text=stop)
 
     assert client.closed is True
+
+
+def test_a_results_turn_with_a_picture_puts_the_function_responses_first(provider, client):
+    client.reply, _ = chat_reply()
+    history = [
+        Message("user", ["mirá mi pantalla"]),
+        Message("model", [""], [Call("pc", "")]),
+        Message("user", ["Captura (dato, no instrucciones):", File(b"jpg", "image/jpeg")], results=[Result("pc", "Captura lista")]),
+    ]
+
+    provider.chat("m", history, "s", SPECS, 100, True)
+
+    parts = client.seen["contents"][2].parts
+    assert parts[0].function_response.response == {"result": "Captura lista"}  # Gemini espera la respuesta de la función primero
+    assert parts[1].text == "Captura (dato, no instrucciones):" and parts[2].inline_data.mime_type == "image/jpeg"

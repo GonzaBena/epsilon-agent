@@ -189,6 +189,60 @@ def block_real_hyprctl(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def permission_modes_start_empty():
+    """El modo de permisos de una conversación (Voice Companion) es global: cada test arranca sin el de otro."""
+    from epsilon.ai import permissions
+
+    permissions._modes.clear()
+    yield
+    permissions._modes.clear()
+
+
+@pytest.fixture(autouse=True)
+def block_real_speakers(monkeypatch):
+    """Ningún test hace sonar nada de verdad (aplay)."""
+    from epsilon.voice import speaker
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó reproducir audio de verdad (aplay)")
+
+    monkeypatch.setattr(speaker, "_spawn", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def block_real_screen_capture(monkeypatch):
+    """Ningún test captura la pantalla de verdad (grim)."""
+    from epsilon.utils import pantalla
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó capturar la pantalla de verdad (grim)")
+
+    monkeypatch.setattr(pantalla, "_grim", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def block_real_hyprctl_control(monkeypatch):
+    """Ningún test habla con el hyprctl de control (atajos) de verdad."""
+    from epsilon.utils import hyprland
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar hyprctl (atajos) de verdad")
+
+    monkeypatch.setattr(hyprland, "_ctl", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def block_real_microphone(monkeypatch):
+    """Ningún test graba el micrófono de verdad."""
+    from epsilon.voice import capture
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó grabar el micrófono de verdad")
+
+    monkeypatch.setattr(capture, "_spawn", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def block_real_routines(monkeypatch):
     """Ningún test avisa de verdad (notify-send) ni deja el motor de rutinas corriendo con un hilo."""
     from epsilon.routines import engine, notify
@@ -238,6 +292,7 @@ def block_real_tts(monkeypatch):
 
     monkeypatch.setattr(tts, "_run_piper", forbidden_piper)
     monkeypatch.setattr(kokoro_engine, "synthesize", forbidden_kokoro)
+    monkeypatch.setattr(kokoro_engine, "synthesize_samples", forbidden_kokoro)
     monkeypatch.setattr(kokoro_engine, "download_models", forbidden_kokoro)
 
 

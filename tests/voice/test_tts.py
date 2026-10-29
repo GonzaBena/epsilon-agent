@@ -226,3 +226,32 @@ def test_audio_cache(tmp_path):
     token = tts.cache_audio(file1)
     assert tts.get_cached_audio(token) == file1
     assert tts.get_cached_audio("token_invalido") is None
+
+
+# --- Audio en memoria, para hablar al vuelo (Voice Companion) ------------------------------------------------------
+
+
+def test_pcm_is_16_bit_little_endian_clipped_and_comes_with_its_rate(monkeypatch):
+    import struct
+
+    np = pytest.importorskip("numpy")
+    seen = []
+
+    def fake_samples(text, voice="af_bella", speed=1.0):
+        seen.append((text, voice, speed))
+        return np.array([0.0, 0.5, -0.5, 2.0, -2.0], dtype=np.float32), 24000
+
+    monkeypatch.setattr(tts.kokoro_engine, "synthesize_samples", fake_samples)
+
+    pcm, rate = tts.synthesize_pcm("Hola **mundo**, mirá https://ejemplo.com/largo", voice="ef_dora", speed=1.1)
+
+    assert rate == 24000
+    assert struct.unpack("<5h", pcm) == (0, 16383, -16383, 32767, -32767)  # lo que pasa de 1 se recorta, no da la vuelta
+    assert seen == [("Hola mundo, mirá enlace", "ef_dora", 1.1)]  # sin markdown ni direcciones largas
+
+
+def test_pcm_of_a_text_with_nothing_to_say_is_refused(monkeypatch):
+    monkeypatch.setattr(tts.kokoro_engine, "synthesize_samples", lambda *a, **k: pytest.fail("no debía sintetizar"))
+
+    with pytest.raises(ValueError):
+        tts.synthesize_pcm("🙂  🙂")  # solo emojis: al limpiarlos no queda nada para decir

@@ -67,6 +67,16 @@ def test_web_comes_first_and_is_always_enabled():
     assert main.enabled_channels(TELEGRAM_ENV) == ["web", "telegram"]
 
 
+def test_the_voice_companion_is_a_switchable_channel_that_starts_off(monkeypatch):
+    assert main.CHANNELS["companion"] == "epsilon.channels.voice"
+    assert main.switchable("companion")
+    assert main.enabled_channels({}) == ["web"]  # apagado por defecto: nadie graba el micrófono sin pedirlo
+
+    monkeypatch.setenv("COMPANION_ENABLED", "si")
+
+    assert main.enabled_channels({}) == ["web", "companion"]
+
+
 # --- Arranque: la web manda, el resto son hilos opcionales -------------------
 
 

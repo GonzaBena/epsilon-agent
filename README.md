@@ -69,6 +69,11 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `BROWSER_TRUSTED_SITES`                                       | Sitios donde la IA actúa sin preguntar, separados por coma (por defecto, `music.youtube.com,youtube.com`).              |
 | `BROWSER_BLOCKED_SITES`                                       | Sitios que la IA nunca ve ni toca (por defecto, `accounts.google.com,myaccount.google.com,mail.google.com`).           |
 | `VOICE_ENABLED`                                              | Voz: micrófono de la web y notas de voz de Telegram (por defecto, `si`; `no` la apaga).                                 |
+| `COMPANION_ENABLED`                                          | Voice Companion: hablarle a Epsilon con un atajo global (por defecto, `no`). Se prende desde la página Canales, sin reiniciar. |
+| `PC_APPS`                                                    | Alias para que la IA abra apps por su nombre: `nombre=comando`, separados por coma (por ejemplo `navegador=omarchy-launch-browser`). La IA solo dice el nombre; el comando es el tuyo (sin `\|`, `&`, `;`, `$` ni comillas dobles). Además puede abrir las apps instaladas (`.desktop`). |
+| `VOICE_SPEAK`                                                | Voice Companion: que conteste en voz alta, oración por oración mientras la IA escribe (por defecto, `si`; con `no` solo avisa por escrito). Necesita `uv sync --extra voz` y `aplay`. |
+| `VOICE_TTS_VOICE`                                            | Voz de Kokoro con que habla el Voice Companion (por defecto, `ef_dora`; `em_alex` es masculina; las dos en español). |
+| `VOICE_HOTKEY`                                               | Atajo del Voice Companion: modificador y tecla, por ejemplo `ALT, X` (por defecto). Epsilon lo aplica en Hyprland al instante y escribe `DATA_DIR/voice/hyprland-voice.conf`; para que sobreviva a un reinicio de Hyprland, agregá una vez `source = <esa ruta>` en tu `hyprland.conf`. |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `ASSISTANT_NAME`                                              | Nombre para hablarle por voz: «Hola Meli, ¿qué tengo hoy?» equivale a `/ia ¿qué tengo hoy?`. Varios, separados por coma (se guardan en minúsculas y sin tilde; por defecto, `ia, ai`). |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
@@ -160,6 +165,13 @@ equivocarse al leer imágenes, así que conviene revisar los datos).
 Todo lo que se guarda es **crear o agregar**: Epsilon nunca pisa un archivo existente.
 La única excepción es **eliminar una conversación** (el tacho en «Recientes», con confirmación): borra su
 archivo de verdad y no se puede deshacer. Lo que esa conversación guardó en tus notas y archivos queda donde está.
+
+### Voice Companion (hablarle con un atajo)
+
+Con `uv sync --extra voz`, prendé *Voice Companion* en la página **Canales**: apretás un atajo (por defecto `ALT + X`, se cambia con
+`VOICE_HOTKEY`), hablás, lo apretás otra vez y Epsilon te contesta **en voz alta** mientras escribe. Puede cambiar de espacio de
+trabajo, abrir apps (`PC_APPS`), anotar cosas o mirar tu pantalla. Por voz lee y escribe sin preguntar, **pero nunca borra, pisa ni cierra
+ventanas**. El audio no se guarda ni sale de tu PC. Guía completa, privacidad y solución de problemas: `docs/plan-voice-companion.md`.
 
 ### Correrlo como servicio
 

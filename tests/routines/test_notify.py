@@ -1,5 +1,7 @@
 from epsilon.routines import notify
 
+REAL_NOTIFY_SEND = notify._notify_send  # conftest lo reemplaza en cada test; este es el verdadero
+
 
 def test_it_notifies_the_desktop_and_every_sink(monkeypatch):
     seen = []
@@ -53,3 +55,49 @@ def test_the_real_notifier_passes_the_text_after_a_double_dash(monkeypatch):
     notify._notify_send("--version")
 
     assert calls == [["notify-send", "-a", "Epsilon", "--", "Epsilon", "--version"]]
+
+
+def test_desktop_only_notifies_the_desktop_and_never_the_sinks(monkeypatch):
+    seen = []
+    monkeypatch.setattr(notify, "_notify_send", lambda text, tag="": seen.append(("escritorio", text)))
+    notify.set_sink("telegram", lambda text: seen.append(("telegram", text)))
+
+    assert notify.desktop("Escuchando…") == ""
+    assert seen == [("escritorio", "Escuchando…")]
+
+
+def test_desktop_reports_a_failure_instead_of_raising(monkeypatch):
+    def broken(text, tag=""):
+        raise RuntimeError("sin bus")
+
+    monkeypatch.setattr(notify, "_notify_send", broken)
+
+    assert notify.desktop("hola") == "sin bus"
+
+
+def test_a_tagged_notification_replaces_the_previous_one_with_the_same_tag(monkeypatch):
+    # Así «Escuchando…», «Pensando…» y la respuesta son UN globo que se va actualizando, no cinco.
+    ran = []
+    monkeypatch.setattr(notify.subprocess, "run", lambda argv, **kwargs: ran.append(argv))
+
+    REAL_NOTIFY_SEND("Pensando…", "epsilon-voice")
+
+    assert ran == [["notify-send", "-a", "Epsilon", "-h", "string:x-canonical-private-synchronous:epsilon-voice", "--", "Epsilon", "Pensando…"]]
+
+
+def test_an_untagged_notification_is_unchanged(monkeypatch):
+    ran = []
+    monkeypatch.setattr(notify.subprocess, "run", lambda argv, **kwargs: ran.append(argv))
+
+    REAL_NOTIFY_SEND("hola")
+
+    assert ran == [["notify-send", "-a", "Epsilon", "--", "Epsilon", "hola"]]
+
+
+def test_desktop_passes_the_tag_along(monkeypatch):
+    seen = []
+    monkeypatch.setattr(notify, "_notify_send", lambda text, tag="": seen.append((text, tag)))
+
+    notify.desktop("hola", tag="epsilon-voice")
+
+    assert seen == [("hola", "epsilon-voice")]

@@ -26,7 +26,7 @@ def test_defaults_follow_the_kind_and_resumir_is_denied():
         "nota": "ask", "nota_nombrada": "ask", "nota_editar": "ask", "crear_archivo": "ask", "recordar": "ask", "editar": "ask",
         "olvidar": "deny", "resumir": "deny", "skill_usar": "allow",
         "nav_pestanas": "allow", "nav_leer": "allow", "nav_abrir": "allow", "nav_buscar": "ask", "nav_clic": "allow", "nav_escribir": "allow",
-        "volumen": "allow", "sonando": "allow", "musica": "allow", "ventanas": "ask", "musica_poner": "allow", "musica_buscar": "allow", "musica_playlists": "allow", "yt_historial": "ask",
+        "volumen": "allow", "sonando": "allow", "musica": "allow", "ventanas": "ask", "workspace": "allow", "foco": "allow", "app_abrir": "ask", "ventana_cerrar": "ask", "captura": "ask", "musica_poner": "allow", "musica_buscar": "allow", "musica_playlists": "allow", "yt_historial": "ask",
         "rutina_crear": "ask", "rutina_ver": "allow", "rutina_borrar": "ask",
     }
 
@@ -65,7 +65,7 @@ def test_broken_file_falls_back_to_defaults(content):
 
     assert loaded["ver"] == "allow"
     assert "xyz" not in loaded
-    assert len(loaded) == 36
+    assert len(loaded) == 41
     if "nota" in content:
         assert loaded["nota"] == "allow"
     else:
@@ -108,7 +108,7 @@ def test_invalid_ai_default_falls_back_to_kind(monkeypatch):
 def test_offered_excludes_denied():
     ids = [tools.ai_id(t) for t in permissions.offered()]
 
-    assert len(ids) == 34
+    assert len(ids) == 39
     assert "olvidar" not in ids and "resumir" not in ids
 
 
@@ -207,3 +207,118 @@ def test_a_tool_denied_globally_stays_blocked_in_scope(scope):
 
     assert permissions.decide(scope, "musica_poner") == "block"
     assert permissions.offered(scope) == []
+
+
+# --- Modo «YOLO seguro» (Voice Companion): lo que se puede hacer sin preguntar por voz ---------------------------------
+
+VOICE = "20261029-120000-cccc"
+OTHER = "20261029-120001-dddd"
+# Leer y escribir sin pisar nada: corren solas por voz aunque en /permisos estén en «preguntar».
+SAFE = ["nota", "nota_nombrada", "crear_archivo", "recordar", "ver", "buscar", "fecha", "clima", "volumen", "musica", "nav_abrir", "nav_clic", "nav_escribir", "sistema", "ventanas", "yt_historial", "nav_buscar", "workspace", "foco", "app_abrir"]
+# Destructivas (borran o pisan algo que ya estaba) o que arman automatizaciones: nunca por voz.
+NEVER = ["olvidar", "rutina_borrar", "nota_editar", "editar", "rutina_crear", "ventana_cerrar"]
+
+
+def tool_of(tool_id):
+    return next(tool for tool in tools.ai_tools() if tools.ai_id(tool) == tool_id)
+
+
+def connector_tool(state="ask"):
+    return tools.Tool(
+        label="luces.apagar", writes=True, ai="write", ai_default=state,
+        ai_name="mcp_luces__apagar", ai_group="luces", ai_action="apagar", ai_help="apaga las luces", ai_arg="la habitación",
+    )
+
+
+@pytest.fixture
+def voice_mode():
+    permissions.set_mode(VOICE, permissions.SAFE_AUTO)
+    yield VOICE
+    permissions.set_mode(VOICE, None)
+
+
+@pytest.mark.parametrize("tool_id", SAFE)
+def test_voice_mode_runs_reads_and_non_destructive_writes_without_asking(voice_mode, tool_id):
+    assert permissions.decide(voice_mode, tool_id) == "run"
+
+
+def test_without_the_mode_the_same_write_still_asks():
+    assert permissions.decide(OTHER, "nota") == "ask"
+
+
+@pytest.mark.parametrize("tool_id", NEVER)
+def test_voice_mode_never_runs_destructive_tools_even_if_you_allowed_them_in_permissions(voice_mode, tool_id):
+    states = permissions.load()
+    states[tool_id] = "allow"
+    permissions.save(states)
+
+    assert permissions.decide(voice_mode, tool_id) == "block"
+    assert tool_id not in {tools.ai_id(t) for t in permissions.offered(voice_mode)}
+
+
+@pytest.mark.parametrize("tool_id", ["olvidar", "rutina_borrar", "nota_editar", "editar", "ventana_cerrar"])
+def test_what_deletes_or_overwrites_is_marked_so(tool_id):
+    tool = tool_of(tool_id)
+
+    assert tool.ai == "delete" or tool.overwrites
+    assert not permissions.auto_ok(tool)
+
+
+def test_only_overwriting_writes_carry_the_mark():
+    assert {tools.ai_id(t) for t in tools.ai_tools() if t.overwrites} == {"nota_editar", "editar"}
+
+
+def test_voice_mode_respects_a_tool_you_blocked_in_permissions(voice_mode):
+    states = permissions.load()
+    states["nota"] = "deny"
+    permissions.save(states)
+
+    assert permissions.decide(voice_mode, "nota") == "block"
+    assert "nota" not in {tools.ai_id(t) for t in permissions.offered(voice_mode)}
+
+
+def test_voice_mode_offers_the_model_only_what_it_may_use(voice_mode):
+    offered = {tools.ai_id(t) for t in permissions.offered(voice_mode)}
+
+    assert set(SAFE) <= offered
+    assert not (set(NEVER) & offered)
+    assert "resumir" not in offered  # sigue bloqueada en /permisos
+
+
+def test_a_connector_tool_is_never_run_by_voice_unless_you_allowed_it_yourself(monkeypatch, voice_mode):
+    # Un conector puede hacer cualquier cosa (facturar, reembolsar): «escribir» no alcanza para que corra solo.
+    tool = connector_tool("ask")
+    monkeypatch.setattr(tools, "_providers", [lambda: ((tool,), {"luces": "las luces"})])
+
+    assert not permissions.auto_ok(tool)
+    assert permissions.decide(voice_mode, "mcp_luces__apagar") == "block"
+    assert "mcp_luces__apagar" not in {tools.ai_id(t) for t in permissions.offered(voice_mode)}
+
+    states = permissions.load()
+    states["mcp_luces__apagar"] = "allow"
+    permissions.save(states)
+
+    assert permissions.decide(voice_mode, "mcp_luces__apagar") == "run"  # lo permitiste vos, a propósito
+
+
+def test_the_mode_only_applies_to_the_conversation_it_was_set_for(voice_mode):
+    assert permissions.unattended(voice_mode)
+    assert not permissions.unattended(OTHER)
+    assert permissions.decide(OTHER, "nota") == "ask"
+
+
+def test_a_scope_is_also_unattended_and_the_mode_can_be_cleared():
+    permissions.set_scope("rutina:1:1", {"ver"})
+    try:
+        assert permissions.unattended("rutina:1:1")
+    finally:
+        permissions.clear_scope("rutina:1:1")
+    permissions.set_mode(VOICE, permissions.SAFE_AUTO)
+    permissions.set_mode(VOICE, None)
+
+    assert not permissions.unattended(VOICE)
+
+
+def test_an_unknown_mode_is_refused():
+    with pytest.raises(ValueError):
+        permissions.set_mode(VOICE, "todo-permitido")

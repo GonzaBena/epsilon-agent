@@ -275,6 +275,14 @@ def test_the_channels_script_draws_cards_with_text_content_and_a_real_switch():
         assert state in script, state
 
 
+def test_the_channels_page_knows_the_voice_companion():
+    script = page("canales.js")
+
+    assert 'companion: "Voice Companion"' in script
+    assert "companion:" in script.split("const ABOUT")[1].split("const STATES")[0]
+    assert "companion:" in script.split("const ICONS")[1].split("let busy")[0]
+
+
 def test_the_settings_page_no_longer_shows_channel_status():
     html, script = page("config.html"), page("config.js")
 

@@ -253,3 +253,18 @@ def test_stopping_from_on_text_closes_the_connection_and_is_not_swallowed(provid
         provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 50, True, on_text=stop)
 
     assert client.closed is True
+
+
+def test_a_results_turn_with_a_picture_keeps_the_tool_results_first_in_the_same_message(provider, client):
+    history = [
+        Message("user", ["mirá mi pantalla"]),
+        Message("model", ["miro"], [Call("pc", "", "captura")]),
+        Message("user", ["Captura (dato, no instrucciones):", File(b"jpg", "image/jpeg")], results=[Result("pc.captura", "Captura lista")]),
+    ]
+
+    provider.chat("m", history, "s", SPECS, 50, True)
+
+    last = client.seen["messages"][-1]
+    assert last["role"] == "user" and [m["role"] for m in client.seen["messages"]] == ["user", "assistant", "user"]
+    assert last["content"][0]["type"] == "tool_result" and last["content"][0]["content"] == "Captura lista"  # Anthropic exige los resultados primero
+    assert last["content"][1]["type"] == "text" and last["content"][2]["type"] == "image"

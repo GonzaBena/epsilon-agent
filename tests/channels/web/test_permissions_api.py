@@ -10,7 +10,7 @@ def test_get_lists_every_tool_with_defaults(client):
     data = client.get("/api/permissions").json()
     assert data["states"] == ["allow", "ask", "deny"]
     assert [t["id"] for t in data["tools"]] == [tools.ai_id(t) for t in tools.ai_tools()]
-    assert len(data["tools"]) == 36
+    assert len(data["tools"]) == 41
     for item, tool in zip(data["tools"], tools.ai_tools()):
         assert item["label"] == tool.label
         assert item["kind"] == tool.ai

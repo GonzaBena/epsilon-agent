@@ -194,6 +194,25 @@ def _device(value: str) -> str:
     return value
 
 
+def _hotkey(value: str) -> str:
+    """El atajo del Voice Companion («ALT, X»), normalizado. Importa recién acá: config no depende de utils al cargar."""
+    from epsilon.utils import hyprland
+
+    return hyprland.normalize_hotkey(value)
+
+
+def _app_aliases(value: str) -> str:
+    """Alias para abrir apps, «nombre=comando» separados por coma. Vacío (ninguno) vale. Cada uno se valida con las mismas reglas
+    con que se usan después (utils/apps.py): un comando es palabras y rutas, nunca pipes, comillas dobles ni $."""
+    from epsilon.utils import apps
+
+    entries = [entry.strip() for entry in value.split(",") if entry.strip()]
+    parsed = [apps.parse_aliases([entry]) for entry in entries]
+    if any(len(found) != 1 for found in parsed):
+        raise ValueError("Cada alias se escribe «nombre=comando» (por ejemplo navegador=omarchy-launch-browser), con un comando simple: sin |, &, ;, $, comillas dobles ni comas.")
+    return ",".join(f"{name}={command}" for found in parsed for name, command in found.items())
+
+
 def _yes_no(value: str) -> str:
     value = value.lower()
     if value == "sí":
@@ -510,6 +529,47 @@ SETTINGS = (
         default="si",
         validate=_yes_no,
     ),
+    # El Voice Companion (channels/voice.py): hablarle a Epsilon con un atajo global. La página Canales lo prende y apaga.
+    Setting(
+        "COMPANION_ENABLED",
+        "Voice Companion prendido (hablarle a Epsilon con un atajo)",
+        live=True,
+        default="no",
+        validate=_yes_no,
+        page="canales",
+    ),
+    # Alias de la persona para abrir apps por voz o chat (utils/apps.py): la IA solo dice el nombre, nunca el comando.
+    Setting(
+        "PC_APPS",
+        "Apps que la IA puede abrir por su nombre (alias nombre=comando)",
+        live=True,
+        default="",
+        validate=_app_aliases,
+    ),
+    # Que el Voice Companion conteste en voz alta (voice/speaker.py lo mira en cada respuesta). Apagado, solo avisa por escrito.
+    Setting(
+        "VOICE_SPEAK",
+        "Que el Voice Companion conteste en voz alta",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    # La voz de Kokoro con que habla el Voice Companion (ef_dora y em_alex son en español).
+    Setting(
+        "VOICE_TTS_VOICE",
+        "Voz del Voice Companion",
+        live=True,
+        default="ef_dora",
+        validate=_matching(r"[a-z]{2}_[a-z0-9]{2,20}", "La voz tiene la forma «ef_dora» (idioma, guion bajo y nombre en minúsculas)."),
+    ),
+    # El atajo que dispara el Voice Companion; el canal lo aplica en Hyprland apenas cambia.
+    Setting(
+        "VOICE_HOTKEY",
+        "Atajo del Voice Companion",
+        live=True,
+        default="ALT, X",
+        validate=_hotkey,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
@@ -582,6 +642,14 @@ _JSON_FIELDS: dict[str, dict] = {
         name="browser.blocked_sites", kind="list", loosens=True, safer="more",
         help="Sitios que la IA nunca puede ver ni tocar",
     ),
+    "COMPANION_ENABLED": _J(name="channels.companion_enabled", kind="bool", help="Voice Companion prendido: hablarle a Epsilon con un atajo global"),
+    "PC_APPS": _J(
+        name="pc.apps", kind="list", loosens=True, safer="fewer",
+        help="Alias para abrir apps: «nombre=comando» (la IA solo dice el nombre; además puede abrir las apps instaladas)",
+    ),
+    "VOICE_SPEAK": _J(name="voice.speak", kind="bool", help="Que el Voice Companion conteste en voz alta"),
+    "VOICE_TTS_VOICE": _J(name="voice.tts_voice", help="Voz de Kokoro con que habla el Voice Companion (ef_dora y em_alex son en español)"),
+    "VOICE_HOTKEY": _J(name="voice.hotkey", help="Atajo del Voice Companion: modificador y tecla, por ejemplo ALT, X"),
     "ROUTINES_ENABLED": _J(name="routines.enabled", kind="bool", loosens=True, safer="no", help="Cumplir las rutinas programadas"),
     "ALLOWED_USER_ID": _J(bootstrap=True),
     "DATA_DIR": _J(bootstrap=True),

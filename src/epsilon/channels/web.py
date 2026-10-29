@@ -475,6 +475,7 @@ def to_json(reply: core.Reply) -> dict:
     data.pop("stacked")  # cómo se acomodan los botones es cosa de cada canal; la web no lo usa
     data.pop("files")  # archivos para ENVIAR: solo Telegram los envía; en la web todo está en la biblioteca
     data.pop("failed")  # solo lo mira una rutina
+    data.pop("images")  # imágenes para que las VEA la IA (una captura): nunca salen del servidor
     if data.get("media") is None:
         data.pop("media", None)
     return data

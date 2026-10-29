@@ -1417,7 +1417,7 @@ def test_an_unknown_group_lists_the_ones_there_are(script):
 
 def test_a_blocked_group_cannot_be_asked_for(script):
     states = permissions.load()
-    states.update({tid: "deny" for tid in ("volumen", "sonando", "musica", "ventanas")})
+    states.update({tid: "deny" for tid in ("volumen", "sonando", "musica", "ventanas", "workspace", "foco", "app_abrir", "ventana_cerrar", "captura")})
     permissions.save(states)
     script.steps = [step(calls=[("herramientas.pc", "")]), step("ok")]
 

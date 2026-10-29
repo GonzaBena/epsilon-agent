@@ -39,9 +39,10 @@ def _content(message: Message):
     """El turno de Gemini: el original si es de Gemini y, si no, traducido desde lo neutro."""
     if isinstance(message.raw, types.Content):
         return message.raw
-    parts = [_part(p) for p in message.parts]
+    # Las respuestas de las funciones van PRIMERO (Gemini las espera pegadas a la llamada); lo demás del turno, como una captura, después.
+    parts = [types.Part.from_function_response(name=r.name, response={"result": r.result}) for r in message.results]
+    parts += [_part(p) for p in message.parts]
     parts += [types.Part(function_call=types.FunctionCall(name=c.name, args=call_arguments(c))) for c in message.calls]
-    parts += [types.Part.from_function_response(name=r.name, response={"result": r.result}) for r in message.results]
     return types.Content(role=message.role, parts=parts)
 
 

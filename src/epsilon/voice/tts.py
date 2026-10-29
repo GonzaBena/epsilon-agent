@@ -330,6 +330,22 @@ def synthesize(text: str, voice_id: str | None = None) -> Path:
         wav_path.unlink(missing_ok=True)
 
 
+MAX_SPOKEN_CHARS = 5000  # tope de UNA oración al hablar al vuelo (el Voice Companion corta el texto antes en oraciones)
+
+
+def synthesize_pcm(text: str, voice: str | None = None, speed: float | None = None) -> tuple[bytes, int]:
+    """Sintetiza el texto con Kokoro y devuelve (audio, frecuencia): PCM de 16 bits little-endian, mono, en memoria. Es lo que
+    necesita el Voice Companion para reproducir al vuelo, oración por oración. Lanza ValueError si no hay nada que decir."""
+    cleaned = clean_for_speech(text, max_chars=MAX_SPOKEN_CHARS)
+    if not cleaned:
+        raise ValueError("El texto está vacío o no contiene palabras pronunciables.")
+    samples, rate = kokoro_engine.synthesize_samples(cleaned, voice=voice or default_voice(), speed=speed or DEFAULT_SPEED)
+    import numpy as np  # viene con kokoro-onnx (extra «voz»)
+
+    clipped = np.clip(np.asarray(samples, dtype=np.float32), -1.0, 1.0)
+    return (clipped * 32767).astype("<i2").tobytes(), int(rate)
+
+
 def cache_audio(audio_path: Path) -> str:
     """Guarda un audio en la caché efímera y devuelve su token."""
     token = uuid.uuid4().hex

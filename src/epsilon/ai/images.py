@@ -25,6 +25,7 @@ def shrink(file: File, limit: int) -> File:
     una animación y lo que Pillow no sabe abrir vuelven tal cual."""
     if not file.mime.startswith("image/"):
         return file
+    limit = max(limit, file.side)  # una captura de pantalla pide más lado que una foto
     try:
         with Image.open(io.BytesIO(file.data)) as image:  # abrir solo lee el encabezado: saber el tamaño es barato
             # Un GIF (o PNG, WebP) animado perdería los cuadros. Ojo: las fotos de iPhone (MPO) también dicen tener
@@ -40,8 +41,8 @@ def shrink(file: File, limit: int) -> File:
             out = io.BytesIO()
             if upright.mode in ("RGBA", "LA", "P"):  # con transparencia o paleta: PNG, que no la pierde
                 upright.save(out, "PNG", optimize=True)
-                return File(out.getvalue(), "image/png")
+                return File(out.getvalue(), "image/png", file.side)
             upright.convert("RGB").save(out, "JPEG", quality=config.number("IMAGES_JPEG_QUALITY"))
-            return File(out.getvalue(), "image/jpeg")
+            return File(out.getvalue(), "image/jpeg", file.side)
     except Exception:  # noqa: BLE001 - un formato raro (HEIC) o un archivo roto: que el modelo reciba la original
         return file
