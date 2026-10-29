@@ -1230,3 +1230,60 @@ def test_the_desktop_notifier_stays_quiet_only_while_a_window_is_active(monkeypa
     voice.notifier({"type": "status", "text": "tres"})
 
     assert shown == ["dos", "tres"]
+
+
+def _binds(evals, keys):
+    return [code for code in evals if f'hl.bind("{keys}"' in code]
+
+
+def test_both_hotkeys_are_bound_and_written_to_the_same_files(running):
+    folder = running.data / client.FOLDER
+    toggle, ask_script = folder / client.SCRIPT_NAME, folder / client.ASK_SCRIPT_NAME
+
+    assert ask_script.exists()
+    assert wait_for(lambda: _binds(running.evals, "ALT + C"))
+    assert f'hl.bind("ALT + C", hl.dsp.exec_cmd("{ask_script}"))' in (folder / hyprland.LUA_NAME).read_text()
+    assert f"bind = ALT, X, exec, {toggle}" in (folder / hyprland.CONF_NAME).read_text()
+    assert f"bind = ALT, C, exec, {ask_script}" in (folder / hyprland.CONF_NAME).read_text()
+
+
+def test_an_empty_text_hotkey_binds_only_the_voice_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("VOICE_TEXT_HOTKEY", "")
+    evals = []
+    monkeypatch.setattr(hyprland, "_ctl", lambda *a: (evals.append(a[1]) if a[0] == "eval" and a[1] != hyprland.PROBE else None) or ((0, "ok") if a[0] == "eval" else (1, "x")))
+    hotkey = voice.Hotkey(tmp_path, tmp_path / "toggle", lambda text: None, text_script=tmp_path / "ask")
+
+    hotkey.sync()
+
+    assert _binds(evals, "ALT + X") and not _binds(evals, "ALT + C")
+    assert "ALT, C" not in (tmp_path / hyprland.CONF_NAME).read_text()
+
+
+def test_the_same_key_twice_is_refused_once_and_only_the_voice_one_is_bound(tmp_path, monkeypatch):
+    monkeypatch.setenv("VOICE_TEXT_HOTKEY", "alt, x")
+    evals, said = [], []
+    monkeypatch.setattr(hyprland, "_ctl", lambda *a: (evals.append(a[1]) if a[0] == "eval" and a[1] != hyprland.PROBE else None) or ((0, "ok") if a[0] == "eval" else (1, "x")))
+    hotkey = voice.Hotkey(tmp_path, tmp_path / "toggle", said.append, text_script=tmp_path / "ask")
+
+    hotkey.sync()
+    hotkey.sync()
+
+    assert len(said) == 1 and "igual" in said[0]
+    assert len(_binds(evals, "ALT + X")) == 1
+
+
+def test_changing_only_the_text_hotkey_rebinds_just_that_one(running, monkeypatch):
+    before = len(_binds(running.evals, "ALT + X"))
+    monkeypatch.setenv("VOICE_TEXT_HOTKEY", "super, c")
+
+    assert wait_for(lambda: _binds(running.evals, "SUPER + C"))
+    assert any('hl.unbind("ALT + C")' in code for code in running.evals)
+    assert len(_binds(running.evals, "ALT + X")) == before  # el de voz no se tocó
+
+
+def test_clearing_the_text_hotkey_unbinds_it_live(running, monkeypatch):
+    assert wait_for(lambda: _binds(running.evals, "ALT + C"))
+    monkeypatch.setenv("VOICE_TEXT_HOTKEY", "")
+
+    assert wait_for(lambda: running.evals.count('hl.unbind("ALT + C")') >= 1)
+    assert "ALT, C" not in (running.data / client.FOLDER / hyprland.CONF_NAME).read_text()

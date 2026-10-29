@@ -445,32 +445,53 @@ def serve(
 
 
 class Hotkey:
-    """Mantiene el atajo de Hyprland igual al ajuste VOICE_HOTKEY: lo aplica al empezar y cada vez que cambia.
-    Un atajo inválido se dice UNA vez y se sigue con el anterior; sin Hyprland, el canal sigue andando."""
+    """Mantiene los atajos de Hyprland iguales a los ajustes VOICE_HOTKEY (hablar) y VOICE_TEXT_HOTKEY (escribir): los aplica al
+    empezar y cada vez que cambian. Un atajo inválido se dice UNA vez y se sigue con el anterior; sin Hyprland, el canal sigue
+    andando. Los dos van en los mismos archivos de config; solo se vuelve a aplicar el que cambió."""
 
-    def __init__(self, folder: Path, script: Path, announce: Callable[[str], None]):
+    def __init__(self, folder: Path, script: Path, announce: Callable[[str], None], text_script: Path | None = None):
         self.folder, self.script, self.announce = folder, script, announce
-        self.seen: str | None = (
-            None  # el último texto del ajuste que miramos (bueno o malo)
-        )
-        self.applied: str | None = None  # el atajo que quedó puesto en Hyprland
+        self.text_script = text_script
+        self.seen: tuple[str, str] | None = None  # el último par de textos de los ajustes que miramos (buenos o malos)
+        self.applied: str | None = None  # el atajo de voz que quedó puesto en Hyprland
+        self.applied_text: str | None = None  # y el de texto
 
     def sync(self) -> None:
         wanted = config.value("VOICE_HOTKEY")
-        if wanted == self.seen:
+        wanted_text = config.value("VOICE_TEXT_HOTKEY") if self.text_script else ""
+        if (wanted, wanted_text) == self.seen:
             return
-        self.seen = wanted
+        self.seen = (wanted, wanted_text)
         try:
             hotkey = hyprland.normalize_hotkey(wanted)
-            hyprland.write_conf(self.folder, hotkey, str(self.script))
-            hyprland.apply_hotkey(hotkey, str(self.script), previous=self.applied)
         except ValueError as e:
             self.announce(f"El atajo «{wanted}» no sirve: {e}")
+            return
+        try:
+            text_hotkey = hyprland.normalize_hotkey(wanted_text) if wanted_text.strip() else None
+        except ValueError as e:
+            self.announce(f"El atajo de texto «{wanted_text}» no sirve: {e}")
+            return
+        if text_hotkey == hotkey:
+            self.announce(f"El atajo de texto es igual al de voz ({hotkey}): sigo solo con el de voz.")
+            text_hotkey = None
+        try:
+            extra = (text_hotkey, str(self.text_script)) if text_hotkey else None
+            hyprland.write_conf(self.folder, hotkey, str(self.script), extra=extra)
+            if hotkey != self.applied:
+                hyprland.apply_hotkey(hotkey, str(self.script), previous=self.applied)
+                self.applied = hotkey
+            if text_hotkey != self.applied_text:
+                if text_hotkey:
+                    hyprland.apply_hotkey(text_hotkey, str(self.text_script), previous=self.applied_text)
+                else:
+                    hyprland.unbind_hotkey(self.applied_text)
+                self.applied_text = text_hotkey
         except hyprland.HyprlandError as e:
             self.announce(str(e))
         else:
-            self.applied = hotkey
-            state.set("companion", "running", f"Atajo: {hotkey}")
+            shown = f"{self.applied} · escribir: {self.applied_text}" if self.applied_text else self.applied
+            state.set("companion", "running", f"Atajo: {shown}")
 
 
 # --- El canal (lo que main prende y apaga) -----------------------------------------------------------------------
@@ -525,6 +546,7 @@ def _warm_up() -> None:
 def run() -> None:
     folder = notes.DATA_DIR / client.FOLDER
     script = client.write_script(folder)
+    ask_script = client.write_script(folder, "ask")
     capture.sweep(folder)  # restos de un cierre brusco: audios que nadie va a usar
     path = client.socket_path()
     listener = bind(
@@ -549,7 +571,7 @@ def run() -> None:
         on_start=cut_everything,
         alert=_alert,
     )
-    hotkey = Hotkey(folder, script, _announce)
+    hotkey = Hotkey(folder, script, _announce, text_script=ask_script)
     unsubscribes = [
         BUS.subscribe(notifier),
         BUS.subscribe(voice.on_event),
