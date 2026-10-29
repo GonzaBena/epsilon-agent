@@ -1301,6 +1301,15 @@ body.booting .log {
 .thinking .text {
   color: var(--muted);
 }
+/* El texto de la respuesta a medida que llega (solo si el modelo transmite); el «Pensando» se oculta mientras tanto. */
+.thinking .stream {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.thinking.streaming > .body > .text {
+  display: none;
+}
 /* Los pasos que va dando la IA (herramientas): una línea por paso, solo mientras trabaja. */
 .thinking .step {
   margin: 0.25rem 0 0;

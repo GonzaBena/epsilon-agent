@@ -630,16 +630,43 @@ function showThinking() {
   return row;
 }
 
+// Lo que el modelo lleva escrito de la vuelta en curso (solo si el modelo transmite): texto plano, sin markdown
+// (la respuesta final lo dibuja). Cada evento trae el texto entero hasta ahora, así que reemplaza al anterior.
+function showStreamedText(row, body, text) {
+  let line = body.querySelector(".stream");
+  if (!line) {
+    line = make("p", "stream");
+    body.append(line);
+    row.classList.add("streaming"); // oculta el «Pensando» mientras haya texto
+  }
+  line.textContent = text;
+  scrollToEnd();
+}
+
+// Si la vuelta termina pidiendo una herramienta, ese texto era de paso: se saca y vuelve el «Pensando».
+function clearStreamedText(row, body) {
+  body.querySelector(".stream")?.remove();
+  row.classList.remove("streaming");
+}
+
 // Cada evento de progreso del servidor se agrega al globo como una línea. Es solo para mirar en vivo:
 // no se guarda en la conversación y desaparece con la respuesta.
 function trackProgress(row, event) {
   const body = row.querySelector(".body");
+  if (event.type === "text") {
+    showStreamedText(row, body, event.text);
+    return;
+  }
   if (event.type === "model") {
     // El paso 1 es el «Pensando» de siempre; desde el 2 el modelo está leyendo lo que devolvieron las herramientas.
-    if (event.step > 1) body.append(make("p", "step", `Consultando a la IA (paso ${event.step})`));
+    if (event.step > 1) {
+      clearStreamedText(row, body);
+      body.append(make("p", "step", `Consultando a la IA (paso ${event.step})`));
+    }
     return;
   }
   if (event.type !== "tool") return;
+  clearStreamedText(row, body);
   const detail = event.arg ? `: ${event.arg}` : "";
   if (event.state === "running") {
     const line = make("p", "step running", `Usando ${event.name}${detail}`);
