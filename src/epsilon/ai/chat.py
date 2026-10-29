@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from epsilon import tools
@@ -266,14 +267,18 @@ def step_limit(turn: Turn) -> int:
     return config.number("CHAT_MAX_BROWSER_STEPS" if turn.browser_actions else "CHAT_MAX_TOOL_STEPS")
 
 
-def step(turn: Turn) -> llm.Step:
+def step(turn: Turn, on_text: Callable[[str], None] | None = None) -> llm.Step:
     """Una llamada al modelo. Pasado el tope de pasos no puede pedir herramientas, para que cierre con texto.
-    Las declaraciones van igual: el historial ya trae llamadas y respuestas que las nombran."""
+    Las declaraciones van igual: el historial ya trae llamadas y respuestas que las nombran.
+    `on_text` (opcional) recibe el texto a medida que llega, si el modelo sabe transmitir."""
     allow_calls = turn.steps < step_limit(turn)
     with usage.action(turn.label), llm.task(turn.task):
         # Un modelo que no usa herramientas (algunos locales) no las recibe: contesta solo con texto.
         specs = offer(turn) if llm.capabilities().tools else []
-        result = llm.chat_tools(turn.history, system_prompt(), specs, config.number("CHAT_MAX_OUTPUT_TOKENS"), allow_calls=allow_calls)
+        extra = {"on_text": on_text} if on_text else {}
+        result = llm.chat_tools(
+            turn.history, system_prompt(), specs, config.number("CHAT_MAX_OUTPUT_TOKENS"), allow_calls=allow_calls, **extra
+        )
     turn.history.append(result.turn)
     turn.steps += 1
     return result

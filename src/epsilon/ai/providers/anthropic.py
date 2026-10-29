@@ -136,7 +136,8 @@ class AnthropicProvider(Provider):
         text = "".join(b.text for b in response.content if b.type == "text")
         return GenerateResult(text, *_tokens(response))
 
-    def chat(self, model, history, system, tools, max_tokens, allow_calls):
+    def chat(self, model, history, system, tools, max_tokens, allow_calls, on_text=None):
+        # Todavía sin streaming: el texto llega entero.
         client = _client()
         extra = {}
         if tools:
