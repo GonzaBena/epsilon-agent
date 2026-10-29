@@ -14,8 +14,25 @@ Diseño y decisiones: `docs/superpowers/specs/2026-10-29-voice-companion-design.
 3. **Hablá** y **apretá el atajo otra vez**: corta, transcribe («Dijiste: …»), la IA piensa y te contesta hablando.
 4. **Interrumpir**: apretar el atajo mientras habla corta el audio y el turno, y empieza a grabar de nuevo.
 
-Todo el progreso es *un solo globo* de notificación que se va actualizando. La charla queda guardada en la conversación
+Todo el progreso se ve en **la ventanita** (ver abajo): una sola tarjeta que se va actualizando, en vez de notificaciones que se acumulan.
+La charla queda guardada en la conversación
 *Voice Companion* (la ves en la web, de solo lectura) y su gasto aparece en *Uso* como «Voz».
+
+## La ventanita
+
+Una tarjeta chica anclada a una esquina de la pantalla, **encima de todo y sin robar el foco ni los clics**, que muestra en un solo
+lugar lo que va pasando: «Escuchando…», lo que dijiste, «Pensando…», «Usando Abrir una app…», **el texto de la respuesta mientras se
+escribe**, los avisos de problemas. Se esconde sola unos segundos después de que termina de hablar.
+
+- **Dónde aparece:** ajuste `VOICE_OVERLAY_POSITION` (Configuración › Voz): arriba-izquierda, arriba-centro, arriba-derecha, centro,
+  abajo-izquierda, abajo-centro o abajo-derecha. Vale para la próxima tarjeta, sin reiniciar.
+- **Cómo se ve:** `voice.overlay_width`, `voice.overlay_margin`, `voice.overlay_font` y `voice.overlay_hide_seconds` en `settings.json`.
+- **Mientras esté viva, las notificaciones callan.** Si no se puede abrir o se cae, vuelven y te dicen por qué (una sola vez).
+- Se apaga con `VOICE_OVERLAY=no`.
+- Necesita `gtk4-layer-shell` y `python-gobject` (en Arch: `sudo pacman -S gtk4-layer-shell python-gobject`). Corre como un proceso aparte
+  con el Python **del sistema**: si se cuelga, Epsilon sigue.
+- Para **ver cómo queda sin Epsilon** (abre una ventana unos segundos con una charla de ejemplo; cambiá la esquina al final):
+  `LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so python3 -I src/epsilon/voice/overlay_window.py --demo abajo-derecha`
 
 ## Lo que podés pedirle
 
@@ -95,6 +112,10 @@ sí puede abrir. Un alias solo puede llevar palabras y rutas (sin `|`, `&`, `;`,
 |---|---|---|
 | `COMPANION_ENABLED` | prender el canal (página Canales) | `no` |
 | `VOICE_HOTKEY` | el atajo | `ALT, X` |
+| `VOICE_OVERLAY` | la ventanita con el texto en vivo, en vez de notificaciones | `si` |
+| `VOICE_OVERLAY_POSITION` | dónde aparece (7 posiciones) | `abajo-derecha` |
+| `voice.overlay_width` / `voice.overlay_margin` / `voice.overlay_font` | ancho, distancia al borde y letra de la ventanita (px) | `460` / `24` / `15` |
+| `voice.overlay_hide_seconds` | cuánto queda a la vista al terminar | `6` |
 | `VOICE_SPEAK` | que conteste en voz alta (con `no`, solo avisa por escrito) | `si` |
 | `VOICE_TTS_VOICE` | la voz de Kokoro (`ef_dora`, `em_alex`: español) | `ef_dora` |
 | `voice.tts_speed` | velocidad de la voz | `1.0` |
@@ -117,6 +138,7 @@ tres y el aviso dice cuál subir.
 | Tarda mucho la primera vez | Whisper se carga (~10 s) y, si nunca lo bajaste, se descarga 1,6 GB una sola vez. Empieza a cargarse en cuanto apretás el atajo. |
 | No habla | `VOICE_SPEAK`, que `aplay` esté instalado y la voz (`uv sync --extra voz`). Lo avisa una vez. |
 | Habla pero la primera oración tarda | Es el modelo: uno local en CPU puede tardar decenas de segundos en escribirla; uno en la nube, un par. |
+| No aparece la ventanita y salen notificaciones | Dice por qué la primera vez: casi siempre falta `gtk4-layer-shell` o `python-gobject`, o no hay sesión de Wayland. Probá la demo de arriba para ver el error. |
 | «Hay varias apps que coinciden» | Decile cuál, o definí un alias en `PC_APPS`. |
 | No ve la pantalla | El modelo tiene que leer imágenes; por voz, ser local; y tiene que estar instalado `grim`. |
 
@@ -125,12 +147,13 @@ tres y el aviso dice cuál subir.
 Es un canal más (`channels/voice.py`, canal `companion`): un hilo con un socket unix, una máquina de estados (`Companion`) que graba
 (`voice/capture.py`), un `Listener` que transcribe (`voice/transcribe.py`), un `Assistant` que habla con `core.handle` en una
 conversación de modo IA, y un `Speaker` (`voice/speaker.py`) que corta el texto en oraciones, las sintetiza con Kokoro y las reproduce
-en un solo `aplay`. Todo lo que pasa sale como eventos por `voice/events.Bus`: el aviso de escritorio y la voz son solo suscriptores.
+en un solo `aplay`. Todo lo que pasa sale como eventos por `voice/events.Bus`: la ventanita, el aviso de escritorio y la voz son solo suscriptores. La ventanita es un
+proceso aparte (`voice/overlay_window.py`, GTK4 + gtk4-layer-shell, con el Python del sistema): `voice/overlay.py` tiene el `Presenter` (eventos →
+tarjetas) y el `Window` (lanza el proceso, le manda una orden JSON por línea y, si falla, devuelve el trabajo a las notificaciones).
 Cada contacto con el sistema (`pw-record`, `aplay`, `hyprctl`, `grim`) tiene **un solo punto** de procesos que los tests bloquean.
 
 ## Pendiente
 
-- Una **ventanita flotante** con el texto en vivo que va leyendo la IA, con la posición elegible (se suscribiría al mismo bus de eventos).
 - Un pitido opcional al empezar y terminar de grabar.
 - Fish Speech como segundo motor de voz (la interfaz está lista; hace falta GPU o un servidor aparte).
 - Verificar en vivo contra las APIs de Gemini y Anthropic el turno de resultados con una captura (las traducciones están probadas contra el formato).

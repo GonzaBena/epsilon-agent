@@ -30,7 +30,7 @@ def _grim(argv: list[str], env: dict[str, str]) -> tuple[int, str]:
     return done.returncode, done.stderr.strip()
 
 
-def _wayland_display(runtime: Path) -> str | None:
+def wayland_display(runtime: Path) -> str | None:
     """El socket de Wayland: la variable si el servicio la heredó y, si no, el primero que haya en la carpeta de ejecución."""
     if display := os.environ.get("WAYLAND_DISPLAY"):
         return display
@@ -63,7 +63,7 @@ def capture() -> bytes:
         argv += ["-o", monitor]
     argv.append(str(path))
     env = {key: os.environ[key] for key in ENV_KEYS if key in os.environ}
-    if display := _wayland_display(Path(runtime)):
+    if display := wayland_display(Path(runtime)):
         env["WAYLAND_DISPLAY"] = display
     try:
         try:

@@ -213,6 +213,16 @@ def _app_aliases(value: str) -> str:
     return ",".join(f"{name}={command}" for found in parsed for name, command in found.items())
 
 
+def _overlay_position(value: str) -> str:
+    """Dónde aparece la ventanita del Voice Companion: una de las posiciones que conoce (ver voice/overlay.py)."""
+    from epsilon.voice import overlay
+
+    clean = "-".join(value.lower().split())
+    if clean not in overlay.POSITIONS:
+        raise ValueError("La posición es una de: " + ", ".join(overlay.POSITIONS) + ".")
+    return clean
+
+
 def _yes_no(value: str) -> str:
     value = value.lower()
     if value == "sí":
@@ -546,6 +556,21 @@ SETTINGS = (
         default="",
         validate=_app_aliases,
     ),
+    # La ventanita del Voice Companion con el texto en vivo (voice/overlay.py): reemplaza a las notificaciones mientras esté viva.
+    Setting(
+        "VOICE_OVERLAY",
+        "Ventanita con el texto en vivo del Voice Companion (en vez de notificaciones)",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    Setting(
+        "VOICE_OVERLAY_POSITION",
+        "Dónde aparece la ventanita",
+        live=True,
+        default="abajo-derecha",
+        validate=_overlay_position,
+    ),
     # Que el Voice Companion conteste en voz alta (voice/speaker.py lo mira en cada respuesta). Apagado, solo avisa por escrito.
     Setting(
         "VOICE_SPEAK",
@@ -646,6 +671,12 @@ _JSON_FIELDS: dict[str, dict] = {
     "PC_APPS": _J(
         name="pc.apps", kind="list", loosens=True, safer="fewer",
         help="Alias para abrir apps: «nombre=comando» (la IA solo dice el nombre; además puede abrir las apps instaladas)",
+    ),
+    "VOICE_OVERLAY": _J(name="voice.overlay", kind="bool", help="Mostrar la ventanita con el texto en vivo del Voice Companion, en vez de notificaciones"),
+    "VOICE_OVERLAY_POSITION": _J(
+        name="voice.overlay_position",
+        choices=("arriba-izquierda", "arriba-centro", "arriba-derecha", "centro", "abajo-izquierda", "abajo-centro", "abajo-derecha"),
+        help="Dónde aparece la ventanita: arriba-izquierda, arriba-centro, arriba-derecha, centro, abajo-izquierda, abajo-centro o abajo-derecha",
     ),
     "VOICE_SPEAK": _J(name="voice.speak", kind="bool", help="Que el Voice Companion conteste en voz alta"),
     "VOICE_TTS_VOICE": _J(name="voice.tts_voice", help="Voz de Kokoro con que habla el Voice Companion (ef_dora y em_alex son en español)"),

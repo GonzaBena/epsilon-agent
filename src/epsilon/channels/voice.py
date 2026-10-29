@@ -11,7 +11,7 @@ from epsilon.data import conversations, notes
 from epsilon.routines import notify
 from epsilon.settings import config
 from epsilon.utils import hyprland
-from epsilon.voice import capture, client, events, speaker, transcribe
+from epsilon.voice import capture, client, events, overlay, speaker, transcribe
 
 # Voice Companion: hablarle a Epsilon desde cualquier lado con un atajo global (ver
 # docs/superpowers/specs/2026-10-29-voice-companion-design.md). Es un canal más: solo traduce entre «micrófono /
@@ -19,8 +19,12 @@ from epsilon.voice import capture, client, events, speaker, transcribe
 # sockets ni de Hyprland, así se prueba sola. Todo lo que dice a la persona sale por `announce` (una notificación
 # de escritorio) y lo que graba se entrega a `on_clip`, que es quien lo usa y lo borra.
 
-POLL_SECONDS = 1.0  # cada cuánto el servidor mira si hay que apagarse o si cambió el atajo
-MAX_REQUEST = 64  # lo que llega por el socket es una palabra: algo más largo no se obedece
+POLL_SECONDS = (
+    1.0  # cada cuánto el servidor mira si hay que apagarse o si cambió el atajo
+)
+MAX_REQUEST = (
+    64  # lo que llega por el socket es una palabra: algo más largo no se obedece
+)
 WORDS = ("toggle", "cancel", "status")
 SESSION = "companion:voice"  # la sesión que le dice al núcleo de dónde viene (permisos, gasto «Voz»)
 TAG = "epsilon-voice"  # todos los avisos de escritorio comparten este: es UN globo que se va actualizando
@@ -34,8 +38,14 @@ def limit() -> tuple[int, str]:
     que después se rechaza por larga sería perder el tiempo de la persona."""
     wanted = int(config.number("VOICE_MAX_RECORD_S"))
     by_minutes = int(config.number("VOICE_MAX_AUDIO_MINUTES") * 60)
-    by_size = int(config.number("VOICE_MAX_AUDIO_MB") * 1024 * 1024) // (capture.SAMPLE_RATE * 2)  # 16 bits, mono
-    seconds, source = min((wanted, ""), (by_minutes, "voice.max_audio_minutes"), (by_size, "voice.max_audio_mb"))
+    by_size = int(config.number("VOICE_MAX_AUDIO_MB") * 1024 * 1024) // (
+        capture.SAMPLE_RATE * 2
+    )  # 16 bits, mono
+    seconds, source = min(
+        (wanted, ""),
+        (by_minutes, "voice.max_audio_minutes"),
+        (by_size, "voice.max_audio_mb"),
+    )
     return seconds, source
 
 
@@ -51,7 +61,9 @@ class Companion:
     ):
         self.folder = Path(folder)
         self.announce = announce
-        self.alert = alert or announce  # los problemas (sin micrófono, no te escuché…) también se pueden decir en voz alta
+        self.alert = (
+            alert or announce
+        )  # los problemas (sin micrófono, no te escuché…) también se pueden decir en voz alta
         self.on_clip = on_clip or self._report
         self.on_start = on_start  # se avisa cada vez que empieza una grabación (para cortar lo que estuviera en curso)
         self._timer_factory = timer
@@ -109,7 +121,9 @@ class Companion:
             return "idle"
         self._generation += 1
         generation = self._generation
-        self._timer = self._timer_factory(limit()[0], lambda: self._time_is_up(generation))
+        self._timer = self._timer_factory(
+            limit()[0], lambda: self._time_is_up(generation)
+        )
         self._timer.start()
         self._say("Escuchando…")
         if self.on_start is not None:
@@ -140,7 +154,9 @@ class Companion:
             if self._recording is None or generation != self._generation:
                 return
             seconds, source = limit()
-            blame = f": lo marca {source}; subilo si querés grabar más" if source else ""
+            blame = (
+                f": lo marca {source}; subilo si querés grabar más" if source else ""
+            )
             self._warn(f"Llegué al límite de {seconds} s de grabación{blame}.")
             clip = self._stop()
         self._deliver(clip)
@@ -204,11 +220,15 @@ class Listener:
                 self.alert("No te escuché: probá de nuevo.")
                 return None
             self.announce("Transcribiendo…")
-            return transcribe.audio_to_text(clip.path, commands=False)  # crudo: la IA recibe lo que dijiste, no un comando
+            return transcribe.audio_to_text(
+                clip.path, commands=False
+            )  # crudo: la IA recibe lo que dijiste, no un comando
         except transcribe.VoiceError as e:  # el mensaje ya está pensado para la persona
             self.alert(str(e))
         except Exception as e:  # noqa: BLE001 - nada de lo que pase acá puede tumbar el canal ni mostrar detalles internos
-            print(f"Voice Companion: falló al procesar el audio: {config.redact(repr(e))}")
+            print(
+                f"Voice Companion: falló al procesar el audio: {config.redact(repr(e))}"
+            )
             self.alert("Algo falló al procesar el audio.")
         finally:
             capture.discard(clip.path)
@@ -258,7 +278,9 @@ class Assistant:
         try:
             conversation_id = self._conversation()
         except Exception as e:  # noqa: BLE001 - el disco puede fallar; la persona recibe un aviso sin detalles
-            print(f"Voice Companion: no pude abrir la conversación: {config.redact(repr(e))}")
+            print(
+                f"Voice Companion: no pude abrir la conversación: {config.redact(repr(e))}"
+            )
             emit({"type": "error", "text": "No pude abrir la conversación de voz."})
             return
         # Nadie contesta un «¿lo permitís?» por voz: lo que no es destructivo corre solo y lo demás no se hace.
@@ -269,10 +291,20 @@ class Assistant:
         emit({"type": "status", "text": "Pensando…"})
         try:
             reply = self._deny_permission(
-                self._call(core.Message(text=text, session_id=SESSION, conversation_id=conversation_id), emit, True), conversation_id, emit
+                self._call(
+                    core.Message(
+                        text=text, session_id=SESSION, conversation_id=conversation_id
+                    ),
+                    emit,
+                    True,
+                ),
+                conversation_id,
+                emit,
             )
         except Exception as e:  # noqa: BLE001
-            print(f"Voice Companion: falló la charla con la IA: {config.redact(repr(e))}")
+            print(
+                f"Voice Companion: falló la charla con la IA: {config.redact(repr(e))}"
+            )
             if not turn.interrupted:
                 emit({"type": "error", "text": "Algo falló al hablar con la IA."})
             return
@@ -281,7 +313,9 @@ class Assistant:
                 if self._turn is turn:
                     self._turn = None
         self._save(conversation_id, text, reply)
-        if not turn.interrupted:  # una respuesta que ya no querés no se muestra (igual queda en la charla)
+        if (
+            not turn.interrupted
+        ):  # una respuesta que ya no querés no se muestra (igual queda en la charla)
             emit({"type": "reply", "text": reply.text})
 
     def interrupt(self) -> None:
@@ -301,14 +335,23 @@ class Assistant:
             return found
         return conversations.start_channel("companion", "ai", chat.default_limit())
 
-    def _call(self, msg: core.Message, emit: Callable[[dict], None], stream_text: bool = False) -> core.Reply:
+    def _call(
+        self, msg: core.Message, emit: Callable[[dict], None], stream_text: bool = False
+    ) -> core.Reply:
         handle = self._handle or core.handle
         return handle(msg, on_event=emit, stream_text=stream_text)
 
-    def _deny_permission(self, reply: core.Reply, conversation_id: str, emit: Callable[[dict], None]) -> core.Reply:
+    def _deny_permission(
+        self, reply: core.Reply, conversation_id: str, emit: Callable[[dict], None]
+    ) -> core.Reply:
         if not any(action.id.startswith("perm:") for action in reply.actions):
             return reply
-        self._call(core.Message(action="perm:no", session_id=SESSION, conversation_id=conversation_id), emit)
+        self._call(
+            core.Message(
+                action="perm:no", session_id=SESSION, conversation_id=conversation_id
+            ),
+            emit,
+        )
         note = "No te puedo preguntar por voz todavía, así que no lo hice. Si querés que lo haga sola, cambiá el permiso en /permisos."
         return core.Reply(f"{reply.text}\n\n{note}", ai=True)
 
@@ -324,7 +367,9 @@ class Assistant:
                 ai=reply.ai,
             )
         except Exception as e:  # noqa: BLE001 - anotar la charla nunca rompe la respuesta
-            print(f"Voice Companion: no pude anotar la conversación: {config.redact(repr(e))}")
+            print(
+                f"Voice Companion: no pude anotar la conversación: {config.redact(repr(e))}"
+            )
 
 
 # --- El socket: por acá le habla el script del atajo -------------------------------------------------------------
@@ -366,12 +411,20 @@ def bind(path: Path) -> socket.socket:
 def _answer(conn: socket.socket, companion) -> None:
     with conn:
         conn.settimeout(1)
-        data = conn.recv(4096)  # el cliente manda todo junto; leerlo entero evita cortarle la conexión con datos sin leer
-        word = data.decode("utf-8", "replace").strip() if len(data) <= MAX_REQUEST and data.endswith(b"\n") else ""
+        data = conn.recv(
+            4096
+        )  # el cliente manda todo junto; leerlo entero evita cortarle la conexión con datos sin leer
+        word = (
+            data.decode("utf-8", "replace").strip()
+            if len(data) <= MAX_REQUEST and data.endswith(b"\n")
+            else ""
+        )
         conn.sendall((dispatch(companion, word) + "\n").encode())
 
 
-def serve(listener: socket.socket, companion, stop: threading.Event, tick: Callable[[], None]) -> None:
+def serve(
+    listener: socket.socket, companion, stop: threading.Event, tick: Callable[[], None]
+) -> None:
     """Atiende el socket hasta que `stop` se active. `tick` corre en cada vuelta (mirar si cambió el atajo)."""
     listener.settimeout(POLL_SECONDS)
     while not stop.is_set():
@@ -397,7 +450,9 @@ class Hotkey:
 
     def __init__(self, folder: Path, script: Path, announce: Callable[[str], None]):
         self.folder, self.script, self.announce = folder, script, announce
-        self.seen: str | None = None  # el último texto del ajuste que miramos (bueno o malo)
+        self.seen: str | None = (
+            None  # el último texto del ajuste que miramos (bueno o malo)
+        )
         self.applied: str | None = None  # el atajo que quedó puesto en Hyprland
 
     def sync(self) -> None:
@@ -448,9 +503,14 @@ def _alert(text: str) -> None:
     BUS.emit({"type": "say", "text": text})
 
 
+_WINDOW = None  # la ventanita del canal en marcha (la pone run()); mientras esté viva, ella muestra todo y las notificaciones callan
+
+
 def notifier(event: dict) -> None:
-    """El suscriptor del escritorio: estados, respuesta y errores en UN globo que se va actualizando. El texto en vivo y las
-    herramientas no se muestran acá (son para quien quiera verlos, como la ventanita que viene)."""
+    """El suscriptor del escritorio: estados, respuesta y errores como notificación. Calla mientras la ventanita está viva (ella
+    muestra todo en una sola tarjeta que se actualiza); si no se puede abrir o se cae, vuelve a avisar por acá."""
+    if _WINDOW is not None and _WINDOW.active():
+        return
     if event.get("type") in ("status", "say", "reply", "error") and event.get("text"):
         notify.desktop(event["text"], tag=TAG)
 
@@ -467,9 +527,13 @@ def run() -> None:
     script = client.write_script(folder)
     capture.sweep(folder)  # restos de un cierre brusco: audios que nadie va a usar
     path = client.socket_path()
-    listener = bind(path)  # primero el socket: si ya hay otro Voice Companion, se corta acá sin dejar nada puesto
+    listener = bind(
+        path
+    )  # primero el socket: si ya hay otro Voice Companion, se corta acá sin dejar nada puesto
     assistant = Assistant(BUS.emit)
-    voice = speaker.Speaker(_announce)
+    voice = speaker.Speaker(_announce, emit=BUS.emit)
+    window = overlay.Window(_announce)
+    presenter = overlay.Presenter(window.send)
 
     def cut_everything() -> None:
         """Hablarle de nuevo encima de la respuesta: se corta el audio y el turno de la IA que seguía en curso."""
@@ -479,19 +543,32 @@ def run() -> None:
         threading.Thread(target=_warm_up, name="voice-warm", daemon=True).start()
 
     companion = Companion(
-        folder, _announce, Listener(_announce, on_text=assistant.ask, alert=_alert).handle, on_start=cut_everything, alert=_alert
+        folder,
+        _announce,
+        Listener(_announce, on_text=assistant.ask, alert=_alert).handle,
+        on_start=cut_everything,
+        alert=_alert,
     )
     hotkey = Hotkey(folder, script, _announce)
-    unsubscribes = [BUS.subscribe(notifier), BUS.subscribe(voice.on_event)]
+    unsubscribes = [
+        BUS.subscribe(notifier),
+        BUS.subscribe(voice.on_event),
+        BUS.subscribe(presenter.on_event),
+    ]
+    global _WINDOW
+    _WINDOW = window
     state.set("companion", "running", "Esperando el atajo.")
     try:
         serve(listener, companion, _stop, hotkey.sync)
     finally:
+        _WINDOW = None
         voice.stop()
         assistant.interrupt()
         companion.cancel()
         for unsubscribe in unsubscribes:
             unsubscribe()
+        presenter.close()
+        window.close()
         voice.close()
         listener.close()
         path.unlink(missing_ok=True)

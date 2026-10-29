@@ -503,3 +503,27 @@ Hecho, todo con falsos (sin tocar el sistema):
 Quedó afuera a propósito: las confirmaciones habladas del paso 7 original (el modo «YOLO seguro» las vuelve innecesarias para lo cotidiano; lo
 destructivo directamente no se hace por voz), el pitido (`VOICE_BEEP`) y Fish Speech (v2). Sigue siendo una idea de la persona la ventanita con el
 texto en vivo y posición elegible (se suscribe al mismo bus).
+
+## La ventanita con el texto en vivo (2026-10-29)
+
+Pedido de la persona: las notificaciones se acumulaban («Dijiste», «Pensando…», …; el demonio de Omarchy —quickshell— no reemplaza el globo con el
+mismo tag, así que la idea del «globo único» no funcionó). Ahora hay una **ventanita**: una tarjeta anclada a una esquina que muestra todo en un
+solo lugar y reemplaza a las notificaciones mientras esté viva. La posición se elige en un ajuste.
+
+- **Cómo se dibuja**: GTK4 + `gtk4-layer-shell` (la forma estándar de Wayland para una ventana anclada, encima de todo, sin foco), que ya estaban
+  instalados junto con `python-gobject`. Es un **proceso aparte** (`voice/overlay_window.py`, sin importar nada de Epsilon, con el Python DEL sistema:
+  `/usr/bin/python3`, no el del entorno virtual) para que, si se cuelga, Epsilon siga y no haya que instalar PyGObject en el entorno. Hay que cargar
+  `libgtk4-layer-shell.so` con `LD_PRELOAD` (lo exige la librería). Clics transparentes (región de entrada vacía con `pycairo`) y sin teclado.
+- **Cómo se le habla**: una orden JSON por línea en su stdin (`show` / `hide` / `quit`); él contesta `ready` o `error: motivo` por stdout. Todo se valida
+  de su lado (los límites del tamaño, los bordes que existen…): lo que llega es un dato.
+- **Qué muestra** (`overlay.Presenter`, suscriptor del bus): título de estado (Escuchando · Transcribiendo · Pensando · Usando <herramienta> ·
+  Respondiendo · Listo · Aviso), lo que dijiste y el final del texto de la respuesta mientras se escribe (se muestra la COLA, hasta 600 caracteres, sin
+  cortar palabras). Ignora los eventos tardíos de un turno cortado. Se esconde `voice.overlay_hide_seconds` después de terminar **y de terminar de
+  hablar**: el `Speaker` publica ahora `speech start/end`; si ese fin nunca llegara hay una red de seguridad de 180 s.
+- **Fallos**: `overlay.Window` avisa UNA vez por qué no se pudo abrir (falta `gtk4-layer-shell` / `python-gobject`, no hay Wayland, el programa dijo
+  `error:`, se cerró solo o dejó de responder) y devuelve el trabajo a las notificaciones; reintenta a los 60 s y se rinde tras 3 fallos. Con una tubería
+  no bloqueante: si la ventanita se cuelga, falla en vez de trabar a Epsilon.
+- **Interbloqueo encontrado al cablearlo** (y probado): el aviso de fallo de `Window` vuelve al `Presenter` por el bus mientras éste sigue dentro de su
+  candado; en el mismo hilo se esperaba a sí mismo. Los avisos de `Window` salen ahora desde otro hilo.
+- **Sin verificar en vivo** (por la regla de no tocar el sistema): que la ventanita abra en tu Hyprland. Todas las funciones de GTK, GDK, GLib y
+  Gio que usa se comprobaron contra los `.gir` instalados y el programa tiene su modo `--demo` para que la veas sin Epsilon.

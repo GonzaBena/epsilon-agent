@@ -146,7 +146,8 @@ class Rig:
         self.fail_synth = None
         self.fail_player = None
         monkeypatch.setenv("VOICE_SPEAK", "si")
-        self.speaker = speaker.Speaker(self.said.append, synth=self.synth, player_factory=self.player)
+        self.events = []
+        self.speaker = speaker.Speaker(self.said.append, synth=self.synth, player_factory=self.player, emit=self.events.append)
 
     def synth(self, text, voice, speed):
         if self.fail_synth:
@@ -461,3 +462,70 @@ def test_a_blank_notice_says_nothing(rig):
     rig.settle()
 
     assert rig.synthesized == [] and rig.players == []
+
+
+# --- Avisar cuándo empieza y cuándo termina de hablar (la ventanita no se esconde en medio de la voz) ------------------------
+
+
+def test_it_announces_when_the_voice_starts_and_when_it_ends(rig):
+    start(rig, 7)
+
+    rig.send({"type": "reply", "text": "Son las diez de la noche."}, turn=7)
+    rig.settle()
+
+    assert rig.events == [{"type": "speech", "state": "start", "turn": 7}, {"type": "speech", "state": "end", "turn": 7}]
+
+
+def test_the_start_comes_once_per_answer_not_once_per_sentence(rig):
+    start(rig, 3)
+
+    rig.send({"type": "text", "text": "Primera oración bastante larga. Segunda oración bastante larga. Ter"}, turn=3)
+    rig.send({"type": "reply", "text": "Primera oración bastante larga. Segunda oración bastante larga. Tercera."}, turn=3)
+    rig.settle()
+
+    assert [e["state"] for e in rig.events] == ["start", "end"]
+
+
+def test_nothing_is_announced_when_nothing_was_spoken(rig):
+    start(rig, 2)
+
+    rig.send({"type": "reply", "text": "🙂"}, turn=2)
+    rig.settle()
+
+    assert rig.events == []
+
+
+def test_an_interrupted_answer_never_announces_its_end(rig):
+    start(rig, 4)
+    rig.send({"type": "text", "text": "Hola, ¿cómo estás hoy? Bi"}, turn=4)
+    rig.settle()
+
+    rig.speaker.stop()
+    rig.settle()
+
+    assert [e["state"] for e in rig.events] == ["start"]  # el fin lo cuenta quien interrumpe (empieza otra grabación)
+
+
+def test_a_spoken_notice_announces_without_a_turn_number(rig):
+    rig.speaker.on_event({"type": "say", "text": "No te escuché: probá de nuevo."})
+    rig.settle()
+
+    assert rig.events == [{"type": "speech", "state": "start"}, {"type": "speech", "state": "end"}]
+
+
+def test_a_failing_listener_never_breaks_the_voice(monkeypatch):
+    spoken = []
+
+    def broken(event):
+        raise RuntimeError("boom")
+
+    monkeypatch.setenv("VOICE_SPEAK", "si")
+    instance = speaker.Speaker(lambda text: None, synth=lambda t, v, sp: (t.encode(), 24000), player_factory=lambda rate: spoken.append(rate) or FakePlayer(rate), emit=broken)
+    try:
+        instance.on_event({"type": "turn", "state": "start", "turn": 1})
+        instance.on_event({"type": "reply", "text": "Son las diez de la noche.", "turn": 1})
+        assert instance.drain(3)
+    finally:
+        instance.close()
+
+    assert spoken == [24000]

@@ -182,8 +182,9 @@ class Speaker:
     Eventos que mira (todos con el número de turno): {"type": "turn", "state": "start"|"end"}, "model" y "tool" (cierran el
     texto de la vuelta), "text" (el texto acumulado), "reply" y "error"."""
 
-    def __init__(self, announce: Callable[[str], None], synth=None, player_factory=None):
+    def __init__(self, announce: Callable[[str], None], synth=None, player_factory=None, emit: Callable[[dict], None] | None = None):
         self.announce = announce
+        self._emit = emit  # avisa {"type": "speech", "state": "start"|"end"}: cuándo empieza y termina de hablar (lo mira la ventanita)
         self._synth = synth
         self._player_factory = player_factory
         self._lock = threading.Lock()  # el turno en curso
@@ -330,18 +331,31 @@ class Speaker:
             item = self._audio.get()
             try:
                 if item is _STOP:
-                    self._finish_player()
+                    self._finish_player(None)
                     return
                 if item.turn != self._turn:
                     continue
                 if isinstance(item, _End):
-                    self._finish_player()
+                    self._finish_player(item.turn)
                 else:
                     self._write(item)
             finally:
                 self._audio.task_done()
 
+    def _speech(self, state: str, turn: int) -> None:
+        """Avisa que empezó o terminó de hablar. Los avisos sueltos (turno negativo) van sin número de turno."""
+        if self._emit is None:
+            return
+        event = {"type": "speech", "state": state}
+        if turn > 0:
+            event["turn"] = turn
+        try:
+            self._emit(event)
+        except Exception:  # noqa: BLE001 - quien escucha no puede romper la voz
+            pass
+
     def _write(self, item: _Pcm) -> None:
+        started = False
         with self._plock:
             if item.turn != self._turn:
                 return
@@ -353,13 +367,16 @@ class Speaker:
                     self._fail(item.turn, e)
                     return
                 self._player = player
+                started = True
+        if started:  # fuera del candado: quien escucha puede tardar
+            self._speech("start", item.turn)
         try:
             player.write(item.data)
         except (OSError, ValueError) as e:
             if item.turn == self._turn:  # no fue una interrupción: el reproductor murió solo
                 self._fail(item.turn, e)
 
-    def _finish_player(self) -> None:
+    def _finish_player(self, turn: int | None) -> None:
         with self._plock:
             player = self._player
         if player is None:
@@ -371,6 +388,8 @@ class Speaker:
         with self._plock:
             if self._player is player:
                 self._player = None
+        if turn is not None and turn == self._turn:  # si te interrumpieron mientras terminaba, ese fin ya no importa
+            self._speech("end", turn)
 
     def _fail(self, turn: int, error: Exception) -> None:
         """La voz falló: se avisa UNA vez (sin detalles internos) y el resto de ese turno se salta."""

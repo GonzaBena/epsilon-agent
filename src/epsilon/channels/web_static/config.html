@@ -416,6 +416,31 @@
               </div>
               <div class="field switch-field">
                 <div class="switch-row">
+                  <span class="switch-label" id="label-VOICE_OVERLAY">Ventanita con el texto en vivo del Voice Companion (en vez de notificaciones)</span>
+                  <button type="button" class="switch" role="switch" id="f-VOICE_OVERLAY" data-key="VOICE_OVERLAY"
+                          value="si" aria-checked="true"
+                          aria-labelledby="label-VOICE_OVERLAY" aria-describedby="hint-VOICE_OVERLAY err-VOICE_OVERLAY"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-VOICE_OVERLAY"></p>
+                <p class="error" id="err-VOICE_OVERLAY" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-VOICE_OVERLAY_POSITION">Dónde aparece la ventanita</label>
+                <select id="f-VOICE_OVERLAY_POSITION" data-key="VOICE_OVERLAY_POSITION"
+                        aria-describedby="hint-VOICE_OVERLAY_POSITION err-VOICE_OVERLAY_POSITION">
+                  <option value="arriba-izquierda">Arriba a la izquierda</option>
+                  <option value="arriba-centro">Arriba al centro</option>
+                  <option value="arriba-derecha">Arriba a la derecha</option>
+                  <option value="centro">En el centro</option>
+                  <option value="abajo-izquierda">Abajo a la izquierda</option>
+                  <option value="abajo-centro">Abajo al centro</option>
+                  <option value="abajo-derecha">Abajo a la derecha</option>
+                </select>
+                <p class="hint" id="hint-VOICE_OVERLAY_POSITION"></p>
+                <p class="error" id="err-VOICE_OVERLAY_POSITION" role="alert"></p>
+              </div>
+              <div class="field switch-field">
+                <div class="switch-row">
                   <span class="switch-label" id="label-VOICE_SPEAK">Que el Voice Companion conteste en voz alta</span>
                   <button type="button" class="switch" role="switch" id="f-VOICE_SPEAK" data-key="VOICE_SPEAK"
                           value="si" aria-checked="true"

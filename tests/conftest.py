@@ -221,6 +221,17 @@ def block_real_screen_capture(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_overlay_window(monkeypatch):
+    """Ningún test abre la ventanita de verdad (GTK)."""
+    from epsilon.voice import overlay
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó abrir la ventanita de verdad")
+
+    monkeypatch.setattr(overlay, "_spawn", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def block_real_hyprctl_control(monkeypatch):
     """Ningún test habla con el hyprctl de control (atajos) de verdad."""
     from epsilon.utils import hyprland
