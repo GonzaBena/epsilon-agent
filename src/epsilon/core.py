@@ -1154,6 +1154,21 @@ def _chat(msg: Message, session: Session) -> Reply:
     return _loop(turn, [], session, check_limit=False)
 
 
+def _text_streamer() -> Callable[[str], None] | None:
+    """El oyente de texto de UNA vuelta del modelo, o None si nadie lo pidió. Se redacta el texto acumulado y no cada
+    trozo: una clave partida entre dos trozos no se vería entera en ninguno."""
+    if not (_stream_text.get() and _on_event.get()):
+        return None
+    written = ""
+
+    def on_text(piece: str) -> None:
+        nonlocal written
+        written += piece
+        _emit(type="text", text=config.redact(written))
+
+    return on_text
+
+
 def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_limit: bool) -> Reply:
     """Llama al modelo y ejecuta lo que pide hasta que conteste con texto (o haya que preguntar)."""
     while True:
@@ -1165,7 +1180,7 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
         check_limit = True
         _emit(type="model", step=turn.steps + 1)
         try:
-            step = chat.step(turn)
+            step = chat.step(turn, on_text=_text_streamer())
         except ModelError as e:  # sin conexión, sin clave, el modelo no soporta algo: el mensaje es para el usuario
             return Reply(config.redact(str(e)), artifacts=artifacts)
         except Exception as e:
@@ -1853,6 +1868,8 @@ def _cancelled() -> bool:
 # Quien quiera ver el progreso de un turno de IA (la web, para mostrarlo en vivo) pasa `on_event` a handle().
 # Va en una variable de contexto y no como parámetro por todas las funciones: lo emiten _loop y _run_calls.
 _on_event: ContextVar[Callable[[dict], None] | None] = ContextVar("on_event", default=None)
+# Si quien escucha además quiere el texto de la respuesta a medida que se escribe (la web): lo pide handle().
+_stream_text: ContextVar[bool] = ContextVar("stream_text", default=False)
 EVENT_ARG_CHARS = 80  # cuánto del argumento de una herramienta viaja en el evento (solo para mostrar)
 
 
@@ -1871,11 +1888,14 @@ def _tool_event(name: str, args: str, state: str) -> None:
     _emit(type="tool", name=name, arg=arg, state=state)
 
 
-def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Reply:
+def handle(msg: Message, on_event: Callable[[dict], None] | None = None, stream_text: bool = False) -> Reply:
     """Punto de entrada único: ver _dispatch. `on_event` (opcional) recibe el progreso de un turno de IA:
     {"type": "model", "step": n} al llamar al modelo y {"type": "tool", "name", "arg", "state"}
-    (running | done | blocked) por cada herramienta."""
+    (running | done | blocked) por cada herramienta. Con `stream_text` también {"type": "text", "text"}: lo que
+    el modelo lleva escrito en esa vuelta (acumulado y redactado: cada evento reemplaza al anterior), si el modelo
+    sabe transmitir."""
     token = _on_event.set(on_event)
+    stream_token = _stream_text.set(stream_text)
     event = threading.Event()
     cancel_token = _cancel_event.set(event)
     if msg.conversation_id:
@@ -1891,6 +1911,7 @@ def handle(msg: Message, on_event: Callable[[dict], None] | None = None) -> Repl
     finally:
         _outbox.reset(outbox_token)
         _on_event.reset(token)
+        _stream_text.reset(stream_token)
         _cancel_event.reset(cancel_token)
         if msg.conversation_id:
             with _cancels_guard:
