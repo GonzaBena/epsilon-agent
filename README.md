@@ -175,7 +175,7 @@ archivo de verdad y no se puede deshacer. Lo que esa conversación guardó en tu
 Con `uv sync --extra voz`, prendé *Voice Companion* en la página **Canales**: apretás un atajo (por defecto `ALT + X`, se cambia con
 `VOICE_HOTKEY`), hablás, lo apretás otra vez y Epsilon te contesta **en voz alta** mientras escribe. Puede cambiar de espacio de
 trabajo, abrir apps (`PC_APPS`), anotar cosas o mirar tu pantalla. Por voz lee y escribe sin preguntar, **pero nunca borra, pisa ni cierra
-ventanas**. El audio no se guarda ni sale de tu PC. Guía completa, privacidad y solución de problemas: `docs/plan-voice-companion.md`.
+ventanas**. Sin micrófono, `ALT + C` (`VOICE_TEXT_HOTKEY`) abre un campo de texto en la ventanita: escribís, Enter, y Epsilon contesta sin audio sabiendo qué ventana tenés en foco. El audio no se guarda ni sale de tu PC. Guía completa, privacidad y solución de problemas: `docs/plan-voice-companion.md`.
 
 ### Correrlo como servicio
 
