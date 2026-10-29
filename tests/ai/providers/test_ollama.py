@@ -423,3 +423,25 @@ def test_a_stream_that_ends_without_done_is_cut_short_not_a_finished_answer(prov
 
     with pytest.raises(ValueError, match="llegó cortada"):
         provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=lambda t: None)
+
+
+def test_an_abandoned_stream_closes_the_connection_right_away(provider, monkeypatch):
+    closed = []
+
+    def chunks(*args, **kwargs):
+        try:
+            yield piece("Ho")
+            yield piece("la")
+        finally:
+            closed.append(True)  # acá se cierra el `with httpx.stream`: Ollama deja de generar
+
+    stream = chunks()  # una referencia viva: sin cerrarlo a propósito, el generador quedaría suspendido
+    monkeypatch.setattr(ollama, "_request_stream", lambda *args, **kwargs: stream)
+
+    def stop(text):
+        raise KeyboardInterrupt("cortar")
+
+    with pytest.raises(KeyboardInterrupt):
+        provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=stop)
+
+    assert closed == [True]

@@ -1,6 +1,7 @@
 import base64
 import json
 from collections.abc import Callable, Iterator
+from contextlib import closing
 from urllib.parse import urlsplit
 
 import httpx
@@ -156,16 +157,18 @@ def _collect(chunks: Iterator[dict], on_text: Callable[[str], None]) -> tuple[st
     herramientas (pueden venir en cualquier trozo) y los conteos de tokens (vienen en el último). Lo que Ollama
     llama «thinking» (el razonamiento) no es parte de la respuesta y se ignora."""
     text, calls, counts = "", [], {}
-    for chunk in chunks:
-        if error := chunk.get("error"):  # el modelo se cayó a mitad de la respuesta: lo escrito hasta ahí no vale
-            raise _api_error(error if isinstance(error, str) else "")
-        message = chunk.get("message") or {}
-        if piece := message.get("content"):
-            text += piece
-            on_text(piece)
-        calls.extend(message.get("tool_calls") or [])
-        if chunk.get("done"):
-            counts = chunk
+    # closing: si `on_text` corta (por ejemplo, la persona canceló), la conexión se cierra YA y Ollama deja de generar.
+    with closing(chunks) as stream:
+        for chunk in stream:
+            if error := chunk.get("error"):  # el modelo se cayó a mitad de la respuesta: lo escrito hasta ahí no vale
+                raise _api_error(error if isinstance(error, str) else "")
+            message = chunk.get("message") or {}
+            if piece := message.get("content"):
+                text += piece
+                on_text(piece)
+            calls.extend(message.get("tool_calls") or [])
+            if chunk.get("done"):
+                counts = chunk
     if not counts:  # el flujo terminó sin el trozo final: la respuesta quedó a medias
         raise ModelError("La respuesta de Ollama llegó cortada.")
     return text, calls, counts

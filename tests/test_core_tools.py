@@ -750,6 +750,7 @@ def test_streamed_text_events_are_cumulative(script):
 
 
 def test_streamed_text_is_redacted_even_when_a_secret_is_split_across_chunks(script, monkeypatch):
+    monkeypatch.setattr(core, "TEXT_EVERY", 0)  # un evento por trozo
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     script.steps = [step("listo")]
     script.pieces = [["la clave es " + KEY[:20], KEY[20:], " y ya"]]
@@ -759,6 +760,68 @@ def test_streamed_text_is_redacted_even_when_a_secret_is_split_across_chunks(scr
     texts = [e["text"] for e in events if e["type"] == "text"]
     assert len(texts) == 3 and all(KEY not in text for text in texts)
     assert "***" in texts[-1] and texts[-1].endswith(" y ya")
+
+
+def fake_clock(monkeypatch, *times):
+    """El reloj del streaming (core._monotonic) devuelve estos instantes, uno por consulta."""
+    ticks = iter(times)
+    monkeypatch.setattr(core, "_monotonic", lambda: next(ticks))
+
+
+def test_streamed_text_events_are_throttled_but_the_last_text_always_arrives(script, monkeypatch):
+    fake_clock(monkeypatch, 0.0, 0.01, 0.02, 0.5)  # el 1.º sale, el 2.º y el 3.º esperan, el 4.º ya pasó el intervalo
+    script.steps = [step("abcd")]
+    script.pieces = [["a", "b", "c", "d"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    assert [e["text"] for e in events if e["type"] == "text"] == ["a", "abcd"]
+
+
+def test_the_text_held_back_by_the_throttle_is_flushed_when_the_round_ends(script, monkeypatch):
+    fake_clock(monkeypatch, 0.0, 0.01, 0.02)
+    script.steps = [step("abc")]
+    script.pieces = [["a", "b", "c"]]
+
+    _, events = say_listening("hola", stream_text=True)
+
+    assert [e["text"] for e in events if e["type"] == "text"] == ["a", "abc"]  # sin el cierre se quedaba en «a»
+
+
+def test_a_failing_redaction_never_stops_the_turn(script, monkeypatch):
+    real = core.config.redact
+
+    def broken(text, *args, **kwargs):
+        if text == "Ho":  # solo el texto que se está transmitiendo; lo demás del turno redacta normal
+            raise OSError(".env ilegible")
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(core.config, "redact", broken)
+    script.steps = [step("Hola ya")]
+    script.pieces = [["Ho"]]
+
+    reply, events = say_listening("hola", stream_text=True)
+
+    assert reply.text == "Hola ya"  # el turno sigue: el texto en vivo es solo para mirar
+    assert not [e for e in events if e["type"] == "text"]
+
+
+def test_cancelling_while_text_streams_stops_the_model_right_there(script, monkeypatch):
+    reached = []
+
+    def cancelling(history, system, offered, max_tokens=1500, allow_calls=True, on_text=None):
+        on_text("Ho")
+        core.cancel(CID)
+        on_text("la")  # acá tiene que cortar: así Ollama deja de generar
+        reached.append("siguió")
+        return step("Hola")
+
+    monkeypatch.setattr(llm, "chat_tools", cancelling)
+
+    reply, events = say_listening("hola", stream_text=True)
+
+    assert reply.text == core.CANCELLED and reached == []
+    assert [e["text"] for e in events if e["type"] == "text"] == ["Ho"]
 
 
 def test_no_text_events_without_stream_text(script):

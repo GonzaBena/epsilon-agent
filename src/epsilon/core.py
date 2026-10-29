@@ -8,6 +8,7 @@ from itertools import count
 from pathlib import Path
 import re
 import threading
+import time
 import weakref
 
 from epsilon import menu, tools
@@ -1154,19 +1155,46 @@ def _chat(msg: Message, session: Session) -> Reply:
     return _loop(turn, [], session, check_limit=False)
 
 
-def _text_streamer() -> Callable[[str], None] | None:
-    """El oyente de texto de UNA vuelta del modelo, o None si nadie lo pidió. Se redacta el texto acumulado y no cada
-    trozo: una clave partida entre dos trozos no se vería entera en ninguno."""
-    if not (_stream_text.get() and _on_event.get()):
-        return None
-    written = ""
+TEXT_EVERY = 0.1  # segundos mínimos entre dos eventos de texto en vivo (cada uno lleva el texto entero y se redacta)
+_monotonic = time.monotonic  # el reloj de arriba; los tests lo reemplazan
 
-    def on_text(piece: str) -> None:
-        nonlocal written
-        written += piece
-        _emit(type="text", text=config.redact(written))
 
-    return on_text
+class _StreamCancelled(Exception):
+    """La persona canceló mientras el modelo transmitía: sube por el proveedor (que cierra la conexión) hasta _loop."""
+
+
+class _TextStreamer:
+    """El oyente de texto de UNA vuelta del modelo. Se redacta el texto acumulado y no cada trozo: una clave partida
+    entre dos trozos no se vería entera en ninguno. Para no redactar ni mandar el texto entero por cada trozo (casi un
+    token), manda como mucho un evento cada TEXT_EVERY segundos; `flush` manda lo que quedó esperando al cerrar la vuelta."""
+
+    def __init__(self) -> None:
+        self.written = ""
+        self.sent = ""  # lo último que se mandó, sin redactar: para no repetir un evento igual
+        self.last = float("-inf")
+
+    def __call__(self, piece: str) -> None:
+        if _cancelled():  # fuera del try: no es un fallo del oyente, es la persona pidiendo frenar
+            raise _StreamCancelled
+        self.written += piece
+        now = _monotonic()
+        if now - self.last >= TEXT_EVERY:
+            self.last = now
+            self.flush()
+
+    def flush(self) -> None:
+        if self.written == self.sent:
+            return
+        self.sent = self.written
+        try:
+            _emit(type="text", text=config.redact(self.written))
+        except Exception:  # el texto en vivo es solo para mirar: si algo falla acá (p. ej. el .env), el turno sigue
+            pass
+
+
+def _text_streamer() -> _TextStreamer | None:
+    """El oyente de texto de una vuelta, o None si nadie lo pidió."""
+    return _TextStreamer() if _stream_text.get() and _on_event.get() else None
 
 
 def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_limit: bool) -> Reply:
@@ -1179,8 +1207,13 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
             return Reply(reason, artifacts=artifacts)
         check_limit = True
         _emit(type="model", step=turn.steps + 1)
+        streamer = _text_streamer()
         try:
-            step = chat.step(turn, on_text=_text_streamer())
+            step = chat.step(turn, on_text=streamer)
+            if streamer:
+                streamer.flush()  # lo que el intervalo dejó esperando: el último texto siempre llega
+        except _StreamCancelled:  # frenó el modelo en pleno texto: ya no se usa nada de lo que dijo
+            return Reply(CANCELLED, artifacts=artifacts)
         except ModelError as e:  # sin conexión, sin clave, el modelo no soporta algo: el mensaje es para el usuario
             return Reply(config.redact(str(e)), artifacts=artifacts)
         except Exception as e:
