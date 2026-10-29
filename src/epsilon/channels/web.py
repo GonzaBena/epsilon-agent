@@ -658,7 +658,7 @@ def create_app() -> FastAPI:
         def work():
             # La respuesta se arma y se guarda acá, no en el generador: si el navegador corta, no se pierde.
             try:
-                events.put({"type": "reply", "data": reply_json(core.handle(msg, on_event=events.put), cid)})
+                events.put({"type": "reply", "data": reply_json(core.handle(msg, on_event=events.put, stream_text=True), cid)})
             except Exception as e:
                 print(f"Error en el mensaje: {config.redact(repr(e))}")  # el detalle, a la terminal
                 events.put({"type": "error", "detail": "No pude responder."})
