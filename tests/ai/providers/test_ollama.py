@@ -400,3 +400,26 @@ def test_request_stream_maps_http_errors_like_request(monkeypatch):
     monkeypatch.setattr(ollama.httpx, "stream", lambda *a, **k: FakeStream(status=400, data={"error": "context size exceeded"}))
     with pytest.raises(ValueError, match="context size exceeded"):
         list(real_request_stream("POST", "/api/chat", {"model": "qwen3"}))
+
+
+def test_an_error_line_in_the_middle_of_the_stream_is_an_error_not_a_partial_answer(provider, stream_server):
+    # Ollama ya contestó 200 y empezó a transmitir; si el modelo se cae manda una línea {"error": ...}.
+    stream_server.chunks = [piece("Había una"), {"error": "model runner has unexpectedly stopped"}]
+
+    with pytest.raises(ValueError, match="model runner has unexpectedly stopped"):
+        provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=lambda t: None)
+
+
+def test_a_broken_tool_call_error_in_the_stream_gets_the_same_explanation_as_a_plain_request(provider, stream_server):
+    stream_server.chunks = [{"error": 'Failed to parse input at pos 47: {"name": "leer"}'}]
+
+    with pytest.raises(ValueError, match="modelo más grande") as error:
+        provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=lambda t: None)
+    assert "leer" not in str(error.value)
+
+
+def test_a_stream_that_ends_without_done_is_cut_short_not_a_finished_answer(provider, stream_server):
+    stream_server.chunks = [piece("Había una")]
+
+    with pytest.raises(ValueError, match="llegó cortada"):
+        provider.chat("qwen3", [Message("user", ["hola"])], "", SPECS, 300, True, on_text=lambda t: None)

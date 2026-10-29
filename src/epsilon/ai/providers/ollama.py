@@ -37,6 +37,15 @@ def _unreachable() -> ModelError:
     return ModelError(f"No pude conectar con Ollama en {urlsplit(_base_url()).netloc}. ¿Está andando?")
 
 
+def _api_error(detail: str, status: int | None = None) -> ModelError:
+    """El error que Ollama cuenta (en el cuerpo de una respuesta con error, o en una línea de un stream) como un
+    ModelError claro: el motivo corto que dio Ollama, nunca el cuerpo crudo."""
+    if "failed to parse" in detail.lower():  # el modelo escribió una llamada a herramienta rota: Ollama no la entiende
+        return ModelError(f"La IA pidió una herramienta con un formato que no entiendo. {WEAK_MODEL_HINT}")
+    where = f" (código {status})" if status else ""
+    return ModelError(f"Ollama respondió con un error{where}{': ' + detail if detail else ''}.")
+
+
 def _check(response, body: dict | None) -> None:
     """Convierte un código de error HTTP en un ModelError claro (sin el cuerpo crudo de la respuesta)."""
     if response.status_code == 404 and body and body.get("model"):
@@ -49,14 +58,10 @@ def _check(response, body: dict | None) -> None:
         try:
             err = response.json().get("error")
             if err and isinstance(err, str):
-                detail = f": {err}"
+                detail = err
         except Exception:
             pass
-        if "failed to parse" in detail.lower():  # el modelo escribió una llamada a herramienta rota: Ollama no la entiende
-            raise ModelError(f"La IA pidió una herramienta con un formato que no entiendo. {WEAK_MODEL_HINT}")
-        raise ModelError(
-            f"Ollama respondió con un error (código {response.status_code}){detail}."
-        )
+        raise _api_error(detail, response.status_code)
 
 
 def _request(
@@ -152,6 +157,8 @@ def _collect(chunks: Iterator[dict], on_text: Callable[[str], None]) -> tuple[st
     llama «thinking» (el razonamiento) no es parte de la respuesta y se ignora."""
     text, calls, counts = "", [], {}
     for chunk in chunks:
+        if error := chunk.get("error"):  # el modelo se cayó a mitad de la respuesta: lo escrito hasta ahí no vale
+            raise _api_error(error if isinstance(error, str) else "")
         message = chunk.get("message") or {}
         if piece := message.get("content"):
             text += piece
@@ -159,6 +166,8 @@ def _collect(chunks: Iterator[dict], on_text: Callable[[str], None]) -> tuple[st
         calls.extend(message.get("tool_calls") or [])
         if chunk.get("done"):
             counts = chunk
+    if not counts:  # el flujo terminó sin el trozo final: la respuesta quedó a medias
+        raise ModelError("La respuesta de Ollama llegó cortada.")
     return text, calls, counts
 
 
