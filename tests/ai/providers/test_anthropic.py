@@ -38,9 +38,13 @@ class FakeClient:
     seen: dict = {}
     reply = None
     error: Exception | None = None
+    pieces: list = []  # los trozos de texto que entrega messages.stream(...).text_stream
+    stream_error: Exception | None = None  # se levanta a mitad del flujo
+    streamed = False
+    closed = False
 
     def __init__(self, api_key, timeout=None):
-        self.messages = SimpleNamespace(create=self.create)
+        self.messages = SimpleNamespace(create=self.create, stream=self.stream)
         self.models = SimpleNamespace(retrieve=self.retrieve, list=self.list)
 
     def create(self, **kwargs):
@@ -48,6 +52,10 @@ class FakeClient:
         if FakeClient.error:
             raise FakeClient.error
         return FakeClient.reply
+
+    def stream(self, **kwargs):
+        FakeClient.seen, FakeClient.streamed, FakeClient.closed = kwargs, True, False
+        return FakeStream()
 
     def retrieve(self, model):
         FakeClient.seen = {"retrieve": model}
@@ -58,11 +66,34 @@ class FakeClient:
         return [SimpleNamespace(id="claude-a"), SimpleNamespace(id="claude-b")]
 
 
+class FakeStream:
+    """Imita el administrador de messages.stream(...): un contexto con text_stream y get_final_message()."""
+
+    def __enter__(self):
+        if FakeClient.error:
+            raise FakeClient.error
+        return self
+
+    def __exit__(self, *exc):
+        FakeClient.closed = True  # salir del contexto cierra la conexión
+        return False
+
+    @property
+    def text_stream(self):
+        yield from FakeClient.pieces
+        if FakeClient.stream_error:
+            raise FakeClient.stream_error
+
+    def get_final_message(self):
+        return FakeClient.reply
+
+
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(anthropic.anthropic, "Anthropic", FakeClient)
     FakeClient.seen = {}
     FakeClient.error = None
+    FakeClient.pieces, FakeClient.stream_error, FakeClient.streamed, FakeClient.closed = [], None, False, False
     FakeClient.reply = SimpleNamespace(content=[text("hola")], usage=usage())
     return FakeClient
 
@@ -173,12 +204,52 @@ def test_capabilities(provider):
     assert (caps.tools, caps.images, caps.pdf, caps.thinking) == (True, True, True, False)
 
 
-def test_chat_accepts_and_ignores_on_text(provider, client):
-    client.reply = SimpleNamespace(content=[text("listo")], usage=usage())
+def test_chat_with_on_text_streams_the_text_and_keeps_the_final_turn(provider, client):
+    client.pieces = ["miro ", "ya"]
+    client.reply = SimpleNamespace(
+        content=[text("miro ya"), tool_use("toolu_9", "notas", {"accion": "leer", "args": "inbox"})], usage=usage(7, 3)
+    )
+    seen = []
 
-    def never(piece):
-        raise AssertionError("Anthropic todavía no transmite")
+    result = provider.chat("m", [Message("user", ["¿qué hay?"])], "sistema", SPECS, 50, True, on_text=seen.append)
 
-    result = provider.chat("m", [Message("user", ["hola"])], "sistema", SPECS, 50, True, on_text=never)
+    assert seen == ["miro ", "ya"] and client.streamed is True
+    assert result.step.text == "miro ya" and result.step.calls == [("notas.leer", "inbox")]
+    assert isinstance(result.step.turn.raw, anthropic._Turn)  # los ids de tool_use se reenvían igual que sin streaming
+    assert (result.input_tokens, result.output_tokens) == (7, 3)
+    assert client.seen["system"] == "sistema" and client.seen["max_tokens"] == 50 and len(client.seen["tools"]) == 2
 
-    assert result.step.text == "listo"
+
+def test_chat_without_on_text_does_not_stream(provider, client):
+    provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 50, True)
+
+    assert client.streamed is False
+
+
+def test_a_stream_error_becomes_a_model_error_without_the_key(provider, client):
+    client.pieces = ["Ho"]
+    client.stream_error = status_error(sdk.RateLimitError, 429)
+
+    with pytest.raises(ValueError, match="límite de uso") as error:
+        provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 50, True, on_text=lambda t: None)
+    assert KEY not in str(error.value) and "secreto" not in str(error.value)
+
+
+def test_an_error_opening_the_stream_is_also_a_model_error(provider, client):
+    client.error = status_error(sdk.AuthenticationError, 401)
+
+    with pytest.raises(ValueError, match="rechazó la clave"):
+        provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 50, True, on_text=lambda t: None)
+    assert client.streamed is True
+
+
+def test_stopping_from_on_text_closes_the_connection_and_is_not_swallowed(provider, client):
+    client.pieces = ["Ho", "la"]
+
+    def stop(piece):
+        raise KeyboardInterrupt("cortar")
+
+    with pytest.raises(KeyboardInterrupt):
+        provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 50, True, on_text=stop)
+
+    assert client.closed is True
