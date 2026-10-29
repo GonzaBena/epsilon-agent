@@ -160,3 +160,36 @@ def test_the_local_model_check_follows_the_provider_of_the_chat_model(monkeypatc
 
     monkeypatch.setenv("AI_MODEL", "gemini:gemini-3.1-flash-lite")
     assert permissions._local_model() is False
+
+
+def test_by_text_hotkey_with_a_cloud_model_the_capture_runs_on_its_own_when_images_may_go_to_the_cloud(script, screen, monkeypatch):
+    monkeypatch.setattr(permissions, "_local_model", lambda: False)
+    monkeypatch.setattr(permissions, "_cloud_images_ok", lambda: True)
+    permissions.set_mode(CID, permissions.SAFE_AUTO_TEXT)
+    ask_model(script)
+
+    reply = say("¿qué hay en mi pantalla?")
+
+    assert reply.text == "Veo un editor de código" and screen == [1]
+
+
+def test_by_text_hotkey_the_capture_is_blocked_when_images_may_not_go_to_the_cloud(script, screen, monkeypatch):
+    monkeypatch.setattr(permissions, "_local_model", lambda: False)
+    monkeypatch.setattr(permissions, "_cloud_images_ok", lambda: False)
+    permissions.set_mode(CID, permissions.SAFE_AUTO_TEXT)
+    ask_model(script, "No pude")
+
+    say("mirá mi pantalla")
+
+    assert screen == [] and results(script.seen[1][0]) == [core.UNAVAILABLE]
+
+
+def test_by_voice_the_cloud_capture_stays_blocked_even_when_images_may_go_to_the_cloud(script, screen, monkeypatch):
+    monkeypatch.setattr(permissions, "_local_model", lambda: False)
+    monkeypatch.setattr(permissions, "_cloud_images_ok", lambda: True)
+    permissions.set_mode(CID, permissions.SAFE_AUTO)
+    ask_model(script, "No pude")
+
+    say("mirá mi pantalla")
+
+    assert screen == []

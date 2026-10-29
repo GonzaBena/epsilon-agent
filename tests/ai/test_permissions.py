@@ -322,3 +322,32 @@ def test_a_scope_is_also_unattended_and_the_mode_can_be_cleared():
 def test_an_unknown_mode_is_refused():
     with pytest.raises(ValueError):
         permissions.set_mode(VOICE, "todo-permitido")
+
+
+@pytest.fixture
+def text_mode():
+    permissions.set_mode(VOICE, permissions.SAFE_AUTO_TEXT)
+    yield VOICE
+    permissions.set_mode(VOICE, None)
+
+
+def test_text_mode_is_unattended_like_voice_mode(text_mode):
+    assert permissions.unattended(text_mode)
+
+
+@pytest.mark.parametrize("tool_id", SAFE)
+def test_text_mode_runs_the_same_safe_tools_as_voice_mode(text_mode, tool_id):
+    assert permissions.decide(text_mode, tool_id) == "run"
+
+
+@pytest.mark.parametrize("tool_id", NEVER)
+def test_text_mode_never_runs_destructive_tools(text_mode, tool_id):
+    assert permissions.decide(text_mode, tool_id) == "block"
+    assert tool_id not in {tools.ai_id(t) for t in permissions.offered(text_mode)}
+
+
+def test_text_mode_never_runs_a_connector_tool_you_did_not_allow(monkeypatch, text_mode):
+    tool = connector_tool("ask")
+    monkeypatch.setattr(tools, "_providers", [lambda: ((tool,), {"luces": "las luces"})])
+
+    assert permissions.decide(text_mode, "mcp_luces__apagar") == "block"
