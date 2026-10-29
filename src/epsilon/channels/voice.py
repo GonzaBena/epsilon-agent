@@ -11,7 +11,7 @@ from epsilon.data import conversations, notes
 from epsilon.routines import notify
 from epsilon.settings import config
 from epsilon.utils import hyprland
-from epsilon.voice import capture, client, events, transcribe
+from epsilon.voice import capture, client, events, speaker, transcribe
 
 # Voice Companion: hablarle a Epsilon desde cualquier lado con un atajo global (ver
 # docs/superpowers/specs/2026-10-29-voice-companion-design.md). Es un canal más: solo traduce entre «micrófono /
@@ -226,29 +226,44 @@ class Assistant:
         self._cancel = cancel
         self._lock = threading.Lock()
         self._turn: _Turn | None = None
+        self._count = 0  # el número del último turno
 
     def ask(self, text: str) -> None:
         text = text.strip()
         if not text:
             return
+        with self._lock:
+            self._count += 1
+            number = self._count
+        # Cada turno lleva su número en todos sus eventos: quien los escucha (la voz) ignora los de un turno que se cortó.
+        emit = lambda event: self.emit({**event, "turn": number})  # noqa: E731
+        emit({"type": "turn", "state": "start"})
+        try:
+            self._run(text, emit)
+        finally:
+            emit({"type": "turn", "state": "end"})
+
+    def _run(self, text: str, emit: Callable[[dict], None]) -> None:
         try:
             conversation_id = self._conversation()
         except Exception as e:  # noqa: BLE001 - el disco puede fallar; la persona recibe un aviso sin detalles
             print(f"Voice Companion: no pude abrir la conversación: {config.redact(repr(e))}")
-            self.emit({"type": "error", "text": "No pude abrir la conversación de voz."})
+            emit({"type": "error", "text": "No pude abrir la conversación de voz."})
             return
         # Nadie contesta un «¿lo permitís?» por voz: lo que no es destructivo corre solo y lo demás no se hace.
         permissions.set_mode(conversation_id, permissions.SAFE_AUTO)
         turn = _Turn(conversation_id)
         with self._lock:
             self._turn = turn
-        self.emit({"type": "status", "text": "Pensando…"})
+        emit({"type": "status", "text": "Pensando…"})
         try:
-            reply = self._deny_permission(self._call(core.Message(text=text, session_id=SESSION, conversation_id=conversation_id), True), conversation_id)
+            reply = self._deny_permission(
+                self._call(core.Message(text=text, session_id=SESSION, conversation_id=conversation_id), emit, True), conversation_id, emit
+            )
         except Exception as e:  # noqa: BLE001
             print(f"Voice Companion: falló la charla con la IA: {config.redact(repr(e))}")
             if not turn.interrupted:
-                self.emit({"type": "error", "text": "Algo falló al hablar con la IA."})
+                emit({"type": "error", "text": "Algo falló al hablar con la IA."})
             return
         finally:
             with self._lock:
@@ -256,7 +271,7 @@ class Assistant:
                     self._turn = None
         self._save(conversation_id, text, reply)
         if not turn.interrupted:  # una respuesta que ya no querés no se muestra (igual queda en la charla)
-            self.emit({"type": "reply", "text": reply.text})
+            emit({"type": "reply", "text": reply.text})
 
     def interrupt(self) -> None:
         """Corta el turno que esté corriendo (si hay uno): hablar de nuevo encima de la respuesta."""
@@ -275,14 +290,14 @@ class Assistant:
             return found
         return conversations.start_channel("companion", "ai", chat.default_limit())
 
-    def _call(self, msg: core.Message, stream_text: bool = False) -> core.Reply:
+    def _call(self, msg: core.Message, emit: Callable[[dict], None], stream_text: bool = False) -> core.Reply:
         handle = self._handle or core.handle
-        return handle(msg, on_event=self.emit, stream_text=stream_text)
+        return handle(msg, on_event=emit, stream_text=stream_text)
 
-    def _deny_permission(self, reply: core.Reply, conversation_id: str) -> core.Reply:
+    def _deny_permission(self, reply: core.Reply, conversation_id: str, emit: Callable[[dict], None]) -> core.Reply:
         if not any(action.id.startswith("perm:") for action in reply.actions):
             return reply
-        self._call(core.Message(action="perm:no", session_id=SESSION, conversation_id=conversation_id))
+        self._call(core.Message(action="perm:no", session_id=SESSION, conversation_id=conversation_id), emit)
         note = "No te puedo preguntar por voz todavía, así que no lo hice. Si querés que lo haga sola, cambiá el permiso en /permisos."
         return core.Reply(f"{reply.text}\n\n{note}", ai=True)
 
@@ -431,15 +446,25 @@ def run() -> None:
     path = client.socket_path()
     listener = bind(path)  # primero el socket: si ya hay otro Voice Companion, se corta acá sin dejar nada puesto
     assistant = Assistant(BUS.emit)
-    companion = Companion(folder, _announce, Listener(_announce, on_text=assistant.ask).handle, on_start=assistant.interrupt)
+    voice = speaker.Speaker(_announce)
+
+    def cut_everything() -> None:
+        """Hablarle de nuevo encima de la respuesta: se corta el audio y el turno de la IA que seguía en curso."""
+        voice.stop()
+        assistant.interrupt()
+
+    companion = Companion(folder, _announce, Listener(_announce, on_text=assistant.ask).handle, on_start=cut_everything)
     hotkey = Hotkey(folder, script, _announce)
-    unsubscribe = BUS.subscribe(notifier)
+    unsubscribes = [BUS.subscribe(notifier), BUS.subscribe(voice.on_event)]
     state.set("companion", "running", "Esperando el atajo.")
     try:
         serve(listener, companion, _stop, hotkey.sync)
     finally:
+        voice.stop()
         assistant.interrupt()
         companion.cancel()
-        unsubscribe()
+        for unsubscribe in unsubscribes:
+            unsubscribe()
+        voice.close()
         listener.close()
         path.unlink(missing_ok=True)

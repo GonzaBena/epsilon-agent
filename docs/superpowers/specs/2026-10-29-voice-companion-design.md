@@ -411,3 +411,25 @@ lo respeta como a una rutina: si hiciera falta preguntar, se bloquea con un mens
 - **Herramientas de conectores**: no se auto-permiten (todas están marcadas como escritura y pueden facturar o reembolsar). Corren por voz
   solo si la persona las puso en «permitir» ella en /permisos.
 - Lo **bloqueado en /permisos** sigue bloqueado por voz. El **tope de costo** de la conversación sigue valiendo (no es un ámbito de rutina).
+
+## Estado y hallazgos (paso 4, 2026-10-29)
+
+Decisiones de la persona: voz **`ef_dora`** y las respuestas se hablan **enteras**, sea cual sea su largo.
+
+Hecho: `voice/speaker.py`. `SentenceSplitter` (pura) corta el texto acumulado en oraciones sin partir decimales ni abreviaturas («Sr.»,
+«p. ej.», iniciales), junta las de menos de 20 caracteres con la siguiente (si no, suena a ametralladora) y parte lo que pasa de 240
+sin puntos en una coma o un espacio. `Speaker` es un suscriptor del bus: **dos hilos**, uno sintetiza la oración N+1 con Kokoro
+(`tts.synthesize_pcm`, PCM en memoria, sin archivos) mientras el otro escribe la N en **un solo `aplay`** con la entrada abierta durante
+toda la respuesta, así suenan seguidas. `aplay` crudo de 16 bits a 24 kHz (`_spawn` es el único punto de procesos).
+
+- **Eventos con número de turno**: el `Assistant` numera cada turno y publica `turn start/end`; todo evento del turno lleva su `turn`. El
+  `Speaker` solo atiende el turno en curso: al interrumpir (`stop`: mata el audio, vacía las colas) lo que siga llegando de un turno cortado
+  se ignora, y una oración que se estaba sintetizando no llega a sonar. **Empezar a grabar corta el audio y el turno** (`cut_everything`).
+- **Rondas**: el texto de cada vuelta del modelo se cierra al empezar la siguiente o al usar una herramienta; lo que el modelo dice antes de
+  una herramienta («dejame mirar») SÍ se habla. Si el modelo no transmitió texto, al final se dice la respuesta entera. Los errores también se hablan.
+- Ajustes: `VOICE_SPEAK` (sí; con `no` solo avisa por escrito), `VOICE_TTS_VOICE` (`ef_dora`), `voice.tts_speed` (1.0). Sin Kokoro o sin
+  `aplay` avisa UNA vez cómo arreglarlo y sigue en texto.
+- Probado de verdad: Kokoro real sintetiza 2,2 s de audio en 0,5 s (más rápido que el tiempo real); con Ollama `qwen3.5:4b` la primera
+  oración sonó a los 42 s —mientras el modelo seguía escribiendo, que terminó a los 51 s— y las cuatro sonaron encadenadas sin huecos. Esa
+  espera es del modelo local en CPU (compite con Kokoro por el procesador); con un modelo en la nube la primera oración sale en ~2 s.
+- Pendiente (pulido, paso 7): los avisos de micrófono/transcripción («No te escuché», falta de micrófono) son solo notificación, no se hablan.

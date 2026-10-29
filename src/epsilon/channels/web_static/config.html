@@ -414,6 +414,24 @@
                 <p class="hint" id="hint-WHISPER_LANGUAGE"></p>
                 <p class="error" id="err-WHISPER_LANGUAGE" role="alert"></p>
               </div>
+              <div class="field switch-field">
+                <div class="switch-row">
+                  <span class="switch-label" id="label-VOICE_SPEAK">Que el Voice Companion conteste en voz alta</span>
+                  <button type="button" class="switch" role="switch" id="f-VOICE_SPEAK" data-key="VOICE_SPEAK"
+                          value="si" aria-checked="true"
+                          aria-labelledby="label-VOICE_SPEAK" aria-describedby="hint-VOICE_SPEAK err-VOICE_SPEAK"><span class="knob"></span></button>
+                </div>
+                <p class="hint" id="hint-VOICE_SPEAK"></p>
+                <p class="error" id="err-VOICE_SPEAK" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="f-VOICE_TTS_VOICE">Voz del Voice Companion (ef_dora o em_alex, en español)</label>
+                <input id="f-VOICE_TTS_VOICE" data-key="VOICE_TTS_VOICE" type="text" placeholder="ef_dora"
+                       autocomplete="off" spellcheck="false" maxlength="30"
+                       aria-describedby="hint-VOICE_TTS_VOICE err-VOICE_TTS_VOICE">
+                <p class="hint" id="hint-VOICE_TTS_VOICE"></p>
+                <p class="error" id="err-VOICE_TTS_VOICE" role="alert"></p>
+              </div>
               <div class="field">
                 <label for="f-VOICE_HOTKEY">Atajo del Voice Companion (modificador y tecla, por ejemplo «ALT, X»)</label>
                 <input id="f-VOICE_HOTKEY" data-key="VOICE_HOTKEY" type="text" placeholder="ALT, X"

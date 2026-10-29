@@ -344,6 +344,7 @@ def running(tmp_path, monkeypatch, mic):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
     monkeypatch.setattr(notes, "DATA_DIR", data)
     monkeypatch.setattr(voice, "POLL_SECONDS", 0.02)
+    monkeypatch.setenv("VOICE_SPEAK", "no")  # la voz se prueba aparte (fixture `speaking`)
     evals, notes_said, tags = [], [], []
 
     def fake_ctl(*args):  # un Hyprland con config en Lua: contesta «ok» y anotamos el código que le llega
@@ -675,6 +676,11 @@ class FakeCore:
         return True
 
 
+def plain(events):
+    """Los eventos de la charla sin el número de turno ni los de inicio/fin de turno: lo que cuenta el contenido."""
+    return [{key: value for key, value in event.items() if key != "turn"} for event in events if event["type"] != "turn"]
+
+
 @pytest.fixture
 def talk(tmp_path, monkeypatch):
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path)
@@ -739,10 +745,11 @@ def test_an_open_conversation_that_is_not_ai_is_left_alone_and_a_new_ai_one_star
 def test_what_the_model_does_is_published_as_events_and_ends_with_the_reply(talk):
     talk.ask("¿qué hora es?")
 
-    assert {"type": "model", "step": 1} in talk.seen
-    assert {"type": "text", "text": "Son las"} in talk.seen
-    assert talk.seen[-1] == {"type": "reply", "text": "Son las diez."}
-    assert {"type": "status", "text": "Pensando…"} in talk.seen
+    events = plain(talk.seen)
+    assert {"type": "model", "step": 1} in events
+    assert {"type": "text", "text": "Son las"} in events
+    assert events[-1] == {"type": "reply", "text": "Son las diez."}
+    assert {"type": "status", "text": "Pensando…"} in events
 
 
 def test_a_blank_question_does_nothing(talk):
@@ -764,7 +771,7 @@ def test_a_tool_that_needs_permission_is_denied_so_the_session_never_gets_stuck(
     sent = [m[0] for m in talk.fake.messages]
     assert [m.action for m in sent] == [None, "perm:no"]  # contestó «No» por la persona
     assert sent[1].conversation_id == sent[0].conversation_id and sent[1].session_id == sent[0].session_id
-    final = talk.seen[-1]
+    final = plain(talk.seen)[-1]
     assert final["type"] == "reply"
     assert "crear archivo" in final["text"] and "/permisos" in final["text"]
     cid = sent[0].conversation_id
@@ -776,7 +783,7 @@ def test_a_failure_is_a_plain_message_without_details(talk):
 
     talk.ask("hola")
 
-    assert talk.seen[-1] == {"type": "error", "text": "Algo falló al hablar con la IA."}
+    assert plain(talk.seen)[-1] == {"type": "error", "text": "Algo falló al hablar con la IA."}
     assert "secreta" not in str(talk.seen)
 
 
@@ -840,7 +847,7 @@ def test_other_parts_of_epsilon_can_listen_to_the_live_events(running, mic):
     finally:
         off()
 
-    assert {"type": "text", "text": "respuesta"} in seen
+    assert {"type": "text", "text": "respuesta"} in plain(seen)
 
 
 def test_a_second_companion_that_gives_up_leaves_no_listener_behind(running):
@@ -850,3 +857,119 @@ def test_a_second_companion_that_gives_up_leaves_no_listener_behind(running):
         voice.run()  # el primero ya tiene el socket
 
     assert len(voice.BUS._subscribers) == before
+
+
+# --- Turnos numerados, para que lo de un turno viejo no se mezcle con el nuevo ----------------------------------------------
+
+
+def test_every_event_of_a_turn_carries_its_number_between_a_start_and_an_end(talk):
+    talk.ask("¿qué hora es?")
+
+    numbers = {event["turn"] for event in talk.seen}
+    assert len(numbers) == 1
+    assert talk.seen[0] == {"type": "turn", "state": "start", "turn": numbers.pop()}
+    assert talk.seen[-1]["type"] == "turn" and talk.seen[-1]["state"] == "end"
+    assert all("turn" in event for event in talk.seen)  # también los que vienen del núcleo (model, text…)
+
+
+def test_each_question_is_a_new_turn_number(talk):
+    talk.ask("una")
+    talk.ask("dos")
+
+    starts = [event["turn"] for event in talk.seen if event["type"] == "turn" and event["state"] == "start"]
+    assert len(starts) == 2 and starts[0] != starts[1]
+
+
+def test_an_interrupted_turn_still_ends(talk):
+    release = threading.Event()
+    talk.fake.block = release
+    thread = threading.Thread(target=talk.ask, args=("contame algo largo",), daemon=True)
+    thread.start()
+    assert wait_for(lambda: talk.fake.messages)
+
+    talk.interrupt()
+    release.set()
+    thread.join(5)
+
+    assert talk.seen[-1]["type"] == "turn" and talk.seen[-1]["state"] == "end"
+
+
+# --- La voz dentro del canal ---------------------------------------------------------------------------------------------
+
+
+class FakeAplay:
+    """Hace de un proceso aplay: guarda cómo se lo lanzó, lo que se le escribió y si lo mataron. Con `hold`, tarda en
+    terminar de sonar (como el real, que sigue tocando lo que ya tiene en el búfer) hasta que lo corten."""
+
+    made = []
+    hold = False
+
+    def __init__(self, argv, env):
+        self.argv = argv
+        self.chunks = []
+        self.killed = False
+        self.closed = False
+        self.stdin = self
+        self._cut = threading.Event()
+        FakeAplay.made.append(self)
+
+    def write(self, data):
+        if self.killed:
+            raise BrokenPipeError
+        self.chunks.append(data)
+
+    def flush(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+    def wait(self, timeout=None):
+        if FakeAplay.hold:
+            self._cut.wait(5)
+        return 0
+
+    def kill(self):
+        self.killed = True
+        self._cut.set()
+
+
+@pytest.fixture
+def speaking(running, monkeypatch):
+    """El canal andando con la voz prendida y un aplay y un Kokoro de mentira."""
+    FakeAplay.made = []
+    FakeAplay.hold = False
+    monkeypatch.setenv("VOICE_SPEAK", "si")
+    monkeypatch.setattr(voice.speaker, "_spawn", lambda argv, env: FakeAplay(argv, env))
+    monkeypatch.setattr(voice.speaker.tts, "synthesize_pcm", lambda text, voice=None, speed=None: (text.encode(), 24000))
+
+    def streaming_handle(msg, on_event=None, stream_text=False):
+        running.asked.append(msg)
+        on_event({"type": "model", "step": 1})
+        on_event({"type": "text", "text": "Son las diez de la noche."})
+        return voice.core.Reply("Son las diez de la noche.", ai=True)
+
+    monkeypatch.setattr(voice.core, "handle", streaming_handle)
+    return running
+
+
+def test_the_answer_is_spoken_through_aplay_in_24khz_mono(speaking, mic):
+    ask(speaking.socket, "toggle")
+    ask(speaking.socket, "toggle")
+
+    assert wait_for(lambda: FakeAplay.made and FakeAplay.made[0].chunks and FakeAplay.made[0].closed)
+    (aplay,) = FakeAplay.made
+    assert aplay.argv[0] == "aplay" and aplay.argv[aplay.argv.index("-r") + 1] == "24000" and "-c" in aplay.argv
+    assert b"".join(aplay.chunks) == b"Son las diez de la noche."
+
+
+def test_starting_to_record_while_it_talks_cuts_the_audio(speaking, mic):
+    FakeAplay.hold = True  # el audio sigue sonando cuando le hablás de nuevo
+    ask(speaking.socket, "toggle")
+    ask(speaking.socket, "toggle")
+    assert wait_for(lambda: FakeAplay.made and FakeAplay.made[0].closed)  # ya escribió todo y espera a que termine de sonar
+
+    assert ask(speaking.socket, "toggle") == "recording"  # hablarle de nuevo
+
+    assert wait_for(lambda: FakeAplay.made[0].killed)
+    ask(speaking.socket, "cancel")

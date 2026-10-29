@@ -526,6 +526,22 @@ SETTINGS = (
         validate=_yes_no,
         page="canales",
     ),
+    # Que el Voice Companion conteste en voz alta (voice/speaker.py lo mira en cada respuesta). Apagado, solo avisa por escrito.
+    Setting(
+        "VOICE_SPEAK",
+        "Que el Voice Companion conteste en voz alta",
+        live=True,
+        default="si",
+        validate=_yes_no,
+    ),
+    # La voz de Kokoro con que habla el Voice Companion (ef_dora y em_alex son en español).
+    Setting(
+        "VOICE_TTS_VOICE",
+        "Voz del Voice Companion",
+        live=True,
+        default="ef_dora",
+        validate=_matching(r"[a-z]{2}_[a-z0-9]{2,20}", "La voz tiene la forma «ef_dora» (idioma, guion bajo y nombre en minúsculas)."),
+    ),
     # El atajo que dispara el Voice Companion; el canal lo aplica en Hyprland apenas cambia.
     Setting(
         "VOICE_HOTKEY",
@@ -607,6 +623,8 @@ _JSON_FIELDS: dict[str, dict] = {
         help="Sitios que la IA nunca puede ver ni tocar",
     ),
     "COMPANION_ENABLED": _J(name="channels.companion_enabled", kind="bool", help="Voice Companion prendido: hablarle a Epsilon con un atajo global"),
+    "VOICE_SPEAK": _J(name="voice.speak", kind="bool", help="Que el Voice Companion conteste en voz alta"),
+    "VOICE_TTS_VOICE": _J(name="voice.tts_voice", help="Voz de Kokoro con que habla el Voice Companion (ef_dora y em_alex son en español)"),
     "VOICE_HOTKEY": _J(name="voice.hotkey", help="Atajo del Voice Companion: modificador y tecla, por ejemplo ALT, X"),
     "ROUTINES_ENABLED": _J(name="routines.enabled", kind="bool", loosens=True, safer="no", help="Cumplir las rutinas programadas"),
     "ALLOWED_USER_ID": _J(bootstrap=True),

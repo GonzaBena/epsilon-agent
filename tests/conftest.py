@@ -199,6 +199,17 @@ def permission_modes_start_empty():
 
 
 @pytest.fixture(autouse=True)
+def block_real_speakers(monkeypatch):
+    """Ningún test hace sonar nada de verdad (aplay)."""
+    from epsilon.voice import speaker
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó reproducir audio de verdad (aplay)")
+
+    monkeypatch.setattr(speaker, "_spawn", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def block_real_hyprctl_control(monkeypatch):
     """Ningún test habla con el hyprctl de control (atajos) de verdad."""
     from epsilon.utils import hyprland
@@ -270,6 +281,7 @@ def block_real_tts(monkeypatch):
 
     monkeypatch.setattr(tts, "_run_piper", forbidden_piper)
     monkeypatch.setattr(kokoro_engine, "synthesize", forbidden_kokoro)
+    monkeypatch.setattr(kokoro_engine, "synthesize_samples", forbidden_kokoro)
     monkeypatch.setattr(kokoro_engine, "download_models", forbidden_kokoro)
 
 

@@ -247,13 +247,10 @@ def resolve_voice_style(kokoro: "kokoro_onnx.Kokoro", voice_spec: str):
     return blended if blended is not None else DEFAULT_KOKORO_VOICE
 
 
-def synthesize(text: str, voice: str = "af_bella", speed: float = 1.0) -> Path:
-    """Sintetiza texto a audio WAV utilizando Kokoro ONNX."""
+def synthesize_samples(text: str, voice: str = "af_bella", speed: float = 1.0):
+    """Sintetiza texto con Kokoro ONNX y devuelve (muestras, frecuencia), sin pasar por un archivo."""
     if not text.strip():
         raise ValueError("El texto está vacío o no contiene palabras pronunciables.")
-
-    if sf is None:
-        raise ImportError("El paquete 'soundfile' es necesario para guardar audio.")
 
     kokoro = get_kokoro()
     voice_name = voice.strip() or DEFAULT_KOKORO_VOICE
@@ -262,12 +259,23 @@ def synthesize(text: str, voice: str = "af_bella", speed: float = 1.0) -> Path:
     lang = config.value("TTS_LANG").strip() or "es"
     resolved_voice = resolve_voice_style(kokoro, voice_name)
 
-    samples, sample_rate = kokoro.create(
+    return kokoro.create(
         text=text,
         voice=resolved_voice,
         speed=speed,
         lang=lang,
     )
+
+
+def synthesize(text: str, voice: str = "af_bella", speed: float = 1.0) -> Path:
+    """Sintetiza texto a audio WAV utilizando Kokoro ONNX."""
+    if not text.strip():
+        raise ValueError("El texto está vacío o no contiene palabras pronunciables.")
+
+    if sf is None:
+        raise ImportError("El paquete 'soundfile' es necesario para guardar audio.")
+
+    samples, sample_rate = synthesize_samples(text, voice, speed)
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_wav:
         wav_path = Path(tmp_wav.name)
