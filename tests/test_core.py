@@ -353,3 +353,8 @@ def test_the_usage_page_names_each_channel_by_its_session():
     assert core._usage_channel("companion:voice") == "Voz"
     assert core._usage_channel("web:abc") == "Web"
     assert core._usage_channel("default") == "Web"
+
+
+def test_the_text_companion_session_is_billed_as_companion_not_voice():
+    assert core._usage_channel("companion:text") == "Companion"
+    assert core._usage_channel("companion:voice") == "Voz"

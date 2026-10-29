@@ -103,6 +103,10 @@ class Presenter:
         if kind == "turn":
             if event.get("state") == "start":
                 self._turn = turn
+                if event.get("source") == "text":  # escribiste: no hay «Escuchando…» que reinicie la tarjeta, se limpia acá
+                    self._speaking = self._closed = False
+                    self._heard = self._text = ""
+                    self._cancel_timer()
             elif turn == self._turn and not self._closed:
                 self._hide_later()  # el turno terminó sin respuesta (lo cortaron): que no quede colgado
             return

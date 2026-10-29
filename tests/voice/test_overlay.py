@@ -635,3 +635,32 @@ def test_the_presenter_and_the_window_do_not_deadlock_when_the_window_cannot_ope
 
     assert done.wait(3), "se trabó: el Presenter esperaba a su propio candado"
     presenter.close()
+
+
+def test_a_text_turn_starts_with_a_clean_card(rig):
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1})
+    rig.feed(status("Dijiste: algo viejo"), {"type": "reply", "text": "Respuesta vieja"}, turn=1)
+    assert rig.last()["text"] == "Respuesta vieja"
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 2, "source": "text"})
+
+    rig.feed(status("Pensando…"), turn=2)
+
+    assert rig.last()["heard"] == "" and rig.last()["text"] == ""
+    assert rig.last()["title"] == "Pensando…"
+
+
+def test_a_text_turn_shows_what_you_typed_as_heard(rig):
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
+
+    rig.feed(status("Dijiste: recordame esto"), turn=1)
+
+    assert rig.last()["heard"] == "recordame esto" and rig.last()["title"] == "Pensando…"
+
+
+def test_a_text_turn_is_not_held_open_by_the_speech_of_an_old_turn(rig):
+    rig.feed({"type": "speech", "state": "start"})
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
+
+    rig.feed({"type": "reply", "text": "Listo"}, turn=1)
+
+    assert FakeTimer.live()[-1].seconds != overlay.SPEECH_CAP  # se esconde con el tiempo normal, no espera a un audio que no va a haber

@@ -26,6 +26,7 @@ MAX_REQUEST = (
     64  # lo que llega por el socket es una palabra: algo más largo no se obedece
 )
 WORDS = ("toggle", "cancel", "status")
+SESSION_TEXT = "companion:text"  # lo escrito con el atajo de texto: misma charla, otro gasto («Companion») y otro modo de permisos
 SESSION = "companion:voice"  # la sesión que le dice al núcleo de dónde viene (permisos, gasto «Voz»)
 TAG = "epsilon-voice"  # todos los avisos de escritorio comparten este: es UN globo que se va actualizando
 BUS = events.Bus()  # lo que pasa en una charla hablada; quien quiera mostrarlo (una ventanita, por ejemplo) se suscribe
@@ -242,6 +243,8 @@ class Listener:
 class _Turn:
     conversation_id: str
     interrupted: bool = False
+    source: str = "voice"  # «voice» (hablaste) o «text» (escribiste con el atajo de texto)
+    context: str = ""  # lo que se sabe de dónde estás (la ventana en foco), solo para el modelo
 
 
 class Assistant:
@@ -259,7 +262,9 @@ class Assistant:
         self._turn: _Turn | None = None
         self._count = 0  # el número del último turno
 
-    def ask(self, text: str) -> None:
+    def ask(self, text: str, *, source: str = "voice", context: str = "") -> None:
+        """Una pregunta: `source` «voice» (la dijiste) o «text» (la escribiste con el atajo de texto, sin audio y con `context`,
+        la ventana en foco, que va solo al modelo: lo guardado en la charla es lo que escribiste)."""
         text = text.strip()
         if not text:
             return
@@ -268,13 +273,13 @@ class Assistant:
             number = self._count
         # Cada turno lleva su número en todos sus eventos: quien los escucha (la voz) ignora los de un turno que se cortó.
         emit = lambda event: self.emit({**event, "turn": number})  # noqa: E731
-        emit({"type": "turn", "state": "start"})
+        emit({"type": "turn", "state": "start", **({"source": "text"} if source == "text" else {})})
         try:
-            self._run(text, emit)
+            self._run(text, emit, source, context)
         finally:
             emit({"type": "turn", "state": "end"})
 
-    def _run(self, text: str, emit: Callable[[dict], None]) -> None:
+    def _run(self, text: str, emit: Callable[[dict], None], source: str = "voice", context: str = "") -> None:
         try:
             conversation_id = self._conversation()
         except Exception as e:  # noqa: BLE001 - el disco puede fallar; la persona recibe un aviso sin detalles
@@ -283,17 +288,24 @@ class Assistant:
             )
             emit({"type": "error", "text": "No pude abrir la conversación de voz."})
             return
-        # Nadie contesta un «¿lo permitís?» por voz: lo que no es destructivo corre solo y lo demás no se hace.
-        permissions.set_mode(conversation_id, permissions.SAFE_AUTO)
-        turn = _Turn(conversation_id)
+        by_text = source == "text"
+        # Nadie contesta un «¿lo permitís?» en la tarjeta: lo que no es destructivo corre solo y lo demás no se hace.
+        permissions.set_mode(
+            conversation_id, permissions.SAFE_AUTO_TEXT if by_text else permissions.SAFE_AUTO
+        )
+        turn = _Turn(conversation_id, source=source, context=context)
         with self._lock:
             self._turn = turn
+        if by_text:
+            emit({"type": "status", "text": f"Dijiste: {text}"})  # la tarjeta muestra lo que escribiste, como lo que dijiste
         emit({"type": "status", "text": "Pensando…"})
         try:
             reply = self._deny_permission(
                 self._call(
                     core.Message(
-                        text=text, session_id=SESSION, conversation_id=conversation_id
+                        text=f"{context}\n{text}" if context else text,
+                        session_id=SESSION_TEXT if by_text else SESSION,
+                        conversation_id=conversation_id,
                     ),
                     emit,
                     True,
