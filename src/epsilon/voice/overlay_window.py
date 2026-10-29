@@ -113,8 +113,9 @@ window.epsilon-overlay {{ background: transparent; }}
 
 
 def wrap_chars(width, font):
-    """Cuántos caracteres entran por renglón (aproximado) para que el texto se parta al ancho de la tarjeta."""
-    return max(10, int((width - 36) / (font * 0.55)))
+    """Tope de caracteres por renglón para el ancho NATURAL del texto. Es una cota por abajo a propósito (letras anchas
+    como la W): si midiera de más, la tarjeta se ensancharía con los textos largos; el renglón se parte igual al ancho real."""
+    return max(10, int((width - 36) / (font * 0.8)))
 
 
 def demo_commands(position):
