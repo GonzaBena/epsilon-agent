@@ -81,6 +81,7 @@ class Presenter:
         self._timer = None
         self._turn: int | None = None
         self._speaking = False
+        self._stay = False  # el turno es de texto (Alt+C): la tarjeta espera a que la cierres, no se esconde sola
         self._closed = False  # ya hay una respuesta o un aviso en pantalla (lo que sigue es esconderse)
         self._kind = ""
         self._heard = ""
@@ -103,7 +104,8 @@ class Presenter:
         if kind == "turn":
             if event.get("state") == "start":
                 self._turn = turn
-                if event.get("source") == "text":  # escribiste: no hay «Escuchando…» que reinicie la tarjeta, se limpia acá
+                self._stay = event.get("source") == "text"
+                if self._stay:  # escribiste: no hay «Escuchando…» que reinicie la tarjeta, se limpia acá
                     self._speaking = self._closed = False
                     self._heard = self._text = ""
                     self._cancel_timer()
@@ -122,7 +124,8 @@ class Presenter:
             self._closed = True
             self._hide_later()
         elif kind == "tool" and event.get("state") == "running":
-            self._show("working", f"Usando {self._label_of(str(event.get('name', '')))}…")
+            # lo que el modelo escribió antes de pedir la herramienta era un pensamiento, no la respuesta: no queda a la vista
+            self._show("working", f"Usando {self._label_of(str(event.get('name', '')))}…", text="")
         elif kind == "text":
             self._show("talking", "Respondiendo…", text=tail(text, MAX_TEXT))
         elif kind == "reply":
@@ -140,13 +143,13 @@ class Presenter:
 
     def _status(self, text: str) -> None:
         if text == "Escuchando…":
-            self._turn, self._speaking, self._closed = None, False, False  # otra charla: lo viejo no cuenta
+            self._turn, self._speaking, self._closed, self._stay = None, False, False, False  # otra charla: lo viejo no cuenta
             self._heard = self._text = ""
             self._show("listening", text)
         elif text == "Transcribiendo…" or text == "Pensando…":
             self._show("working", text)
         elif text.startswith("Dijiste: "):
-            self._heard = tail(text.removeprefix("Dijiste: "), MAX_HEARD)
+            self._heard = "" if self._stay else tail(text.removeprefix("Dijiste: "), MAX_HEARD)  # lo escribiste vos: no hace falta repetirlo
             self._show("working", "Pensando…")
         else:  # un aviso cualquiera (p. ej. un atajo que no se pudo aplicar)
             self._show("info", tail(text, MAX_TEXT))
@@ -172,6 +175,8 @@ class Presenter:
 
     def _hide_later(self, seconds: float | None = None) -> None:
         self._cancel_timer()
+        if self._stay:
+            return
         self._timer = self._timer_factory(seconds if seconds is not None else config.number("VOICE_OVERLAY_HIDE_S"), self._hide)
         self._timer.start()
 

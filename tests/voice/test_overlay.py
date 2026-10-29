@@ -651,12 +651,12 @@ def test_a_text_turn_starts_with_a_clean_card(rig):
     assert rig.last()["title"] == "Pensando…"
 
 
-def test_a_text_turn_shows_what_you_typed_as_heard(rig):
+def test_a_text_turn_does_not_echo_what_you_typed(rig):
     rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
 
     rig.feed(status("Dijiste: recordame esto"), turn=1)
 
-    assert rig.last()["heard"] == "recordame esto" and rig.last()["title"] == "Pensando…"
+    assert rig.last()["heard"] == "" and rig.last()["title"] == "Pensando…"
 
 
 def test_a_text_turn_is_not_held_open_by_the_speech_of_an_old_turn(rig):
@@ -665,7 +665,7 @@ def test_a_text_turn_is_not_held_open_by_the_speech_of_an_old_turn(rig):
 
     rig.feed({"type": "reply", "text": "Listo"}, turn=1)
 
-    assert FakeTimer.live()[-1].seconds != overlay.SPEECH_CAP  # se esconde con el tiempo normal, no espera a un audio que no va a haber
+    assert FakeTimer.live() == []  # ni espera a un audio que no va a haber ni se esconde sola
 
 
 # --- Lo que la ventanita devuelve cuando se le escribe (submit / closed) ---------------------------------------------------
@@ -735,3 +735,43 @@ def test_the_window_and_epsilon_agree_on_the_longest_text(win):
     spec.loader.exec_module(module)
 
     assert overlay.MAX_SUBMIT == module.MAX_INPUT
+
+
+# --- Escribir (Alt+C): la tarjeta espera a que la leas, y no deja el «pensamiento» de antes de una herramienta ---------------
+
+def text_turn(rig, turn=1):
+    rig.feed({"type": "turn", "state": "start", "source": "text"}, turn=turn)
+    rig.feed(status("Dijiste: anotá esto"), status("Pensando…"), turn=turn)
+
+
+def test_a_typed_answer_stays_until_you_close_it(rig):
+    text_turn(rig)
+    rig.feed({"type": "reply", "text": "Anotado."}, {"type": "turn", "state": "end"}, turn=1)
+
+    assert FakeTimer.live() == []
+    assert rig.last()["kind"] == "done"
+
+
+def test_a_typed_problem_stays_too(rig):
+    text_turn(rig)
+    rig.feed({"type": "error", "text": "Algo falló al hablar con la IA."}, turn=1)
+
+    assert FakeTimer.live() == []
+
+
+def test_a_spoken_answer_still_hides_after_a_typed_one(rig):
+    text_turn(rig)
+    rig.feed({"type": "reply", "text": "Anotado."}, turn=1)
+    rig.feed(status("Escuchando…"))
+    rig.feed({"type": "reply", "text": "Listo."})
+
+    assert len(FakeTimer.live()) == 1
+
+
+def test_the_text_written_before_a_tool_is_wiped_when_the_tool_starts(rig):
+    rig.feed(status("Dijiste: hola"), status("Pensando…"))
+    rig.feed({"type": "text", "text": "Voy a revisar la nota primero."})
+
+    rig.feed({"type": "tool", "name": "ver", "state": "running"})
+
+    assert rig.last()["title"] == "Usando <ver>…" and rig.last()["text"] == ""
