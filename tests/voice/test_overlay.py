@@ -1,3 +1,5 @@
+import importlib.util
+
 import pytest
 
 from epsilon.voice import overlay
@@ -664,3 +666,72 @@ def test_a_text_turn_is_not_held_open_by_the_speech_of_an_old_turn(rig):
     rig.feed({"type": "reply", "text": "Listo"}, turn=1)
 
     assert FakeTimer.live()[-1].seconds != overlay.SPEECH_CAP  # se esconde con el tiempo normal, no espera a un audio que no va a haber
+
+
+# --- Lo que la ventanita devuelve cuando se le escribe (submit / closed) ---------------------------------------------------
+
+
+def wait_until(check, seconds=3.0):
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if check():
+            return True
+        time.sleep(0.01)
+    return check()
+
+
+@pytest.fixture
+def typed(win):
+    got = {"submit": [], "closed": []}
+    win.window.on_submit = got["submit"].append
+    win.window.on_closed = lambda: got["closed"].append(1)
+    win.window.send(SHOW)  # arranca el proceso
+    return got
+
+
+def test_a_submit_line_calls_on_submit_with_the_decoded_text(win, typed):
+    win.proc.say('submit:"hola \\"mundo\\"\\nchau"')
+
+    assert wait_until(lambda: typed["submit"] == ['hola "mundo"\nchau'])
+
+
+def test_a_closed_line_calls_on_closed(win, typed):
+    win.proc.say("closed")
+
+    assert wait_until(lambda: typed["closed"] == [1])
+
+
+@pytest.mark.parametrize("line", ["submit:", "submit:no-json", "submit:42", 'submit:""', "submit:" + '"' + "x" * 501 + '"', "submit:null"])
+def test_a_malformed_or_oversized_submit_is_dropped(win, typed, line):
+    win.proc.say(line)
+    win.proc.say("closed")  # lo que viene después se sigue leyendo: es la señal de que la anterior ya se procesó
+
+    assert wait_until(lambda: typed["closed"] == [1])
+    assert typed["submit"] == []
+
+
+def test_a_failing_callback_does_not_stop_the_reader(win):
+    seen = []
+
+    def boom(text):
+        seen.append(text)
+        raise RuntimeError("boom")
+
+    win.window.on_submit = boom
+    win.window.on_closed = lambda: seen.append("closed")
+    win.window.send(SHOW)
+
+    win.proc.say('submit:"uno"')
+    win.proc.say("closed")
+
+    assert wait_until(lambda: seen == ["uno", "closed"])
+
+
+def test_the_window_and_epsilon_agree_on_the_longest_text(win):
+    spec = importlib.util.spec_from_file_location("overlay_window_limit", overlay.SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert overlay.MAX_SUBMIT == module.MAX_INPUT

@@ -193,6 +193,7 @@ SCRIPT = Path(__file__).with_name("overlay_window.py")
 LIB_DIRS = ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/local/lib"]
 PYTHONS = ["/usr/bin/python3", "/usr/local/bin/python3"]  # NO `which python3`: en el servicio puede ser el del entorno virtual, sin PyGObject
 RETRY_AFTER = 60.0  # segundos que espera antes de volver a intentar tras un fallo
+MAX_SUBMIT = 500  # lo más largo que se acepta de lo escrito en el campo (la ventanita lo limita igual: un test vigila que coincidan)
 MAX_FAILURES = 3  # tras tantos fallos se rinde hasta que se reinicie Epsilon
 ENV_KEYS = ("PATH", "HOME", "LANG", "XDG_RUNTIME_DIR")
 INSTALL = "instalá gtk4-layer-shell y python-gobject"
@@ -212,8 +213,10 @@ class Window:
     se puede abrir o se cae, se avisa UNA vez por qué y todo vuelve a las notificaciones (`active()` pasa a False); pasado un rato
     vuelve a intentar, y tras `MAX_FAILURES` fallos se rinde hasta que se reinicie Epsilon."""
 
-    def __init__(self, announce, spawn=None, clock=time.monotonic, defer=_fire_and_forget):
+    def __init__(self, announce, spawn=None, clock=time.monotonic, defer=_fire_and_forget, on_submit=None, on_closed=None):
         self._announce = announce
+        self.on_submit = on_submit  # recibe lo que se escribió en el campo (Enter)
+        self.on_closed = on_closed  # el campo se cerró sin enviar (Esc)
         self._defer = defer  # los avisos salen desde otro hilo: ver `_tell`
         self._spawn_override = spawn  # la de verdad (`_spawn`) se resuelve al usarla, no acá
         self._clock = clock
@@ -342,6 +345,10 @@ class Window:
                     self.ready = True
                 elif text.startswith("error:"):
                     self._reason = text.removeprefix("error:").strip()[:200]
+                elif text.startswith("submit:"):
+                    self._submitted(text.removeprefix("submit:"))
+                elif text == "closed":
+                    self._call(self.on_closed)
         except (OSError, ValueError):
             pass
         with self._lock:
@@ -349,6 +356,25 @@ class Window:
                 self._closing = None
             elif self._proc is proc:
                 self._failed(self._reason or "se cerró sola")
+
+    def _submitted(self, payload: str) -> None:
+        """Lo que se escribió en el campo: JSON de un texto de 1 a MAX_SUBMIT caracteres; lo demás se descarta."""
+        try:
+            text = json.loads(payload)
+        except ValueError:
+            return
+        if isinstance(text, str) and 0 < len(text.strip()) and len(text) <= MAX_SUBMIT:
+            self._call(self.on_submit, text)
+
+    @staticmethod
+    def _call(callback, *args) -> None:
+        """Avisa a quien escucha, fuera de cualquier candado; si falla, el hilo lector sigue."""
+        if callback is None:
+            return
+        try:
+            callback(*args)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _failed(self, reason: str) -> None:
         """La ventanita falló: se la descarta, se avisa UNA vez por qué y se vuelve a intentar más adelante (o nunca, si insiste)."""
