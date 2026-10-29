@@ -1,4 +1,6 @@
 import os
+from contextlib import closing
+from types import SimpleNamespace
 
 from google import genai
 from google.genai import errors, types
@@ -64,6 +66,30 @@ def _thinking_config() -> types.ThinkingConfig | None:
     return types.ThinkingConfig(thinking_budget=budgets.get(effort, 4096))
 
 
+def _stream_chat(chunks, on_text) -> ChatResult:
+    """Un paso de chat con la respuesta por trozos. Cada trozo trae unas pocas partes del turno: el texto se avisa a
+    `on_text` (el razonamiento, `thought`, no), las llamadas a herramientas se juntan, y TODAS las partes (con sus
+    firmas de razonamiento) forman el turno crudo que se reenvía igual que sin streaming. Los conteos de tokens vienen
+    acumulados: valen los del último trozo que los trae."""
+    text, calls, parts, last_usage = "", [], [], None
+    with closing(chunks) as stream:  # si `on_text` corta (la persona canceló), la conexión se cierra YA
+        for chunk in stream:
+            if chunk.usage_metadata:
+                last_usage = chunk.usage_metadata
+            content = chunk.candidates[0].content if chunk.candidates else None
+            for part in (content.parts if content else None) or []:
+                parts.append(part)
+                if part.function_call:
+                    calls.append(parse_call(part.function_call.name, part.function_call.args))
+                elif part.text and not part.thought:
+                    text += part.text
+                    on_text(part.text)
+    turn = Message("model", [text] if text else [], calls, raw=types.Content(role="model", parts=parts))
+    return ChatResult(
+        Step(text, [(c.id, c.args) for c in calls], turn), *_tokens(SimpleNamespace(usage_metadata=last_usage))
+    )
+
+
 class GeminiProvider(Provider):
     name = "gemini"
 
@@ -83,9 +109,8 @@ class GeminiProvider(Provider):
         return GenerateResult(response.text, *_tokens(response))
 
     def chat(self, model, history, system, tools, max_tokens, allow_calls, on_text=None):
-        # Todavía sin streaming: el texto llega entero.
         client = _client()
-        response = client.models.generate_content(
+        request = dict(
             model=model,
             contents=[_content(m) for m in history],
             config=types.GenerateContentConfig(
@@ -99,6 +124,9 @@ class GeminiProvider(Provider):
                 thinking_config=_thinking_config(),
             ),
         )
+        if on_text is not None:
+            return _stream_chat(client.models.generate_content_stream(**request), on_text)
+        response = client.models.generate_content(**request)
         calls = [parse_call(call.name, call.args) for call in response.function_calls or []]
         # Con llamadas, .text puede fallar o venir vacío: lo tratamos como "".
         try:

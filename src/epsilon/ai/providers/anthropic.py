@@ -137,7 +137,6 @@ class AnthropicProvider(Provider):
         return GenerateResult(text, *_tokens(response))
 
     def chat(self, model, history, system, tools, max_tokens, allow_calls, on_text=None):
-        # Todavía sin streaming: el texto llega entero.
         client = _client()
         extra = {}
         if tools:
@@ -146,10 +145,21 @@ class AnthropicProvider(Provider):
                 extra["tool_choice"] = {"type": "none"}
         if system:
             extra["system"] = system
-        response = _call(
-            lambda: client.messages.create(model=model, max_tokens=max_tokens, messages=_messages(history), **extra),
-            model,
-        )
+        messages = _messages(history)
+        if on_text is None:
+            response = _call(lambda: client.messages.create(model=model, max_tokens=max_tokens, messages=messages, **extra), model)
+        else:
+
+            def streamed():
+                # Salir del `with` (también si `on_text` corta) cierra la conexión. Las herramientas y los tokens
+                # salen del mensaje final, igual que sin streaming.
+                with client.messages.stream(model=model, max_tokens=max_tokens, messages=messages, **extra) as stream:
+                    for piece in stream.text_stream:
+                        if piece:
+                            on_text(piece)
+                    return stream.get_final_message()
+
+            response = _call(streamed, model)
         text = "".join(b.text for b in response.content if b.type == "text")
         calls = [parse_call(b.name, b.input) for b in response.content if b.type == "tool_use"]
         turn = Message("model", [text] if text else [], calls, raw=_turn(response.content))

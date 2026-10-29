@@ -26,9 +26,25 @@ class FakeClient:
 
     seen: dict = {}
     reply: dict = {}
+    chunks: list = []  # lo que entrega generate_content_stream
+    streamed = False
+    closed = False
 
     def __init__(self, api_key):
-        self.models = SimpleNamespace(generate_content=self.generate_content, get=self.get, list=self.list)
+        self.models = SimpleNamespace(
+            generate_content=self.generate_content,
+            generate_content_stream=self.generate_content_stream,
+            get=self.get,
+            list=self.list,
+        )
+
+    def generate_content_stream(self, model, contents, config):
+        FakeClient.seen = {"model": model, "contents": contents, "config": config}
+        FakeClient.streamed, FakeClient.closed = True, False
+        try:
+            yield from FakeClient.chunks
+        finally:
+            FakeClient.closed = True  # el generador cerrado = conexión cerrada
 
     def generate_content(self, model, contents, config):
         FakeClient.seen = {"model": model, "contents": contents, "config": config}
@@ -49,6 +65,7 @@ class FakeClient:
 def client(monkeypatch):
     monkeypatch.setattr(gemini.genai, "Client", FakeClient)
     FakeClient.seen = {}
+    FakeClient.chunks, FakeClient.streamed, FakeClient.closed = [], False, False
     FakeClient.reply = {"text": "hola", "usage_metadata": meta(), "candidates": [], "function_calls": None}
     return FakeClient
 
@@ -245,12 +262,71 @@ def test_a_grouped_call_in_the_history_is_resent_with_its_action():
     assert content.parts[0].function_call.args == {"accion": "agregar", "args": "pan"}
 
 
-def test_chat_accepts_and_ignores_on_text(provider, client):
+def chunk(*parts, usage=None):
+    """Un trozo de generate_content_stream: las partes de esa porción del turno."""
+    content = types.Content(role="model", parts=list(parts))
+    return SimpleNamespace(candidates=[SimpleNamespace(content=content)], usage_metadata=usage)
+
+
+def test_chat_with_on_text_streams_the_text_and_keeps_every_part_as_the_raw_turn(provider, client):
+    signed = types.Part(text="la", thought_signature=b"firma")
+    client.chunks = [chunk(types.Part(text="Ho")), chunk(signed, usage=meta(20, 6, 2))]
+    seen = []
+
+    result = provider.chat("m", [Message("user", ["hola"])], "sistema", SPECS, 1500, True, on_text=seen.append)
+
+    assert seen == ["Ho", "la"] and client.streamed is True
+    assert result.step.text == "Hola"
+    assert (result.input_tokens, result.output_tokens) == (20, 8)  # los conteos del último trozo (son acumulados)
+    raw = result.step.turn.raw
+    assert raw.role == "model" and [p.text for p in raw.parts] == ["Ho", "la"]
+    assert raw.parts[1].thought_signature == b"firma"  # la firma de razonamiento se reenvía igual que sin streaming
+    assert client.seen["config"].system_instruction == "sistema" and client.seen["config"].max_output_tokens == 1500
+
+
+def test_streamed_function_calls_are_collected_from_any_chunk(provider, client):
+    call = types.Part(function_call=types.FunctionCall(name="ver", args={"args": "casa"}))
+    client.chunks = [chunk(types.Part(text="miro")), chunk(call, usage=meta())]
+
+    result = provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 1500, True, on_text=lambda t: None)
+
+    assert result.step.calls == [("ver", "casa")] and result.step.text == "miro"
+    assert [c.name for c in result.step.turn.calls] == ["ver"]
+
+
+def test_streamed_thoughts_are_kept_but_never_shown(provider, client):
+    client.chunks = [chunk(types.Part(text="hmm", thought=True)), chunk(types.Part(text="Listo"), usage=meta())]
+    seen = []
+
+    result = provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 1500, True, on_text=seen.append)
+
+    assert seen == ["Listo"] and result.step.text == "Listo"
+    assert len(result.step.turn.raw.parts) == 2  # el razonamiento viaja en el turno crudo
+
+
+def test_a_stream_with_chunks_without_candidates_or_usage_does_not_break(provider, client):
+    client.chunks = [SimpleNamespace(candidates=None, usage_metadata=None), chunk(types.Part(text="Hola"))]
+
+    result = provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 1500, True, on_text=lambda t: None)
+
+    assert result.step.text == "Hola" and (result.input_tokens, result.output_tokens) == (0, 0)
+
+
+def test_chat_without_on_text_does_not_stream(provider, client):
     client.reply, _ = chat_reply()
 
-    def never(piece):
-        raise AssertionError("Gemini todavía no transmite")
+    provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 1500, True)
 
-    result = provider.chat("m", [Message("user", ["hola"])], "sistema", SPECS, 1500, True, on_text=never)
+    assert client.streamed is False
 
-    assert result.step.text == "listo"
+
+def test_stopping_from_on_text_closes_the_stream(provider, client):
+    client.chunks = [chunk(types.Part(text="Ho")), chunk(types.Part(text="la"))]
+
+    def stop(piece):
+        raise KeyboardInterrupt("cortar")
+
+    with pytest.raises(KeyboardInterrupt):
+        provider.chat("m", [Message("user", ["hola"])], "s", SPECS, 1500, True, on_text=stop)
+
+    assert client.closed is True
