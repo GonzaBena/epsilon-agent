@@ -45,3 +45,48 @@ def test_an_app_alias_with_anything_that_is_not_a_plain_command_is_refused(bad):
 def test_screenshots_get_more_detail_than_ordinary_photos():
     assert config.number("IMAGES_MAX_SIDE_SCREEN") == 1600
     assert config.number("IMAGES_MAX_SIDE_SCREEN") > config.number("IMAGES_MAX_SIDE")
+
+
+# --- La ventanita con el texto en vivo ---------------------------------------------------------------------------------------
+
+
+def test_the_floating_window_is_on_by_default_in_the_bottom_right_corner():
+    assert config.enabled("VOICE_OVERLAY") is True
+    assert config.value("VOICE_OVERLAY_POSITION") == "abajo-derecha"
+
+
+@pytest.mark.parametrize(
+    "typed, saved",
+    [("abajo-derecha", "abajo-derecha"), (" Arriba-Centro ", "arriba-centro"), ("arriba izquierda", "arriba-izquierda"), ("CENTRO", "centro")],
+)
+def test_a_position_is_normalized(typed, saved):
+    assert config.BY_KEY["VOICE_OVERLAY_POSITION"].validate(typed) == saved
+
+
+@pytest.mark.parametrize("bad", ["", "derecha", "abajo", "top-left", "abajo-derecha; reboot", "abajo-derecha\ncentro"])
+def test_a_position_that_is_not_one_of_the_list_is_refused(bad):
+    with pytest.raises(ValueError):
+        config.BY_KEY["VOICE_OVERLAY_POSITION"].validate(bad)
+
+
+def test_the_positions_of_the_setting_are_exactly_the_ones_the_window_knows():
+    from epsilon.voice import overlay
+
+    assert config.BY_KEY["VOICE_OVERLAY_POSITION"].choices == tuple(overlay.POSITIONS)
+
+
+@pytest.mark.parametrize(
+    "key, default, low, high",
+    [
+        ("VOICE_OVERLAY_WIDTH", 460, 240, 1200),
+        ("VOICE_OVERLAY_MARGIN", 24, 0, 400),
+        ("VOICE_OVERLAY_FONT", 15, 10, 32),
+        ("VOICE_OVERLAY_HIDE_S", 6, 1, 60),
+    ],
+)
+def test_the_window_look_is_adjustable_within_sane_limits(key, default, low, high):
+    assert config.number(key) == default
+    assert config.BY_KEY[key].validate(str(low)) == str(low) and config.BY_KEY[key].validate(str(high)) == str(high)
+    for outside in (low - 1, high + 1):
+        with pytest.raises(ValueError):
+            config.BY_KEY[key].validate(str(outside))

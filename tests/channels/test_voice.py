@@ -345,6 +345,7 @@ def running(tmp_path, monkeypatch, mic):
     monkeypatch.setattr(notes, "DATA_DIR", data)
     monkeypatch.setattr(voice, "POLL_SECONDS", 0.02)
     monkeypatch.setenv("VOICE_SPEAK", "no")  # la voz se prueba aparte (fixture `speaking`)
+    monkeypatch.setenv("VOICE_OVERLAY", "no")  # la ventanita también (fixture `with_window`): acá las notificaciones
     evals, notes_said, tags = [], [], []
 
     def fake_ctl(*args):  # un Hyprland con config en Lua: contesta «ok» y anotamos el código que le llega
@@ -456,6 +457,7 @@ def test_without_hyprland_the_channel_still_works_and_says_why(tmp_path, monkeyp
     runtime = tmp_path / "run"
     runtime.mkdir(mode=0o700)
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("VOICE_OVERLAY", "no")
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(voice, "POLL_SECONDS", 0.02)
     said = []
@@ -1099,3 +1101,132 @@ def test_a_failing_warm_up_never_breaks_recording(running, mic, monkeypatch):
 
     assert ask(running.socket, "toggle") == "recording"
     ask(running.socket, "cancel")
+
+
+# --- La ventanita en lugar de las notificaciones -----------------------------------------------------------------------------
+
+from tests.voice.test_overlay import FakeProc  # noqa: E402
+from epsilon.voice import overlay  # noqa: E402
+
+
+@pytest.fixture
+def with_window(running, monkeypatch, tmp_path):
+    """El canal andando con la ventanita prendida y un proceso de mentira (no se abre nada de verdad)."""
+    runtime = running.socket.parent
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)  # el de la sesión real no cuenta: acá manda el socket de la carpeta de prueba
+    (runtime / "wayland-1").write_text("")
+    lib, py = tmp_path / "lib", tmp_path / "python3"
+    lib.mkdir()
+    (lib / "libgtk4-layer-shell.so").write_text("")
+    py.write_text("")
+    monkeypatch.setattr(overlay, "LIB_DIRS", [str(lib)])
+    monkeypatch.setattr(overlay, "PYTHONS", [str(py)])
+    procs = []
+    monkeypatch.setattr(overlay, "_spawn", lambda argv, env: procs.append(FakeProc(argv, env)) or procs[-1])
+    monkeypatch.setenv("VOICE_OVERLAY", "si")
+    running.procs = procs
+    return running
+
+
+def commands(running):
+    return [c for proc in running.procs for c in proc.stdin.commands()]
+
+
+def test_with_the_window_alive_the_desktop_notifications_stop(with_window, mic):
+    ask(with_window.socket, "toggle")
+
+    assert wait_for(lambda: commands(with_window))
+    assert commands(with_window)[0]["kind"] == "listening"
+    assert with_window.said == []  # ni «Escuchando…» salió como notificación
+    ask(with_window.socket, "cancel")
+
+
+def test_the_whole_conversation_goes_to_the_window_as_one_updating_card(with_window, mic):
+    ask(with_window.socket, "toggle")
+    ask(with_window.socket, "toggle")
+
+    assert wait_for(lambda: any(c.get("kind") == "done" for c in commands(with_window)))
+    kinds = [c["kind"] for c in commands(with_window) if c["op"] == "show"]
+    assert kinds[0] == "listening" and "working" in kinds and kinds[-1] == "done"
+    done = next(c for c in commands(with_window) if c.get("kind") == "done")
+    assert done["heard"] == "hola mundo" and done["text"] == "respuesta de prueba"
+    assert with_window.said == []  # todo por la ventanita: ninguna notificación
+
+
+def test_the_streamed_text_is_shown_while_the_model_writes_it(with_window, mic):
+    ask(with_window.socket, "toggle")
+    ask(with_window.socket, "toggle")
+
+    assert wait_for(lambda: any(c.get("kind") == "talking" for c in commands(with_window)))
+    assert any(c.get("text") == "respuesta" for c in commands(with_window))
+
+
+def test_a_problem_is_shown_in_the_window_too(with_window, mic):
+    mic.fail_start = "No pude grabar: no hay micrófono."
+
+    ask(with_window.socket, "toggle")
+
+    assert wait_for(lambda: any(c.get("kind") == "alert" for c in commands(with_window)))
+    assert with_window.said == []
+
+
+def test_if_the_window_cannot_open_the_notifications_come_back_and_say_why(with_window, mic):
+    (with_window.socket.parent / "wayland-1").unlink()  # sin sesión gráfica
+
+    ask(with_window.socket, "toggle")
+
+    assert wait_for(lambda: any("ventanita" in text for text in with_window.said))
+    assert any("Escuchando" in text for text in with_window.said) or with_window.procs == []
+    assert with_window.procs == []
+    ask(with_window.socket, "cancel")
+
+
+def test_a_window_that_crashes_hands_the_job_back_to_the_notifications(with_window, mic):
+    ask(with_window.socket, "toggle")
+    assert wait_for(lambda: with_window.procs)
+    with_window.procs[0].say("error: el compositor no soporta layer-shell")
+    with_window.procs[0].exit(2)
+
+    assert wait_for(lambda: any("layer-shell" in text for text in with_window.said))
+    ask(with_window.socket, "cancel")
+
+
+def test_turning_the_window_off_brings_the_notifications_back(with_window, mic, monkeypatch):
+    monkeypatch.setenv("VOICE_OVERLAY", "no")
+
+    ask(with_window.socket, "toggle")
+
+    assert wait_for(lambda: "Escuchando…" in with_window.said)
+    ask(with_window.socket, "cancel")
+
+
+def test_stopping_the_channel_closes_the_window(with_window, mic):
+    ask(with_window.socket, "toggle")
+    assert wait_for(lambda: with_window.procs)
+
+    voice.stop()
+
+    assert wait_for(lambda: with_window.procs[0].stdin.closed)
+    assert with_window.procs[0].stdin.commands()[-1] == {"op": "quit"}
+
+
+def test_the_desktop_notifier_stays_quiet_only_while_a_window_is_active(monkeypatch):
+    shown = []
+    monkeypatch.setattr(voice.notify, "desktop", lambda text, tag="": shown.append(text) or "")
+
+    class Alive:
+        def active(self):
+            return True
+
+    class Dead:
+        def active(self):
+            return False
+
+    monkeypatch.setattr(voice, "_WINDOW", Alive())
+    voice.notifier({"type": "status", "text": "uno"})
+    monkeypatch.setattr(voice, "_WINDOW", Dead())
+    voice.notifier({"type": "status", "text": "dos"})
+    monkeypatch.setattr(voice, "_WINDOW", None)
+    voice.notifier({"type": "status", "text": "tres"})
+
+    assert shown == ["dos", "tres"]

@@ -11,7 +11,7 @@ from epsilon.data import conversations, notes
 from epsilon.routines import notify
 from epsilon.settings import config
 from epsilon.utils import hyprland
-from epsilon.voice import capture, client, events, speaker, transcribe
+from epsilon.voice import capture, client, events, overlay, speaker, transcribe
 
 # Voice Companion: hablarle a Epsilon desde cualquier lado con un atajo global (ver
 # docs/superpowers/specs/2026-10-29-voice-companion-design.md). Es un canal más: solo traduce entre «micrófono /
@@ -448,9 +448,14 @@ def _alert(text: str) -> None:
     BUS.emit({"type": "say", "text": text})
 
 
+_WINDOW = None  # la ventanita del canal en marcha (la pone run()); mientras esté viva, ella muestra todo y las notificaciones callan
+
+
 def notifier(event: dict) -> None:
-    """El suscriptor del escritorio: estados, respuesta y errores en UN globo que se va actualizando. El texto en vivo y las
-    herramientas no se muestran acá (son para quien quiera verlos, como la ventanita que viene)."""
+    """El suscriptor del escritorio: estados, respuesta y errores como notificación. Calla mientras la ventanita está viva (ella
+    muestra todo en una sola tarjeta que se actualiza); si no se puede abrir o se cae, vuelve a avisar por acá."""
+    if _WINDOW is not None and _WINDOW.active():
+        return
     if event.get("type") in ("status", "say", "reply", "error") and event.get("text"):
         notify.desktop(event["text"], tag=TAG)
 
@@ -469,7 +474,9 @@ def run() -> None:
     path = client.socket_path()
     listener = bind(path)  # primero el socket: si ya hay otro Voice Companion, se corta acá sin dejar nada puesto
     assistant = Assistant(BUS.emit)
-    voice = speaker.Speaker(_announce)
+    voice = speaker.Speaker(_announce, emit=BUS.emit)
+    window = overlay.Window(_announce)
+    presenter = overlay.Presenter(window.send)
 
     def cut_everything() -> None:
         """Hablarle de nuevo encima de la respuesta: se corta el audio y el turno de la IA que seguía en curso."""
@@ -482,16 +489,21 @@ def run() -> None:
         folder, _announce, Listener(_announce, on_text=assistant.ask, alert=_alert).handle, on_start=cut_everything, alert=_alert
     )
     hotkey = Hotkey(folder, script, _announce)
-    unsubscribes = [BUS.subscribe(notifier), BUS.subscribe(voice.on_event)]
+    unsubscribes = [BUS.subscribe(notifier), BUS.subscribe(voice.on_event), BUS.subscribe(presenter.on_event)]
+    global _WINDOW
+    _WINDOW = window
     state.set("companion", "running", "Esperando el atajo.")
     try:
         serve(listener, companion, _stop, hotkey.sync)
     finally:
+        _WINDOW = None
         voice.stop()
         assistant.interrupt()
         companion.cancel()
         for unsubscribe in unsubscribes:
             unsubscribe()
+        presenter.close()
+        window.close()
         voice.close()
         listener.close()
         path.unlink(missing_ok=True)
