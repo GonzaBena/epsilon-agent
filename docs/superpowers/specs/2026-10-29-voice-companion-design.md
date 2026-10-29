@@ -391,7 +391,23 @@ corto (`voice.max_turns`, 5).
   vez de apilar cinco por pregunta.
 - **Interrumpir**: empezar a grabar mientras la IA contesta corta el turno (`core.cancel`) y su respuesta no se anuncia (igual queda
   en la charla). El corte del audio hablado se suma en el paso 4.
-- **Permisos**: una herramienta en `ask` se DENIEGA (se responde `perm:no` por la persona) y la respuesta lo explica, para no dejar la
-  sesión con una pregunta que nadie puede contestar. Las herramientas en `allow` (fecha, etc.) andan. El paso 7 agrega confirmar por voz.
+- **Permisos**: ver «Modo YOLO seguro» más abajo (reemplaza al primer arreglo, que denegaba todo lo que preguntaba; ese camino queda
+  solo como red de seguridad). El paso 7 ya no necesita confirmaciones habladas para lo cotidiano.
 - Probado con todo real (Whisper en CPU + Gemini flash-lite + herramienta `fecha`): ~10 s transcribir (carga el modelo), ~2 s la IA,
   US$ 0,0005 por la pregunta. Precalentar Whisper (paso 7) saca esos ~10 s de la primera vez.
+
+## Modo «YOLO seguro» (decisión de la persona, 2026-10-29)
+
+Por voz nadie puede contestar «¿lo permitís?», así que la conversación del Companion corre con `permissions.SAFE_AUTO`: **leer y
+escribir sin pisar nada corre solo; lo destructivo no corre nunca**. Se aplica en código (`permissions.decide`/`offered`, y `core`
+lo respeta como a una rutina: si hiciera falta preguntar, se bloquea con un mensaje propio de voz). La IA ni ve lo que no puede usar.
+
+- **Corre solo** (aunque en /permisos esté en «preguntar»): notas (`guardar`, `guardar_con_nombre`), `recordar`, `crear_archivo`
+  (nunca pisa), volumen, música, navegador (la guardia sigue pudiendo endurecer: lo que pediría confirmación se bloquea), `sistema`,
+  `ventanas`, historial de YouTube, buscar en Google, y todas las lecturas.
+- **Nunca por voz**, ni aunque la persona las haya dejado en «permitir» para el chat: lo que borra o pisa (`olvidar`, `rutina_borrar`,
+  y editar una línea de una nota o de la memoria, marcadas con `Tool.overwrites`) y **crear rutinas** (`rutina_crear`: arma
+  automatizaciones que después corren solas con los permisos «confirmados al crear»; auto-confirmarlas por voz sería una escalada).
+- **Herramientas de conectores**: no se auto-permiten (todas están marcadas como escritura y pueden facturar o reembolsar). Corren por voz
+  solo si la persona las puso en «permitir» ella en /permisos.
+- Lo **bloqueado en /permisos** sigue bloqueado por voz. El **tope de costo** de la conversación sigue valiendo (no es un ámbito de rutina).

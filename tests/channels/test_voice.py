@@ -696,6 +696,17 @@ def test_a_question_opens_an_ai_conversation_and_asks_the_core_with_live_text(ta
     assert conversations.mode(msg.conversation_id) == "ai"
 
 
+def test_the_conversation_runs_in_safe_auto_mode_so_nobody_has_to_answer_by_voice(talk):
+    from epsilon.ai import permissions
+
+    talk.ask("¿qué hora es?")
+
+    cid = talk.fake.messages[0][0].conversation_id
+    assert permissions.unattended(cid)
+    assert permissions.decide(cid, "nota") == "run"  # escribir sin pisar: corre solo
+    assert permissions.decide(cid, "olvidar") == "block"  # destructivo: nunca
+
+
 def test_both_sides_of_the_talk_are_saved_in_the_conversation(talk):
     talk.ask("¿qué hora es?")
 

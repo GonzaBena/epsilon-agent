@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from epsilon import core, state
-from epsilon.ai import chat
+from epsilon.ai import chat, permissions
 from epsilon.data import conversations, notes
 from epsilon.routines import notify
 from epsilon.settings import config
@@ -216,8 +216,9 @@ class _Turn:
 class Assistant:
     """Le pasa lo que dijiste al núcleo, en una conversación de modo IA del canal (la misma mientras no la cierres; la
     web la ve de solo lectura). Todo lo que va pasando sale por `emit` como eventos: {"type": "status"|"model"|"tool"|
-    "text"|"reply"|"error"}; no sabe quién los muestra. Los permisos son los de siempre: una herramienta que
-    pregunta se DENIEGA por ahora (no hay cómo contestar por voz hasta el paso 7) para no dejar la sesión trabada."""
+    "text"|"reply"|"error"}; no sabe quién los muestra. Los permisos van en modo «YOLO seguro» (ver `permissions.SAFE_AUTO`):
+    lo que lee o escribe sin pisar nada corre solo, y lo destructivo, las rutinas y los conectores no. Si aun así llegara una
+    pregunta de permiso, se DENIEGA para no dejar la sesión trabada."""
 
     def __init__(self, emit: Callable[[dict], None], handle=None, cancel=None):
         self.emit = emit
@@ -236,6 +237,8 @@ class Assistant:
             print(f"Voice Companion: no pude abrir la conversación: {config.redact(repr(e))}")
             self.emit({"type": "error", "text": "No pude abrir la conversación de voz."})
             return
+        # Nadie contesta un «¿lo permitís?» por voz: lo que no es destructivo corre solo y lo demás no se hace.
+        permissions.set_mode(conversation_id, permissions.SAFE_AUTO)
         turn = _Turn(conversation_id)
         with self._lock:
             self._turn = turn

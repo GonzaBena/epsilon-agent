@@ -1280,9 +1280,9 @@ def _run_calls(state: PendingTool, session: Session) -> Reply | None:
             decision = {"ask": "ask", "block": "block"}.get(review.verdict, decision)
         if decision == "run" and tool and tools.ai_id(tool) in ALWAYS_ASK and not permissions.in_scope(cid):
             decision = "ask"  # ni «permitir» ni «siempre» valen: la persona ve y confirma CADA rutina que la IA arma
-        if decision == "ask" and permissions.in_scope(cid):
-            decision = "block"  # una rutina corre sin nadie: si hubiera que preguntar, no se hace
-            review = browser_guard.Review("block", NO_ASKING)
+        if decision == "ask" and permissions.unattended(cid):
+            decision = "block"  # una rutina o una charla por voz no tiene a nadie que conteste: si hubiera que preguntar, no se hace
+            review = browser_guard.Review("block", NO_ASKING if permissions.in_scope(cid) else NO_ASKING_VOICE)
         if decision == "ask":
             state.index = index
             state.resolved = args
@@ -1887,6 +1887,7 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
 # cortar, pero al volver no se usa lo que contestó ni se ejecuta ninguna herramienta más (lo que ya se guardó, se queda).
 # Cada handle() registra su propio evento por conversación: una cancelación vieja nunca frena el mensaje siguiente.
 CANCELLED = "Cancelé lo que estaba haciendo."
+NO_ASKING_VOICE = "Por voz no puedo preguntarle nada a la persona, así que eso no se hace. Si hace falta, que lo pida desde la web."
 NO_ASKING = "Esta rutina no puede preguntar: si la herramienta necesita confirmación, marcala en verde al crearla."
 _cancel_event: ContextVar[threading.Event | None] = ContextVar("cancel_event", default=None)
 _cancels: dict[str, threading.Event] = {}

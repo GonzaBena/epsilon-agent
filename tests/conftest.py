@@ -189,6 +189,16 @@ def block_real_hyprctl(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def permission_modes_start_empty():
+    """El modo de permisos de una conversación (Voice Companion) es global: cada test arranca sin el de otro."""
+    from epsilon.ai import permissions
+
+    permissions._modes.clear()
+    yield
+    permissions._modes.clear()
+
+
+@pytest.fixture(autouse=True)
 def block_real_hyprctl_control(monkeypatch):
     """Ningún test habla con el hyprctl de control (atajos) de verdad."""
     from epsilon.utils import hyprland

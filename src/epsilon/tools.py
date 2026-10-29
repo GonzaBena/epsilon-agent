@@ -26,6 +26,7 @@ class Tool:
     action: str = ""  # atajo especial del panel que no escribe texto (hoy: «csv»)
     aliases: tuple[str, ...] = ()  # otros nombres que el núcleo también entiende
     uses_ai: bool = False  # gasta tokens: el panel lo marca con «usa IA»
+    overwrites: bool = False  # pisa o borra algo que ya estaba (editar una línea): la voz nunca la corre sola (ai/permissions.py)
     writes: bool = False  # escribe en DATA_DIR o cambia el estado de la sesión
     links: tuple[str, ...] = ()  # pedidos completos que /?cmd=... puede ejecutar solos
     channel: str = ""  # si lo atiende un solo canal (no el núcleo): su nombre, p. ej. «telegram»
@@ -93,6 +94,7 @@ TOOLS = (
         ai_group="notas",
         ai_action="editar",
         ai_name="nota_editar",
+        overwrites=True,
     ),
     Tool(
         "Imagen a CSV",
@@ -263,6 +265,7 @@ TOOLS = (
         ai_name="editar",
         ai_group="memoria",
         ai_action="editar",
+        overwrites=True,
         ai_help="cambiar el texto de una línea de la memoria, por su número (el que muestra ver)",
         ai_arg="el número de la línea y después el texto nuevo, p. ej. «3 mi gato se llama Tom»",
     ),

@@ -16,6 +16,12 @@ KIND_DEFAULTS = {"read": "allow", "write": "ask", "delete": "deny"}
 
 _granted: dict[str, set[str]] = {}  # conversación -> herramientas ya permitidas en esa sesión
 _scopes: dict[str, frozenset[str]] = {}  # «ámbito» -> las únicas herramientas que puede usar (rutinas con IA)
+_modes: dict[str, str] = {}  # conversación -> su modo de permisos (hoy: solo el «YOLO seguro» del Voice Companion)
+
+# Modo del Voice Companion: nadie puede contestar «¿lo permitís?» por voz, así que lo que NO es destructivo corre solo y
+# lo demás no se hace. Ver `auto_ok`.
+SAFE_AUTO = "safe-auto"
+MODES = (SAFE_AUTO,)
 _lock = threading.Lock()
 _file_lock = threading.Lock()  # guardar y volver al inicial, de a uno (el gancho de los conectores corre en otro hilo)
 
@@ -127,6 +133,56 @@ def _scope_of(scope_id: str | None) -> frozenset[str] | None:
         return _scopes.get(scope_id) if scope_id else None
 
 
+def set_mode(conversation_id: str, mode: str | None) -> None:
+    """Pone (o, con None, saca) el modo de permisos de una conversación."""
+    if mode is not None and mode not in MODES:
+        raise ValueError(f"Modo de permisos desconocido: {mode}")
+    with _lock:
+        if mode is None:
+            _modes.pop(conversation_id, None)
+        else:
+            _modes[conversation_id] = mode
+
+
+def _mode_of(conversation_id: str | None) -> str | None:
+    with _lock:
+        return _modes.get(conversation_id) if conversation_id else None
+
+
+def unattended(conversation_id: str | None) -> bool:
+    """¿Nadie va a contestar una pregunta de permiso en este turno? Una rutina (ámbito) o una conversación con modo."""
+    return bool(conversation_id) and (in_scope(conversation_id) or _mode_of(conversation_id) is not None)
+
+
+def is_connector_tool(tool: tools.Tool) -> bool:
+    return tools.ai_id(tool).startswith("mcp_")
+
+
+def auto_ok(tool: tools.Tool) -> bool:
+    """¿Se puede correr sin preguntar cuando nadie contesta? Solo leer o escribir SIN pisar nada, de las herramientas de
+    Epsilon. No: lo que borra o pisa (`ai == "delete"`, `overwrites`), crear rutinas (automatizaciones que luego corren
+    solas con los permisos que se confirman al crearlas) ni las de un conector (pueden hacer cualquier cosa: facturar,
+    reembolsar), salvo que la persona las haya permitido ella en /permisos."""
+    return tool.ai in ("read", "write") and not tool.overwrites and not is_connector_tool(tool) and tools.ai_id(tool) not in NEVER_UNATTENDED
+
+
+NEVER_UNATTENDED = {"rutina_crear"}
+
+
+def _decide_unattended(tool_id: str) -> str:
+    """El modo «YOLO seguro»: lo bloqueado en /permisos sigue bloqueado; lo destructivo o que arma rutinas, nunca; lo
+    permitido corre; y lo que pregunta corre solo si `auto_ok` (si no, no se hace)."""
+    tool = next((t for t in tools.ai_tools() if tools.ai_id(t) == tool_id), None)
+    state = load().get(tool_id)
+    if tool is None or state == "deny" or _browser_off(tool):
+        return "block"
+    if tool.ai == "delete" or tool.overwrites or tool_id in NEVER_UNATTENDED:
+        return "block"  # ni siquiera si la persona la dejó en «permitir» para el chat
+    if state == "allow":
+        return "run"
+    return "run" if auto_ok(tool) else "block"
+
+
 def decide(conversation_id: str, tool_id: str, version: str | None = None) -> str:
     """«run», «ask» o «block» para esta herramienta en esta conversación. `version` (el hash de un conector):
     el «siempre» solo vale para esa versión. En un ámbito (ver `set_scope`) solo hay «run» o «block»: corre si la
@@ -135,6 +191,8 @@ def decide(conversation_id: str, tool_id: str, version: str | None = None) -> st
         return "block"
     if (allowed := _scope_of(conversation_id)) is not None:
         return "run" if tool_id in allowed and load().get(tool_id) != "deny" else "block"
+    if _mode_of(conversation_id) == SAFE_AUTO:
+        return _decide_unattended(tool_id)
     state = load().get(tool_id)
     if state == "allow":
         return "run"
@@ -154,6 +212,8 @@ def offered(conversation_id: str | None = None) -> list[tools.Tool]:
     """Las herramientas que la IA puede ver: todas menos las bloqueadas (y, en un ámbito, solo las de su lista)."""
     states = load()
     allowed = _scope_of(conversation_id)
+    if _mode_of(conversation_id) == SAFE_AUTO:  # al modelo ni se le ofrece lo que no va a poder usar
+        return [tool for tool in tools.ai_tools() if _decide_unattended(tools.ai_id(tool)) == "run"]
     # Un conector pudo sumar una herramienta entre las dos lecturas: sin estado guardado, la de su inicial.
     return [
         tool for tool in tools.ai_tools()
