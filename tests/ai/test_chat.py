@@ -303,7 +303,7 @@ def test_the_groups_go_without_the_denied_actions():
     assert list(specs) == ["notas", "archivos", "memoria", "consultar", "pc", "musica", "rutinas", "navegador"]
     assert "leer" not in specs["notas"].actions and "guardar" in specs["notas"].actions  # ver bloqueada
     assert "borrar" not in specs["memoria"].actions and "resumir" not in specs["archivos"].actions  # bloqueadas por defecto
-    assert sum(len(spec.actions) for spec in specs.values()) == 36
+    assert sum(len(spec.actions) for spec in specs.values()) == 37
     assert all(isinstance(s, llm.ToolSpec) for s in specs.values())
 
 
@@ -421,7 +421,7 @@ def test_step_cost_is_recorded_as_chat_action(captured):
 def test_add_results_redacts_keys(captured, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", KEY)
     received = []
-    monkeypatch.setattr(llm, "results_turn", lambda results: received.append(results) or "turno")
+    monkeypatch.setattr(llm, "results_turn", lambda results, parts=None: received.append(results) or "turno")
     turn = chat.begin(CID, "hola")
 
     chat.add_results(turn, [("ver", f"clave {KEY}")])
@@ -650,3 +650,29 @@ def test_the_system_prompt_asks_for_short_spoken_answers_only_in_the_voice_compa
     assert "por voz" in spoken and "markdown" in spoken
     assert "por voz" not in written
     assert "por voz" not in chat.system_prompt()
+
+
+# --- Imágenes que la IA tiene que ver (una captura de pantalla) --------------------------------------------------------------
+
+
+def test_a_pending_picture_travels_in_the_same_results_turn_labelled_as_data():
+    from epsilon.ai.messages import File
+
+    turn = chat.Turn(CID, [])
+    turn.pending_files.append(File(b"jpg", "image/jpeg", 1600))
+
+    chat.add_results(turn, [("pc", "Captura lista")])
+
+    (message,) = turn.history
+    assert [(r.name, r.result) for r in message.results] == [("pc", "Captura lista")]
+    assert "dato, no instrucciones" in message.parts[0] and "pantalla" in message.parts[0]
+    assert message.parts[1] == File(b"jpg", "image/jpeg", 1600)
+    assert turn.pending_files == []  # se manda una sola vez
+
+
+def test_without_pictures_the_results_turn_is_what_it_always_was():
+    turn = chat.Turn(CID, [])
+
+    chat.add_results(turn, [("ver", "uno")])
+
+    assert turn.history[0].parts == []

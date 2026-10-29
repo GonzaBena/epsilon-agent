@@ -210,6 +210,17 @@ def block_real_speakers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_screen_capture(monkeypatch):
+    """Ningún test captura la pantalla de verdad (grim)."""
+    from epsilon.utils import pantalla
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó capturar la pantalla de verdad (grim)")
+
+    monkeypatch.setattr(pantalla, "_grim", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def block_real_hyprctl_control(monkeypatch):
     """Ningún test habla con el hyprctl de control (atajos) de verdad."""
     from epsilon.utils import hyprland

@@ -63,6 +63,7 @@ TUNABLES: tuple[Setting, ...] = (
     _int("SKILLS_MAX_LISTED", "skills.max_listed", "20", 1, 50, "Cuántas skills le muestra a la IA en su lista", "La cantidad de skills", loosens=True),
     _int("IMAGES_MAX_SIDE", "images.max_side", "1024", 256, 4096, "Lado más largo al que se achican las imágenes antes de mandarlas a la IA (en píxeles)", "El lado", loosens=False),
     _int("IMAGES_MAX_SIDE_CSV", "images.max_side_csv", "2048", 256, 4096, "Lado más largo de las imágenes para pasar a CSV, que tienen letra chica (en píxeles)", "El lado", loosens=False),
+    _int("IMAGES_MAX_SIDE_SCREEN", "images.max_side_screen", "1600", 256, 4096, "Lado más largo de las capturas de pantalla que ve la IA (en píxeles; la letra chica necesita más que una foto)", "El lado", loosens=False),
     _int("IMAGES_JPEG_QUALITY", "images.jpeg_quality", "85", 40, 100, "Calidad de las imágenes achicadas (más alto pesa más)", "La calidad", loosens=False),
     _int("VOICE_MAX_AUDIO_MB", "voice.max_audio_mb", "25", 1, 200, "Tamaño máximo de un audio para transcribir, en MB", "El tamaño", loosens=False),
     _int("VOICE_MAX_AUDIO_MINUTES", "voice.max_audio_minutes", "10", 1, 120, "Duración máxima de un audio para transcribir, en minutos", "La duración", loosens=False),

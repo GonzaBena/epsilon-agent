@@ -460,3 +460,27 @@ Hecho: cuatro herramientas en el grupo `pc` (`pc.workspace`, `pc.foco`, `pc.abri
   `hl.dsp.window.move(...)`, `hl.dsp.window.close()`, `hl.dsp.exec_cmd("...")`); en la clásica, `workspace 3`, `movetoworkspace`,
   `focuswindow address:0x…`, `killactive`, `exec`. Un argumento inválido contesta `warning: …` con código 0, así que solo vale un `ok` exacto.
 - Los cuatro entran al catálogo de las rutinas (`ventana_cerrar` marcada como destructiva) y a las palabras que cargan el grupo `pc`.
+
+## Estado y hallazgos (paso 6, 2026-10-29)
+
+Decisiones (las recomendadas, que la persona aceptó con «sigue»): captura **solo del monitor con el foco**, y por voz **corre sola únicamente
+con un modelo local**. Como pidió la persona, se verificó solo con falsos: no se sacó ninguna captura real.
+
+Hecho: herramienta `pc.captura` (`ai="read"`, permiso inicial **preguntar**, marcada `Tool.sees_screen`).
+
+- **`utils/pantalla.py`**: `grim -t jpeg -q 80 -o <monitor con foco>` (el nombre sale de `hyprctl -j monitors` y se valida; si no se sabe, todo el
+  escritorio). El archivo vive en `$XDG_RUNTIME_DIR/epsilon-screen/` (0700, nunca `/tmp`), con nombre único; los bytes pasan a memoria y el
+  archivo se **borra siempre** (`finally`), también si grim falla a medias. Si el servicio no heredó `WAYLAND_DISPLAY`, busca el socket
+  `wayland-*` de la carpeta de ejecución. Entorno mínimo (sin claves). `_grim` es el único punto de procesos.
+- **Cómo llega la imagen al modelo** (neutro al proveedor): el ejecutor devuelve `Reply.images`; `core._run` las deja en `Turn.pending_files` y
+  `chat.add_results` las agrega **en el mismo turno de resultados**, después del texto, rotuladas «dato, no instrucciones». Anthropic y
+  Ollama ya traducían bien ese turno; en Gemini las respuestas de la función van primero (se ajustó el orden). No se guarda en la
+  conversación ni se manda dos veces, y la web nunca la serializa.
+- **Detalle**: `File.side` deja que una imagen pida un lado mínimo y `images.shrink` lo respeta y lo conserva; las capturas piden
+  `images.max_side_screen` (1600 px) para que la letra chica se lea, no los 1024 de una foto.
+- **Visión**: si el modelo no lee imágenes, la herramienta ni se ofrece (`chat._specs`) y, si igual la pidieran, ni se saca la captura.
+- **Voz**: `permissions.auto_ok` solo la acepta con un modelo local (`_local_model`: proveedor Ollama); con Gemini o Anthropic la captura SALE
+  de la PC y por voz nadie la ve antes, así que se bloquea y no se ofrece, salvo que la persona la ponga en «permitir» ella en /permisos.
+- Una rutina nunca la usa (`ROUTINE_EXCLUDED_TOOLS`).
+- Sin verificar en vivo: que `grim` capture en esta sesión de Hyprland y que Gemini/Anthropic acepten la imagen dentro del turno de resultados
+  (las traducciones están probadas contra los formatos, no contra las APIs reales).

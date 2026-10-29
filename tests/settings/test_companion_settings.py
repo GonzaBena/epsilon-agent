@@ -40,3 +40,8 @@ def test_app_aliases_are_stored_normalized_one_per_name():
 def test_an_app_alias_with_anything_that_is_not_a_plain_command_is_refused(bad):
     with pytest.raises(ValueError):
         config.BY_KEY["PC_APPS"].validate(bad)
+
+
+def test_screenshots_get_more_detail_than_ordinary_photos():
+    assert config.number("IMAGES_MAX_SIDE_SCREEN") == 1600
+    assert config.number("IMAGES_MAX_SIDE_SCREEN") > config.number("IMAGES_MAX_SIDE")

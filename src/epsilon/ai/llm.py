@@ -142,9 +142,11 @@ def parts_turn(role: str, parts: list) -> Message:
     return Message(role, list(parts))
 
 
-def results_turn(results: list[tuple[str, str]]) -> Message:
-    """El turno del usuario con lo que devolvió cada herramienta: [(nombre, resultado)]."""
-    return Message("user", results=[Result(name, result) for name, result in results])
+def results_turn(results: list[tuple[str, str]], parts: list | None = None) -> Message:
+    """El turno del usuario con lo que devolvió cada herramienta: [(nombre, resultado)]. `parts` (texto o File) viajan en el
+    MISMO turno, después de los resultados: así una captura de pantalla llega justo donde el modelo espera la respuesta de la
+    herramienta, sin un turno suelto de usuario en el medio."""
+    return Message("user", parts=list(parts or []), results=[Result(name, result) for name, result in results])
 
 
 def check(provider: str = "gemini") -> str:

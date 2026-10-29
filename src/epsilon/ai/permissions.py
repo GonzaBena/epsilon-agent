@@ -158,11 +158,21 @@ def is_connector_tool(tool: tools.Tool) -> bool:
     return tools.ai_id(tool).startswith("mcp_")
 
 
+def _local_model() -> bool:
+    """¿El modelo del chat corre en esta PC (Ollama)? Con uno de la nube, lo que se le manda sale de la computadora."""
+    from epsilon.ai import llm
+
+    return llm.parse_model(llm.model_for("chat"))[0] == "ollama"
+
+
 def auto_ok(tool: tools.Tool) -> bool:
     """¿Se puede correr sin preguntar cuando nadie contesta? Solo leer o escribir SIN pisar nada, de las herramientas de
     Epsilon. No: lo que borra o pisa (`ai == "delete"`, `overwrites`), crear rutinas (automatizaciones que luego corren
     solas con los permisos que se confirman al crearlas) ni las de un conector (pueden hacer cualquier cosa: facturar,
-    reembolsar), salvo que la persona las haya permitido ella en /permisos."""
+    reembolsar) ni la captura de pantalla con un modelo de la nube (sale de la PC), salvo que la persona las haya permitido ella en
+    /permisos."""
+    if tool.sees_screen and not _local_model():
+        return False  # la captura sale de la PC hacia la nube y por voz nadie la ve antes: solo con un modelo local
     return tool.ai in ("read", "write") and not tool.overwrites and not is_connector_tool(tool) and tools.ai_id(tool) not in NEVER_UNATTENDED
 
 

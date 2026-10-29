@@ -77,3 +77,28 @@ def test_an_iphone_photo_with_a_depth_map_is_still_shrunk():
 
 def test_image_to_csv_gets_more_detail_than_the_chat():
     assert images.max_side("csv") > images.max_side("chat") == images.max_side(None)
+
+
+# --- Una imagen puede pedir un lado mínimo (una captura de pantalla: si no, el texto no se lee) ----------------------------
+
+
+def test_an_image_can_ask_to_keep_more_detail_than_the_default_limit():
+    screen = picture(2560, 1440)
+    screen.side = 1600
+
+    shrunk = images.shrink(screen, 1024)  # el tope de la tarea es 1024, pero ella pidió 1600
+
+    assert size(shrunk) == (1600, 900)
+    assert shrunk.side == 1600  # y se acuerda: la próxima vuelta del modelo no la achica de nuevo
+
+
+def test_an_image_that_asks_for_less_than_the_limit_gets_the_limit():
+    small = picture(4000, 3000)
+    small.side = 300
+
+    assert size(images.shrink(small, 1024)) == (1024, 768)
+
+
+def test_without_a_request_nothing_changes():
+    assert size(images.shrink(picture(4000, 3000), 1024)) == (1024, 768)
+    assert File(b"x", "image/png").side == 0

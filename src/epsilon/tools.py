@@ -26,6 +26,7 @@ class Tool:
     action: str = ""  # atajo especial del panel que no escribe texto (hoy: «csv»)
     aliases: tuple[str, ...] = ()  # otros nombres que el núcleo también entiende
     uses_ai: bool = False  # gasta tokens: el panel lo marca con «usa IA»
+    sees_screen: bool = False  # manda una captura de la pantalla al modelo: solo si el modelo ve imágenes, y por voz solo con un modelo local
     overwrites: bool = False  # pisa o borra algo que ya estaba (editar una línea): la voz nunca la corre sola (ai/permissions.py)
     writes: bool = False  # escribe en DATA_DIR o cambia el estado de la sesión
     links: tuple[str, ...] = ()  # pedidos completos que /?cmd=... puede ejecutar solos
@@ -485,6 +486,19 @@ TOOLS = (
         ai_arg="no lleva argumento",
     ),
     Tool(
+        "Mirar la pantalla (le manda una captura al modelo)",
+        done="Miró la pantalla",
+        ai="read",
+        ai_default="ask",  # la captura puede mostrar claves, el banco, mensajes: la persona confirma
+        sees_screen=True,
+        ai_name="captura",
+        ai_group="pc",
+        ai_action="captura",
+        ai_help="mirar lo que hay en el monitor de la persona ahora: saca una captura y el modelo la ve",
+        ai_arg="no lleva argumento; después de la captura contestá lo que la persona quería saber de su pantalla",
+        ai_tips="La imagen te llega recién en el mensaje siguiente a este resultado: describí lo que se ve y contestá la pregunta.",
+    ),
+    Tool(
         "Música: poner una playlist o canciones",
         done="Puso música en YouTube Music",
         ai="write",
@@ -751,7 +765,7 @@ AI_GROUPS: dict[str, str] = {
     "archivos": "Lo guardado en la biblioteca (notas, tickets, CSV)",
     "memoria": "Lo que recordás de la persona (datos y preferencias)",
     "consultar": "Datos de afuera, sin guardar nada",
-    "pc": "La computadora de la persona: volumen, qué suena, controles del reproductor, ventanas, espacios de trabajo y abrir apps",
+    "pc": "La computadora de la persona: volumen, qué suena, controles del reproductor, ventanas, espacios de trabajo, abrir apps y mirar su pantalla",
     "musica": "Poner música en YouTube Music (playlists y canciones): para elegir, mirá primero playlists (las de la persona, con su estilo y cuándo se pusieron). Ante un pedido vago elegí vos, sin preguntar. Para controlarla una vez sonando (pausa, siguiente, repetir), el grupo pc",
     "skills": "Las skills de la persona: sus instrucciones para ciertas tareas (la lista está en tus instrucciones)",
     "rutinas": "Lo que Epsilon hace solo más tarde (a una hora, dentro de un rato o al pasar un % de disco o ram): una cadena de pasos",
@@ -780,8 +794,8 @@ AI_GROUP_INDEX: dict[str, tuple[str, tuple[str, ...]]] = {
         ("hora", "fecha", "dia", "hoy", "manana", "dolar", "cotiz", "clima", "tiempo", "llov", "lluv", "temperatura", "frio", "calor", "sistema", "disco", "ram", "cpu", "bateria"),
     ),
     "pc": (
-        "la computadora: volumen, qué suena, controles de música, ventanas, espacios de trabajo y abrir apps",
-        ("volumen", "music", "cancion", "tema", "suena", "sonando", "paus", "play", "pone", "pon ", "siguiente", "anterior", "ventana", "spotify", "video", "repet", "aleatori", "workspace", "espacio de trabajo", "escritorio", "abri ", "abrir", "abre ", "app ", "aplicacion", "programa", "enfoca", "foco", "cerra", "cierra"),
+        "la computadora: volumen, qué suena, controles de música, ventanas, espacios de trabajo, abrir apps y mirar la pantalla",
+        ("volumen", "music", "cancion", "tema", "suena", "sonando", "paus", "play", "pone", "pon ", "siguiente", "anterior", "ventana", "spotify", "video", "repet", "aleatori", "workspace", "espacio de trabajo", "escritorio", "pantalla", "captura", "estoy viendo", "esto que veo", "abri ", "abrir", "abre ", "app ", "aplicacion", "programa", "enfoca", "foco", "cerra", "cierra"),
     ),
     "musica": (
         "poner música: una playlist o canciones en YouTube Music, o un video de YouTube que ya viste",
