@@ -1,8 +1,11 @@
 import os
 import signal
 import subprocess
+import sys
 import time
+import uuid
 import wave
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +16,10 @@ from pathlib import Path
 # lo usa lo borra apenas lo transcribe (`discard`): nunca se guarda ni sale de la PC.
 
 SAMPLE_RATE = 16000
-FILE_NAME = "rec.wav"
+FILE_NAME = "rec.wav"  # lo que se está grabando; al terminar pasa a `clip-<id>.wav`, que ya es de quien lo usa
+CLIP_PREFIX = "clip-"
+SILENCE_RMS = 60  # debajo de esto (en unidades de 16 bits) ni la ventana más fuerte es voz: es el ruido de fondo
+WINDOW = SAMPLE_RATE // 10  # se mide por ventanas de 100 ms: una palabra corta entre silencios cuenta
 STOP_TIMEOUT = 3.0
 # pw-record sale enseguida (código 1) si PipeWire no tiene un micrófono predeterminado al que conectarlo. Se espera un
 # instante para enterarse en el primer toque y no después de que la persona habló diez segundos a la nada. La grabación
@@ -95,7 +101,10 @@ def stop(recording: Recording) -> Clip:
     except (OSError, EOFError, wave.Error):
         discard(recording.path)
         raise CaptureError("No quedó nada grabado: revisá que haya un micrófono conectado y activo.") from None
-    return Clip(recording.path, seconds)
+    # Nombre propio: empezar a grabar de nuevo reemplaza rec.wav y no puede llevarse el audio que todavía se transcribe.
+    clip = recording.path.with_name(f"{CLIP_PREFIX}{uuid.uuid4().hex[:12]}.wav")
+    recording.path.replace(clip)
+    return Clip(clip, seconds)
 
 
 def cancel(recording: Recording) -> None:
@@ -110,3 +119,34 @@ def discard(path: Path) -> None:
         Path(path).unlink()
     except FileNotFoundError:
         pass
+
+
+def sweep(folder: Path) -> None:
+    """Borra los audios que quedaron de un cierre brusco (la grabación en curso y los `clip-*.wav`). Nada más: en la
+    misma carpeta viven el script y los archivos del atajo."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return
+    for path in [folder / FILE_NAME, *folder.glob(f"{CLIP_PREFIX}*.wav")]:
+        discard(path)
+
+
+def is_silent(path: Path) -> bool:
+    """¿El audio es puro silencio o ruido de fondo? Así no se carga Whisper (1,6 GB, segundos) para nada. Mira la ventana
+    de 100 ms más fuerte. Un archivo que no se puede leer NO se da por silencioso: que decida el transcriptor."""
+    try:
+        with wave.open(str(path), "rb") as audio:
+            if audio.getsampwidth() != 2 or audio.getnchannels() != 1:
+                return False
+            frames = audio.readframes(audio.getnframes())
+    except (OSError, EOFError, wave.Error):
+        return False
+    samples = array("h")
+    samples.frombytes(frames[: len(frames) // 2 * 2])
+    if sys.byteorder == "big":
+        samples.byteswap()  # el WAV es little-endian
+    for start in range(0, len(samples), WINDOW):
+        window = samples[start : start + WINDOW : 4]  # cada cuarta muestra alcanza para medir la energía
+        if window and (sum(x * x for x in window) / len(window)) ** 0.5 >= SILENCE_RMS:
+            return False
+    return True

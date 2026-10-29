@@ -18,7 +18,8 @@ def test_a_bad_hotkey_is_refused_before_it_is_saved(bad):
         config.BY_KEY["VOICE_HOTKEY"].validate(bad)
 
 
-def test_the_recording_limit_defaults_to_a_minute_and_has_a_range():
-    assert config.number("VOICE_MAX_RECORD_S") == 60
+def test_the_recording_limit_defaults_to_three_minutes_and_allows_a_long_talk():
+    assert config.number("VOICE_MAX_RECORD_S") == 180
+    assert config.BY_KEY["VOICE_MAX_RECORD_S"].validate("3600") == "3600"
     with pytest.raises(ValueError):
         config.BY_KEY["VOICE_MAX_RECORD_S"].validate("0")

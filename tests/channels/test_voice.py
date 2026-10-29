@@ -119,8 +119,12 @@ def test_an_error_when_stopping_is_said_and_goes_back_to_idle(companion, mic):
     assert companion.said[-1] == mic.fail_stop
 
 
+def numbers(**values):
+    return lambda key: values[key]
+
+
 def test_the_recording_is_cut_after_the_limit_as_if_the_hotkey_was_pressed(companion, monkeypatch):
-    monkeypatch.setattr(voice.config, "number", lambda key: 45 if key == "VOICE_MAX_RECORD_S" else None)
+    monkeypatch.setattr(voice.config, "number", numbers(VOICE_MAX_RECORD_S=45, VOICE_MAX_AUDIO_MINUTES=10, VOICE_MAX_AUDIO_MB=25))
     companion.toggle()
     timer = FakeTimer.made[-1]
 
@@ -130,6 +134,37 @@ def test_the_recording_is_cut_after_the_limit_as_if_the_hotkey_was_pressed(compa
     assert companion.status() == "idle"
     assert len(companion.clips) == 1
     assert "límite de 45 s" in " ".join(companion.said)
+
+
+def test_the_limit_is_never_more_than_what_can_be_transcribed_afterwards(monkeypatch):
+    # No tiene sentido grabar una charla de media hora si después Whisper la rechaza por larga: se corta antes.
+    monkeypatch.setattr(voice.config, "number", numbers(VOICE_MAX_RECORD_S=3600, VOICE_MAX_AUDIO_MINUTES=10, VOICE_MAX_AUDIO_MB=25))
+
+    assert voice.limit() == (600, "voice.max_audio_minutes")
+
+
+def test_the_limit_also_respects_the_size_the_transcriber_accepts(monkeypatch):
+    monkeypatch.setattr(voice.config, "number", numbers(VOICE_MAX_RECORD_S=3600, VOICE_MAX_AUDIO_MINUTES=120, VOICE_MAX_AUDIO_MB=1))
+
+    seconds, source = voice.limit()
+
+    assert source == "voice.max_audio_mb"
+    assert seconds == 1024 * 1024 // (capture.SAMPLE_RATE * 2)  # 16 kHz, 16 bits, mono
+
+
+def test_when_your_own_limit_is_the_smallest_nothing_else_is_blamed(monkeypatch):
+    monkeypatch.setattr(voice.config, "number", numbers(VOICE_MAX_RECORD_S=180, VOICE_MAX_AUDIO_MINUTES=10, VOICE_MAX_AUDIO_MB=25))
+
+    assert voice.limit() == (180, "")
+
+
+def test_hitting_a_limit_set_by_the_transcriber_says_which_setting_to_raise(companion, monkeypatch):
+    monkeypatch.setattr(voice.config, "number", numbers(VOICE_MAX_RECORD_S=3600, VOICE_MAX_AUDIO_MINUTES=10, VOICE_MAX_AUDIO_MB=25))
+    companion.toggle()
+
+    FakeTimer.made[-1].fire()
+
+    assert "voice.max_audio_minutes" in " ".join(companion.said)
 
 
 def test_stopping_by_hand_cancels_the_limit_timer(companion):
@@ -318,6 +353,10 @@ def running(tmp_path, monkeypatch, mic):
 
     monkeypatch.setattr(hyprland, "_ctl", fake_ctl)
     monkeypatch.setattr(voice.notify, "desktop", lambda text: notes_said.append(text) or "")
+    swept = []
+    monkeypatch.setattr(capture, "sweep", swept.append)
+    heard = []
+    monkeypatch.setattr(voice.transcribe, "audio_to_text", lambda path: heard.append(path) or "hola mundo")
     voice.reset()
     errors = []
 
@@ -337,6 +376,7 @@ def running(tmp_path, monkeypatch, mic):
     handle = Handle()
     handle.thread, handle.evals, handle.said, handle.errors = thread, evals, notes_said, errors
     handle.data, handle.socket = data, client.socket_path()
+    handle.swept, handle.heard = swept, heard
     yield handle
     voice.stop()
     thread.join(5)
@@ -429,3 +469,120 @@ def test_without_hyprland_the_channel_still_works_and_says_why(tmp_path, monkeyp
 def test_the_channel_is_always_configured_and_has_a_stop():
     assert voice.is_configured({}) is True
     assert callable(voice.stop) and callable(voice.reset)
+
+
+# --- Qué se hace con cada audio (paso 2: transcribir) -------------------------------------------------------------
+
+
+def make_clip(tmp_path, seconds=2.0):
+    path = tmp_path / "clip-test.wav"
+    path.write_bytes(b"audio")
+    return capture.Clip(path, seconds)
+
+
+@pytest.fixture
+def listener(tmp_path, monkeypatch):
+    """Un Listener síncrono (sin hilo) con el transcriptor y el detector de silencio reemplazados."""
+    said = []
+    instance = voice.Listener(said.append, start=lambda work: work())
+    instance.said = said
+    instance.heard = []
+    instance.text = "hola mundo"
+    instance.silent = False
+
+    def fake_text(path):
+        instance.heard.append(path)
+        if isinstance(instance.text, Exception):
+            raise instance.text
+        return instance.text
+
+    monkeypatch.setattr(voice.transcribe, "audio_to_text", fake_text)
+    monkeypatch.setattr(voice.capture, "is_silent", lambda path: instance.silent)
+    return instance
+
+
+def test_a_clip_is_transcribed_and_the_text_is_shown(listener, tmp_path):
+    clip = make_clip(tmp_path)
+
+    listener.handle(clip)
+
+    assert listener.heard == [clip.path]
+    assert listener.said == ["Transcribiendo…", "Dijiste: hola mundo"]
+
+
+def test_the_audio_is_deleted_as_soon_as_it_is_transcribed(listener, tmp_path):
+    clip = make_clip(tmp_path)
+
+    listener.handle(clip)
+
+    assert not clip.path.exists()
+
+
+def test_a_silent_clip_never_reaches_the_transcriber(listener, tmp_path):
+    listener.silent = True
+    clip = make_clip(tmp_path)
+
+    listener.handle(clip)
+
+    assert listener.heard == []
+    assert listener.said == ["No te escuché: probá de nuevo."]
+    assert not clip.path.exists()
+
+
+def test_a_transcriber_message_is_said_as_it_is_and_the_audio_still_goes(listener, tmp_path):
+    from epsilon.voice import transcribe
+
+    listener.text = transcribe.VoiceNotInstalled("Falta instalar la voz: uv sync --extra voz")
+    clip = make_clip(tmp_path)
+
+    listener.handle(clip)
+
+    assert listener.said[-1] == "Falta instalar la voz: uv sync --extra voz"
+    assert not clip.path.exists()
+
+
+def test_an_unexpected_failure_is_a_plain_message_without_details_and_the_audio_still_goes(listener, tmp_path):
+    listener.text = RuntimeError("secreto interno")
+    clip = make_clip(tmp_path)
+
+    listener.handle(clip)
+
+    assert listener.said[-1] == "Algo falló al procesar el audio."
+    assert "secreto" not in " ".join(listener.said)
+    assert not clip.path.exists()
+
+
+def test_handle_returns_at_once_and_does_the_work_in_the_background(tmp_path, monkeypatch):
+    # El socket no puede quedarse esperando a Whisper: el hilo que atiende el atajo tiene que quedar libre.
+    queued = []
+    instance = voice.Listener(lambda text: None, start=queued.append)
+    monkeypatch.setattr(voice.transcribe, "audio_to_text", lambda path: pytest.fail("no debía correr todavía"))
+    monkeypatch.setattr(voice.capture, "is_silent", lambda path: False)
+
+    instance.handle(make_clip(tmp_path))
+
+    assert len(queued) == 1
+
+
+def test_the_default_start_really_uses_a_daemon_thread(tmp_path, monkeypatch):
+    done = threading.Event()
+    instance = voice.Listener(lambda text: None)
+    monkeypatch.setattr(voice.capture, "is_silent", lambda path: True)
+    monkeypatch.setattr(voice.capture, "discard", lambda path: done.set())
+
+    instance.handle(make_clip(tmp_path))
+
+    assert done.wait(3)
+
+
+def test_the_whole_channel_transcribes_what_you_recorded(running, mic):
+    assert ask(running.socket, "toggle") == "recording"
+    assert ask(running.socket, "toggle") == "idle"
+
+    assert wait_for(lambda: "Dijiste: hola mundo" in running.said)
+    assert len(running.heard) == 1
+    assert "Transcribiendo…" in running.said
+
+
+def test_starting_the_channel_cleans_audio_left_by_a_crash(running):
+    assert running.swept == [running.data / client.FOLDER]

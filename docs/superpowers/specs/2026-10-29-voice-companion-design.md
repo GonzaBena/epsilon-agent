@@ -98,7 +98,7 @@ conversaciones guardadas, los permisos, el límite de costo y la página Canales
 - **Micrófono**: siempre el **predeterminado** de PipeWire (sin ajuste: si la persona cambia de micrófono en el sistema,
   Epsilon lo sigue). Elegir uno fijo (`VOICE_MIC`) queda para si alguien lo necesita.
   `pw-record --rate 16000 --channels 1 --format s16 <archivo>` (PipeWire, ya instalado). Único punto que lanza el proceso:
-  `capture._spawn` (sin shell, argumentos fijos, bloqueado en los tests). Tope de duración `VOICE_MAX_RECORD_S` (60); sobrepasarlo
+  `capture._spawn` (sin shell, argumentos fijos, bloqueado en los tests). Tope de duración `VOICE_MAX_RECORD_S` (180 por defecto, hasta 3600 para una charla; además lo acota lo que el transcriptor acepta, `voice.max_audio_minutes` y `voice.max_audio_mb`: se corta en lo MENOR de los tres y el aviso dice cuál subir); sobrepasarlo
   corta y sigue como si se hubiera tocado el atajo. **Sin entrada predeterminada** (o sin micrófono conectado) `pw-record` muere al
   instante con «no target node available»: se espera un instante tras lanzarlo y, si murió, el primer toque ya avisa cómo arreglarlo
   (`wpctl status` / `wpctl set-default <id>`) en vez de dejar hablar a la nada.
@@ -280,7 +280,7 @@ docs/plan-voice-companion.md  guía de uso y de instalación (al terminar)
 ```
 
 **Ajustes nuevos** (en el registro de `config.py`, nunca `os.environ`; viven en `settings.json`):
-`COMPANION_ENABLED` (apagado por defecto; el canal se llama `companion`, así `main` lo prende y apaga), `VOICE_HOTKEY` (`ALT, X`), `VOICE_MAX_RECORD_S` (60), `VOICE_MAX_TURNS` (5), `VOICE_SPEAK` (sí),
+`COMPANION_ENABLED` (apagado por defecto; el canal se llama `companion`, así `main` lo prende y apaga), `VOICE_HOTKEY` (`ALT, X`), `VOICE_MAX_RECORD_S` (180), `VOICE_MAX_TURNS` (5), `VOICE_SPEAK` (sí),
 `VOICE_TTS_VOICE` (`ef_dora`), `VOICE_BEEP` (sí), `VOICE_PRELOAD_STT` (no), `PC_APPS` (alias de apps, objeto).
 
 **Dependencias**: nada nuevo en Python (todo en el extra `voz`: faster-whisper, kokoro-onnx, soundfile). Programas del sistema,
@@ -361,3 +361,16 @@ deja un WAV válido. Lo que los tests con falsos NO podían ver y la prueba real
 - Sin micrófono predeterminado `pw-record` muere al instante → aviso inmediato con el arreglo.
 - Pendiente a futuro: si Hyprland se recarga, el bind en vivo se pierde (el archivo incluido con `source`/`dofile` lo repone);
   se podría re-aplicar al ver el evento `configreloaded` del socket2 de Hyprland.
+
+## Estado y hallazgos (paso 2, 2026-10-29)
+
+Hecho: `Listener` en `channels/voice.py` (silencio → nada; si no, `transcribe.audio_to_text` en un hilo aparte y se muestra «Dijiste: …»),
+`capture.is_silent` (ventana más fuerte de 100 ms bajo un umbral; no usa `audioop`, que Python 3.13 quitó), `capture.sweep` (restos de
+un cierre brusco) y límite de grabación `voice.max_record_seconds` = 180 s por defecto (hasta 3600) acotado por lo que acepta el
+transcriptor. Probado de verdad con Whisper real (CPU) sobre una frase en español sintetizada con Kokoro: transcribe bien, borra el
+audio, y el silencio puro se resuelve en 0,00 s sin cargar el modelo.
+
+- Cada audio terminado pasa de `rec.wav` a `clip-<id>.wav`: si no, empezar a grabar de nuevo mientras se transcribe lo habría borrado.
+- La primera transcripción tarda ~14 s en CPU (carga el modelo); las siguientes, menos. Precalentar al prender el canal queda para el paso 7.
+- El texto pasa por `transcribe.audio_to_text`, que ya aplica `spoken_commands` («Hola <nombre>, …» → `/ia …`): en el paso 3 el
+  Companion se comporta igual que la web y Telegram.

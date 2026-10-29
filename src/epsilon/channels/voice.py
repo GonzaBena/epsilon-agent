@@ -9,7 +9,7 @@ from epsilon.data import notes
 from epsilon.routines import notify
 from epsilon.settings import config
 from epsilon.utils import hyprland
-from epsilon.voice import capture, client
+from epsilon.voice import capture, client, transcribe
 
 # Voice Companion: hablarle a Epsilon desde cualquier lado con un atajo global (ver
 # docs/superpowers/specs/2026-10-29-voice-companion-design.md). Es un canal más: solo traduce entre «micrófono /
@@ -21,6 +21,17 @@ POLL_SECONDS = 1.0  # cada cuánto el servidor mira si hay que apagarse o si cam
 MAX_REQUEST = 64  # lo que llega por el socket es una palabra: algo más largo no se obedece
 WORDS = ("toggle", "cancel", "status")
 MIN_SECONDS = 0.4  # menos que esto no es una frase: no se manda a transcribir (Whisper inventa texto con el silencio)
+
+
+def limit() -> tuple[int, str]:
+    """Cuántos segundos puede durar una grabación, y qué ajuste la acota si no es VOICE_MAX_RECORD_S. Es lo MENOR entre
+    lo que pediste y lo que el transcriptor acepta después (minutos y megas de `voice.max_audio_*`): grabar una charla
+    que después se rechaza por larga sería perder el tiempo de la persona."""
+    wanted = int(config.number("VOICE_MAX_RECORD_S"))
+    by_minutes = int(config.number("VOICE_MAX_AUDIO_MINUTES") * 60)
+    by_size = int(config.number("VOICE_MAX_AUDIO_MB") * 1024 * 1024) // (capture.SAMPLE_RATE * 2)  # 16 bits, mono
+    seconds, source = min((wanted, ""), (by_minutes, "voice.max_audio_minutes"), (by_size, "voice.max_audio_mb"))
+    return seconds, source
 
 
 class Companion:
@@ -82,7 +93,7 @@ class Companion:
             return "idle"
         self._generation += 1
         generation = self._generation
-        self._timer = self._timer_factory(config.number("VOICE_MAX_RECORD_S"), lambda: self._time_is_up(generation))
+        self._timer = self._timer_factory(limit()[0], lambda: self._time_is_up(generation))
         self._timer.start()
         self._say("Escuchando…")
         return "recording"
@@ -107,7 +118,9 @@ class Companion:
         with self._lock:
             if self._recording is None or generation != self._generation:
                 return
-            self._say(f"Llegué al límite de {config.number('VOICE_MAX_RECORD_S')} s de grabación.")
+            seconds, source = limit()
+            blame = f": lo marca {source}; subilo si querés grabar más" if source else ""
+            self._say(f"Llegué al límite de {seconds} s de grabación{blame}.")
             clip = self._stop()
         self._deliver(clip)
 
@@ -125,6 +138,42 @@ class Companion:
         """Lo que se hace con el audio hasta que haya transcripción: decir cuánto duró y borrarlo."""
         self._say(f"Grabé {clip.seconds:.1f} s.".replace(".", ",", 1))
         capture.discard(clip.path)
+
+
+# --- Qué se hace con cada audio -----------------------------------------------------------------------------------
+
+
+def _in_thread(work: Callable[[], None]) -> None:
+    threading.Thread(target=work, name="voice-listener", daemon=True).start()
+
+
+class Listener:
+    """Lo que pasa con un audio ya grabado (paso 2): si es puro silencio no se hace nada; si no, se transcribe con
+    Whisper y se muestra el texto. Corre en su propio hilo porque transcribir tarda (y la primera vez carga el modelo):
+    el hilo que atiende el atajo tiene que seguir libre. Whisper se usa de a un audio (lo serializa `transcribe`).
+    El audio se borra siempre, salga como salga. Lo que salga en el próximo paso se manda al modelo (paso 3)."""
+
+    def __init__(self, announce: Callable[[str], None], start: Callable[[Callable[[], None]], None] = _in_thread):
+        self.announce = announce
+        self._start = start
+
+    def handle(self, clip: capture.Clip) -> None:
+        self._start(lambda: self._process(clip))
+
+    def _process(self, clip: capture.Clip) -> None:
+        try:
+            if capture.is_silent(clip.path):
+                self.announce("No te escuché: probá de nuevo.")
+                return
+            self.announce("Transcribiendo…")
+            self.announce(f"Dijiste: {transcribe.audio_to_text(clip.path)}")
+        except transcribe.VoiceError as e:  # el mensaje ya está pensado para la persona
+            self.announce(str(e))
+        except Exception as e:  # noqa: BLE001 - nada de lo que pase acá puede tumbar el canal ni mostrar detalles internos
+            print(f"Voice Companion: falló al procesar el audio: {config.redact(repr(e))}")
+            self.announce("Algo falló al procesar el audio.")
+        finally:
+            capture.discard(clip.path)
 
 
 # --- El socket: por acá le habla el script del atajo -------------------------------------------------------------
@@ -245,7 +294,8 @@ def _announce(text: str) -> None:
 def run() -> None:
     folder = notes.DATA_DIR / client.FOLDER
     script = client.write_script(folder)
-    companion = Companion(folder, _announce)
+    capture.sweep(folder)  # restos de un cierre brusco: audios que nadie va a usar
+    companion = Companion(folder, _announce, Listener(_announce).handle)
     hotkey = Hotkey(folder, script, _announce)
     path = client.socket_path()
     listener = bind(path)

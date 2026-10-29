@@ -1,4 +1,5 @@
 import signal
+import struct
 import wave
 
 import pytest
@@ -80,7 +81,6 @@ def test_stop_ends_the_recording_with_sigint_and_reports_its_length(spawned, tmp
     result = capture.stop(recording)
 
     assert spawned[0].signals == [signal.SIGINT]  # SIGINT: pw-record cierra bien el encabezado del WAV
-    assert result.path == recording.path
     assert result.path.exists()
     assert result.seconds == pytest.approx(2.0)
 
@@ -181,3 +181,67 @@ def test_waiting_a_moment_after_starting_is_what_lets_it_notice_the_early_death(
     capture.start(tmp_path)
 
     assert waited == [0.25]
+
+
+def test_a_finished_clip_gets_its_own_name_so_the_next_recording_cannot_destroy_it(spawned, tmp_path):
+    first = capture.stop(capture.start(tmp_path))
+
+    capture.start(tmp_path)  # otra grabación mientras el primer audio se transcribe
+
+    assert first.path.exists()
+    assert first.path.name.startswith("clip-") and first.path.suffix == ".wav"
+    assert first.path.parent == tmp_path
+
+
+def test_two_clips_never_share_a_name(spawned, tmp_path):
+    one = capture.stop(capture.start(tmp_path))
+    two = capture.stop(capture.start(tmp_path))
+
+    assert one.path != two.path
+
+
+def test_sweep_removes_leftover_audio_but_never_anything_else(tmp_path):
+    for name in (capture.FILE_NAME, "clip-1.wav", "clip-2.wav", "epsilon-voice-toggle", "hyprland-voice.lua", "notes.wav"):
+        (tmp_path / name).write_bytes(b"x")
+
+    capture.sweep(tmp_path)
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["epsilon-voice-toggle", "hyprland-voice.lua", "notes.wav"]
+
+
+def test_sweep_of_a_folder_that_does_not_exist_does_nothing(tmp_path):
+    capture.sweep(tmp_path / "missing")
+
+
+def write_wav(path, samples):
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(capture.SAMPLE_RATE)
+        out.writeframes(struct.pack(f"<{len(samples)}h", *samples))
+
+
+def test_a_clip_of_pure_silence_is_silent(tmp_path):
+    write_wav(tmp_path / "a.wav", [0] * capture.SAMPLE_RATE * 2)
+
+    assert capture.is_silent(tmp_path / "a.wav") is True
+
+
+def test_the_hiss_of_a_quiet_room_is_silent(tmp_path):
+    write_wav(tmp_path / "a.wav", [(-8 if i % 2 else 8) for i in range(capture.SAMPLE_RATE * 2)])
+
+    assert capture.is_silent(tmp_path / "a.wav") is True
+
+
+def test_a_short_word_in_the_middle_of_silence_is_not_silent(tmp_path):
+    samples = [0] * capture.SAMPLE_RATE * 2
+    samples[16000:17600] = [(3000 if i % 2 else -3000) for i in range(1600)]  # 100 ms de voz
+    write_wav(tmp_path / "a.wav", samples)
+
+    assert capture.is_silent(tmp_path / "a.wav") is False
+
+
+def test_a_file_that_cannot_be_read_is_not_called_silent_so_the_transcriber_decides(tmp_path):
+    (tmp_path / "a.wav").write_bytes(b"not a wav")
+
+    assert capture.is_silent(tmp_path / "a.wav") is False
