@@ -90,3 +90,20 @@ def test_the_window_look_is_adjustable_within_sane_limits(key, default, low, hig
     for outside in (low - 1, high + 1):
         with pytest.raises(ValueError):
             config.BY_KEY[key].validate(str(outside))
+
+
+def test_the_text_hotkey_defaults_to_alt_c():
+    assert config.value("VOICE_TEXT_HOTKEY") == "ALT, C"
+
+
+def test_the_text_hotkey_is_stored_in_its_canonical_form():
+    assert config.BY_KEY["VOICE_TEXT_HOTKEY"].validate("super shift,z") == "SUPER SHIFT, Z"
+
+
+def test_the_text_hotkey_can_be_empty_to_turn_it_off():
+    assert config.BY_KEY["VOICE_TEXT_HOTKEY"].validate("") == ""
+
+
+def test_a_bad_text_hotkey_is_refused():
+    with pytest.raises(ValueError):
+        config.BY_KEY["VOICE_TEXT_HOTKEY"].validate("X")

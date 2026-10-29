@@ -484,6 +484,14 @@
                 <p class="error" id="err-VOICE_HOTKEY" role="alert"></p>
               </div>
               <div class="field">
+                <label for="f-VOICE_TEXT_HOTKEY">Atajo para escribirle al Voice Companion (abre un campo de texto; vacío lo desactiva)</label>
+                <input id="f-VOICE_TEXT_HOTKEY" data-key="VOICE_TEXT_HOTKEY" type="text" placeholder="ALT, C"
+                       autocomplete="off" spellcheck="false" maxlength="40"
+                       aria-describedby="hint-VOICE_TEXT_HOTKEY err-VOICE_TEXT_HOTKEY">
+                <p class="hint" id="hint-VOICE_TEXT_HOTKEY"></p>
+                <p class="error" id="err-VOICE_TEXT_HOTKEY" role="alert"></p>
+              </div>
+              <div class="field">
                 <label for="f-ASSISTANT_NAME">Nombre para hablarle por voz (minúsculas y sin tilde; varios, separados por coma)</label>
                 <input id="f-ASSISTANT_NAME" data-key="ASSISTANT_NAME" type="text" placeholder="ia, ai"
                        autocomplete="off" spellcheck="false" maxlength="200"

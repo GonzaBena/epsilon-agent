@@ -201,6 +201,11 @@ def _hotkey(value: str) -> str:
     return hyprland.normalize_hotkey(value)
 
 
+def _optional_hotkey(value: str) -> str:
+    """Como `_hotkey`, pero vacío vale: es «sin atajo» (el de texto del Voice Companion se puede desactivar)."""
+    return _hotkey(value) if value.strip() else ""
+
+
 def _app_aliases(value: str) -> str:
     """Alias para abrir apps, «nombre=comando» separados por coma. Vacío (ninguno) vale. Cada uno se valida con las mismas reglas
     con que se usan después (utils/apps.py): un comando es palabras y rutas, nunca pipes, comillas dobles ni $."""
@@ -604,6 +609,14 @@ SETTINGS = (
         default="ALT, X",
         validate=_hotkey,
     ),
+    # El atajo que abre el campo de texto del Voice Companion (escribirle en vez de hablarle); vacío lo desactiva.
+    Setting(
+        "VOICE_TEXT_HOTKEY",
+        "Atajo para escribirle al Voice Companion",
+        live=True,
+        default="ALT, C",
+        validate=_optional_hotkey,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
@@ -694,6 +707,10 @@ _JSON_FIELDS: dict[str, dict] = {
     "VOICE_SPEAK": _J(name="voice.speak", kind="bool", help="Que el Voice Companion conteste en voz alta"),
     "VOICE_TTS_VOICE": _J(name="voice.tts_voice", help="Voz de Kokoro con que habla el Voice Companion (ef_dora y em_alex son en español)"),
     "VOICE_HOTKEY": _J(name="voice.hotkey", help="Atajo del Voice Companion: modificador y tecla, por ejemplo ALT, X"),
+    "VOICE_TEXT_HOTKEY": _J(
+        name="voice.text_hotkey",
+        help="Atajo para escribirle al Voice Companion (abre un campo de texto): modificador y tecla, por ejemplo ALT, C. Vacío lo desactiva",
+    ),
     "ROUTINES_ENABLED": _J(name="routines.enabled", kind="bool", loosens=True, safer="no", help="Cumplir las rutinas programadas"),
     "ALLOWED_USER_ID": _J(bootstrap=True),
     "DATA_DIR": _J(bootstrap=True),
