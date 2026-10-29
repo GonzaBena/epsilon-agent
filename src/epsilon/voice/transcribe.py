@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 import threading
 import time
+import unicodedata
 
 from epsilon.data import notes
 from epsilon.settings import config
@@ -50,6 +51,43 @@ def language() -> str | None:
 def idle_seconds() -> float:
     """Segundos sin uso antes de descargar el modelo. Un valor roto vuelve al de siempre."""
     return config.number("WHISPER_IDLE_MINUTES") * 60
+
+
+# --- Contra lo que Whisper inventa sobre ruido ---------------------------------------------------
+# Sobre ruido sin voz, Whisper escribe frases de sus datos de entrenamiento. Tres defensas: un VAD más exigente, descartar
+# los segmentos que él mismo marca como «probablemente no es voz» y una lista corta de frases inventadas conocidas.
+
+VAD_THRESHOLD = 0.6  # por defecto 0.5: más alto = menos ruido que pase por voz
+VAD_MIN_SPEECH_MS = 250  # un clic o un golpe dura menos que una palabra
+NO_SPEECH_PROB = 0.6  # el segmento suena a «no es voz»...
+LOW_LOGPROB = -1.0  # ...y además el modelo no está seguro de lo que escribió (la regla del propio Whisper)
+
+INVENTED_PHRASES = (
+    "gracias por ver el video",
+    "gracias por ver el vídeo",
+    "gracias por ver",
+    "gracias",
+    "subtitulos por la comunidad de amara org",
+    "subtitulado por la comunidad de amara org",
+    "suscribete al canal",
+    "no olvides suscribirte",
+    "hasta la proxima",
+    "hasta el proximo video",
+)
+
+
+def _is_speech(segment) -> bool:
+    """¿El segmento es voz? Sin las métricas (otro modelo) se acepta."""
+    no_speech = getattr(segment, "no_speech_prob", 0.0)
+    logprob = getattr(segment, "avg_logprob", 0.0)
+    return not (no_speech > NO_SPEECH_PROB and logprob < LOW_LOGPROB)
+
+
+def _is_invented(text: str) -> bool:
+    """¿Es exactamente una de las frases que Whisper suele inventar sobre ruido? (sin acentos ni signos)"""
+    plain = unicodedata.normalize("NFD", text.lower())
+    plain = "".join(c if c.isalnum() else " " for c in plain if not unicodedata.combining(c))
+    return " ".join(plain.split()) in INVENTED_PHRASES
 
 
 # --- Las piezas que tocan faster-whisper (los tests las reemplazan) ------------------------------
@@ -393,11 +431,19 @@ def audio_to_text(path: Path, commands: bool = True) -> str:
         model = _ensure_model()
         try:
             # segments es perezoso: la duración se sabe ya, antes de gastar tiempo transcribiendo.
-            segments, info = model.transcribe(str(path), language=language(), vad_filter=True)
+            segments, info = model.transcribe(
+                str(path),
+                language=language(),
+                vad_filter=True,
+                vad_parameters={"threshold": VAD_THRESHOLD, "min_speech_duration_ms": VAD_MIN_SPEECH_MS},
+                condition_on_previous_text=False,  # una frase inventada no arrastra a la siguiente
+            )
             max_minutes = config.number("VOICE_MAX_AUDIO_MINUTES")
             if info.duration > max_minutes * 60:
                 raise VoiceError(f"El audio es muy largo (máximo {max_minutes} minutos).")
-            text = " ".join(part for part in (s.text.strip() for s in segments) if part)
+            text = " ".join(part for part in (s.text.strip() for s in segments if _is_speech(s)) if part)
+            if _is_invented(text):
+                text = ""
         except VoiceError:
             raise
         except Exception as e:

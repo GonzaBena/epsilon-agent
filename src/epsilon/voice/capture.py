@@ -18,7 +18,7 @@ from pathlib import Path
 SAMPLE_RATE = 16000
 FILE_NAME = "rec.wav"  # lo que se está grabando; al terminar pasa a `clip-<id>.wav`, que ya es de quien lo usa
 CLIP_PREFIX = "clip-"
-SILENCE_RMS = 60  # debajo de esto (en unidades de 16 bits) ni la ventana más fuerte es voz: es el ruido de fondo
+SILENCE_RMS = 120  # debajo de esto (en unidades de 16 bits) ni la ventana más fuerte es voz: es el ruido de fondo
 WINDOW = SAMPLE_RATE // 10  # se mide por ventanas de 100 ms: una palabra corta entre silencios cuenta
 STOP_TIMEOUT = 3.0
 # pw-record sale enseguida (código 1) si PipeWire no tiene un micrófono predeterminado al que conectarlo. Se espera un

@@ -640,3 +640,35 @@ def test_a_warmed_model_still_gets_released_after_the_idle_time(voice):
     transcribe.warm()
 
     assert transcribe._timer is not None  # el temporizador de descarga quedó armado
+
+
+# --- Lo que Whisper inventa sobre ruido ---------------------------------------
+
+
+def test_a_phrase_whisper_invents_on_noise_is_dropped(voice, audio):
+    voice.texts = ("¡Gracias por ver el video!",)
+
+    with pytest.raises(transcribe.VoiceError, match="No entendí nada"):
+        transcribe.audio_to_text(audio)
+
+
+def test_a_real_sentence_containing_gracias_is_kept(voice, audio):
+    voice.texts = ("gracias por avisarme de la reunión",)
+
+    assert transcribe.audio_to_text(audio) == "gracias por avisarme de la reunión"
+
+
+def test_segments_the_model_itself_calls_noise_are_dropped(voice, audio, monkeypatch):
+    noise = types.SimpleNamespace(text=" ruido inventado ", no_speech_prob=0.9, avg_logprob=-1.5)
+    voz = types.SimpleNamespace(text=" hola ", no_speech_prob=0.1, avg_logprob=-0.2)
+    monkeypatch.setattr(voice, "transcribe", lambda path, **o: (iter([noise, voz]), types.SimpleNamespace(duration=3.0)))
+
+    assert transcribe.audio_to_text(audio) == "hola"
+
+
+def test_the_stricter_voice_detector_is_requested(voice, audio):
+    transcribe.audio_to_text(audio)
+
+    options = voice.calls[-1][1]
+    assert options["vad_parameters"]["threshold"] == transcribe.VAD_THRESHOLD
+    assert options["condition_on_previous_text"] is False
