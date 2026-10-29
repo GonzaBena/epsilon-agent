@@ -77,6 +77,7 @@ uv sync --extra voz    # opcional: suma Whisper para las notas de voz
 | `VOICE_SPEAK`                                                | Voice Companion: que conteste en voz alta, oración por oración mientras la IA escribe (por defecto, `si`; con `no` solo avisa por escrito). Necesita `uv sync --extra voz` y `aplay`. |
 | `VOICE_TTS_VOICE`                                            | Voz de Kokoro con que habla el Voice Companion (por defecto, `ef_dora`; `em_alex` es masculina; las dos en español). |
 | `VOICE_HOTKEY`                                               | Atajo del Voice Companion: modificador y tecla, por ejemplo `ALT, X` (por defecto). Epsilon lo aplica en Hyprland al instante y escribe `DATA_DIR/voice/hyprland-voice.conf`; para que sobreviva a un reinicio de Hyprland, agregá una vez `source = <esa ruta>` en tu `hyprland.conf`. |
+| `VOICE_TEXT_HOTKEY`                                          | Atajo para escribirle al Voice Companion en vez de hablarle: abre un campo de texto en la ventanita. `ALT, C` por defecto; vacío lo desactiva. Se aplica en el mismo `hyprland-voice.conf`. |
 | `VOICE_CONFIRM`                                              | Con `si`, Telegram pregunta «Ejecutar / Cancelar» antes de ejecutar una nota de voz (por defecto, `no`).                |
 | `ASSISTANT_NAME`                                              | Nombre para hablarle por voz: «Hola Meli, ¿qué tengo hoy?» equivale a `/ia ¿qué tengo hoy?`. Varios, separados por coma (se guardan en minúsculas y sin tilde; por defecto, `ia, ai`). |
 | `WHISPER_LANGUAGE`, `WHISPER_IDLE_MINUTES`, `WHISPER_DEVICE` | Opcionales, para la voz (idioma, minutos sin uso antes de soltar el modelo de la memoria, `cpu` o `cuda`).              |
@@ -174,7 +175,7 @@ archivo de verdad y no se puede deshacer. Lo que esa conversación guardó en tu
 Con `uv sync --extra voz`, prendé *Voice Companion* en la página **Canales**: apretás un atajo (por defecto `ALT + X`, se cambia con
 `VOICE_HOTKEY`), hablás, lo apretás otra vez y Epsilon te contesta **en voz alta** mientras escribe. Puede cambiar de espacio de
 trabajo, abrir apps (`PC_APPS`), anotar cosas o mirar tu pantalla. Por voz lee y escribe sin preguntar, **pero nunca borra, pisa ni cierra
-ventanas**. El audio no se guarda ni sale de tu PC. Guía completa, privacidad y solución de problemas: `docs/plan-voice-companion.md`.
+ventanas**. Sin micrófono, `ALT + C` (`VOICE_TEXT_HOTKEY`) abre un campo de texto en la ventanita: escribís, Enter, y Epsilon contesta sin audio sabiendo qué ventana tenés en foco. El audio no se guarda ni sale de tu PC. Guía completa, privacidad y solución de problemas: `docs/plan-voice-companion.md`.
 
 ### Correrlo como servicio
 

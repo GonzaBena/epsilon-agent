@@ -18,6 +18,23 @@ Todo el progreso se ve en **la ventanita** (ver abajo): una sola tarjeta que se 
 La charla queda guardada en la conversación
 *Voice Companion* (la ves en la web, de solo lectura) y su gasto aparece en *Uso* como «Voz».
 
+## Escribirle en vez de hablarle (Alt+C)
+
+Si no tenés micrófono a mano, o tenés que anotar algo sin interrumpirte, apretá **`ALT + C`** (ajuste `VOICE_TEXT_HOTKEY`; vacío lo desactiva):
+la ventanita se abre con un campo de texto. Escribís, **Enter**, y ves «Pensando…», las herramientas y la respuesta mientras se escribe, **sin audio**.
+`Esc` cierra el campo (`ALT + C` con el campo abierto no hace nada); la respuesta se queda en pantalla hasta que apretás `ALT + C` (la cierra); cerrar la tarjeta no corta el turno (la respuesta queda en la conversación).
+
+- **Sabe dónde estás:** Epsilon lee qué ventana tiene el foco (título, app y espacio) justo antes de abrir el campo y se lo pasa al modelo
+  como dato. Así podés decir «recordame agregar esta feature a este proyecto» sin explicar de qué proyecto hablás.
+- **Texto primero:** no manda ninguna imagen de entrada. Si el título no alcanza, el modelo puede pedir la captura de pantalla
+  (`pc.captura`), que acá corre sola con un modelo de la nube siempre que `IMAGES_TO_CLOUD` esté prendido (con un modelo local, siempre).
+- **Mismos permisos que la voz:** lee y escribe sin pisar nada; nunca borra, pisa ni cierra ventanas (modo «YOLO seguro»).
+- **Necesita la ventanita** (`VOICE_OVERLAY`): las notificaciones no tienen campo de texto.
+- La charla es la misma de la voz; su gasto aparece en *Uso* como «Companion».
+- Para probar solo el campo (abre una ventana de verdad; Enter o Esc la cierran):
+  `LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so python3 -I src/epsilon/voice/overlay_window.py --demo-input`
+- Si al cerrar el campo el foco no vuelve a tu ventana de trabajo, cambiá `input_keyboard_mode` a `ON_DEMAND` en `overlay_window.py`.
+
 ## La ventanita
 
 Una tarjeta chica anclada a una esquina de la pantalla, **encima de todo y sin robar el foco ni los clics**, que muestra en un solo
@@ -104,7 +121,7 @@ sí puede abrir. Un alias solo puede llevar palabras y rutas (sin `|`, `&`, `;`,
   captura **sale de tu PC**, así que en un chat normal te pregunta primero y **por voz solo corre sola con un modelo local (Ollama)**.
   Si querés que lo haga con uno de la nube, ponela en «permitir» a propósito en `/permisos`. No se ofrece si el modelo no ve imágenes.
 - Lo que ve en pantalla o lee de ella es un **dato**, nunca instrucciones.
-- Nadie más puede darle órdenes por el atajo: el socket es solo de tu usuario (`0600`) y entiende tres palabras (`toggle`, `cancel`, `status`).
+- Nadie más puede darle órdenes por el atajo: el socket es solo de tu usuario (`0600`) y entiende cuatro palabras (`toggle`, `cancel`, `status`, `ask`).
 
 ## Ajustes
 
@@ -112,6 +129,7 @@ sí puede abrir. Un alias solo puede llevar palabras y rutas (sin `|`, `&`, `;`,
 |---|---|---|
 | `COMPANION_ENABLED` | prender el canal (página Canales) | `no` |
 | `VOICE_HOTKEY` | el atajo | `ALT, X` |
+| `VOICE_TEXT_HOTKEY` | el atajo para escribirle (vacío lo desactiva) | `ALT, C` |
 | `VOICE_OVERLAY` | la ventanita con el texto en vivo, en vez de notificaciones | `si` |
 | `VOICE_OVERLAY_POSITION` | dónde aparece (7 posiciones) | `abajo-derecha` |
 | `voice.overlay_width` / `voice.overlay_margin` / `voice.overlay_font` | ancho, distancia al borde y letra de la ventanita (px) | `460` / `24` / `15` |

@@ -21,7 +21,8 @@ _modes: dict[str, str] = {}  # conversación -> su modo de permisos (hoy: solo e
 # Modo del Voice Companion: nadie puede contestar «¿lo permitís?» por voz, así que lo que NO es destructivo corre solo y
 # lo demás no se hace. Ver `auto_ok`.
 SAFE_AUTO = "safe-auto"
-MODES = (SAFE_AUTO,)
+SAFE_AUTO_TEXT = "safe-auto-text"  # lo mismo, pero la persona escribió (atajo de texto del Voice Companion) y está frente a la pantalla
+MODES = (SAFE_AUTO, SAFE_AUTO_TEXT)
 _lock = threading.Lock()
 _file_lock = threading.Lock()  # guardar y volver al inicial, de a uno (el gancho de los conectores corre en otro hilo)
 
@@ -165,13 +166,26 @@ def _local_model() -> bool:
     return llm.parse_model(llm.model_for("chat"))[0] == "ollama"
 
 
-def auto_ok(tool: tools.Tool) -> bool:
+def _cloud_images_ok() -> bool:
+    """¿Se pueden mandar imágenes al modelo del chat? Ollama siempre; los demás, salvo que IMAGES_TO_CLOUD esté apagado."""
+    from epsilon.ai import llm
+
+    return llm.images_allowed(llm.parse_model(llm.model_for("chat"))[0])
+
+
+def _safe_mode(conversation_id: str | None) -> str | None:
+    """El modo «YOLO seguro» de esta conversación (por voz o por texto), o None si no tiene ninguno de los dos."""
+    mode = _mode_of(conversation_id)
+    return mode if mode in (SAFE_AUTO, SAFE_AUTO_TEXT) else None
+
+
+def auto_ok(tool: tools.Tool, text: bool = False) -> bool:
     """¿Se puede correr sin preguntar cuando nadie contesta? Solo leer o escribir SIN pisar nada, de las herramientas de
     Epsilon. No: lo que borra o pisa (`ai == "delete"`, `overwrites`), crear rutinas (automatizaciones que luego corren
     solas con los permisos que se confirman al crearlas) ni las de un conector (pueden hacer cualquier cosa: facturar,
     reembolsar) ni la captura de pantalla con un modelo de la nube (sale de la PC), salvo que la persona las haya permitido ella en
-    /permisos."""
-    if tool.sees_screen and not _local_model():
+    /permisos. Con `text` (la persona escribió y mira la pantalla) la captura también vale con la nube si IMAGES_TO_CLOUD lo permite."""
+    if tool.sees_screen and not (_local_model() or (text and _cloud_images_ok())):
         return False  # la captura sale de la PC hacia la nube y por voz nadie la ve antes: solo con un modelo local
     return tool.ai in ("read", "write") and not tool.overwrites and not is_connector_tool(tool) and tools.ai_id(tool) not in NEVER_UNATTENDED
 
@@ -179,7 +193,7 @@ def auto_ok(tool: tools.Tool) -> bool:
 NEVER_UNATTENDED = {"rutina_crear"}
 
 
-def _decide_unattended(tool_id: str) -> str:
+def _decide_unattended(tool_id: str, text: bool = False) -> str:
     """El modo «YOLO seguro»: lo bloqueado en /permisos sigue bloqueado; lo destructivo o que arma rutinas, nunca; lo
     permitido corre; y lo que pregunta corre solo si `auto_ok` (si no, no se hace)."""
     tool = next((t for t in tools.ai_tools() if tools.ai_id(t) == tool_id), None)
@@ -190,7 +204,7 @@ def _decide_unattended(tool_id: str) -> str:
         return "block"  # ni siquiera si la persona la dejó en «permitir» para el chat
     if state == "allow":
         return "run"
-    return "run" if auto_ok(tool) else "block"
+    return "run" if auto_ok(tool, text) else "block"
 
 
 def decide(conversation_id: str, tool_id: str, version: str | None = None) -> str:
@@ -201,8 +215,8 @@ def decide(conversation_id: str, tool_id: str, version: str | None = None) -> st
         return "block"
     if (allowed := _scope_of(conversation_id)) is not None:
         return "run" if tool_id in allowed and load().get(tool_id) != "deny" else "block"
-    if _mode_of(conversation_id) == SAFE_AUTO:
-        return _decide_unattended(tool_id)
+    if mode := _safe_mode(conversation_id):
+        return _decide_unattended(tool_id, mode == SAFE_AUTO_TEXT)
     state = load().get(tool_id)
     if state == "allow":
         return "run"
@@ -222,8 +236,8 @@ def offered(conversation_id: str | None = None) -> list[tools.Tool]:
     """Las herramientas que la IA puede ver: todas menos las bloqueadas (y, en un ámbito, solo las de su lista)."""
     states = load()
     allowed = _scope_of(conversation_id)
-    if _mode_of(conversation_id) == SAFE_AUTO:  # al modelo ni se le ofrece lo que no va a poder usar
-        return [tool for tool in tools.ai_tools() if _decide_unattended(tools.ai_id(tool)) == "run"]
+    if mode := _safe_mode(conversation_id):  # al modelo ni se le ofrece lo que no va a poder usar
+        return [tool for tool in tools.ai_tools() if _decide_unattended(tools.ai_id(tool), mode == SAFE_AUTO_TEXT) == "run"]
     # Un conector pudo sumar una herramienta entre las dos lecturas: sin estado guardado, la de su inicial.
     return [
         tool for tool in tools.ai_tools()

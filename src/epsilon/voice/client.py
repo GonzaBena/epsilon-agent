@@ -10,14 +10,18 @@ from pathlib import Path
 FOLDER = "voice"  # dentro de DATA_DIR: el script y el .conf del atajo (la biblioteca no la lista)
 SOCKET_NAME = "epsilon-voice.sock"
 SCRIPT_NAME = "epsilon-voice-toggle"
+ASK_SCRIPT_NAME = "epsilon-voice-ask"  # el mismo script, pero su palabra por defecto es `ask` (abre el campo de texto)
 
-SCRIPT = f"""#!/bin/sh
-# Lo escribe Epsilon (Voice Companion). Manda una palabra (toggle, cancel, status) al socket de Epsilon.
+
+def script_text(default_word: str) -> str:
+    """El script del atajo; `default_word` es lo que manda si Hyprland no le pasa otra palabra."""
+    return f"""#!/bin/sh
+# Lo escribe Epsilon (Voice Companion). Manda una palabra (toggle, cancel, status, ask) al socket de Epsilon.
 exec python3 -I -c '
 import os, socket, subprocess, sys
 runtime = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
 path = os.path.join(runtime, "{SOCKET_NAME}")
-word = sys.argv[1] if len(sys.argv) > 1 else "toggle"
+word = sys.argv[1] if len(sys.argv) > 1 else "{default_word}"
 try:
     with socket.socket(socket.AF_UNIX) as conn:
         conn.settimeout(3)
@@ -31,19 +35,26 @@ except OSError:
 """
 
 
+SCRIPT = script_text("toggle")
+
+
 def socket_path() -> Path:
     """Dónde escucha Epsilon: en la carpeta de ejecución del usuario (privada, en memoria)."""
     runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
     return Path(runtime) / SOCKET_NAME
 
 
-def write_script(folder: Path) -> Path:
-    """Escribe el script del atajo en `folder` y lo deja ejecutable. Devuelve su ruta."""
+def write_script(folder: Path, word: str = "toggle") -> Path:
+    """Escribe el script del atajo en `folder` y lo deja ejecutable. Devuelve su ruta. `word` es la palabra por defecto:
+    `toggle` (voz) o `ask` (campo de texto), cada una con su propio archivo."""
+    if word not in ("toggle", "ask"):
+        raise ValueError(f"Palabra desconocida para el script del atajo: {word}")
+    name = ASK_SCRIPT_NAME if word == "ask" else SCRIPT_NAME
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / SCRIPT_NAME
-    temp = path.with_name(SCRIPT_NAME + ".tmp")
-    temp.write_text(SCRIPT, encoding="utf-8")
+    path = folder / name
+    temp = path.with_name(name + ".tmp")
+    temp.write_text(script_text(word), encoding="utf-8")
     temp.chmod(0o755)
     temp.replace(path)
     return path

@@ -529,3 +529,25 @@ def test_a_failing_listener_never_breaks_the_voice(monkeypatch):
         instance.close()
 
     assert spoken == [24000]
+
+
+def test_a_text_turn_is_never_spoken(rig):
+    rig.speaker.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
+
+    rig.send({"type": "text", "text": "Hola, ¿cómo estás hoy? Bien."})
+    rig.send({"type": "reply", "text": "Hola, ¿cómo estás hoy? Bien."})
+    rig.send({"type": "error", "text": "Algo falló."})
+    rig.settle()
+
+    assert rig.synthesized == [] and rig.players == []
+
+
+def test_a_voice_turn_after_a_text_turn_is_spoken_normally(rig):
+    rig.speaker.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
+    rig.send({"type": "reply", "text": "Esto no suena."}, turn=1)
+    start(rig, turn=2)
+
+    rig.send({"type": "reply", "text": "Esto sí suena."}, turn=2)
+    rig.settle()
+
+    assert rig.spoken() == ["Esto sí suena."]

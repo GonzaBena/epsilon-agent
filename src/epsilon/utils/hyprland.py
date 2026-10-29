@@ -65,13 +65,17 @@ def _lua_keys(hotkey: str) -> str:
     return " + ".join([*mods.split(), key])
 
 
-def conf_text(hotkey: str, command: str) -> str:
-    """El contenido de hyprland-voice.conf (config clásica): una sola línea de bind que corre nuestro script."""
-    return (
-        "# Lo escribe Epsilon (Voice Companion): no lo edites, se reescribe al cambiar VOICE_HOTKEY.\n"
+def conf_text(hotkey: str, command: str, extra: tuple[str, str] | None = None) -> str:
+    """El contenido de hyprland-voice.conf (config clásica): una línea de bind que corre nuestro script (y otra para el
+    atajo de texto, `extra` = (atajo, comando), si lo hay)."""
+    text = (
+        "# Lo escribe Epsilon (Voice Companion): no lo edites, se reescribe al cambiar VOICE_HOTKEY o VOICE_TEXT_HOTKEY.\n"
         "# Incluilo una vez desde tu hyprland.conf con:  source = <esta ruta>\n"
         f"bind = {normalize_hotkey(hotkey)}, exec, {_command(command)}\n"
     )
+    if extra:
+        text += f"bind = {normalize_hotkey(extra[0])}, exec, {_command(extra[1])}\n"
+    return text
 
 
 def _lua_apply(hotkey: str, command: str, previous: str | None = None) -> str:
@@ -85,18 +89,21 @@ def _lua_apply(hotkey: str, command: str, previous: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def lua_text(hotkey: str, command: str) -> str:
-    """El contenido de hyprland-voice.lua (config en Lua)."""
-    return (
-        "-- Lo escribe Epsilon (Voice Companion): no lo edites, se reescribe al cambiar VOICE_HOTKEY.\n"
+def lua_text(hotkey: str, command: str, extra: tuple[str, str] | None = None) -> str:
+    """El contenido de hyprland-voice.lua (config en Lua); con `extra`, también el atajo de texto."""
+    text = (
+        "-- Lo escribe Epsilon (Voice Companion): no lo edites, se reescribe al cambiar VOICE_HOTKEY o VOICE_TEXT_HOTKEY.\n"
         "-- Incluilo una vez desde tu hyprland.lua con:  dofile(\"<esta ruta>\")\n" + _lua_apply(hotkey, command) + "\n"
     )
+    if extra:
+        text += _lua_apply(extra[0], extra[1]) + "\n"
+    return text
 
 
-def write_conf(folder: Path, hotkey: str, command: str) -> tuple[Path, Path]:
+def write_conf(folder: Path, hotkey: str, command: str, extra: tuple[str, str] | None = None) -> tuple[Path, Path]:
     """Escribe los dos archivos (clásico y Lua) en la carpeta dada, por archivo temporal para no dejar uno a medias.
-    Valida todo antes de escribir. Devuelve (conf, lua)."""
-    texts = {CONF_NAME: conf_text(hotkey, command), LUA_NAME: lua_text(hotkey, command)}
+    Valida todo antes de escribir. `extra` = (atajo, comando) suma el atajo de texto a los mismos archivos. Devuelve (conf, lua)."""
+    texts = {CONF_NAME: conf_text(hotkey, command, extra), LUA_NAME: lua_text(hotkey, command, extra)}
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     paths = []
@@ -149,6 +156,15 @@ def apply_hotkey(hotkey: str, command: str, previous: str | None = None) -> str:
     _must_be_ok(*_ctl("keyword", "unbind", new))
     _must_be_ok(*_ctl("keyword", "bind", f"{new}, exec, {command}"))
     return new
+
+
+def unbind_hotkey(hotkey: str) -> None:
+    """Suelta un atajo en caliente (el de texto, cuando la persona lo vacía)."""
+    hotkey = normalize_hotkey(hotkey)
+    if _style() == "lua":
+        _must_be_ok(*_ctl("eval", f'hl.unbind("{_lua_keys(hotkey)}")'))
+    else:
+        _must_be_ok(*_ctl("keyword", "unbind", hotkey))
 
 
 # --- Órdenes a las ventanas (la IA) ---------------------------------------------------------------------------------------

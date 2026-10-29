@@ -2024,6 +2024,8 @@ def _usage_channel(session_id: str) -> str:
     """Cómo se nombra el canal en la página Uso, según la sesión que habla."""
     if session_id.startswith("telegram:"):
         return "Telegram"
+    if session_id == "companion:text":  # el atajo de texto del Voice Companion (voice.SESSION_TEXT): gasto aparte del de la voz
+        return "Companion"
     if session_id.startswith("companion:"):
         return "Voz"
     return "Web"

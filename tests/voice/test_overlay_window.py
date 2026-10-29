@@ -110,3 +110,55 @@ def test_the_demo_with_an_unknown_corner_uses_the_default_one(window):
     steps = window.demo_commands("en-la-luna")
 
     assert steps[0]["layout"]["anchors"] == ["bottom", "right"]
+
+
+# --- El modo entrada (escribirle a Epsilon) ---------------------------------------------------------------------------------
+
+
+def test_the_input_commands_are_understood(window):
+    for op in ("input", "close_input"):
+        assert window.parse(json.dumps({"op": op})) == {"op": op}
+
+
+def test_clean_input_limits_the_title_and_fills_the_layout(window):
+    cleaned = window.clean_input({"op": "input", "title": "x" * 500, "layout": {"anchors": ["top", "evil"], "width": 99999}})
+
+    assert cleaned["op"] == "input"
+    assert len(cleaned["title"]) == window.MAX_TITLE
+    assert cleaned["layout"]["anchors"] == ["top"] and cleaned["layout"]["width"] == window.MAX_WIDTH
+
+
+def test_clean_input_has_a_default_title_and_default_layout(window):
+    cleaned = window.clean_input({"op": "input"})
+
+    assert cleaned["title"] == "Preguntale a Epsilon"
+    assert cleaned["layout"]["anchors"] == list(window.POSITIONS[window.DEFAULT_POSITION])
+
+
+def test_show_and_hide_are_ignored_while_typing_so_an_old_timer_cannot_close_the_card(window):
+    assert window.accepts({"op": "hide"}, typing=False) is True
+    assert window.accepts({"op": "hide"}, typing=True) is False
+    assert window.accepts({"op": "show"}, typing=True) is False
+    for op in ("input", "close_input", "quit"):
+        assert window.accepts({"op": op}, typing=True) is True
+
+
+def test_what_you_typed_is_trimmed_and_empty_or_too_long_text_is_refused(window):
+    assert window.submitted("  hola ") == "hola"
+    assert window.submitted("   ") is None
+    assert window.submitted("") is None
+    assert window.submitted("x" * (window.MAX_INPUT + 1)) is None
+    assert window.submitted("x" * window.MAX_INPUT) == "x" * window.MAX_INPUT
+
+
+def test_a_submit_line_round_trips_quotes_and_newlines(window):
+    text = 'dijo "hola"\nchau \\ ñ'
+    line = window.submit_line(text)
+
+    assert "\n" not in line and line.startswith("submit:")
+    assert json.loads(line.removeprefix("submit:")) == text
+
+
+def test_asking_is_a_known_kind_with_its_own_style(window):
+    assert "asking" in window.KINDS
+    assert ".card.asking" in window.css(15)

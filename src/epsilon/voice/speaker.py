@@ -214,7 +214,8 @@ class Speaker:
             return
         if kind == "turn" and event.get("state") == "start":
             with self._lock:
-                self._turn, self._state = turn, _TurnState()
+                # Un turno escrito (atajo de texto) no se habla: sin estado, todo lo que siga de ese turno se ignora.
+                self._turn, self._state = turn, (None if event.get("source") == "text" else _TurnState())
             return
         with self._lock:
             state = self._state

@@ -403,3 +403,41 @@ def test_a_warning_from_hyprland_is_an_error_even_with_exit_code_zero(monkeypatc
 
     with pytest.raises(hyprland.HyprlandError, match="no aceptó"):
         hyprland.go_to_workspace(3)
+
+
+def test_write_conf_with_an_extra_bind_writes_both_in_the_same_files(tmp_path):
+    conf, lua = hyprland.write_conf(tmp_path, "ALT, X", "/opt/toggle", extra=("ALT, C", "/opt/ask"))
+
+    assert "bind = ALT, X, exec, /opt/toggle" in conf.read_text()
+    assert "bind = ALT, C, exec, /opt/ask" in conf.read_text()
+    assert 'hl.bind("ALT + X", hl.dsp.exec_cmd("/opt/toggle"))' in lua.read_text()
+    assert 'hl.bind("ALT + C", hl.dsp.exec_cmd("/opt/ask"))' in lua.read_text()
+
+
+def test_write_conf_without_extra_has_only_the_main_bind(tmp_path):
+    conf, lua = hyprland.write_conf(tmp_path, "ALT, X", "/opt/toggle")
+
+    assert conf.read_text().count("bind = ") == 1
+    assert lua.read_text().count("hl.bind(") == 1
+
+
+def test_an_invalid_extra_bind_is_refused_before_writing(tmp_path):
+    with pytest.raises(ValueError):
+        hyprland.write_conf(tmp_path, "ALT, X", "/opt/toggle", extra=("X", "/opt/ask"))
+    assert not list(tmp_path.iterdir())
+
+
+def test_unbind_hotkey_drops_it_with_lua_config(monkeypatch):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    hyprland.unbind_hotkey("alt, c")
+
+    assert fake.calls[-1] == ("eval", 'hl.unbind("ALT + C")')
+
+
+def test_unbind_hotkey_drops_it_with_classic_config(monkeypatch):
+    fake = FakeHyprland(monkeypatch, lua=False)
+
+    hyprland.unbind_hotkey("alt, c")
+
+    assert ("keyword", "unbind", "ALT, C") in fake.calls

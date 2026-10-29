@@ -8,6 +8,10 @@ foco. Epsilon le escribe una orden JSON por línea en stdin; él contesta por st
     {"op": "show", "kind": "...", "title": "...", "heard": "...", "text": "...", "layout": {"anchors": [...], "margin": 24, "width": 460, "font": 15}}
     {"op": "hide"}
     {"op": "quit"}
+    {"op": "input", "title": "...", "layout": {...}}      abre un campo de texto que toma el teclado (escribirle a Epsilon)
+    {"op": "close_input"}                                 lo cierra sin enviar
+
+Además de «ready» y «error: motivo», contesta por stdout `submit:<texto en JSON>` (Enter) y `closed` (Esc o close_input).
 
 Para ver cómo queda SIN Epsilon (abre una ventana unos segundos; layer-shell exige cargarse antes que libwayland):
 
@@ -33,10 +37,12 @@ POSITIONS = {
 }
 DEFAULT_POSITION = "abajo-derecha"
 EDGES = ("top", "bottom", "left", "right")
-KINDS = ("listening", "working", "talking", "done", "alert", "info")
-OPS = ("show", "hide", "quit")
+KINDS = ("listening", "working", "talking", "done", "alert", "info", "asking")
+OPS = ("show", "hide", "quit", "input", "close_input")
 
 MAX_TITLE, MAX_HEARD, MAX_TEXT = 120, 400, 1500
+MAX_INPUT = 500  # lo más largo que se puede escribir (Epsilon lo vuelve a validar: un test vigila que coincidan)
+INPUT_TITLE = "Preguntale a Epsilon"
 MIN_WIDTH, MAX_WIDTH, DEFAULT_WIDTH = 240, 1200, 460
 MAX_MARGIN, DEFAULT_MARGIN = 400, 24
 MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 32, 15
@@ -68,26 +74,53 @@ def _number(value, low, high, default):
     return max(low, min(high, value))
 
 
-def clean_show(command):
-    """Una orden `show` con todo en su sitio y dentro de límites, venga lo que venga."""
+def _layout(command):
+    """El `layout` de una orden, con todo en su sitio y dentro de límites, venga lo que venga."""
     layout = command.get("layout") if isinstance(command.get("layout"), dict) else {}
     if "anchors" in layout and isinstance(layout["anchors"], list):
         anchors = list(dict.fromkeys(a for a in layout["anchors"] if a in EDGES))  # sin repetidos y solo bordes que existen
     else:
         anchors = list(POSITIONS[DEFAULT_POSITION])
     return {
+        "anchors": anchors,
+        "margin": _number(layout.get("margin"), 0, MAX_MARGIN, DEFAULT_MARGIN),
+        "width": _number(layout.get("width"), MIN_WIDTH, MAX_WIDTH, DEFAULT_WIDTH),
+        "font": _number(layout.get("font"), MIN_FONT, MAX_FONT, DEFAULT_FONT),
+    }
+
+
+def clean_show(command):
+    """Una orden `show` con todo en su sitio y dentro de límites, venga lo que venga."""
+    return {
         "op": "show",
         "kind": command.get("kind") if command.get("kind") in KINDS else "info",
         "title": _text(command.get("title"), MAX_TITLE),
         "heard": _text(command.get("heard"), MAX_HEARD),
         "text": _text(command.get("text"), MAX_TEXT),
-        "layout": {
-            "anchors": anchors,
-            "margin": _number(layout.get("margin"), 0, MAX_MARGIN, DEFAULT_MARGIN),
-            "width": _number(layout.get("width"), MIN_WIDTH, MAX_WIDTH, DEFAULT_WIDTH),
-            "font": _number(layout.get("font"), MIN_FONT, MAX_FONT, DEFAULT_FONT),
-        },
+        "layout": _layout(command),
     }
+
+
+def clean_input(command):
+    """Una orden `input` con todo en su sitio y dentro de límites."""
+    return {"op": "input", "title": _text(command.get("title"), MAX_TITLE) or INPUT_TITLE, "layout": _layout(command)}
+
+
+def accepts(command, typing):
+    """¿Se obedece esta orden? Mientras la persona escribe, un `show` o un `hide` (p. ej. el temporizador del turno anterior)
+    no pueden cerrarle ni pisarle la tarjeta: solo valen abrir/cerrar el campo y salir."""
+    return not typing or command.get("op") in ("input", "close_input", "quit")
+
+
+def submitted(text):
+    """Lo que se escribió, sin espacios de más; None si no hay nada o es más largo que `MAX_INPUT`."""
+    text = text.strip() if isinstance(text, str) else ""
+    return text if 0 < len(text) <= MAX_INPUT else None
+
+
+def submit_line(text):
+    """La línea que le avisa a Epsilon lo que se escribió (JSON: los saltos de línea y las comillas no la rompen)."""
+    return "submit:" + json.dumps(text, ensure_ascii=False)
 
 
 # --- Cómo se ve -------------------------------------------------------------------------------------------------------------
@@ -109,6 +142,9 @@ window.epsilon-overlay {{ background: transparent; }}
 .card.done .title {{ color: #9be28f; }}
 .card.alert .title {{ color: #ff9b8a; }}
 .card.info .title {{ color: #9aa1b2; }}
+.card.asking .title {{ color: #f5a6d3; }}
+.card entry {{ background-color: rgba(255, 255, 255, 0.08); color: #f2f3f6; border-radius: 8px; padding: 6px 10px;
+              font-size: {font}px; min-height: 0; }}
 """
 
 
@@ -144,6 +180,7 @@ def demo_commands(position):
 
 def main(argv):
     demo = "--demo" in argv
+    demo_input = "--demo-input" in argv  # abre solo el campo de texto (para probar que toma el teclado); Enter o Esc lo cierran
     try:
         import gi
 
@@ -161,6 +198,10 @@ def main(argv):
     if not LayerShell.is_supported():
         print("error: el compositor no soporta layer-shell (o falta cargar gtk4-layer-shell con LD_PRELOAD)", flush=True)
         return 2
+
+    # Cuánto teclado pide el campo: EXCLUSIVE lo recibe apenas aparece. Si Hyprland no devolviera bien el foco a tu ventana de
+    # trabajo al cerrarlo, probar LayerShell.KeyboardMode.ON_DEMAND.
+    input_keyboard_mode = LayerShell.KeyboardMode.EXCLUSIVE
 
     edge_of = {"top": LayerShell.Edge.TOP, "bottom": LayerShell.Edge.BOTTOM, "left": LayerShell.Edge.LEFT, "right": LayerShell.Edge.RIGHT}
 
@@ -184,6 +225,16 @@ def main(argv):
                 label.set_wrap(True)
                 label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
                 self.card.append(label)
+            self.entry = Gtk.Entry()
+            self.entry.set_max_length(MAX_INPUT)
+            self.entry.set_visible(False)
+            self.entry.connect("activate", self._on_enter)
+            self.card.append(self.entry)
+            keys = Gtk.EventControllerKey()
+            keys.connect("key-pressed", self._on_key)
+            self.win.add_controller(keys)
+            self.typing = False
+            self.on_done = None  # solo la demo: qué hacer cuando se envió o se cerró el campo
             self.win.set_child(self.card)
             self.win.connect("map", self._click_through)
             self.provider = Gtk.CssProvider()
@@ -232,6 +283,51 @@ def main(argv):
         def hide(self):
             self.win.set_visible(False)
 
+        def enter_input(self, command):
+            """Abre el campo de texto: pide el teclado SOLO mientras esté abierto."""
+            self.apply_layout(command["layout"])
+            if self.kind:
+                self.card.remove_css_class(self.kind)
+            self.kind = "asking"
+            self.card.add_css_class(self.kind)
+            self.title.set_text(command["title"])
+            self.title.set_visible(True)
+            self.heard.set_visible(False)
+            self.text.set_visible(False)
+            self.entry.set_text("")
+            self.entry.set_visible(True)
+            LayerShell.set_keyboard_mode(self.win, input_keyboard_mode)
+            self.win.set_visible(True)
+            self.entry.grab_focus()
+            self.typing = True
+
+        def leave_input(self):
+            """Cierra el campo y devuelve el teclado: la ventana de trabajo recupera el foco."""
+            self.typing = False
+            self.entry.set_visible(False)
+            LayerShell.set_keyboard_mode(self.win, LayerShell.KeyboardMode.NONE)
+            self.win.set_visible(False)
+            if self.on_done:
+                self.on_done()
+
+        def close_input(self):
+            if self.typing:
+                print("closed", flush=True)
+                self.leave_input()
+
+        def _on_enter(self, entry):
+            text = submitted(entry.get_text())
+            if text is None or not self.typing:
+                return  # vacío o demasiado largo: el campo sigue abierto
+            print(submit_line(text), flush=True)
+            self.leave_input()
+
+        def _on_key(self, _controller, keyval, _keycode, _state):
+            if keyval == Gdk.KEY_Escape and self.typing:
+                self.close_input()
+                return True
+            return False
+
     app = Gtk.Application(application_id="dev.epsilon.VoiceOverlay", flags=Gio.ApplicationFlags.NON_UNIQUE)
 
     def on_activate(app):
@@ -240,10 +336,16 @@ def main(argv):
 
         def handle(command):
             try:
+                if not accepts(command, card.typing):
+                    return False
                 if command["op"] == "show":
                     card.show(clean_show(command))
                 elif command["op"] == "hide":
                     card.hide()
+                elif command["op"] == "input":
+                    card.enter_input(clean_input(command))
+                elif command["op"] == "close_input":
+                    card.close_input()
                 else:
                     app.quit()
             except Exception as e:  # noqa: BLE001 - si dibujar falla, mejor que Epsilon vuelva a las notificaciones
@@ -251,7 +353,10 @@ def main(argv):
                 app.quit()
             return False
 
-        if demo:
+        if demo_input:
+            card.on_done = app.quit
+            GLib.idle_add(handle, {"op": "input", "layout": {"anchors": list(POSITIONS[DEFAULT_POSITION])}})
+        elif demo:
             position = next((a for a in argv[1:] if not a.startswith("--")), DEFAULT_POSITION)
             delay = 0
             for step in demo_commands(position):

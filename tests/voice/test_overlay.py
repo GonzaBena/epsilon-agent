@@ -1,3 +1,5 @@
+import importlib.util
+
 import pytest
 
 from epsilon.voice import overlay
@@ -635,3 +637,169 @@ def test_the_presenter_and_the_window_do_not_deadlock_when_the_window_cannot_ope
 
     assert done.wait(3), "se trabó: el Presenter esperaba a su propio candado"
     presenter.close()
+
+
+def test_a_text_turn_starts_with_a_clean_card(rig):
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1})
+    rig.feed(status("Dijiste: algo viejo"), {"type": "reply", "text": "Respuesta vieja"}, turn=1)
+    assert rig.last()["text"] == "Respuesta vieja"
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 2, "source": "text"})
+
+    rig.feed(status("Pensando…"), turn=2)
+
+    assert rig.last()["heard"] == "" and rig.last()["text"] == ""
+    assert rig.last()["title"] == "Pensando…"
+
+
+def test_a_text_turn_does_not_echo_what_you_typed(rig):
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
+
+    rig.feed(status("Dijiste: recordame esto"), turn=1)
+
+    assert rig.last()["heard"] == "" and rig.last()["title"] == "Pensando…"
+
+
+def test_a_text_turn_is_not_held_open_by_the_speech_of_an_old_turn(rig):
+    rig.feed({"type": "speech", "state": "start"})
+    rig.presenter.on_event({"type": "turn", "state": "start", "turn": 1, "source": "text"})
+
+    rig.feed({"type": "reply", "text": "Listo"}, turn=1)
+
+    assert FakeTimer.live() == []  # ni espera a un audio que no va a haber ni se esconde sola
+
+
+# --- Lo que la ventanita devuelve cuando se le escribe (submit / closed) ---------------------------------------------------
+
+
+def wait_until(check, seconds=3.0):
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if check():
+            return True
+        time.sleep(0.01)
+    return check()
+
+
+@pytest.fixture
+def typed(win):
+    got = {"submit": [], "closed": []}
+    win.window.on_submit = got["submit"].append
+    win.window.on_closed = lambda: got["closed"].append(1)
+    win.window.send(SHOW)  # arranca el proceso
+    return got
+
+
+def test_a_submit_line_calls_on_submit_with_the_decoded_text(win, typed):
+    win.proc.say('submit:"hola \\"mundo\\"\\nchau"')
+
+    assert wait_until(lambda: typed["submit"] == ['hola "mundo"\nchau'])
+
+
+def test_a_closed_line_calls_on_closed(win, typed):
+    win.proc.say("closed")
+
+    assert wait_until(lambda: typed["closed"] == [1])
+
+
+@pytest.mark.parametrize("line", ["submit:", "submit:no-json", "submit:42", 'submit:""', "submit:" + '"' + "x" * 501 + '"', "submit:null"])
+def test_a_malformed_or_oversized_submit_is_dropped(win, typed, line):
+    win.proc.say(line)
+    win.proc.say("closed")  # lo que viene después se sigue leyendo: es la señal de que la anterior ya se procesó
+
+    assert wait_until(lambda: typed["closed"] == [1])
+    assert typed["submit"] == []
+
+
+def test_a_failing_callback_does_not_stop_the_reader(win):
+    seen = []
+
+    def boom(text):
+        seen.append(text)
+        raise RuntimeError("boom")
+
+    win.window.on_submit = boom
+    win.window.on_closed = lambda: seen.append("closed")
+    win.window.send(SHOW)
+
+    win.proc.say('submit:"uno"')
+    win.proc.say("closed")
+
+    assert wait_until(lambda: seen == ["uno", "closed"])
+
+
+def test_the_window_and_epsilon_agree_on_the_longest_text(win):
+    spec = importlib.util.spec_from_file_location("overlay_window_limit", overlay.SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert overlay.MAX_SUBMIT == module.MAX_INPUT
+
+
+# --- Escribir (Alt+C): la tarjeta espera a que la leas, y no deja el «pensamiento» de antes de una herramienta ---------------
+
+def text_turn(rig, turn=1):
+    rig.feed({"type": "turn", "state": "start", "source": "text"}, turn=turn)
+    rig.feed(status("Dijiste: anotá esto"), status("Pensando…"), turn=turn)
+
+
+def test_a_typed_answer_stays_until_you_close_it(rig):
+    text_turn(rig)
+    rig.feed({"type": "reply", "text": "Anotado."}, {"type": "turn", "state": "end"}, turn=1)
+
+    assert FakeTimer.live() == []
+    assert rig.last()["kind"] == "done"
+
+
+def test_a_typed_problem_stays_too(rig):
+    text_turn(rig)
+    rig.feed({"type": "error", "text": "Algo falló al hablar con la IA."}, turn=1)
+
+    assert FakeTimer.live() == []
+
+
+def test_a_spoken_answer_still_hides_after_a_typed_one(rig):
+    text_turn(rig)
+    rig.feed({"type": "reply", "text": "Anotado."}, turn=1)
+    rig.feed(status("Escuchando…"))
+    rig.feed({"type": "reply", "text": "Listo."})
+
+    assert len(FakeTimer.live()) == 1
+
+
+def test_the_text_written_before_a_tool_is_wiped_when_the_tool_starts(rig):
+    rig.feed(status("Dijiste: hola"), status("Pensando…"))
+    rig.feed({"type": "text", "text": "Voy a revisar la nota primero."})
+
+    rig.feed({"type": "tool", "name": "ver", "state": "running"})
+
+    assert rig.last()["title"] == "Usando <ver>…" and rig.last()["text"] == ""
+
+
+def test_a_window_that_dies_counts_as_closed(win):
+    closed = []
+    win.window.on_closed = lambda: closed.append(True)
+    win.window.send({"op": "show", "kind": "info", "title": "x", "heard": "", "text": "", "layout": {}})
+    win.proc.exit()
+
+    wait_for(lambda: closed)
+    assert closed
+
+
+def test_dismiss_hides_a_typed_card_that_stays_open(rig):
+    text_turn(rig)
+    rig.feed({"type": "reply", "text": "Anotado."}, turn=1)
+
+    assert rig.presenter.dismiss() is True
+
+    assert rig.last() == {"op": "hide"}
+    assert rig.presenter.dismiss() is False  # ya no hay nada que cerrar
+
+
+def test_dismiss_leaves_a_spoken_card_alone(rig):
+    rig.feed(status("Escuchando…"))
+    before = len(rig.sent)
+
+    assert rig.presenter.dismiss() is False
+    assert len(rig.sent) == before

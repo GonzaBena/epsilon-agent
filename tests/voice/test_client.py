@@ -87,3 +87,20 @@ def test_without_epsilon_running_the_script_says_so(tmp_path):
 
     assert done.returncode == 1
     assert "no está corriendo" in (tmp_path / "notified").read_text()
+
+
+def test_the_ask_script_defaults_to_the_ask_word(tmp_path, server):
+    received, thread = server
+    script = client.write_script(tmp_path / "bin", "ask")
+
+    done = run_script(script, tmp_path)
+    thread.join(5)
+
+    assert script.name == client.ASK_SCRIPT_NAME
+    assert done.returncode == 0
+    assert received == ["ask\n"]
+
+
+def test_the_toggle_script_is_unchanged_by_the_ask_one(tmp_path):
+    assert client.write_script(tmp_path).name == client.SCRIPT_NAME
+    assert client.SCRIPT == client.script_text("toggle")

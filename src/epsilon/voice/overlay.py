@@ -81,6 +81,7 @@ class Presenter:
         self._timer = None
         self._turn: int | None = None
         self._speaking = False
+        self._stay = False  # el turno es de texto (Alt+C): la tarjeta espera a que la cierres, no se esconde sola
         self._closed = False  # ya hay una respuesta o un aviso en pantalla (lo que sigue es esconderse)
         self._kind = ""
         self._heard = ""
@@ -90,6 +91,15 @@ class Presenter:
     def on_event(self, event: dict) -> None:
         with self._lock:
             self._handle(event)
+
+    def dismiss(self) -> bool:
+        """Esconde la tarjeta de un turno escrito que espera a que la cierres. False si no había (la de voz se esconde sola)."""
+        with self._lock:
+            if not (self._stay and self._kind):
+                return False
+            self._cancel_timer()
+            self._hide_now()
+            return True
 
     def close(self) -> None:
         """Deja de esperar para esconderse (se apagó el canal)."""
@@ -103,6 +113,11 @@ class Presenter:
         if kind == "turn":
             if event.get("state") == "start":
                 self._turn = turn
+                self._stay = event.get("source") == "text"
+                if self._stay:  # escribiste: no hay «Escuchando…» que reinicie la tarjeta, se limpia acá
+                    self._speaking = self._closed = False
+                    self._heard = self._text = ""
+                    self._cancel_timer()
             elif turn == self._turn and not self._closed:
                 self._hide_later()  # el turno terminó sin respuesta (lo cortaron): que no quede colgado
             return
@@ -118,7 +133,8 @@ class Presenter:
             self._closed = True
             self._hide_later()
         elif kind == "tool" and event.get("state") == "running":
-            self._show("working", f"Usando {self._label_of(str(event.get('name', '')))}…")
+            # lo que el modelo escribió antes de pedir la herramienta era un pensamiento, no la respuesta: no queda a la vista
+            self._show("working", f"Usando {self._label_of(str(event.get('name', '')))}…", text="")
         elif kind == "text":
             self._show("talking", "Respondiendo…", text=tail(text, MAX_TEXT))
         elif kind == "reply":
@@ -136,13 +152,13 @@ class Presenter:
 
     def _status(self, text: str) -> None:
         if text == "Escuchando…":
-            self._turn, self._speaking, self._closed = None, False, False  # otra charla: lo viejo no cuenta
+            self._turn, self._speaking, self._closed, self._stay = None, False, False, False  # otra charla: lo viejo no cuenta
             self._heard = self._text = ""
             self._show("listening", text)
         elif text == "Transcribiendo…" or text == "Pensando…":
             self._show("working", text)
         elif text.startswith("Dijiste: "):
-            self._heard = tail(text.removeprefix("Dijiste: "), MAX_HEARD)
+            self._heard = "" if self._stay else tail(text.removeprefix("Dijiste: "), MAX_HEARD)  # lo escribiste vos: no hace falta repetirlo
             self._show("working", "Pensando…")
         else:  # un aviso cualquiera (p. ej. un atajo que no se pudo aplicar)
             self._show("info", tail(text, MAX_TEXT))
@@ -168,14 +184,19 @@ class Presenter:
 
     def _hide_later(self, seconds: float | None = None) -> None:
         self._cancel_timer()
+        if self._stay:
+            return
         self._timer = self._timer_factory(seconds if seconds is not None else config.number("VOICE_OVERLAY_HIDE_S"), self._hide)
         self._timer.start()
 
     def _hide(self) -> None:
         with self._lock:
-            self._timer = None
-            self._last, self._kind, self._heard, self._text = None, "", "", ""
-            self._send({"op": "hide"})
+            self._hide_now()
+
+    def _hide_now(self) -> None:
+        self._timer = None
+        self._last, self._kind, self._heard, self._text = None, "", "", ""
+        self._send({"op": "hide"})
 
 
 # --- El proceso de la ventanita -------------------------------------------------------------------------------------------
@@ -189,6 +210,7 @@ SCRIPT = Path(__file__).with_name("overlay_window.py")
 LIB_DIRS = ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/local/lib"]
 PYTHONS = ["/usr/bin/python3", "/usr/local/bin/python3"]  # NO `which python3`: en el servicio puede ser el del entorno virtual, sin PyGObject
 RETRY_AFTER = 60.0  # segundos que espera antes de volver a intentar tras un fallo
+MAX_SUBMIT = 500  # lo más largo que se acepta de lo escrito en el campo (la ventanita lo limita igual: un test vigila que coincidan)
 MAX_FAILURES = 3  # tras tantos fallos se rinde hasta que se reinicie Epsilon
 ENV_KEYS = ("PATH", "HOME", "LANG", "XDG_RUNTIME_DIR")
 INSTALL = "instalá gtk4-layer-shell y python-gobject"
@@ -208,8 +230,10 @@ class Window:
     se puede abrir o se cae, se avisa UNA vez por qué y todo vuelve a las notificaciones (`active()` pasa a False); pasado un rato
     vuelve a intentar, y tras `MAX_FAILURES` fallos se rinde hasta que se reinicie Epsilon."""
 
-    def __init__(self, announce, spawn=None, clock=time.monotonic, defer=_fire_and_forget):
+    def __init__(self, announce, spawn=None, clock=time.monotonic, defer=_fire_and_forget, on_submit=None, on_closed=None):
         self._announce = announce
+        self.on_submit = on_submit  # recibe lo que se escribió en el campo (Enter)
+        self.on_closed = on_closed  # el campo se cerró sin enviar (Esc)
         self._defer = defer  # los avisos salen desde otro hilo: ver `_tell`
         self._spawn_override = spawn  # la de verdad (`_spawn`) se resuelve al usarla, no acá
         self._clock = clock
@@ -338,13 +362,37 @@ class Window:
                     self.ready = True
                 elif text.startswith("error:"):
                     self._reason = text.removeprefix("error:").strip()[:200]
+                elif text.startswith("submit:"):
+                    self._submitted(text.removeprefix("submit:"))
+                elif text == "closed":
+                    self._call(self.on_closed)
         except (OSError, ValueError):
             pass
+        self._call(self.on_closed)  # sin ventanita no hay campo abierto: el próximo atajo vuelve a intentar
         with self._lock:
             if self._closing is proc:
                 self._closing = None
             elif self._proc is proc:
                 self._failed(self._reason or "se cerró sola")
+
+    def _submitted(self, payload: str) -> None:
+        """Lo que se escribió en el campo: JSON de un texto de 1 a MAX_SUBMIT caracteres; lo demás se descarta."""
+        try:
+            text = json.loads(payload)
+        except ValueError:
+            return
+        if isinstance(text, str) and 0 < len(text.strip()) and len(text) <= MAX_SUBMIT:
+            self._call(self.on_submit, text)
+
+    @staticmethod
+    def _call(callback, *args) -> None:
+        """Avisa a quien escucha, fuera de cualquier candado; si falla, el hilo lector sigue."""
+        if callback is None:
+            return
+        try:
+            callback(*args)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _failed(self, reason: str) -> None:
         """La ventanita falló: se la descarta, se avisa UNA vez por qué y se vuelve a intentar más adelante (o nunca, si insiste)."""
