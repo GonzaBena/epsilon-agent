@@ -20,7 +20,7 @@ from epsilon.memory import store as memory
 from epsilon.settings import config, editor, store as settings_store
 from epsilon.skills import runtime as skill_runtime, store as skill_store
 from epsilon.routines import recipe as routine_recipe, rules as routine_rules, runner as routine_runner, steps as routine_steps, store as routine_store
-from epsilon.utils import clima, clock, dolar, multimedia, navegador, sistema, ventanas
+from epsilon.utils import apps, clima, clock, dolar, hyprland, multimedia, navegador, sistema, ventanas
 
 # Carpeta (dentro de DATA_DIR) donde /ticket guarda las imágenes.
 TICKETS_DIR = "tickets"
@@ -522,7 +522,7 @@ def _pc(action: Callable[[str], str]) -> Callable[[str], Reply]:
     def run(args: str) -> Reply:
         try:
             return Reply(config.redact(action(args)))
-        except (ValueError, multimedia.MultimediaError, ventanas.VentanasError) as e:
+        except (ValueError, multimedia.MultimediaError, ventanas.VentanasError, hyprland.HyprlandError) as e:
             return Reply(str(e), failed=True)
 
     return run
@@ -600,6 +600,31 @@ def _music_cmd(args: str) -> Reply:
         return _playlists(force=True)
     return _music_player_cmd(args)
 _windows_cmd = _pc(lambda args: ventanas.report(args))
+
+
+def _workspace(args: str) -> str:
+    kind, value = hyprland.parse_workspace(args)
+    return hyprland.go_to_workspace(value) if kind == "go" else hyprland.move_window(value)
+
+
+def _open_app(args: str) -> str:
+    """Abre una app por su NOMBRE: se busca entre los alias de la persona (PC_APPS) y las apps instaladas, y el comando lo arma
+    el código (nunca el modelo). Con varias igual de buenas no adivina, y si no la conoce dice cuáles sí puede abrir."""
+    aliases = apps.parse_aliases([entry for entry in config.value("PC_APPS").split(",") if entry.strip()])
+    installed = apps.installed()
+    match = apps.find(args.strip(), aliases, installed)
+    if match.kind == "none":
+        return f"No conozco esa app. Puedo abrir, por ejemplo: {', '.join(apps.sample(installed, aliases))}."
+    if match.kind == "many":
+        return f"Hay varias apps que coinciden: {', '.join(match.options)}. ¿Cuál querés?"
+    hyprland.run(match.command)
+    return f"Abriendo {match.name}."
+
+
+_workspace_cmd = _pc(_workspace)
+_focus_cmd = _pc(lambda args: hyprland.focus_window(args))
+_open_app_cmd = _pc(_open_app)
+_close_window_cmd = _pc(lambda args: hyprland.close_window())
 
 def _connector_cmd(args: str) -> Reply:
     """/c: la persona usa una herramienta de un conector, sin modelo. Lo escribió ella: no pasa por permisos ni por
@@ -1872,6 +1897,10 @@ AI_RUNNERS: dict[str, Callable[[str], Reply]] = {
     "sonando": lambda args: _playing_cmd(""),
     "musica": lambda args: _music_player_cmd(_bare(args)),  # la IA no fuerza la lectura de playlists: tiene `musica_playlists`
     "ventanas": lambda args: _windows_cmd(_bare(args)),
+    "workspace": lambda args: _workspace_cmd(_bare(args)),
+    "foco": lambda args: _focus_cmd(_bare(args)),
+    "app_abrir": lambda args: _open_app_cmd(_bare(args)),
+    "ventana_cerrar": lambda args: _close_window_cmd(""),
     "rutina_crear": lambda args: _routine_create(_bare(args)),
     "rutina_ver": lambda args: _routines_cmd("", Session()),
     "rutina_borrar": lambda args: _routine_manage("borrar", _bare(args).strip()),

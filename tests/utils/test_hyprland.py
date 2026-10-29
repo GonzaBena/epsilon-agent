@@ -24,6 +24,10 @@ class FakeHyprland:
             if self.lua:
                 return (0, "keyword can't work with non-legacy parsers. Use eval.")  # sí: con código 0
             return (0, self.answer)
+        if args[0] == "dispatch":
+            if self.lua:  # el Hyprland nuevo espera una expresión Lua; «workspace 3» le da un error (con código 7)
+                return (0, self.answer) if args[1].startswith("hl.") else (7, "error: ')' expected")
+            return (0, self.answer) if args[1] in ("workspace", "movetoworkspace", "focuswindow", "killactive", "exec") else (0, "Invalid dispatcher")
         raise AssertionError(args)
 
 
@@ -205,3 +209,197 @@ def test_hyprctl_hanging_is_a_clear_error(monkeypatch):
 
     with pytest.raises(hyprland.HyprlandError, match="Hyprland"):
         REAL_CTL("eval", "x")
+
+
+# --- Mover cosas: workspaces, ventanas y apps (Voice Companion, paso 5) ---------------------------------------------------
+
+
+@pytest.fixture
+def windows(monkeypatch):
+    """Lo que Hyprland diría de sus ventanas (`hyprctl -j clients|activewindow|activeworkspace`)."""
+
+    def client(address, cls, title, workspace, focus):
+        return {"address": address, "class": cls, "title": title, "workspace": {"id": workspace, "name": str(workspace)}, "mapped": True, "hidden": False, "focusHistoryID": focus}
+
+    data = {
+        "clients": [client("0xaaa", "kitty", "agy", 1, 0), client("0xbbb", "kitty", "notas", 2, 3), client("0xccc", "firefox", "Mi banco", 2, 1), client("0xddd", "obsidian", "Diario", 3, 2)],
+        "activewindow": client("0xaaa", "kitty", "agy", 1, 0),
+        "activeworkspace": {"id": 1, "name": "1"},
+    }
+    monkeypatch.setattr(hyprland.ventanas, "_load", lambda what: data[what])
+    return data
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("3", ("go", 3)), (" 10 ", ("go", 10)), ("ir 2", ("go", 2)), ("ir al 4", ("go", 4)), ("anterior", ("go", "previous")),
+        ("mover 3", ("move", 3)), ("mover a 5", ("move", 5)), ("Mover A 1", ("move", 1)),
+    ],
+)
+def test_the_workspace_request_is_understood_from_a_closed_set_of_phrases(text, expected):
+    assert hyprland.parse_workspace(text) == expected
+
+
+@pytest.mark.parametrize("text", ["", "0", "11", "-1", "tres", "special:scratchpad", "3; exec reboot", "e+1", "mover", "mover 99"])
+def test_anything_else_is_not_a_workspace(text):
+    with pytest.raises(ValueError):
+        hyprland.parse_workspace(text)
+
+
+def test_going_to_a_workspace_uses_the_lua_api_and_confirms_where_you_are(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    windows["activeworkspace"] = {"id": 3, "name": "3"}
+
+    text = hyprland.go_to_workspace(3)
+
+    assert fake.calls[1] == ("dispatch", 'hl.dsp.focus({ workspace = "3" })')
+    assert "3" in text
+
+
+def test_going_back_to_the_previous_workspace(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    hyprland.go_to_workspace("previous")
+
+    assert fake.calls[1] == ("dispatch", 'hl.dsp.focus({ workspace = "previous" })')
+
+
+def test_with_a_classic_config_the_same_orders_use_the_old_dispatchers(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=False)
+
+    hyprland.go_to_workspace(2)
+    hyprland.move_window(4)
+    hyprland.close_window()
+
+    assert fake.calls[1:] == [
+        ("dispatch", "workspace", "2"),
+        ("eval", hyprland.PROBE),
+        ("dispatch", "movetoworkspace", "4"),
+        ("eval", hyprland.PROBE),
+        ("dispatch", "killactive"),
+    ]
+
+
+def test_moving_the_active_window_names_the_app_and_the_destination(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    text = hyprland.move_window(4)
+
+    assert fake.calls[1] == ("dispatch", 'hl.dsp.window.move({ workspace = "4" })')
+    assert "kitty" in text and "4" in text
+
+
+@pytest.mark.parametrize("bad", [0, 11, "3", None, 2.5, True])
+def test_a_workspace_outside_one_to_ten_is_refused_before_touching_hyprland(monkeypatch, windows, bad):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    with pytest.raises(ValueError):
+        hyprland.move_window(bad)
+
+    assert fake.calls == []
+
+
+def test_focusing_by_name_uses_the_exact_address_from_the_window_list(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    text = hyprland.focus_window("Obsidian")
+
+    assert fake.calls[1] == ("dispatch", 'hl.dsp.focus({ window = "address:0xddd" })')
+    assert "obsidian" in text.lower() and "3" in text
+
+
+def test_the_title_also_finds_a_window_but_a_class_match_wins(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    hyprland.focus_window("banco")
+
+    assert fake.calls[1][1] == 'hl.dsp.focus({ window = "address:0xccc" })'
+
+
+def test_several_windows_of_the_same_app_focus_the_most_recent_one(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    hyprland.focus_window("kitty")
+
+    assert fake.calls[1][1] == 'hl.dsp.focus({ window = "address:0xaaa" })'  # la de focusHistoryID más chico
+
+
+def test_different_apps_matching_equally_are_listed_not_guessed(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    windows["clients"][3]["class"] = "kitty-notes"  # ahora hay dos apps que contienen «kitty»... y la exacta sigue ganando
+    windows["clients"][0]["class"] = "kitty-a"
+    windows["clients"][1]["class"] = "kitty-b"
+
+    text = hyprland.focus_window("kitty")
+
+    assert fake.calls == []
+    assert "kitty-a" in text and "kitty-b" in text and "cuál" in text
+
+
+def test_a_window_that_does_not_exist_is_said_plainly(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    text = hyprland.focus_window("photoshop")
+
+    assert fake.calls == [] and "No encontré" in text
+
+
+def test_a_hidden_or_unmapped_window_is_never_a_target(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    for client in windows["clients"]:
+        client["mapped"] = False
+
+    assert "No encontré" in hyprland.focus_window("kitty")
+    assert fake.calls == []
+
+
+def test_a_window_title_never_reaches_the_answer_because_it_can_be_private(monkeypatch, windows):
+    FakeHyprland(monkeypatch, lua=True)
+
+    assert "banco" not in hyprland.focus_window("Mi banco").lower().replace("firefox", "")
+
+
+def test_closing_closes_only_the_active_window_and_says_which(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    text = hyprland.close_window()
+
+    assert fake.calls[1] == ("dispatch", "hl.dsp.window.close()")
+    assert "kitty" in text
+
+
+def test_closing_with_no_window_in_focus_does_nothing(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    windows["activewindow"] = {}
+
+    text = hyprland.close_window()
+
+    assert fake.calls == [] and "ninguna ventana" in text
+
+
+def test_running_a_command_goes_through_hyprland_exec_in_both_styles(monkeypatch):
+    lua = FakeHyprland(monkeypatch, lua=True)
+    hyprland.run("gio launch '/usr/share/applications/Youtube Music.desktop'")
+    classic = FakeHyprland(monkeypatch, lua=False)
+    hyprland.run("omarchy-launch-browser")
+
+    assert lua.calls[1] == ("dispatch", "hl.dsp.exec_cmd(\"gio launch '/usr/share/applications/Youtube Music.desktop'\")")
+    assert classic.calls[1] == ("dispatch", "exec", "omarchy-launch-browser")
+
+
+@pytest.mark.parametrize("command", ["", 'x"); os.execute("reboot', "a\\b", "uno\ndos", "a;b", "a|b", "$(x)", "a`b`"])
+def test_a_command_with_anything_unusual_is_never_sent_to_hyprland(monkeypatch, command):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    with pytest.raises(ValueError):
+        hyprland.run(command)
+
+    assert fake.calls == []
+
+
+def test_a_warning_from_hyprland_is_an_error_even_with_exit_code_zero(monkeypatch, windows):
+    FakeHyprland(monkeypatch, lua=True, answer="warning: =[C]:-1: Bad workspace")
+
+    with pytest.raises(hyprland.HyprlandError, match="no aceptó"):
+        hyprland.go_to_workspace(3)

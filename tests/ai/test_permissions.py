@@ -26,7 +26,7 @@ def test_defaults_follow_the_kind_and_resumir_is_denied():
         "nota": "ask", "nota_nombrada": "ask", "nota_editar": "ask", "crear_archivo": "ask", "recordar": "ask", "editar": "ask",
         "olvidar": "deny", "resumir": "deny", "skill_usar": "allow",
         "nav_pestanas": "allow", "nav_leer": "allow", "nav_abrir": "allow", "nav_buscar": "ask", "nav_clic": "allow", "nav_escribir": "allow",
-        "volumen": "allow", "sonando": "allow", "musica": "allow", "ventanas": "ask", "musica_poner": "allow", "musica_buscar": "allow", "musica_playlists": "allow", "yt_historial": "ask",
+        "volumen": "allow", "sonando": "allow", "musica": "allow", "ventanas": "ask", "workspace": "allow", "foco": "allow", "app_abrir": "ask", "ventana_cerrar": "ask", "musica_poner": "allow", "musica_buscar": "allow", "musica_playlists": "allow", "yt_historial": "ask",
         "rutina_crear": "ask", "rutina_ver": "allow", "rutina_borrar": "ask",
     }
 
@@ -65,7 +65,7 @@ def test_broken_file_falls_back_to_defaults(content):
 
     assert loaded["ver"] == "allow"
     assert "xyz" not in loaded
-    assert len(loaded) == 36
+    assert len(loaded) == 40
     if "nota" in content:
         assert loaded["nota"] == "allow"
     else:
@@ -108,7 +108,7 @@ def test_invalid_ai_default_falls_back_to_kind(monkeypatch):
 def test_offered_excludes_denied():
     ids = [tools.ai_id(t) for t in permissions.offered()]
 
-    assert len(ids) == 34
+    assert len(ids) == 38
     assert "olvidar" not in ids and "resumir" not in ids
 
 
@@ -214,9 +214,9 @@ def test_a_tool_denied_globally_stays_blocked_in_scope(scope):
 VOICE = "20261029-120000-cccc"
 OTHER = "20261029-120001-dddd"
 # Leer y escribir sin pisar nada: corren solas por voz aunque en /permisos estén en «preguntar».
-SAFE = ["nota", "nota_nombrada", "crear_archivo", "recordar", "ver", "buscar", "fecha", "clima", "volumen", "musica", "nav_abrir", "nav_clic", "nav_escribir", "sistema", "ventanas", "yt_historial", "nav_buscar"]
+SAFE = ["nota", "nota_nombrada", "crear_archivo", "recordar", "ver", "buscar", "fecha", "clima", "volumen", "musica", "nav_abrir", "nav_clic", "nav_escribir", "sistema", "ventanas", "yt_historial", "nav_buscar", "workspace", "foco", "app_abrir"]
 # Destructivas (borran o pisan algo que ya estaba) o que arman automatizaciones: nunca por voz.
-NEVER = ["olvidar", "rutina_borrar", "nota_editar", "editar", "rutina_crear"]
+NEVER = ["olvidar", "rutina_borrar", "nota_editar", "editar", "rutina_crear", "ventana_cerrar"]
 
 
 def tool_of(tool_id):
@@ -256,7 +256,7 @@ def test_voice_mode_never_runs_destructive_tools_even_if_you_allowed_them_in_per
     assert tool_id not in {tools.ai_id(t) for t in permissions.offered(voice_mode)}
 
 
-@pytest.mark.parametrize("tool_id", ["olvidar", "rutina_borrar", "nota_editar", "editar"])
+@pytest.mark.parametrize("tool_id", ["olvidar", "rutina_borrar", "nota_editar", "editar", "ventana_cerrar"])
 def test_what_deletes_or_overwrites_is_marked_so(tool_id):
     tool = tool_of(tool_id)
 

@@ -433,3 +433,30 @@ toda la respuesta, así suenan seguidas. `aplay` crudo de 16 bits a 24 kHz (`_sp
   oración sonó a los 42 s —mientras el modelo seguía escribiendo, que terminó a los 51 s— y las cuatro sonaron encadenadas sin huecos. Esa
   espera es del modelo local en CPU (compite con Kokoro por el procesador); con un modelo en la nube la primera oración sale en ~2 s.
 - Pendiente (pulido, paso 7): los avisos de micrófono/transcripción («No te escuché», falta de micrófono) son solo notificación, no se hablan.
+
+## Estado y hallazgos (paso 5, 2026-10-29)
+
+Decisión de la persona: `abrir` acepta **ambas** fuentes, los alias propios y las apps instaladas. Además pidió que, al desarrollar, nada
+toque el sistema: este paso se verificó solo con tests y falsos (ver la memoria del proyecto).
+
+Hecho: cuatro herramientas en el grupo `pc` (`pc.workspace`, `pc.foco`, `pc.abrir`, `pc.cerrar`), cada una con su permiso:
+
+| Herramienta | Qué hace | Permiso en el chat | Por voz |
+|---|---|---|---|
+| `workspace` | «3», «anterior» o «mover 3» (manda la ventana activa) | permitir | corre |
+| `foco` | pasa el foco a una ventana por el nombre de su app (la más reciente de esa app; si son apps distintas, las nombra) | permitir | corre |
+| `app_abrir` | abre una app por su NOMBRE | preguntar | corre |
+| `ventana_cerrar` | cierra la ventana activa (`ai="delete"`) | preguntar | **nunca** |
+
+- **Apps** (`utils/apps.py`, solo lee archivos): primero los alias de la persona (ajuste `PC_APPS`, `nombre=comando`) y después las instaladas
+  (`.desktop`; la carpeta de la persona pisa a la del sistema). Busca sin acentos, de lo más exacto (nombre, id) a lo más suelto (palabra,
+  contiene, descripción); si lo mejor lo cumplen varias apps con nombres distintos **no adivina** y las lista; si no la conoce, dice
+  cuáles sí puede abrir. Una instalada se abre con `gio launch '<ruta del .desktop>'` (la ruta sale del escaneo, no del modelo).
+- **Nada del modelo llega a un shell**: el modelo solo dice un nombre; el comando lo arma el código desde la lista cerrada. Un comando de
+  alias y una ruta se validan contra un conjunto de caracteres inocuos (sin `| & ; $` ni comillas dobles ni barra invertida) tanto al
+  guardar el ajuste como justo antes de mandarlo a Hyprland. Un número de espacio es un entero de 1 a 10 y una ventana se enfoca por su
+  dirección exacta tomada de la lista de Hyprland. El título de una ventana no se repite en la respuesta (puede ser privado).
+- **Dos estilos de Hyprland** (como el atajo): con config Lua `hyprctl dispatch` espera una expresión (`hl.dsp.focus({ workspace = "3" })`,
+  `hl.dsp.window.move(...)`, `hl.dsp.window.close()`, `hl.dsp.exec_cmd("...")`); en la clásica, `workspace 3`, `movetoworkspace`,
+  `focuswindow address:0x…`, `killactive`, `exec`. Un argumento inválido contesta `warning: …` con código 0, así que solo vale un `ok` exacto.
+- Los cuatro entran al catálogo de las rutinas (`ventana_cerrar` marcada como destructiva) y a las palabras que cargan el grupo `pc`.

@@ -433,6 +433,58 @@ TOOLS = (
         ai_arg="activa para ver solo la ventana que tiene el foco; vacío para ver todas",
     ),
     Tool(
+        "Cambiar de espacio de trabajo",
+        done="Cambió de espacio de trabajo",
+        writes=True,
+        ai="write",
+        ai_default="allow",  # solo mueve la vista: no cierra ni borra nada
+        ai_name="workspace",
+        ai_group="pc",
+        ai_action="workspace",
+        ai_help="ir a otro espacio de trabajo (del 1 al 10) o mandar la ventana con el foco a otro",
+        ai_arg="el número («3»), «anterior», o «mover 3» para mandar la ventana con el foco al espacio 3",
+    ),
+    Tool(
+        "Enfocar una ventana",
+        done="Pasó el foco a una ventana",
+        writes=True,
+        ai="write",
+        ai_default="allow",
+        ai_name="foco",
+        ai_group="pc",
+        ai_action="foco",
+        ai_help="pasar el foco a una ventana que ya está abierta, buscándola por el nombre de su app",
+        ai_arg="el nombre de la app, p. ej. «firefox» o «kitty»",
+    ),
+    Tool(
+        "Abrir una app",
+        done="Abrió una app",
+        writes=True,
+        ai="write",
+        ai_default="ask",
+        ai_name="app_abrir",
+        ai_group="pc",
+        ai_action="abrir",
+        ai_help="abrir una app por su nombre (solo las que la persona definió o las instaladas; nunca un comando)",
+        ai_arg="solo el nombre de la app, p. ej. «spotify» o «navegador»; no escribas comandos",
+        ai_tips=(
+            "Si contesta que hay varias apps con ese nombre, preguntale a la persona cuál; si dice que no la conoce, decíselo y "
+            "nombrale algunas que sí puede abrir. Decí que la abriste solo si contestó «Abriendo»."
+        ),
+    ),
+    Tool(
+        "Cerrar la ventana activa",
+        done="Cerró una ventana",
+        writes=True,
+        ai="delete",  # se puede perder lo que no se guardó: por voz nunca (ver permissions.SAFE_AUTO)
+        ai_default="ask",
+        ai_name="ventana_cerrar",
+        ai_group="pc",
+        ai_action="cerrar",
+        ai_help="cerrar la ventana que tiene el foco (puede perderse lo que no esté guardado)",
+        ai_arg="no lleva argumento",
+    ),
+    Tool(
         "Música: poner una playlist o canciones",
         done="Puso música en YouTube Music",
         ai="write",
@@ -699,7 +751,7 @@ AI_GROUPS: dict[str, str] = {
     "archivos": "Lo guardado en la biblioteca (notas, tickets, CSV)",
     "memoria": "Lo que recordás de la persona (datos y preferencias)",
     "consultar": "Datos de afuera, sin guardar nada",
-    "pc": "La computadora de la persona: volumen, qué suena, controles del reproductor y ventanas",
+    "pc": "La computadora de la persona: volumen, qué suena, controles del reproductor, ventanas, espacios de trabajo y abrir apps",
     "musica": "Poner música en YouTube Music (playlists y canciones): para elegir, mirá primero playlists (las de la persona, con su estilo y cuándo se pusieron). Ante un pedido vago elegí vos, sin preguntar. Para controlarla una vez sonando (pausa, siguiente, repetir), el grupo pc",
     "skills": "Las skills de la persona: sus instrucciones para ciertas tareas (la lista está en tus instrucciones)",
     "rutinas": "Lo que Epsilon hace solo más tarde (a una hora, dentro de un rato o al pasar un % de disco o ram): una cadena de pasos",
@@ -728,8 +780,8 @@ AI_GROUP_INDEX: dict[str, tuple[str, tuple[str, ...]]] = {
         ("hora", "fecha", "dia", "hoy", "manana", "dolar", "cotiz", "clima", "tiempo", "llov", "lluv", "temperatura", "frio", "calor", "sistema", "disco", "ram", "cpu", "bateria"),
     ),
     "pc": (
-        "la computadora: volumen, qué suena, controles de música y ventanas abiertas",
-        ("volumen", "music", "cancion", "tema", "suena", "sonando", "paus", "play", "pone", "pon ", "siguiente", "anterior", "ventana", "spotify", "video", "repet", "aleatori"),
+        "la computadora: volumen, qué suena, controles de música, ventanas, espacios de trabajo y abrir apps",
+        ("volumen", "music", "cancion", "tema", "suena", "sonando", "paus", "play", "pone", "pon ", "siguiente", "anterior", "ventana", "spotify", "video", "repet", "aleatori", "workspace", "espacio de trabajo", "escritorio", "abri ", "abrir", "abre ", "app ", "aplicacion", "programa", "enfoca", "foco", "cerra", "cierra"),
     ),
     "musica": (
         "poner música: una playlist o canciones en YouTube Music, o un video de YouTube que ya viste",
