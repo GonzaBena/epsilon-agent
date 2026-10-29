@@ -346,3 +346,10 @@ def test_site_command_explains_its_use_and_refuses_bad_addresses(tmp_path, monke
     assert "Uso: /sitio" in say("/sitio facu").text
     reply = say("/sitio router = http://192.168.0.1")
     assert reply.failed and "red local" in reply.text
+
+
+def test_the_usage_page_names_each_channel_by_its_session():
+    assert core._usage_channel("telegram:123") == "Telegram"
+    assert core._usage_channel("companion:voice") == "Voz"
+    assert core._usage_channel("web:abc") == "Web"
+    assert core._usage_channel("default") == "Web"

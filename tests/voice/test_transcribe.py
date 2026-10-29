@@ -574,3 +574,10 @@ def test_audio_to_text_turns_the_greeting_into_an_ia_question(voice, audio):
     voice.texts = ("Hola IA,", "tengo tareas para hoy?")
 
     assert transcribe.audio_to_text(audio) == "/ia tengo tareas para hoy?"
+
+
+def test_a_caller_can_ask_for_the_raw_text_without_spoken_commands(voice, audio):
+    voice.texts = ("Hola IA,", "tengo tareas para hoy?")
+
+    assert transcribe.audio_to_text(audio) == "/ia tengo tareas para hoy?"
+    assert transcribe.audio_to_text(audio, commands=False) == "Hola IA, tengo tareas para hoy?"

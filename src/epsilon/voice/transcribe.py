@@ -345,8 +345,11 @@ def spoken_commands(text: str) -> str:
 # --- Lo único que usan los canales ---------------------------------------------------------------
 
 
-def audio_to_text(path: Path) -> str:
+def audio_to_text(path: Path, commands: bool = True) -> str:
     """Transcribe un audio y devuelve el texto. Lanza VoiceError (mensaje listo para mostrar).
+
+    Con `commands` (lo normal) las frases habladas se vuelven comandos («Hola Meli, …» -> «/ia …»). Con `commands=False`
+    devuelve lo que se dijo, tal cual: el Voice Companion lo manda entero a la charla con la IA.
 
     Es lenta: los canales asíncronos la corren en otro hilo. El audio es DATO: lo que diga
     es texto del usuario, nunca algo que se obedece por venir de un archivo."""
@@ -382,4 +385,4 @@ def audio_to_text(path: Path) -> str:
 
     if not text:
         raise VoiceError("No entendí nada en el audio.")
-    return spoken_commands(text)
+    return spoken_commands(text) if commands else text

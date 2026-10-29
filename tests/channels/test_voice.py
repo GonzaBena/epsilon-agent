@@ -344,7 +344,7 @@ def running(tmp_path, monkeypatch, mic):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
     monkeypatch.setattr(notes, "DATA_DIR", data)
     monkeypatch.setattr(voice, "POLL_SECONDS", 0.02)
-    evals, notes_said = [], []
+    evals, notes_said, tags = [], [], []
 
     def fake_ctl(*args):  # un Hyprland con config en Lua: contesta «ok» y anotamos el código que le llega
         if args[0] == "eval" and args[1] != hyprland.PROBE:
@@ -352,11 +352,21 @@ def running(tmp_path, monkeypatch, mic):
         return (0, "ok") if args[0] == "eval" else (1, "Invalid request")
 
     monkeypatch.setattr(hyprland, "_ctl", fake_ctl)
-    monkeypatch.setattr(voice.notify, "desktop", lambda text: notes_said.append(text) or "")
+    monkeypatch.setattr(voice.notify, "desktop", lambda text, tag="": (notes_said.append(text), tags.append(tag)) and "")
     swept = []
     monkeypatch.setattr(capture, "sweep", swept.append)
     heard = []
-    monkeypatch.setattr(voice.transcribe, "audio_to_text", lambda path: heard.append(path) or "hola mundo")
+    monkeypatch.setattr(voice.transcribe, "audio_to_text", lambda path, commands=True: heard.append(path) or "hola mundo")
+    asked = []
+
+    def fake_handle(msg, on_event=None, stream_text=False):
+        asked.append(msg)
+        if on_event:
+            on_event({"type": "model", "step": 1})
+            on_event({"type": "text", "text": "respuesta"})
+        return voice.core.Reply("respuesta de prueba", ai=True)
+
+    monkeypatch.setattr(voice.core, "handle", fake_handle)
     voice.reset()
     errors = []
 
@@ -376,7 +386,7 @@ def running(tmp_path, monkeypatch, mic):
     handle = Handle()
     handle.thread, handle.evals, handle.said, handle.errors = thread, evals, notes_said, errors
     handle.data, handle.socket = data, client.socket_path()
-    handle.swept, handle.heard = swept, heard
+    handle.swept, handle.heard, handle.tags, handle.asked = swept, heard, tags, asked
     yield handle
     voice.stop()
     thread.join(5)
@@ -448,7 +458,7 @@ def test_without_hyprland_the_channel_still_works_and_says_why(tmp_path, monkeyp
     monkeypatch.setattr(notes, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(voice, "POLL_SECONDS", 0.02)
     said = []
-    monkeypatch.setattr(voice.notify, "desktop", lambda text: said.append(text) or "")
+    monkeypatch.setattr(voice.notify, "desktop", lambda text, tag="": said.append(text) or "")
 
     def no_hyprland(*args):
         raise hyprland.HyprlandError("Falta el programa «hyprctl»: esto solo funciona con Hyprland.")
@@ -490,8 +500,9 @@ def listener(tmp_path, monkeypatch):
     instance.text = "hola mundo"
     instance.silent = False
 
-    def fake_text(path):
-        instance.heard.append(path)
+    def fake_text(path, commands=True):
+        instance.heard.append((path, commands))
+        instance.deleted_when_heard = not path.exists()
         if isinstance(instance.text, Exception):
             raise instance.text
         return instance.text
@@ -506,7 +517,7 @@ def test_a_clip_is_transcribed_and_the_text_is_shown(listener, tmp_path):
 
     listener.handle(clip)
 
-    assert listener.heard == [clip.path]
+    assert listener.heard == [(clip.path, False)]  # el texto crudo: el modelo recibe lo que dijiste, no un comando
     assert listener.said == ["Transcribiendo…", "Dijiste: hola mundo"]
 
 
@@ -586,3 +597,245 @@ def test_the_whole_channel_transcribes_what_you_recorded(running, mic):
 
 def test_starting_the_channel_cleans_audio_left_by_a_crash(running):
     assert running.swept == [running.data / client.FOLDER]
+
+
+# --- Lo que se dijo llega a la IA (paso 3) --------------------------------------------------------------------------
+
+from dataclasses import asdict  # noqa: E402
+
+from epsilon import core  # noqa: E402
+from epsilon.data import conversations, notes  # noqa: E402
+
+
+def test_the_text_goes_on_to_the_assistant_once_the_audio_is_gone(listener, tmp_path):
+    received = []
+    clip = make_clip(tmp_path)
+    listener.on_text = lambda text: received.append((text, clip.path.exists()))
+
+    listener.handle(clip)
+
+    assert received == [("hola mundo", False)]  # el audio ya se borró cuando empieza el turno con la IA
+    assert listener.said == ["Transcribiendo…", "Dijiste: hola mundo"]
+
+
+def test_nothing_goes_to_the_assistant_when_there_was_silence_or_an_error(listener, tmp_path):
+    received = []
+    listener.on_text = received.append
+    listener.silent = True
+    listener.handle(make_clip(tmp_path))
+    listener.silent = False
+    listener.text = RuntimeError("boom")
+    listener.handle(make_clip(tmp_path))
+
+    assert received == []
+
+
+def test_starting_to_record_tells_the_assistant_to_stop_whatever_it_was_doing(mic, tmp_path):
+    started = []
+    companion = voice.Companion(tmp_path, lambda text: None, timer=FakeTimer, on_start=lambda: started.append(1))
+
+    companion.toggle()
+
+    assert started == [1]
+
+
+def test_a_recording_that_could_not_start_does_not_interrupt_anything(mic, tmp_path):
+    started = []
+    mic.fail_start = "sin micrófono"
+    companion = voice.Companion(tmp_path, lambda text: None, timer=FakeTimer, on_start=lambda: started.append(1))
+
+    companion.toggle()
+
+    assert started == []
+
+
+class FakeCore:
+    """Hace de core.handle y core.cancel: anota los mensajes y contesta lo que se le indique."""
+
+    def __init__(self):
+        self.messages = []
+        self.replies = [core.Reply("Son las diez.", ai=True)]
+        self.cancelled = []
+        self.block = None  # un threading.Event: si está, handle espera a que lo suelten
+        self.boom = None
+
+    def handle(self, msg, on_event=None, stream_text=False):
+        self.messages.append((msg, stream_text))
+        if on_event:
+            on_event({"type": "model", "step": 1})
+            on_event({"type": "text", "text": "Son las"})
+        if self.boom:
+            raise self.boom
+        if self.block:
+            self.block.wait(3)
+        return self.replies.pop(0) if self.replies else core.Reply("ok", ai=True)
+
+    def cancel(self, conversation_id):
+        self.cancelled.append(conversation_id)
+        return True
+
+
+@pytest.fixture
+def talk(tmp_path, monkeypatch):
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path)
+    fake = FakeCore()
+    seen = []
+    assistant = voice.Assistant(seen.append, handle=fake.handle, cancel=fake.cancel)
+    assistant.fake, assistant.seen = fake, seen
+    return assistant
+
+
+def test_a_question_opens_an_ai_conversation_and_asks_the_core_with_live_text(talk):
+    talk.ask("¿qué hora es?")
+
+    (msg, stream_text), = talk.fake.messages
+    assert msg.text == "¿qué hora es?"
+    assert msg.session_id.startswith("companion:")
+    assert stream_text is True
+    assert conversations.channel(msg.conversation_id) == "companion"
+    assert conversations.mode(msg.conversation_id) == "ai"
+
+
+def test_both_sides_of_the_talk_are_saved_in_the_conversation(talk):
+    talk.ask("¿qué hora es?")
+
+    cid = talk.fake.messages[0][0].conversation_id
+    saved = [(m["role"], m["text"]) for m in conversations.messages(cid)]
+    assert saved == [("user", "¿qué hora es?"), ("bot", "Son las diez.")]
+    assert conversations.messages(cid)[1].get("ai") is True
+
+
+def test_the_next_question_continues_the_same_conversation(talk):
+    talk.ask("una")
+    talk.ask("dos")
+
+    first, second = (m[0].conversation_id for m in talk.fake.messages)
+    assert first == second
+    assert len(conversations.messages(first)) == 4
+
+
+def test_an_open_conversation_that_is_not_ai_is_left_alone_and_a_new_ai_one_starts(talk):
+    old = conversations.for_channel("companion")  # una normal, sin modo IA
+    conversations.add_message(old, "bot", "hola")
+
+    talk.ask("una")
+
+    used = talk.fake.messages[0][0].conversation_id
+    assert used != old
+    assert conversations.mode(used) == "ai"
+
+
+def test_what_the_model_does_is_published_as_events_and_ends_with_the_reply(talk):
+    talk.ask("¿qué hora es?")
+
+    assert {"type": "model", "step": 1} in talk.seen
+    assert {"type": "text", "text": "Son las"} in talk.seen
+    assert talk.seen[-1] == {"type": "reply", "text": "Son las diez."}
+    assert {"type": "status", "text": "Pensando…"} in talk.seen
+
+
+def test_a_blank_question_does_nothing(talk):
+    talk.ask("   ")
+
+    assert talk.fake.messages == [] and talk.seen == []
+
+
+def test_a_tool_that_needs_permission_is_denied_so_the_session_never_gets_stuck(talk):
+    ask_reply = core.Reply(
+        "Quiero usar «crear archivo» con: notas.txt. ¿Lo permitís?",
+        actions=[core.Action("perm:si", "Sí"), core.Action("perm:siempre", "Siempre"), core.Action("perm:no", "No")],
+        ai=True,
+    )
+    talk.fake.replies = [ask_reply, core.Reply("Listo, no lo hago.")]
+
+    talk.ask("creá un archivo")
+
+    sent = [m[0] for m in talk.fake.messages]
+    assert [m.action for m in sent] == [None, "perm:no"]  # contestó «No» por la persona
+    assert sent[1].conversation_id == sent[0].conversation_id and sent[1].session_id == sent[0].session_id
+    final = talk.seen[-1]
+    assert final["type"] == "reply"
+    assert "crear archivo" in final["text"] and "/permisos" in final["text"]
+    cid = sent[0].conversation_id
+    assert "/permisos" in conversations.messages(cid)[-1]["text"]
+
+
+def test_a_failure_is_a_plain_message_without_details(talk):
+    talk.fake.boom = RuntimeError("clave secreta interna")
+
+    talk.ask("hola")
+
+    assert talk.seen[-1] == {"type": "error", "text": "Algo falló al hablar con la IA."}
+    assert "secreta" not in str(talk.seen)
+
+
+def test_interrupting_cancels_the_running_turn_and_its_answer_is_not_announced(talk):
+    release = threading.Event()
+    talk.fake.block = release
+    thread = threading.Thread(target=talk.ask, args=("contame algo largo",), daemon=True)
+    thread.start()
+    assert wait_for(lambda: talk.fake.messages)
+
+    talk.interrupt()
+    release.set()
+    thread.join(5)
+
+    cid = talk.fake.messages[0][0].conversation_id
+    assert talk.fake.cancelled == [cid]
+    assert not any(event["type"] == "reply" for event in talk.seen)
+
+
+def test_interrupting_when_nothing_is_running_does_nothing(talk):
+    talk.interrupt()
+
+    assert talk.fake.cancelled == []
+
+
+def test_the_desktop_shows_each_status_reply_and_error_in_one_updating_bubble(monkeypatch):
+    shown = []
+    monkeypatch.setattr(voice.notify, "desktop", lambda text, tag="": shown.append((text, tag)) and "")
+
+    for event in (
+        {"type": "status", "text": "Pensando…"},
+        {"type": "text", "text": "Son las"},
+        {"type": "tool", "name": "fecha", "arg": "", "state": "running"},
+        {"type": "reply", "text": "Son las diez."},
+        {"type": "error", "text": "Algo falló."},
+    ):
+        voice.notifier(event)
+
+    assert shown == [("Pensando…", voice.TAG), ("Son las diez.", voice.TAG), ("Algo falló.", voice.TAG)]
+
+
+def test_the_whole_channel_answers_what_you_said(running, mic):
+    assert ask(running.socket, "toggle") == "recording"
+    assert ask(running.socket, "toggle") == "idle"
+
+    assert wait_for(lambda: "respuesta de prueba" in running.said)
+    (msg,) = running.asked
+    assert msg.text == "hola mundo"
+    cid = msg.conversation_id
+    assert [(m["role"], m["text"]) for m in conversations.messages(cid)] == [("user", "hola mundo"), ("bot", "respuesta de prueba")]
+    assert set(running.tags) == {voice.TAG}  # todo en un mismo globo que se actualiza
+
+
+def test_other_parts_of_epsilon_can_listen_to_the_live_events(running, mic):
+    seen = []
+    off = voice.BUS.subscribe(seen.append)
+    try:
+        ask(running.socket, "toggle")
+        ask(running.socket, "toggle")
+        assert wait_for(lambda: any(e["type"] == "reply" for e in seen))
+    finally:
+        off()
+
+    assert {"type": "text", "text": "respuesta"} in seen
+
+
+def test_a_second_companion_that_gives_up_leaves_no_listener_behind(running):
+    before = len(voice.BUS._subscribers)
+
+    with pytest.raises(SystemExit, match="Ya hay otro"):
+        voice.run()  # el primero ya tiene el socket
+
+    assert len(voice.BUS._subscribers) == before

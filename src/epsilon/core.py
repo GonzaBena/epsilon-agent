@@ -1962,11 +1962,20 @@ def handle(msg: Message, on_event: Callable[[dict], None] | None = None, stream_
                     del _cancels[msg.conversation_id]
 
 
+def _usage_channel(session_id: str) -> str:
+    """Cómo se nombra el canal en la página Uso, según la sesión que habla."""
+    if session_id.startswith("telegram:"):
+        return "Telegram"
+    if session_id.startswith("companion:"):
+        return "Voz"
+    return "Web"
+
+
 def _handle(msg: Message) -> Reply:
     # El canal queda anotado en cada llamada al modelo (página Uso): la sesión dice de dónde viene.
     # En modo IA también se anota la conversación: cada una suma lo que gasta (chat, resúmenes…).
     ai_conversation = _is_ai_conversation(msg)
-    with usage.channel("Telegram" if msg.session_id.startswith("telegram:") else "Web"):
+    with usage.channel(_usage_channel(msg.session_id)):
         with usage.conversation(msg.conversation_id if ai_conversation else None):
             # Lo que usa IA en una conversación de modo IA se hace de a uno (ver _ai_lock). Las respuestas
             # a un permiso también, «No» incluido: un Sí y un No a la vez no pueden actuar los dos.

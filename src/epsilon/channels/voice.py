@@ -1,15 +1,17 @@
 import os
 import socket
 import threading
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
-from epsilon import state
-from epsilon.data import notes
+from epsilon import core, state
+from epsilon.ai import chat
+from epsilon.data import conversations, notes
 from epsilon.routines import notify
 from epsilon.settings import config
 from epsilon.utils import hyprland
-from epsilon.voice import capture, client, transcribe
+from epsilon.voice import capture, client, events, transcribe
 
 # Voice Companion: hablarle a Epsilon desde cualquier lado con un atajo global (ver
 # docs/superpowers/specs/2026-10-29-voice-companion-design.md). Es un canal más: solo traduce entre «micrófono /
@@ -20,6 +22,9 @@ from epsilon.voice import capture, client, transcribe
 POLL_SECONDS = 1.0  # cada cuánto el servidor mira si hay que apagarse o si cambió el atajo
 MAX_REQUEST = 64  # lo que llega por el socket es una palabra: algo más largo no se obedece
 WORDS = ("toggle", "cancel", "status")
+SESSION = "companion:voice"  # la sesión que le dice al núcleo de dónde viene (permisos, gasto «Voz»)
+TAG = "epsilon-voice"  # todos los avisos de escritorio comparten este: es UN globo que se va actualizando
+BUS = events.Bus()  # lo que pasa en una charla hablada; quien quiera mostrarlo (una ventanita, por ejemplo) se suscribe
 MIN_SECONDS = 0.4  # menos que esto no es una frase: no se manda a transcribir (Whisper inventa texto con el silencio)
 
 
@@ -41,10 +46,12 @@ class Companion:
         announce: Callable[[str], None],
         on_clip: Callable[[capture.Clip], None] | None = None,
         timer=threading.Timer,
+        on_start: Callable[[], None] | None = None,
     ):
         self.folder = Path(folder)
         self.announce = announce
         self.on_clip = on_clip or self._report
+        self.on_start = on_start  # se avisa cada vez que empieza una grabación (para cortar lo que estuviera en curso)
         self._timer_factory = timer
         self._lock = threading.Lock()
         self._recording: capture.Recording | None = None
@@ -96,6 +103,11 @@ class Companion:
         self._timer = self._timer_factory(limit()[0], lambda: self._time_is_up(generation))
         self._timer.start()
         self._say("Escuchando…")
+        if self.on_start is not None:
+            try:
+                self.on_start()
+            except Exception:  # noqa: BLE001 - cortar lo anterior nunca puede impedir la grabación nueva
+                pass
         return "recording"
 
     def _stop(self) -> capture.Clip | None:
@@ -148,25 +160,40 @@ def _in_thread(work: Callable[[], None]) -> None:
 
 
 class Listener:
-    """Lo que pasa con un audio ya grabado (paso 2): si es puro silencio no se hace nada; si no, se transcribe con
-    Whisper y se muestra el texto. Corre en su propio hilo porque transcribir tarda (y la primera vez carga el modelo):
-    el hilo que atiende el atajo tiene que seguir libre. Whisper se usa de a un audio (lo serializa `transcribe`).
-    El audio se borra siempre, salga como salga. Lo que salga en el próximo paso se manda al modelo (paso 3)."""
+    """Lo que pasa con un audio ya grabado: si es puro silencio no se hace nada; si no, se transcribe con Whisper, se
+    muestra lo que dijiste y el texto sigue a `on_text` (la charla con la IA). Corre en su propio hilo porque transcribir
+    tarda (y la primera vez carga el modelo): el hilo que atiende el atajo tiene que seguir libre. Whisper se usa de a un
+    audio (lo serializa `transcribe`). El audio se borra siempre, apenas se transcribe: antes de hablar con la IA."""
 
-    def __init__(self, announce: Callable[[str], None], start: Callable[[Callable[[], None]], None] = _in_thread):
+    def __init__(
+        self,
+        announce: Callable[[str], None],
+        on_text: Callable[[str], None] | None = None,
+        start: Callable[[Callable[[], None]], None] = _in_thread,
+    ):
         self.announce = announce
+        self.on_text = on_text
         self._start = start
 
     def handle(self, clip: capture.Clip) -> None:
         self._start(lambda: self._process(clip))
 
     def _process(self, clip: capture.Clip) -> None:
+        text = self._transcribe(clip)
+        if not text:
+            return
+        self.announce(f"Dijiste: {text}")
+        if self.on_text is not None:
+            self.on_text(text)
+
+    def _transcribe(self, clip: capture.Clip) -> str | None:
+        """El texto, o None si no hubo nada que decir (ya se avisó por qué)."""
         try:
             if capture.is_silent(clip.path):
                 self.announce("No te escuché: probá de nuevo.")
-                return
+                return None
             self.announce("Transcribiendo…")
-            self.announce(f"Dijiste: {transcribe.audio_to_text(clip.path)}")
+            return transcribe.audio_to_text(clip.path, commands=False)  # crudo: la IA recibe lo que dijiste, no un comando
         except transcribe.VoiceError as e:  # el mensaje ya está pensado para la persona
             self.announce(str(e))
         except Exception as e:  # noqa: BLE001 - nada de lo que pase acá puede tumbar el canal ni mostrar detalles internos
@@ -174,6 +201,101 @@ class Listener:
             self.announce("Algo falló al procesar el audio.")
         finally:
             capture.discard(clip.path)
+        return None
+
+
+# --- La charla con la IA (paso 3) ----------------------------------------------------------------------------------
+
+
+@dataclass
+class _Turn:
+    conversation_id: str
+    interrupted: bool = False
+
+
+class Assistant:
+    """Le pasa lo que dijiste al núcleo, en una conversación de modo IA del canal (la misma mientras no la cierres; la
+    web la ve de solo lectura). Todo lo que va pasando sale por `emit` como eventos: {"type": "status"|"model"|"tool"|
+    "text"|"reply"|"error"}; no sabe quién los muestra. Los permisos son los de siempre: una herramienta que
+    pregunta se DENIEGA por ahora (no hay cómo contestar por voz hasta el paso 7) para no dejar la sesión trabada."""
+
+    def __init__(self, emit: Callable[[dict], None], handle=None, cancel=None):
+        self.emit = emit
+        self._handle = handle
+        self._cancel = cancel
+        self._lock = threading.Lock()
+        self._turn: _Turn | None = None
+
+    def ask(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        try:
+            conversation_id = self._conversation()
+        except Exception as e:  # noqa: BLE001 - el disco puede fallar; la persona recibe un aviso sin detalles
+            print(f"Voice Companion: no pude abrir la conversación: {config.redact(repr(e))}")
+            self.emit({"type": "error", "text": "No pude abrir la conversación de voz."})
+            return
+        turn = _Turn(conversation_id)
+        with self._lock:
+            self._turn = turn
+        self.emit({"type": "status", "text": "Pensando…"})
+        try:
+            reply = self._deny_permission(self._call(core.Message(text=text, session_id=SESSION, conversation_id=conversation_id), True), conversation_id)
+        except Exception as e:  # noqa: BLE001
+            print(f"Voice Companion: falló la charla con la IA: {config.redact(repr(e))}")
+            if not turn.interrupted:
+                self.emit({"type": "error", "text": "Algo falló al hablar con la IA."})
+            return
+        finally:
+            with self._lock:
+                if self._turn is turn:
+                    self._turn = None
+        self._save(conversation_id, text, reply)
+        if not turn.interrupted:  # una respuesta que ya no querés no se muestra (igual queda en la charla)
+            self.emit({"type": "reply", "text": reply.text})
+
+    def interrupt(self) -> None:
+        """Corta el turno que esté corriendo (si hay uno): hablar de nuevo encima de la respuesta."""
+        with self._lock:
+            turn = self._turn
+            if turn is None or turn.interrupted:
+                return
+            turn.interrupted = True
+        (self._cancel or core.cancel)(turn.conversation_id)
+
+    # --- por dentro ---
+
+    def _conversation(self) -> str:
+        found = conversations.current("companion")
+        if found and conversations.mode(found) == "ai":
+            return found
+        return conversations.start_channel("companion", "ai", chat.default_limit())
+
+    def _call(self, msg: core.Message, stream_text: bool = False) -> core.Reply:
+        handle = self._handle or core.handle
+        return handle(msg, on_event=self.emit, stream_text=stream_text)
+
+    def _deny_permission(self, reply: core.Reply, conversation_id: str) -> core.Reply:
+        if not any(action.id.startswith("perm:") for action in reply.actions):
+            return reply
+        self._call(core.Message(action="perm:no", session_id=SESSION, conversation_id=conversation_id))
+        note = "No te puedo preguntar por voz todavía, así que no lo hice. Si querés que lo haga sola, cambiá el permiso en /permisos."
+        return core.Reply(f"{reply.text}\n\n{note}", ai=True)
+
+    def _save(self, conversation_id: str, said: str, reply: core.Reply) -> None:
+        try:
+            conversations.add_message(conversation_id, "user", said)
+            conversations.add_message(
+                conversation_id,
+                "bot",
+                reply.text,
+                actions=[asdict(a) for a in reply.actions],
+                artifacts=[asdict(a) for a in reply.artifacts],
+                ai=reply.ai,
+            )
+        except Exception as e:  # noqa: BLE001 - anotar la charla nunca rompe la respuesta
+            print(f"Voice Companion: no pude anotar la conversación: {config.redact(repr(e))}")
 
 
 # --- El socket: por acá le habla el script del atajo -------------------------------------------------------------
@@ -288,21 +410,33 @@ def stop() -> None:
 
 
 def _announce(text: str) -> None:
-    notify.desktop(text)
+    """Un aviso de estado («Escuchando…», «Dijiste: …»): sale como evento, y el escritorio lo muestra."""
+    BUS.emit({"type": "status", "text": text})
+
+
+def notifier(event: dict) -> None:
+    """El suscriptor del escritorio: estados, respuesta y errores en UN globo que se va actualizando. El texto en vivo y las
+    herramientas no se muestran acá (son para quien quiera verlos, como la ventanita que viene)."""
+    if event.get("type") in ("status", "reply", "error") and event.get("text"):
+        notify.desktop(event["text"], tag=TAG)
 
 
 def run() -> None:
     folder = notes.DATA_DIR / client.FOLDER
     script = client.write_script(folder)
     capture.sweep(folder)  # restos de un cierre brusco: audios que nadie va a usar
-    companion = Companion(folder, _announce, Listener(_announce).handle)
-    hotkey = Hotkey(folder, script, _announce)
     path = client.socket_path()
-    listener = bind(path)
+    listener = bind(path)  # primero el socket: si ya hay otro Voice Companion, se corta acá sin dejar nada puesto
+    assistant = Assistant(BUS.emit)
+    companion = Companion(folder, _announce, Listener(_announce, on_text=assistant.ask).handle, on_start=assistant.interrupt)
+    hotkey = Hotkey(folder, script, _announce)
+    unsubscribe = BUS.subscribe(notifier)
     state.set("companion", "running", "Esperando el atajo.")
     try:
         serve(listener, companion, _stop, hotkey.sync)
     finally:
+        assistant.interrupt()
         companion.cancel()
+        unsubscribe()
         listener.close()
         path.unlink(missing_ok=True)

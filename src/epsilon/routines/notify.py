@@ -24,18 +24,21 @@ def remove_sink(name: str) -> None:
     _sinks.pop(name, None)
 
 
-def _notify_send(text: str) -> None:
+def _notify_send(text: str, tag: str = "") -> None:
     env = {key: os.environ[key] for key in ENV_KEYS if key in os.environ}
+    # Con `tag`, el demonio de notificaciones reemplaza la anterior que tenga el mismo (un solo globo que se actualiza).
+    hint = ["-h", f"string:x-canonical-private-synchronous:{tag}"] if tag else []
     # «--» para que un texto que empiece con «-» no se tome por una opción.
-    subprocess.run(["notify-send", "-a", "Epsilon", "--", "Epsilon", text], timeout=TIMEOUT, env=env, check=True, capture_output=True)
+    subprocess.run(["notify-send", "-a", "Epsilon", *hint, "--", "Epsilon", text], timeout=TIMEOUT, env=env, check=True, capture_output=True)
 
 
-def desktop(text: str) -> str:
+def desktop(text: str, tag: str = "") -> str:
     """Avisa SOLO en el escritorio, sin pasar por los sumideros (lo que pasa en la PC, como «Escuchando…», no tiene que
-    llegar al celular). Devuelve vacío si llegó o el motivo del fallo; no lanza."""
+    llegar al celular). Con `tag`, un aviso reemplaza al anterior con el mismo tag. Devuelve vacío si llegó o el motivo
+    del fallo; no lanza."""
     text = config.redact(" ".join(text.split()))[:MAX_CHARS]
     try:
-        _notify_send(text)
+        _notify_send(text, tag) if tag else _notify_send(text)
     except Exception as e:
         return config.redact(str(e) or type(e).__name__)[:80]
     return ""

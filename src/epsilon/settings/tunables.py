@@ -66,6 +66,7 @@ TUNABLES: tuple[Setting, ...] = (
     _int("IMAGES_JPEG_QUALITY", "images.jpeg_quality", "85", 40, 100, "Calidad de las imágenes achicadas (más alto pesa más)", "La calidad", loosens=False),
     _int("VOICE_MAX_AUDIO_MB", "voice.max_audio_mb", "25", 1, 200, "Tamaño máximo de un audio para transcribir, en MB", "El tamaño", loosens=False),
     _int("VOICE_MAX_AUDIO_MINUTES", "voice.max_audio_minutes", "10", 1, 120, "Duración máxima de un audio para transcribir, en minutos", "La duración", loosens=False),
+    _int("VOICE_MAX_TURNS", "voice.max_turns", "5", 1, 50, "Cuántos intercambios anteriores ve la IA cuando le hablás con el Voice Companion", "Los intercambios", loosens=True),
     _int("VOICE_MAX_RECORD_S", "voice.max_record_seconds", "180", 5, 3600, "Cuántos segundos puede grabar el Voice Companion antes de cortar solo (también lo acotan voice.max_audio_minutes y voice.max_audio_mb)", "Los segundos", loosens=False),
     _int("CONNECTORS_IDLE_CLOSE_SECONDS", "connectors.idle_close_seconds", "600", 60, 86400, "Segundos sin usar un conector antes de cerrarlo", "Los segundos", loosens=False),
     _int("CONNECTORS_MAX_RUNNING", "connectors.max_running", "3", 1, 10, "Cuántos conectores pueden estar abiertos a la vez", "La cantidad de conectores", loosens=False),

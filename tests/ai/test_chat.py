@@ -618,3 +618,35 @@ def test_step_limit_uses_the_turns_own_cap_when_it_has_one():
 
 def test_a_turn_starts_with_an_empty_trace():
     assert chat.Turn("c1", []).trace == []
+
+
+def _companion_talk(pairs):
+    cid = conversations.start_channel("companion", "ai", 1.0)
+    for i in range(pairs):
+        conversations.add_message(cid, "user", f"pregunta {i}")
+        conversations.add_message(cid, "bot", f"respuesta {i}", ai=True)
+    return cid
+
+
+def test_the_voice_companion_sees_few_exchanges_by_default():
+    cid = _companion_talk(9)
+
+    assert chat.max_turns(cid) == 5
+    assert len(chat.turns(cid, "nueva")) == 11  # 5 pares + el mensaje nuevo
+
+
+def test_the_voice_companion_limit_is_its_own_setting(monkeypatch):
+    monkeypatch.setenv("CHAT_MAX_TURNS", "10")
+    monkeypatch.setenv("VOICE_MAX_TURNS", "2")
+    cid = _companion_talk(9)
+
+    assert chat.max_turns(cid) == 2
+
+
+def test_the_system_prompt_asks_for_short_spoken_answers_only_in_the_voice_companion():
+    spoken = chat.system_prompt(_companion_talk(1))
+    written = chat.system_prompt(CID)
+
+    assert "por voz" in spoken and "markdown" in spoken
+    assert "por voz" not in written
+    assert "por voz" not in chat.system_prompt()

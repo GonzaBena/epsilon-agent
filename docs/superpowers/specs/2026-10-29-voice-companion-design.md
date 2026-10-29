@@ -374,3 +374,24 @@ audio, y el silencio puro se resuelve en 0,00 s sin cargar el modelo.
 - La primera transcripción tarda ~14 s en CPU (carga el modelo); las siguientes, menos. Precalentar al prender el canal queda para el paso 7.
 - El texto pasa por `transcribe.audio_to_text`, que ya aplica `spoken_commands` («Hola <nombre>, …» → `/ia …`): en el paso 3 el
   Companion se comporta igual que la web y Telegram.
+
+## Estado y hallazgos (paso 3, 2026-10-29)
+
+Hecho: la charla con la IA. `Assistant` (en `channels/voice.py`) abre/reutiliza una conversación de **modo IA del canal `companion`**
+(guardada; la web la ve de solo lectura, título «Voice Companion»), llama a `core.handle(..., stream_text=True)` y guarda ambos
+lados. El gasto se anota como «Voz». El texto que recibe el modelo es **lo que dijiste, crudo** (`audio_to_text(commands=False)`):
+si no, «Hola Meli, …» se volvería `/ia …`, que es una pregunta suelta SIN el historial de la charla. El estilo hablado (corto, sin
+markdown ni tablas) se agrega al prompt solo en este canal (`chat.SPOKEN`, `system_prompt(conversation_id)`); el contexto es más
+corto (`voice.max_turns`, 5).
+
+- **Bus de eventos** (`voice/events.py`, `channels/voice.BUS`): `status`, `model`, `tool`, `text` (acumulado), `reply`, `error`.
+  El aviso de escritorio es solo un suscriptor (`voice.notifier`); la ventanita con el texto en vivo será otro (con posición
+  elegible), sin tocar nada de lo anterior.
+- **Un solo globo**: los avisos llevan un tag (`x-canonical-private-synchronous`) y el demonio de notificaciones los reemplaza, en
+  vez de apilar cinco por pregunta.
+- **Interrumpir**: empezar a grabar mientras la IA contesta corta el turno (`core.cancel`) y su respuesta no se anuncia (igual queda
+  en la charla). El corte del audio hablado se suma en el paso 4.
+- **Permisos**: una herramienta en `ask` se DENIEGA (se responde `perm:no` por la persona) y la respuesta lo explica, para no dejar la
+  sesión con una pregunta que nadie puede contestar. Las herramientas en `allow` (fecha, etc.) andan. El paso 7 agrega confirmar por voz.
+- Probado con todo real (Whisper en CPU + Gemini flash-lite + herramienta `fecha`): ~10 s transcribir (carga el modelo), ~2 s la IA,
+  US$ 0,0005 por la pregunta. Precalentar Whisper (paso 7) saca esos ~10 s de la primera vez.

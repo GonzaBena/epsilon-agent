@@ -38,10 +38,13 @@ def default_limit() -> float:
 
 
 def max_turns(conversation_id: str | None = None) -> int:
-    """Cuántos pares de la charla se reenvían al modelo: CHAT_MAX_TURNS, o CHAT_MAX_TURNS_TELEGRAM si la
-    conversación es de Telegram. Inválido o fuera de rango, el de siempre."""
-    if conversation_id and conversations.channel(conversation_id) == "telegram":
+    """Cuántos pares de la charla se reenvían al modelo: CHAT_MAX_TURNS, o el propio de Telegram
+    (CHAT_MAX_TURNS_TELEGRAM) o del Voice Companion (VOICE_MAX_TURNS). Inválido o fuera de rango, el de siempre."""
+    channel = conversations.channel(conversation_id) if conversation_id else None
+    if channel == "telegram":
         return config.number("CHAT_MAX_TURNS_TELEGRAM")
+    if channel == "companion":
+        return config.number("VOICE_MAX_TURNS")
     return config.number("CHAT_MAX_TURNS")
 
 
@@ -104,9 +107,19 @@ def turns(conversation_id: str, text: str) -> list[tuple[str, str]]:
     return result
 
 
-def system_prompt() -> str:
-    """Las instrucciones fijas, el día de hoy y, si hay, la memoria (redactada)."""
+SPOKEN = (
+    "La persona te habla por voz y tu respuesta se lee en voz alta: contestá en español, corto (una a tres oraciones), "
+    "sin markdown, listas, tablas ni direcciones largas, y sin decir símbolos. Si hay mucho para decir, resumilo y "
+    "ofrecé el resto."
+)
+
+
+def system_prompt(conversation_id: str | None = None) -> str:
+    """Las instrucciones fijas, el día de hoy y, si hay, la memoria (redactada). En el Voice Companion, además, que
+    la respuesta es hablada."""
     base = f"{SYSTEM}\n\nHoy es {clock.today_text()}."
+    if conversation_id and conversations.is_valid_id(conversation_id) and conversations.channel(conversation_id) == "companion":
+        base += f"\n\n{SPOKEN}"
     assistant = config.value("AGENT_NAME").strip()
     if assistant and assistant != "Epsilon":
         base += f" Te llamás {assistant}."
@@ -277,7 +290,7 @@ def step(turn: Turn, on_text: Callable[[str], None] | None = None) -> llm.Step:
         specs = offer(turn) if llm.capabilities().tools else []
         extra = {"on_text": on_text} if on_text else {}
         result = llm.chat_tools(
-            turn.history, system_prompt(), specs, config.number("CHAT_MAX_OUTPUT_TOKENS"), allow_calls=allow_calls, **extra
+            turn.history, system_prompt(turn.conversation_id), specs, config.number("CHAT_MAX_OUTPUT_TOKENS"), allow_calls=allow_calls, **extra
         )
     turn.history.append(result.turn)
     turn.steps += 1
