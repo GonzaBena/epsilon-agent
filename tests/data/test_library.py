@@ -199,3 +199,16 @@ def test_what_belongs_to_epsilon_is_not_listed_but_still_opens(data):
     assert not paths & set(system)
     assert "casa/todo.md" in paths and "inbox.md" in paths
     assert library.resolve("memory.md").name == "memory.md"  # abrir por su ruta (por ejemplo, con @) sigue andando
+
+
+def test_the_voice_companion_folder_is_not_listed(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from epsilon.data import library, notes
+
+    monkeypatch.setattr(notes, "DATA_DIR", tmp_path)
+    (tmp_path / "voice").mkdir()
+    (tmp_path / "voice" / "hyprland-voice.conf").write_text("bind = ALT, X, exec, x")
+
+    assert library._is_system(Path("voice/hyprland-voice.conf"))
+    assert "hyprland-voice.conf" not in str(library.search())

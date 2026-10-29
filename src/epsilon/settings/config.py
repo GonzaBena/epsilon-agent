@@ -194,6 +194,13 @@ def _device(value: str) -> str:
     return value
 
 
+def _hotkey(value: str) -> str:
+    """El atajo del Voice Companion («ALT, X»), normalizado. Importa recién acá: config no depende de utils al cargar."""
+    from epsilon.utils import hyprland
+
+    return hyprland.normalize_hotkey(value)
+
+
 def _yes_no(value: str) -> str:
     value = value.lower()
     if value == "sí":
@@ -510,6 +517,23 @@ SETTINGS = (
         default="si",
         validate=_yes_no,
     ),
+    # El Voice Companion (channels/voice.py): hablarle a Epsilon con un atajo global. La página Canales lo prende y apaga.
+    Setting(
+        "COMPANION_ENABLED",
+        "Voice Companion prendido (hablarle a Epsilon con un atajo)",
+        live=True,
+        default="no",
+        validate=_yes_no,
+        page="canales",
+    ),
+    # El atajo que dispara el Voice Companion; el canal lo aplica en Hyprland apenas cambia.
+    Setting(
+        "VOICE_HOTKEY",
+        "Atajo del Voice Companion",
+        live=True,
+        default="ALT, X",
+        validate=_hotkey,
+    ),
     # Solo se muestra: cambiarlo en caliente dejaría las notas viejas atrás.
     Setting("DATA_DIR", "Carpeta de datos", editable=False),
 )
@@ -582,6 +606,8 @@ _JSON_FIELDS: dict[str, dict] = {
         name="browser.blocked_sites", kind="list", loosens=True, safer="more",
         help="Sitios que la IA nunca puede ver ni tocar",
     ),
+    "COMPANION_ENABLED": _J(name="channels.companion_enabled", kind="bool", help="Voice Companion prendido: hablarle a Epsilon con un atajo global"),
+    "VOICE_HOTKEY": _J(name="voice.hotkey", help="Atajo del Voice Companion: modificador y tecla, por ejemplo ALT, X"),
     "ROUTINES_ENABLED": _J(name="routines.enabled", kind="bool", loosens=True, safer="no", help="Cumplir las rutinas programadas"),
     "ALLOWED_USER_ID": _J(bootstrap=True),
     "DATA_DIR": _J(bootstrap=True),

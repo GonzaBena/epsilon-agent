@@ -415,6 +415,14 @@
                 <p class="error" id="err-WHISPER_LANGUAGE" role="alert"></p>
               </div>
               <div class="field">
+                <label for="f-VOICE_HOTKEY">Atajo del Voice Companion (modificador y tecla, por ejemplo «ALT, X»)</label>
+                <input id="f-VOICE_HOTKEY" data-key="VOICE_HOTKEY" type="text" placeholder="ALT, X"
+                       autocomplete="off" spellcheck="false" maxlength="40"
+                       aria-describedby="hint-VOICE_HOTKEY err-VOICE_HOTKEY">
+                <p class="hint" id="hint-VOICE_HOTKEY"></p>
+                <p class="error" id="err-VOICE_HOTKEY" role="alert"></p>
+              </div>
+              <div class="field">
                 <label for="f-ASSISTANT_NAME">Nombre para hablarle por voz (minúsculas y sin tilde; varios, separados por coma)</label>
                 <input id="f-ASSISTANT_NAME" data-key="ASSISTANT_NAME" type="text" placeholder="ia, ai"
                        autocomplete="off" spellcheck="false" maxlength="200"

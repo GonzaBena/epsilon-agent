@@ -9,6 +9,7 @@ from epsilon.memory import store as memory
 from epsilon.plugins import channels as plugin_channels
 from epsilon.settings import store as settings_store
 from epsilon.skills import store as skill_store
+from epsilon.voice import client as voice_client
 
 # La biblioteca es la vista de SOLO LECTURA de lo que hay en DATA_DIR: notas, archivos y tickets.
 # No escribe, no borra, no llama al modelo. Todo acceso pasa por notes.safe_path.
@@ -25,7 +26,7 @@ KINDS = ("note", "file", "ticket")
 
 # Lo que es de Epsilon y no tuyo: no se lista (se ve desde su página o su comando: /memoria, /tareas, Skills,
 # Canales). Se sigue pudiendo abrir por su ruta (resolve), por ejemplo al mencionarlo con @.
-SYSTEM_FOLDERS = {notes.SUMMARIES_DIR, skill_store.DIR, plugin_channels.FOLDER}
+SYSTEM_FOLDERS = {notes.SUMMARIES_DIR, skill_store.DIR, plugin_channels.FOLDER, voice_client.FOLDER}
 SYSTEM_NOTES = {f"{memory.NAME}.md", f"{todo.NAME}.md"}
 # Los archivos de ajustes (en la raíz): ni se listan ni se abren desde acá. Se editan con /ajustes o
 # desde Configuración, que los abre en tu editor.

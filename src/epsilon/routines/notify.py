@@ -30,6 +30,17 @@ def _notify_send(text: str) -> None:
     subprocess.run(["notify-send", "-a", "Epsilon", "--", "Epsilon", text], timeout=TIMEOUT, env=env, check=True, capture_output=True)
 
 
+def desktop(text: str) -> str:
+    """Avisa SOLO en el escritorio, sin pasar por los sumideros (lo que pasa en la PC, como «Escuchando…», no tiene que
+    llegar al celular). Devuelve vacío si llegó o el motivo del fallo; no lanza."""
+    text = config.redact(" ".join(text.split()))[:MAX_CHARS]
+    try:
+        _notify_send(text)
+    except Exception as e:
+        return config.redact(str(e) or type(e).__name__)[:80]
+    return ""
+
+
 def send(text: str) -> list[str]:
     """Avisa por todos los medios. Devuelve lo que falló («escritorio: …»); vacío si todo llegó."""
     text = config.redact(" ".join(text.split()))[:MAX_CHARS]

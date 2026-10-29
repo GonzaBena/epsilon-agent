@@ -9,10 +9,11 @@ const cards = document.getElementById("channel-cards");
 const result = document.getElementById("channels-result");
 
 // Mismas etiquetas que el panel del chat (shell.js); si cambian, cambiarlas en los dos.
-const NAMES = { web: "Web", telegram: "Telegram" };
+const NAMES = { web: "Web", telegram: "Telegram", companion: "Voice Companion" };
 const ABOUT = {
   web: "Esta ventana: desde acá manejás Epsilon.",
   telegram: "El bot de Telegram. Responde solo a tu usuario.",
+  companion: "Hablale a Epsilon con un atajo de teclado, desde cualquier ventana. Usa el micrófono solo mientras grabás.",
 };
 const STATES = {
   running: "Activo",
@@ -26,6 +27,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const ICONS = {
   web: "M3 5h18v11H3zM8 21h8M12 16v5",
   telegram: "M22 2 11 13M22 2l-7 20-4-9-9-4z",
+  companion: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3",
 };
 
 let busy = false;

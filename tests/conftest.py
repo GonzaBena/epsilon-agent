@@ -189,6 +189,28 @@ def block_real_hyprctl(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def block_real_hyprctl_control(monkeypatch):
+    """Ningún test habla con el hyprctl de control (atajos) de verdad."""
+    from epsilon.utils import hyprland
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó ejecutar hyprctl (atajos) de verdad")
+
+    monkeypatch.setattr(hyprland, "_ctl", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def block_real_microphone(monkeypatch):
+    """Ningún test graba el micrófono de verdad."""
+    from epsilon.voice import capture
+
+    def forbidden(*args, **kwargs):
+        raise RuntimeError("Un test intentó grabar el micrófono de verdad")
+
+    monkeypatch.setattr(capture, "_spawn", forbidden)
+
+
+@pytest.fixture(autouse=True)
 def block_real_routines(monkeypatch):
     """Ningún test avisa de verdad (notify-send) ni deja el motor de rutinas corriendo con un hilo."""
     from epsilon.routines import engine, notify
