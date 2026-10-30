@@ -31,6 +31,10 @@ voz = [
     "av<19",
     "kokoro-onnx>=0.3.1",
     "soundfile>=0.12.1",
+    # Librerías CUDA 12 que pide CTranslate2 para correr Whisper en la placa NVIDIA (WHISPER_DEVICE=cuda);
+    # así no dependen del CUDA del sistema.
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
 ]
 
 [project.scripts]

@@ -118,11 +118,41 @@ def _download():
     return download_model(MODEL)
 
 
+def _preload_cuda() -> None:
+    """Carga las librerías CUDA 12 que trae pip (nvidia-cublas-cu12, nvidia-cudnn-cu12), para que
+    CTranslate2 las encuentre sin depender del CUDA del sistema. Si faltan, no hace nada."""
+    import importlib.util
+
+    for package, libs in (("nvidia.cublas", ("libcublasLt.so.12", "libcublas.so.12")), ("nvidia.cudnn", ("libcudnn.so.9",))):
+        try:
+            spec = importlib.util.find_spec(package)
+        except (ImportError, ValueError):
+            continue
+        for folder in (spec.submodule_search_locations or []) if spec else []:
+            for lib in libs:
+                try:
+                    ctypes.CDLL(str(Path(folder) / "lib" / lib), mode=ctypes.RTLD_GLOBAL)
+                except OSError:
+                    pass
+
+
 def _build_model():
-    """Carga el modelo en memoria. CPU por defecto; WHISPER_DEVICE=cuda usa la GPU."""
+    """Carga el modelo en memoria. CPU por defecto; WHISPER_DEVICE=cuda usa la GPU y, si no anda
+    (faltan librerías, poca memoria), vuelve a CPU avisando en vez de dejar la voz muerta."""
+    whisper = _whisper_module()
     device = config.value("WHISPER_DEVICE").strip().lower() or "cpu"
-    compute_type = "int8" if device == "cpu" else "float16"
-    return _whisper_module().WhisperModel(MODEL, device=device, compute_type=compute_type, local_files_only=True)
+    if device != "cpu":
+        try:
+            _preload_cuda()
+            model = whisper.WhisperModel(MODEL, device=device, compute_type="float16", local_files_only=True)
+            # Cargar no alcanza: las librerías faltantes recién fallan al usar el modelo.
+            import numpy as np
+
+            list(model.transcribe(np.zeros(16000, dtype="float32"))[0])
+            return model
+        except Exception as e:
+            print(f"Whisper no pudo usar la GPU, sigo en CPU: {config.redact(repr(e))}")
+    return whisper.WhisperModel(MODEL, device="cpu", compute_type="int8", local_files_only=True)
 
 
 # --- Estado: un solo audio a la vez, y el modelo cargado solo mientras se usa ----------------------

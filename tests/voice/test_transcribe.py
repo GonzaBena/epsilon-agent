@@ -672,3 +672,44 @@ def test_the_stricter_voice_detector_is_requested(voice, audio):
     options = voice.calls[-1][1]
     assert options["vad_parameters"]["threshold"] == transcribe.VAD_THRESHOLD
     assert options["condition_on_previous_text"] is False
+
+
+# --- GPU con vuelta a CPU ------------------------------------------------------
+
+REAL_BUILD_MODEL = transcribe._build_model  # el conftest lo reemplaza en cada test
+
+
+class FakeWhisperModule:
+    """Un faster_whisper de mentira: la GPU falla (o no) y anota con qué dispositivo lo armaron."""
+
+    def __init__(self, gpu_fails):
+        self.gpu_fails, self.devices = gpu_fails, []
+
+    def WhisperModel(self, name, device, compute_type, local_files_only):
+        self.devices.append(device)
+        model = FakeModel()
+        if device == "cuda" and self.gpu_fails:
+            model.transcribe = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("libcublas.so.12 not found"))
+        return model
+
+
+def test_a_gpu_that_fails_falls_back_to_cpu(monkeypatch):
+    fake = FakeWhisperModule(gpu_fails=True)
+    monkeypatch.setattr(transcribe, "_whisper_module", lambda: fake)
+    monkeypatch.setattr(transcribe, "_preload_cuda", lambda: None)
+    monkeypatch.setenv("WHISPER_DEVICE", "cuda")
+
+    REAL_BUILD_MODEL()
+
+    assert fake.devices == ["cuda", "cpu"]
+
+
+def test_a_working_gpu_is_kept(monkeypatch):
+    fake = FakeWhisperModule(gpu_fails=False)
+    monkeypatch.setattr(transcribe, "_whisper_module", lambda: fake)
+    monkeypatch.setattr(transcribe, "_preload_cuda", lambda: None)
+    monkeypatch.setenv("WHISPER_DEVICE", "cuda")
+
+    REAL_BUILD_MODEL()
+
+    assert fake.devices == ["cuda"]
