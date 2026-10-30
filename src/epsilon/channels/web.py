@@ -682,22 +682,26 @@ def create_app() -> FastAPI:
 
     @app.post("/api/upload")
     def upload(
-        file: UploadFile = File(...),
+        file: list[UploadFile] = File(...),
         text: str = Form("", max_length=10_000),
         conversation_id: str = Form("", max_length=40),
         mode: str = Form("", pattern="^(normal|ai)?$"),
     ):
         cid = conversation_of(conversation_id)
         ensure_writable(cid)
-        data, mime = read_image_or_pdf(file)
-        name = file.filename or "archivo"
+        if len(file) > core.MAX_CSV_IMAGES:
+            raise HTTPException(413, f"Máximo {core.MAX_CSV_IMAGES} archivos por vez")
+        attachments = []
+        for item in file:
+            data, mime = read_image_or_pdf(item)
+            attachments.append(core.Attachment(data=data, name=item.filename or "archivo", mime=mime))
+        names = "\n".join(a.name for a in attachments)
         if cid:
             conversations.start(cid, mode or "normal", chat.default_limit())
-            # Lo que se ve en el chat: el nombre del archivo y, si hay, tu pedido.
-            conversations.add_message(cid, "user", f"{name}\n{text}" if text.strip() else name)
+            # Lo que se ve en el chat: el nombre de los archivos y, si hay, tu pedido.
+            conversations.add_message(cid, "user", f"{names}\n{text}" if text.strip() else names)
 
-        attachment = core.Attachment(data=data, name=name, mime=mime)
-        msg = core.Message(text=text, attachment=attachment, session_id=session_for(cid), conversation_id=cid)
+        msg = core.Message(text=text, attachments=attachments, session_id=session_for(cid), conversation_id=cid)
         return reply_json(core.handle(msg), cid)
 
     @app.post("/api/files")

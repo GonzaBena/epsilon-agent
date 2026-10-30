@@ -62,9 +62,17 @@ class Message:
 
     text: str = ""
     attachment: Attachment | None = None
+    attachments: list[Attachment] = field(default_factory=list)  # varios archivos (la web); `attachment` es el primero
     session_id: str = "default"  # cada canal pone el suyo
     action: str | None = None  # id del botón tocado, si fue un botón
     conversation_id: str | None = None  # la conversación guardada (web); define si es de modo IA
+
+    def __post_init__(self):
+        # Un solo archivo y varios son lo mismo: `attachment` y `attachments` siempre coinciden.
+        if self.attachment and not self.attachments:
+            self.attachments = [self.attachment]
+        elif self.attachments and not self.attachment:
+            self.attachment = self.attachments[0]
 
 
 @dataclass
@@ -1012,20 +1020,38 @@ def _save_and_offer_summary(session: Session, att: Attachment) -> Reply:
     )
 
 
-def _extract_csv(session: Session, att: Attachment, request: tuple) -> Reply:
-    """Pasa la imagen a filas con el modelo y las deja pendientes de confirmar."""
+MAX_CSV_IMAGES = 50  # imágenes por pedido: cada una es una llamada al modelo
+
+
+def _extract_csv(session: Session, atts: list[Attachment], request: tuple) -> Reply:
+    """Pasa las imágenes a filas con el modelo (una llamada por imagen) y deja todas las filas
+    juntas, pendientes de confirmar. Lo que falla en una imagen no tira las demás."""
     name, fields = request
-    try:
-        rows = extract.img_to_rows(att.data, att.mime, fields)
-    except ModelError as e:
-        return Reply(config.redact(str(e)))
-    except Exception as e:
-        # El detalle va a la terminal; al usuario, un mensaje corto.
-        print(f"Error al extraer: {e!r}")
-        return Reply("No pude procesar la imagen.")
+    if len(atts) > MAX_CSV_IMAGES:
+        return Reply(f"Son demasiadas imágenes de una vez (máximo {MAX_CSV_IMAGES}). Mandalas en tandas.")
+
+    rows: list[dict] = []
+    failed: list[str] = []
+    stopped = False
+    for att in atts:
+        if _cancelled():  # cancelaron: no se llama al modelo para el resto
+            stopped = True
+            break
+        try:
+            rows += extract.img_to_rows(att.data, att.mime, fields)
+        except ModelError as e:
+            if len(atts) == 1:
+                return Reply(config.redact(str(e)))
+            failed.append(f"{att.name} ({config.redact(str(e))})")
+        except Exception as e:
+            # El detalle va a la terminal; al usuario, un mensaje corto.
+            print(f"Error al extraer: {e!r}")
+            if len(atts) == 1:
+                return Reply("No pude procesar la imagen.")
+            failed.append(att.name)
 
     if not rows:
-        return Reply("No encontré datos en la imagen.")
+        return Reply("No encontré datos en la imagen." if len(atts) == 1 else "No encontré datos en ninguna imagen." + _failed_note(failed))
 
     # Guardamos el resultado "en espera" hasta que se confirme. Si llega otra
     # imagen antes de confirmar, la nueva reemplaza a esta.
@@ -1033,17 +1059,35 @@ def _extract_csv(session: Session, att: Attachment, request: tuple) -> Reply:
 
     # Preview: las primeras 5 filas, con los valores separados por " | ".
     preview = "\n".join(" | ".join(r.values()) for r in rows[:5])
+    head = f"{len(rows)} fila(s) para {name}.csv"
+    if len(atts) > 1:
+        head += f", de {len(atts) - len(failed)} de {len(atts)} imágenes"
+    notes_ = ("\nSe cortó antes de terminar." if stopped else "") + _failed_note(failed)
     return Reply(
-        f"{len(rows)} fila(s) para {name}.csv:\n\n{preview}",
+        f"{head}:\n\n{preview}{notes_}",
         actions=[Action("guardar", "Guardar"), Action("cancelar", "Cancelar")],
     )
+
+
+def _failed_note(failed: list[str]) -> str:
+    return "\nNo pude leer: " + ", ".join(failed) if failed else ""
+
+
+def _save_many(session: Session, atts: list[Attachment]) -> Reply:
+    """Varios archivos sin pedido de extracción: se guardan todos, sin ofrecer resumen."""
+    folder, session.folder = session.folder, None
+    saved = [notes.save_file(att.name, att.data, folder) for att in atts]
+    lines = "\n".join(f"- {p.relative_to(notes.DATA_DIR)}" for p in saved)
+    return Reply(f"Guardados {len(saved)} archivos:\n{lines}", artifacts=[_artifact("file", p) for p in saved])
 
 
 def _handle_attachment(msg: Message, session: Session) -> Reply:
     request = parse_request(msg.text)
     if request:
-        return _extract_csv(session, msg.attachment, request)
+        return _extract_csv(session, msg.attachments, request)
     # Sin pedido de extracción: solo guardamos y preguntamos (esto NO usa el modelo).
+    if len(msg.attachments) > 1:
+        return _save_many(session, msg.attachments)
     return _save_and_offer_summary(session, msg.attachment)
 
 
@@ -1132,7 +1176,7 @@ def _uses_ai(msg: Message) -> bool:
     if msg.action:
         # «Sí» a un permiso retoma el turno de la IA (vuelve a llamar al modelo); «No» no.
         return msg.action.partition(":")[0] == "resumir" or msg.action in ("perm:si", "perm:siempre")
-    if msg.attachment:
+    if msg.attachments:
         return parse_request(msg.text) is not None
     text = msg.text.strip()
     if text.startswith("/"):
@@ -2076,7 +2120,7 @@ def _dispatch(msg: Message) -> Reply:
     if msg.action:
         return _handle_action(msg, session)
 
-    if msg.attachment:
+    if msg.attachments:
         return _handle_attachment(msg, session)
 
     text = msg.text.strip()

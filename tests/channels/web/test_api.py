@@ -103,6 +103,18 @@ def test_upload_caption_asks_for_extraction(client, monkeypatch):
     assert seen == [(b"bytes", "image/jpeg", ["fecha"])]
 
 
+def test_upload_many_images_make_one_csv(client, monkeypatch):
+    monkeypatch.setattr(core.extract, "img_to_rows", lambda data, mime, fields: [{"fecha": data.decode()}])
+
+    reply = client.post(
+        "/api/upload",
+        files=[("file", ("a.jpg", b"uno", "image/jpeg")), ("file", ("b.jpg", b"dos", "image/jpeg"))],
+        data={"text": "gastos: fecha"},
+    ).json()
+
+    assert "2 fila(s) para gastos.csv, de 2 de 2 imágenes" in reply["text"]
+
+
 def test_upload_with_empty_filename_is_not_a_file(client):
     # El parser multipart trata un nombre vacío como campo de texto, no como
     # archivo; un navegador siempre manda el nombre.

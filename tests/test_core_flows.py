@@ -37,6 +37,11 @@ def fake_rows(monkeypatch, rows):
     return calls
 
 
+def send_files(caption: str, names: list[str], session_id: str = "s1"):
+    atts = [core.Attachment(data=n.encode(), name=n, mime="image/jpeg") for n in names]
+    return core.handle(core.Message(text=caption, attachments=atts, session_id=session_id))
+
+
 # --- parse_request -----------------------------------------------------------
 
 
@@ -606,3 +611,56 @@ def test_requests_in_different_conversations_do_not_wait_for_each_other(ai_mode,
     first.join()
 
     assert reply.text == "otra"
+
+
+# --- varias imágenes → un solo CSV -------------------------------------------
+
+
+def test_many_images_join_their_rows_in_one_confirmation(monkeypatch):
+    seen = []
+
+    def fake(data, mime, fields):
+        seen.append(data)
+        return [{"a": data.decode()}]
+
+    monkeypatch.setattr(core.extract, "img_to_rows", fake)
+
+    reply = send_files("lote: a", ["1.jpg", "2.jpg", "3.jpg"])
+
+    assert seen == [b"1.jpg", b"2.jpg", b"3.jpg"]
+    assert "3 fila(s) para lote.csv, de 3 de 3 imágenes" in reply.text
+    assert [a.id for a in reply.actions] == ["guardar", "cancelar"]
+    press("guardar")
+    assert (notes.DATA_DIR / "lote.csv").read_text().splitlines() == ["a", "1.jpg", "2.jpg", "3.jpg"]
+
+
+def test_one_failing_image_does_not_drop_the_others(monkeypatch):
+    def fake(data, mime, fields):
+        if data == b"2.jpg":
+            raise RuntimeError("roto")
+        return [{"a": data.decode()}]
+
+    monkeypatch.setattr(core.extract, "img_to_rows", fake)
+
+    reply = send_files("lote: a", ["1.jpg", "2.jpg", "3.jpg"])
+
+    assert "2 fila(s) para lote.csv, de 2 de 3 imágenes" in reply.text
+    assert "No pude leer: 2.jpg" in reply.text
+
+
+def test_too_many_images_are_refused_without_calling_the_model(monkeypatch):
+    forbidden = fake_rows(monkeypatch, [{"a": "1"}])
+
+    reply = send_files("lote: a", [f"{i}.jpg" for i in range(core.MAX_CSV_IMAGES + 1)])
+
+    assert "demasiadas imágenes" in reply.text
+    assert forbidden == []
+
+
+def test_many_files_without_request_are_only_saved(monkeypatch):
+    forbidden = fake_rows(monkeypatch, [])
+
+    reply = send_files("", ["a.jpg", "b.jpg"])
+
+    assert reply.text.startswith("Guardados 2 archivos")
+    assert reply.actions == [] and forbidden == []

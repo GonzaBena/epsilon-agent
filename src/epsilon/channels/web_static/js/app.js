@@ -49,7 +49,7 @@ const CURRENT_KEY = "epsilon.current"; // la que tenías abierta, para volver a 
 // Misma forma que acepta el servidor (conversations.py); un test vigila que coincidan.
 const CONVERSATION_ID = /^\d{8}-\d{6}-[0-9a-f]{4}$/;
 
-let pendingFile = null;      // archivo elegido, esperando que se envíe
+let pendingFiles = [];       // archivos elegidos, esperando que se envíen (varias imágenes → un solo CSV)
 let previewUrl = null;       // dirección local (blob:) de la miniatura; hay que liberarla
 let wantsCsv = false;        // true si el archivo se pidió con el atajo «Imagen a CSV»
 const CSV_TEMPLATE = "nombre: campo1, campo2"; // ejemplo del pedido de CSV
@@ -123,7 +123,7 @@ function setReadOnly(on) {
 const crumbAi = document.getElementById("crumb-ai");
 function showAiChip() {
   crumbAi.hidden = !aiMode();
-  if (!pendingFile) input.placeholder = defaultPlaceholder(); // con archivo, manda el del CSV
+  if (!pendingFiles.length) input.placeholder = defaultPlaceholder(); // con archivo, manda el del CSV
 }
 
 function chooseMode(mode) {
@@ -826,10 +826,10 @@ function postJson(body) {
     });
 }
 
-function postFile(file, text) {
-  // FormData arma un formulario "multipart" con el archivo y el texto.
+function postFile(files, text) {
+  // FormData arma un formulario "multipart" con los archivos (el mismo campo, repetido) y el texto.
   const form = new FormData();
-  form.append("file", file);
+  for (const file of files) form.append("file", file);
   form.append("text", text);
   if (conversationId) form.append("conversation_id", conversationId);
   if (!started) form.append("mode", chatMode);
@@ -862,24 +862,27 @@ function pressAction(message, box, action) {
 }
 
 // --- Archivo adjunto -------------------------------------------------------------
-function setFile(file) {
+// Uno o varios archivos (selector, arrastrar, pegar). Los que no sirven se avisan uno por uno y no frenan a los demás.
+async function setFiles(list) {
   if (readOnly) return;
-  if (file.size > maxUploadMb * 1024 * 1024) {
-    addMessage({ role: "bot", error: true, text: `Ese archivo pesa más de ${maxUploadMb} MB.` });
+  const valid = [];
+  for (const file of list) {
+    if (file.size > maxUploadMb * 1024 * 1024) {
+      addMessage({ role: "bot", error: true, text: `${file.name} pesa más de ${maxUploadMb} MB.` });
+    } else if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
+      addMessage({ role: "bot", error: true, text: `${file.name}: solo puedo recibir imágenes y PDFs.` });
+    } else {
+      valid.push(file);
+    }
+  }
+  if (!valid.length) return;
+  // En un chat de modo IA los archivos se guardan y quedan mencionados en el cuadro (salvo «Imagen a CSV»).
+  if (aiMode() && !wantsCsv) {
+    for (const file of valid) await uploadToLibrary(file);
     return;
   }
-  if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
-    addMessage({ role: "bot", error: true, text: "Solo puedo recibir imágenes y PDFs." });
-    return;
-  }
-  // En un chat de modo IA el archivo se guarda y queda mencionado en el cuadro (salvo «Imagen a CSV»).
-  if (aiMode() && !wantsCsv) return uploadToLibrary(file);
-  pendingFile = file;
-  chipName.textContent = file.name;
-  chipName.title = file.name; // el nombre completo, por si se corta
-  showPreview(file);
-  chip.hidden = false;
-  input.placeholder = FILE_PLACEHOLDER;
+  pendingFiles = pendingFiles.concat(valid);
+  showChip();
   input.focus();
   // Si se eligió con «Imagen a CSV», dejamos un ejemplo del pedido ya seleccionado:
   // escribir encima lo reemplaza. Si ya habías escrito algo, no se toca.
@@ -891,6 +894,17 @@ function setFile(file) {
       input.select();
     }
   }
+}
+
+// La ficha del adjunto: la miniatura del primero y su nombre (o cuántos son).
+function showChip() {
+  const first = pendingFiles[0];
+  const names = pendingFiles.map((file) => file.name).join("\n");
+  chipName.textContent = pendingFiles.length === 1 ? first.name : `${pendingFiles.length} archivos`;
+  chipName.title = names; // los nombres completos, por si se corta
+  showPreview(first);
+  chip.hidden = false;
+  input.placeholder = FILE_PLACEHOLDER;
 }
 
 // Sube el archivo a la biblioteca (sin llamar a la IA) y deja «@ruta » al final del cuadro, sin enviar.
@@ -937,7 +951,7 @@ function releasePreview() {
 
 function clearFile() {
   releasePreview();
-  pendingFile = null;
+  pendingFiles = [];
   fileInput.value = ""; // permite elegir el mismo archivo otra vez
   chip.hidden = true;
   input.placeholder = defaultPlaceholder();
@@ -1010,7 +1024,7 @@ fileInput.addEventListener("cancel", () => {
   wantsCsv = false;
 });
 fileInput.addEventListener("change", () => {
-  if (fileInput.files[0]) setFile(fileInput.files[0]);
+  if (fileInput.files.length) setFiles([...fileInput.files]);
 });
 chipRemove.addEventListener("click", clearFile);
 
@@ -1039,15 +1053,15 @@ window.addEventListener("drop", (event) => {
   event.preventDefault(); // evita que el navegador abra el archivo
   dragDepth = 0;
   drop.hidden = true;
-  if (event.dataTransfer.files[0]) setFile(event.dataTransfer.files[0]);
+  if (event.dataTransfer.files.length) setFiles([...event.dataTransfer.files]);
 });
 
 // Pegar una captura de pantalla (Ctrl+V) la adjunta.
 window.addEventListener("paste", (event) => {
-  const file = event.clipboardData && event.clipboardData.files[0];
-  if (file) {
+  const files = event.clipboardData ? [...event.clipboardData.files] : [];
+  if (files.length) {
     event.preventDefault();
-    setFile(file);
+    setFiles(files);
   }
 });
 
@@ -1080,7 +1094,7 @@ async function submit() {
   await newChatReady; // ya hay id de conversación (si el servidor responde)
   if (busy || checkingModel) return; // un Enter doble: el segundo ve el cuadro ya vacío y no hace nada
   const text = input.value.trim();
-  if (!text && !pendingFile) return;
+  if (!text && !pendingFiles.length) return;
 
   checkingModel = true;
   try {
@@ -1098,14 +1112,15 @@ async function submit() {
     checkingModel = false;
   }
 
-  if (pendingFile) {
-    // Con archivo: el texto es el "pie" (por ejemplo «gastos: fecha, total»).
-    const file = pendingFile;
-    addMessage({ role: "user", text: text ? `${file.name}\n${text}` : file.name });
+  if (pendingFiles.length) {
+    // Con archivos: el texto es el "pie" (por ejemplo «gastos: fecha, total»).
+    const files = pendingFiles;
+    const names = files.map((file) => file.name).join("\n");
+    addMessage({ role: "user", text: text ? `${names}\n${text}` : names });
     clearFile();
     input.value = "";
     resizeInput();
-    ask(postFile(file, text));
+    ask(postFile(files, text));
   } else {
     addMessage({ role: "user", text });
     input.value = "";
