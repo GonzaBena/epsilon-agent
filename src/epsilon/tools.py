@@ -444,6 +444,7 @@ TOOLS = (
         ai_action="workspace",
         ai_help="ir a otro espacio de trabajo (del 1 al 10) o mandar la ventana con el foco a otro",
         ai_arg="el número («3»), «anterior», o «mover 3» para mandar la ventana con el foco al espacio 3",
+        ai_tips="Moverte de espacio va SIEMPRE al final: primero elegí todo lo que hace falta (qué poner, qué buscar) y recién después cambiá de espacio y abrí lo elegido.",
     ),
     Tool(
         "Enfocar una ventana",

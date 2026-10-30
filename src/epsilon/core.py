@@ -2,7 +2,7 @@ from collections.abc import Callable
 import csv
 from contextlib import nullcontext
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from itertools import count
 from pathlib import Path
@@ -1284,9 +1284,24 @@ def _loop(turn: chat.Turn, artifacts: list[Artifact], session: Session, check_li
             if not step.text or not step.text.strip():
                 return Reply(EMPTY_ANSWER, artifacts=artifacts)
             return Reply(step.text, artifacts=artifacts, ai=True)
+        step = replace(step, calls=_reads_first(step.calls))
         question = _run_calls(PendingTool(turn, step, 0, [], artifacts), session)
         if question:
             return question
+
+
+_KIND_RANK = {"read": 0, "write": 1, "delete": 2}
+
+
+def _reads_first(calls: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Las llamadas de un mismo turno en el orden en que se ejecutan: primero lo que solo mira o busca, después lo que
+    escribe o mueve y al final lo que borra (estable: entre iguales queda el orden del modelo). Así «poné música en el
+    escritorio 3» elige antes de moverte. Lo desconocido va con las lecturas: se bloquea igual y no mueve nada."""
+    def rank(call: tuple[str, str]) -> int:
+        tool = tools.route(call[0])
+        return _KIND_RANK.get(tool.ai, 0) if tool else 0
+
+    return sorted(calls, key=rank)
 
 
 def _run_calls(state: PendingTool, session: Session) -> Reply | None:

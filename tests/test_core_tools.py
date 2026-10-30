@@ -232,7 +232,8 @@ def test_remaining_calls_run_after_yes(script):
 
     assert reply.text == "listo"
     sent = results(script.seen[1][0])
-    assert len(sent) == 2 and "Resultado de nota" in sent[0] and "switch" in sent[1]
+    # la búsqueda corre antes que el guardado (las lecturas van primero)
+    assert len(sent) == 2 and "switch" in sent[0] and "Resultado de nota" in sent[1]
 
 
 def test_yes_for_the_conversation_stops_asking_in_that_conversation_only(script):
