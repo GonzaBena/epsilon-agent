@@ -1,6 +1,6 @@
 import asyncio
 from collections import OrderedDict
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 import html
 import itertools
@@ -449,15 +449,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await respond(update.message, context, chat_id, msg, said=update.message.text)
 
 
-async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Foto, imagen o PDF. El texto que lo acompaña (caption) viaja como texto."""
-    chat_id = update.effective_chat.id
-
+async def download_attachment(update: Update, number: int = 0) -> core.Attachment | None:
+    """Baja la foto o el documento del mensaje. None si pesa de más (ya se avisó). `number` distingue
+    el nombre de las fotos de un álbum, que llegan en el mismo segundo."""
     if update.message.photo:
         file = await update.message.photo[-1].get_file()
         mime = "image/jpeg"
         # Las fotos no traen nombre, así que le armamos uno con la hora.
-        name = f"foto_{datetime.now():%H%M%S}.jpg"
+        name = f"foto_{datetime.now():%H%M%S}{f'_{number}' if number else ''}.jpg"
     else:
         doc = update.message.document
         # Si pesa más de lo que Telegram deja bajar, avisamos antes de intentar.
@@ -465,19 +464,76 @@ async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "Ese archivo pesa más de 20 MB; no puedo bajarlo."
             )
-            return
+            return None
         file = await doc.get_file()
         mime = doc.mime_type or "image/jpeg"
         name = doc.file_name or "archivo"
 
     data = bytes(await file.download_as_bytearray())
-    msg = new_message(
-        chat_id,
-        text=update.message.caption or "",
-        attachment=core.Attachment(data=data, name=name, mime=mime),
-    )
+    return core.Attachment(data=data, name=name, mime=mime)
+
+
+# Un álbum de Telegram llega como mensajes sueltos con el mismo `media_group_id` (hasta 10 por álbum, y el pie
+# solo en uno). Los juntamos en memoria y, cuando pasa ALBUM_WAIT s sin que llegue otro, van al núcleo como UN
+# mensaje con todos los archivos (así «gastos: fecha» sobre 10 fotos da un solo CSV).
+ALBUM_WAIT = 1.5
+ALBUMS: dict[tuple[int, str], "Album"] = {}
+
+
+@dataclass
+class Album:
+    message: object  # el primer mensaje: en él se contesta
+    context: object
+    attachments: list = field(default_factory=list)
+    caption: str = ""
+    task: asyncio.Task | None = None
+
+
+def add_to_album(update: Update, context, chat_id: int, attachment: core.Attachment) -> None:
+    key = (chat_id, str(update.message.media_group_id))
+    album = ALBUMS.get(key)
+    if album is None:
+        album = ALBUMS[key] = Album(update.message, context)
+    if len(album.attachments) < core.MAX_CSV_IMAGES:
+        album.attachments.append(attachment)
+    album.caption = album.caption or (update.message.caption or "")
+    if album.task:
+        album.task.cancel()  # llegó otra pieza: el reloj empieza de nuevo
+    album.task = asyncio.get_running_loop().create_task(flush_album(key))
+
+
+async def flush_album(key: tuple[int, str]) -> None:
+    await asyncio.sleep(ALBUM_WAIT)
+    album = ALBUMS.pop(key, None)
+    if album is None:
+        return
+    chat_id = key[0]
+    names = "\n".join(a.name for a in album.attachments)
+    msg = new_message(chat_id, text=album.caption, attachments=album.attachments)
+    try:
+        await respond(album.message, album.context, chat_id, msg, said=f"{names}\n{album.caption}" if album.caption.strip() else names)
+    except Exception as e:  # una tarea suelta no tiene quién vea su error
+        print(f"Error con el álbum de Telegram: {config.redact(repr(e))}")
+
+
+async def on_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Foto, imagen o PDF. El texto que lo acompaña (caption) viaja como texto. Los de un álbum se juntan."""
+    chat_id = update.effective_chat.id
+    group = getattr(update.message, "media_group_id", None)
+    number = 0
+    if group:
+        album = ALBUMS.get((chat_id, str(group)))
+        number = (len(album.attachments) if album else 0) + 1
+    attachment = await download_attachment(update, number)
+    if attachment is None:
+        return
+    if group:
+        add_to_album(update, context, chat_id, attachment)
+        return
+
     caption = update.message.caption or ""
-    await respond(update.message, context, chat_id, msg, said=f"{name}\n{caption}" if caption.strip() else name)
+    msg = new_message(chat_id, text=caption, attachment=attachment)
+    await respond(update.message, context, chat_id, msg, said=f"{attachment.name}\n{caption}" if caption.strip() else attachment.name)
 
 
 def _audio_suffix(media) -> str:

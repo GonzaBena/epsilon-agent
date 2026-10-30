@@ -878,6 +878,65 @@ def test_a_file_carries_the_ai_conversation(seen_by_core):
     assert seen_by_core[0].conversation_id == cid
 
 
+def album_piece(group, name, caption=None, size=10):
+    update = FakeUpdate()
+    update.message.document = SimpleNamespace(
+        file_size=size, mime_type="image/jpeg", file_name=name, get_file=FakeMedia().get_file
+    )
+    update.message.media_group_id = group
+    update.message.caption = caption
+    return update
+
+
+def send_album(pieces):
+    async def run():
+        context = FakeContext()
+        for update in pieces:
+            await telegram.on_file(update, context)
+        await asyncio.sleep(telegram.ALBUM_WAIT * 4)  # deja pasar la espera del álbum
+
+    asyncio.run(run())
+
+
+def test_an_album_reaches_the_core_as_one_message(seen_by_core, monkeypatch):
+    monkeypatch.setattr(telegram, "ALBUM_WAIT", 0.02)
+    first = album_piece("g1", "a.jpg", caption="gastos: fecha")
+
+    send_album([first, album_piece("g1", "b.jpg"), album_piece("g1", "c.jpg")])
+
+    [msg] = seen_by_core
+    assert msg.text == "gastos: fecha"
+    assert [a.name for a in msg.attachments] == ["a.jpg", "b.jpg", "c.jpg"]
+    assert first.replies == ["ok"]  # se contesta una sola vez, en el primero
+    assert telegram_conversation()[1][0]["text"] == "a.jpg\nb.jpg\nc.jpg\ngastos: fecha"
+
+
+def test_the_caption_can_come_on_any_piece_of_the_album(seen_by_core, monkeypatch):
+    monkeypatch.setattr(telegram, "ALBUM_WAIT", 0.02)
+
+    send_album([album_piece("g2", "a.jpg"), album_piece("g2", "b.jpg", caption="gastos: fecha")])
+
+    assert seen_by_core[0].text == "gastos: fecha"
+
+
+def test_two_albums_are_not_mixed(seen_by_core, monkeypatch):
+    monkeypatch.setattr(telegram, "ALBUM_WAIT", 0.02)
+
+    send_album([album_piece("x", "a.jpg"), album_piece("y", "b.jpg"), album_piece("x", "c.jpg")])
+
+    assert sorted(tuple(a.name for a in m.attachments) for m in seen_by_core) == [("a.jpg", "c.jpg"), ("b.jpg",)]
+
+
+def test_an_oversize_piece_of_an_album_is_skipped(seen_by_core, monkeypatch):
+    monkeypatch.setattr(telegram, "ALBUM_WAIT", 0.02)
+    big = album_piece("g3", "grande.jpg", size=telegram.MAX_DOWNLOAD + 1)
+
+    send_album([album_piece("g3", "a.jpg"), big])
+
+    assert [a.name for a in seen_by_core[0].attachments] == ["a.jpg"]
+    assert "20 MB" in big.replies[0]
+
+
 def test_a_voice_note_carries_the_ai_conversation(heard):
     open_ai_chat()
     cid = conversations.current("telegram")
