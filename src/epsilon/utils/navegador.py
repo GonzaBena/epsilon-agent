@@ -1107,7 +1107,7 @@ def _keeping_focus(func):
                 if outer and guard is not None:
                     _guard = None
                     _tidy_tabs(guard)
-                    if guard.keep and not guard.was_running:  # sonando en una ventana que abrimos nosotros: que no ocupe lugar
+                    if guard.keep:  # sonando en una ventana que abrimos nosotros (navegador o web app): que no ocupe lugar
                         hyprland.park_new_windows(guard.windows)
 
     return wrapper

@@ -1274,16 +1274,6 @@ def test_music_left_playing_in_a_window_epsilon_opened_is_parked(monkeypatch):
     assert parked == [{"0xaaa"}]
 
 
-def test_nothing_is_parked_when_chromium_was_already_open(monkeypatch):
-    FakeYTMusic(monkeypatch)
-    parked = []
-    monkeypatch.setattr(navegador.hyprland, "park_new_windows", lambda before: parked.append(before))
-
-    navegador.play_music("playlist", "PLabcdefghij")
-
-    assert parked == []
-
-
 def test_music_search_without_results_says_so_and_still_closes_the_tab(monkeypatch):
     chromium = music_search_setup(monkeypatch, [])
 

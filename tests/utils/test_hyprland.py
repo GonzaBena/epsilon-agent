@@ -528,14 +528,17 @@ def test_new_chromium_windows_go_silently_to_the_first_empty_workspace(monkeypat
     assert dispatches(fake) == [("dispatch", 'hl.dsp.window.move({ workspace = "4", follow = false, window = "address:0xeee" })')]
 
 
-def test_parking_leaves_web_apps_and_old_windows_alone(monkeypatch, windows):
+def test_a_new_web_app_window_is_parked_too_but_old_windows_are_not(monkeypatch, windows):
     fake = FakeHyprland(monkeypatch, lua=True)
     app = {"address": "0xfff", "class": "chrome-music.youtube.com__-Default", "title": "x", "workspace": {"id": 1, "name": "1"}, "mapped": True, "hidden": False, "focusHistoryID": 0}
     windows["clients"].append(app)
 
     hyprland.park_new_windows({"0xaaa", "0xbbb", "0xccc", "0xddd"})
-    hyprland.park_new_windows(None)
+    assert dispatches(fake) == [("dispatch", 'hl.dsp.window.move({ workspace = "4", follow = false, window = "address:0xfff" })')]
 
+    fake.calls.clear()
+    hyprland.park_new_windows({"0xaaa", "0xbbb", "0xccc", "0xddd", "0xfff"})  # ya estaba: no se toca
+    hyprland.park_new_windows(None)
     assert dispatches(fake) == []
 
 

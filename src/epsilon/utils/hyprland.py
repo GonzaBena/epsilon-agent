@@ -325,6 +325,11 @@ def restore_focus(snap: Focus | None) -> None:
 CHROMIUM_CLASSES = ("chromium", "chromium-browser")  # la ventana normal del navegador; una web app tiene otra clase («chrome-…__»)
 
 
+def _is_chromium(window: dict) -> bool:
+    name = str(window.get("class", "")).lower()
+    return name in CHROMIUM_CLASSES or name.startswith("chrome-")
+
+
 def window_addresses() -> set[str] | None:
     """Las direcciones de las ventanas abiertas ahora, o None si no se puede saber."""
     try:
@@ -334,14 +339,14 @@ def window_addresses() -> set[str] | None:
 
 
 def park_new_windows(before: set[str] | None) -> None:
-    """Manda, sin seguirlas, las ventanas de Chromium que aparecieron después de `before` al primer espacio de trabajo
-    vacío (1 a 10), para que lo que quedó sonando no ocupe el lugar donde estás. Las web apps no se tocan. Sin lugar
+    """Manda, sin seguirlas, las ventanas de Chromium (y de sus web apps) que aparecieron después de `before` al primer
+    espacio de trabajo vacío (1 a 10), para que lo que quedó sonando no ocupe el lugar donde estás. Sin lugar
     vacío, o ante cualquier problema, no hace nada."""
     if before is None:
         return
     try:
         visible = [w for w in ventanas._load("clients") if isinstance(w, dict) and ventanas._visible(w) and _ADDRESS.fullmatch(str(w.get("address", "")))]
-        mine = [w for w in visible if w["address"] not in before and str(w.get("class", "")).lower() in CHROMIUM_CLASSES]
+        mine = [w for w in visible if w["address"] not in before and _is_chromium(w)]
         if not mine:
             return
         used = {w["workspace"]["id"] for w in visible if w not in mine}
