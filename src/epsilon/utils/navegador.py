@@ -552,7 +552,7 @@ def _blank_page() -> Tab | None:
     pages = _raw_tabs()
     if len(pages) != 1 or not pages[0].get("webSocketDebuggerUrl"):
         return None
-    if not str(pages[0].get("url", "")).startswith(("about:blank", "chrome://newtab", "chrome://new-tab-page")):
+    if not _is_blank(str(pages[0].get("url", ""))):
         return None
     return _tab(pages[0])
 
@@ -998,6 +998,7 @@ def _play_video(video: str) -> str:
     if not reglas.VIDEO_ID.fullmatch(video):
         raise NavegadorError("Ese id de video no es válido.")
     tab = open_url(f"https://www.youtube.com/watch?v={video}")
+    _keep_tab(tab.id)
     state: dict = {}
 
     def look() -> dict:
@@ -1026,13 +1027,85 @@ def _play_video(video: str) -> str:
     return f"Reproduciendo en YouTube: {title}"
 
 
+class _TabGuard:
+    """Las pestañas que había antes de una tarea de música y si Chromium estaba abierto, para dejarlo como estaba."""
+
+    def __init__(self, before: set[str] | None, was_running: bool):
+        self.before, self.was_running, self.keep = before, was_running, set()
+
+
+_guard: _TabGuard | None = None
+_guard_depth = 0
+_guard_lock = threading.Lock()
+
+
+def _keep_tab(tab_id: str) -> None:
+    """La pestaña donde quedó sonando la música: la limpieza de la tarea no la cierra (se cortaría la música)."""
+    if _guard is not None:
+        _guard.keep.add(tab_id)
+
+
+def _snapshot_tabs() -> _TabGuard:
+    try:
+        check_browser()
+    except NavegadorError:
+        return _TabGuard(set(), False)  # cerrado: lo que aparezca lo abrió Epsilon
+    try:
+        return _TabGuard({str(i.get("id")) for i in _raw_tabs()}, True)
+    except NavegadorError:
+        return _TabGuard(None, True)  # no se pudo mirar: no se cierra nada
+
+
+def _is_blank(url: str) -> bool:
+    return url.startswith(("about:blank", "chrome://newtab", "chrome://new-tab-page"))
+
+
+def _tidy_tabs(guard: _TabGuard) -> None:
+    """Cierra las pestañas que abrió la tarea (menos donde suena la música) y, si Chromium estaba cerrado y no queda nada
+    que se use, lo cierra también: todo como estaba antes. Un Chromium que ya estaba abierto nunca se cierra. Cualquier
+    problema se traga: la limpieza no rompe lo que ya salió bien."""
+    if guard.before is None:
+        return
+    try:
+        left = []
+        for item in _raw_tabs():
+            tab_id = str(item.get("id"))
+            if tab_id in guard.before or tab_id in guard.keep:
+                left.append(item)
+                continue
+            _http("GET", f"/json/close/{tab_id}")
+            _opened.discard(tab_id)
+        if not guard.was_running and not guard.keep:
+            version = _http("GET", "/json/version")
+            ws = str(version.get("webSocketDebuggerUrl", "")) if isinstance(version, dict) else ""
+            if ws and all(_is_blank(str(i.get("url", ""))) for i in left):
+                _cdp(ws, "Browser.close")
+    except NavegadorError:
+        return
+
+
 def _keeping_focus(func):
-    """La música abre ventanas: al terminar se le devuelve el foco a lo que la persona tenía (ver hyprland.keep_focus)."""
+    """La música abre ventanas y pestañas: al terminar se deja todo como estaba (pestañas y navegador: `_tidy_tabs`; foco:
+    `hyprland.keep_focus`). Con tareas anidadas (leer las playlists llama a varias funciones) solo la de afuera limpia."""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        global _guard, _guard_depth
         with hyprland.keep_focus():
-            return func(*args, **kwargs)
+            with _guard_lock:
+                outer = _guard_depth == 0
+                _guard_depth += 1
+            if outer:
+                _guard = _snapshot_tabs()
+            guard = _guard
+            try:
+                return func(*args, **kwargs)
+            finally:
+                with _guard_lock:
+                    _guard_depth -= 1
+                if outer and guard is not None:
+                    _guard = None
+                    _tidy_tabs(guard)
 
     return wrapper
 
@@ -1059,6 +1132,7 @@ def play_music(kind: str, value: str, shuffle: bool = False) -> str:
     else:
         raise NavegadorError("Solo sé poner una playlist o canciones.")
     tab = open_url(url)
+    _keep_tab(tab.id)
     if tab.host != MUSIC_HOST:
         raise NavegadorError("La página no quedó en YouTube Music.")
     spot = None

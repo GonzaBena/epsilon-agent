@@ -1195,6 +1195,60 @@ def test_music_search_lists_playlists_from_a_background_tab_and_closes_it(monkey
     assert "2. Heavy metal para entrenar" in text and "id: RDCLAK5uy_lFuA--WIEukXUJ93Hk" in text
 
 
+def test_a_music_task_leaves_the_tabs_you_had_and_closes_the_ones_it_opened(monkeypatch):
+    chromium = music_search_setup(monkeypatch, RESULTS)
+    chromium.tabs.insert(0, page("AAAA1111", "Banco", "https://mi-banco.com/"))
+    closed_browser = []
+    inner = navegador._cdp
+    monkeypatch.setattr(navegador, "_cdp", lambda ws, method, params=None: closed_browser.append(method) if method == "Browser.close" else inner(ws, method, params))
+
+    navegador.music_search("rock")
+
+    assert ("GET", "/json/close/AAAA1111") not in chromium.calls
+    assert ("GET", "/json/close/NEWTAB123456") in chromium.calls
+    assert closed_browser == []  # el navegador ya estaba abierto: no se cierra
+
+
+def test_if_epsilon_had_to_open_chromium_for_a_read_it_closes_it_again(monkeypatch):
+    chromium = music_search_setup(monkeypatch, RESULTS)
+    chromium.tabs.clear()
+    chromium.tabs.append(page("BLANKTAB0001", "", "about:blank"))
+    state = {"up": False}
+    original_http = navegador._http
+
+    def http(method, path):
+        if path == "/json/version" and not state["up"]:
+            raise navegador.NavegadorError("cerrado")
+        return original_http(method, path)
+
+    def launch():
+        state["up"] = True
+        return True
+
+    inner = navegador._cdp
+    methods = []
+    monkeypatch.setattr(navegador, "_http", http)
+    monkeypatch.setattr(navegador, "ensure_running", launch)
+    monkeypatch.setattr(navegador, "_cdp", lambda ws, method, params=None: methods.append(method) or ({} if method == "Browser.close" else inner(ws, method, params)))
+    monkeypatch.setattr(navegador, "_background_tab", lambda url: "BLANKTAB0001")
+
+    navegador.music_search("rock")
+
+    assert "Browser.close" in methods
+
+
+def test_playing_music_keeps_the_tab_where_it_plays_and_does_not_close_chromium(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+    methods = []
+    inner = yt.cdp
+    monkeypatch.setattr(navegador, "_cdp", lambda ws, method, params=None: methods.append(method) or inner(ws, method, params))
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert ("GET", "/json/close/NEWTAB123456") not in yt.chromium.calls
+    assert "Browser.close" not in methods
+
+
 def test_music_search_without_results_says_so_and_still_closes_the_tab(monkeypatch):
     chromium = music_search_setup(monkeypatch, [])
 
