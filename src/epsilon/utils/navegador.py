@@ -1032,6 +1032,7 @@ class _TabGuard:
 
     def __init__(self, before: set[str] | None, was_running: bool):
         self.before, self.was_running, self.keep = before, was_running, set()
+        self.windows = hyprland.window_addresses()  # las ventanas de antes: lo nuevo que quede abierto se aparta
 
 
 _guard: _TabGuard | None = None
@@ -1106,6 +1107,8 @@ def _keeping_focus(func):
                 if outer and guard is not None:
                     _guard = None
                     _tidy_tabs(guard)
+                    if guard.keep and not guard.was_running:  # sonando en una ventana que abrimos nosotros: que no ocupe lugar
+                        hyprland.park_new_windows(guard.windows)
 
     return wrapper
 

@@ -1249,6 +1249,41 @@ def test_playing_music_keeps_the_tab_where_it_plays_and_does_not_close_chromium(
     assert "Browser.close" not in methods
 
 
+def test_music_left_playing_in_a_window_epsilon_opened_is_parked(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+    state = {"up": False}
+    original_http = navegador._http
+
+    def http(method, path):
+        if path == "/json/version" and not state["up"]:
+            raise navegador.NavegadorError("cerrado")
+        return original_http(method, path)
+
+    def launch():
+        state["up"] = True
+        return True
+
+    parked = []
+    monkeypatch.setattr(navegador, "_http", http)
+    monkeypatch.setattr(navegador, "ensure_running", launch)
+    monkeypatch.setattr(navegador.hyprland, "window_addresses", lambda: {"0xaaa"})
+    monkeypatch.setattr(navegador.hyprland, "park_new_windows", lambda before: parked.append(before))
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert parked == [{"0xaaa"}]
+
+
+def test_nothing_is_parked_when_chromium_was_already_open(monkeypatch):
+    FakeYTMusic(monkeypatch)
+    parked = []
+    monkeypatch.setattr(navegador.hyprland, "park_new_windows", lambda before: parked.append(before))
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert parked == []
+
+
 def test_music_search_without_results_says_so_and_still_closes_the_tab(monkeypatch):
     chromium = music_search_setup(monkeypatch, [])
 

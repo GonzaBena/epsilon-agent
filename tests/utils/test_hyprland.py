@@ -513,3 +513,36 @@ def test_nested_keep_focus_restores_only_once_at_the_end(monkeypatch, windows):
             windows["activewindow"] = windows["clients"][3]
         assert dispatches(fake) == []  # el de adentro no devuelve nada
     assert len(dispatches(fake)) == 1
+
+
+# --- Apartar la ventana que quedó sonando -----------------------------------------------------------------------------------
+
+
+def test_new_chromium_windows_go_silently_to_the_first_empty_workspace(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    new = {"address": "0xeee", "class": "chromium", "title": "YouTube Music", "workspace": {"id": 1, "name": "1"}, "mapped": True, "hidden": False, "focusHistoryID": 0}
+    windows["clients"].append(new)  # ocupados: 1, 2 y 3
+
+    hyprland.park_new_windows({"0xaaa", "0xbbb", "0xccc", "0xddd"})
+
+    assert dispatches(fake) == [("dispatch", 'hl.dsp.window.move({ workspace = "4", follow = false, window = "address:0xeee" })')]
+
+
+def test_parking_leaves_web_apps_and_old_windows_alone(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    app = {"address": "0xfff", "class": "chrome-music.youtube.com__-Default", "title": "x", "workspace": {"id": 1, "name": "1"}, "mapped": True, "hidden": False, "focusHistoryID": 0}
+    windows["clients"].append(app)
+
+    hyprland.park_new_windows({"0xaaa", "0xbbb", "0xccc", "0xddd"})
+    hyprland.park_new_windows(None)
+
+    assert dispatches(fake) == []
+
+
+def test_parking_uses_the_classic_dispatcher_with_a_classic_config(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=False)
+    windows["clients"].append({"address": "0xeee", "class": "chromium", "title": "x", "workspace": {"id": 1, "name": "1"}, "mapped": True, "hidden": False, "focusHistoryID": 0})
+
+    hyprland.park_new_windows({"0xaaa", "0xbbb", "0xccc", "0xddd"})
+
+    assert dispatches(fake) == [("dispatch", "movetoworkspacesilent", "4,address:0xeee")]

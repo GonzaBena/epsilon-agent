@@ -322,6 +322,39 @@ def restore_focus(snap: Focus | None) -> None:
         return
 
 
+CHROMIUM_CLASSES = ("chromium", "chromium-browser")  # la ventana normal del navegador; una web app tiene otra clase («chrome-…__»)
+
+
+def window_addresses() -> set[str] | None:
+    """Las direcciones de las ventanas abiertas ahora, o None si no se puede saber."""
+    try:
+        return {str(w["address"]) for w in ventanas._load("clients") if isinstance(w, dict) and _ADDRESS.fullmatch(str(w.get("address", "")))}
+    except Exception:
+        return None
+
+
+def park_new_windows(before: set[str] | None) -> None:
+    """Manda, sin seguirlas, las ventanas de Chromium que aparecieron después de `before` al primer espacio de trabajo
+    vacío (1 a 10), para que lo que quedó sonando no ocupe el lugar donde estás. Las web apps no se tocan. Sin lugar
+    vacío, o ante cualquier problema, no hace nada."""
+    if before is None:
+        return
+    try:
+        visible = [w for w in ventanas._load("clients") if isinstance(w, dict) and ventanas._visible(w) and _ADDRESS.fullmatch(str(w.get("address", "")))]
+        mine = [w for w in visible if w["address"] not in before and str(w.get("class", "")).lower() in CHROMIUM_CLASSES]
+        if not mine:
+            return
+        used = {w["workspace"]["id"] for w in visible if w not in mine}
+        free = next((n for n in WORKSPACES if n not in used), None)
+        if free is None:
+            return
+        for window in mine:
+            address = window["address"]
+            _dispatch(f'hl.dsp.window.move({{ workspace = "{free}", follow = false, window = "address:{address}" }})', "movetoworkspacesilent", f"{free},address:{address}")
+    except Exception:
+        return
+
+
 @contextmanager
 def keep_focus():
     """Al terminar el bloque (salga bien o mal) vuelve a enfocar lo que tenías al empezar. Si hay varios anidados, solo el
