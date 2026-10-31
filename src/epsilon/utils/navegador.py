@@ -7,6 +7,7 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import functools
 import tempfile
 import threading
 import time
@@ -17,7 +18,7 @@ from websockets.sync.client import connect
 
 from epsilon.data import notes, sites
 from epsilon.settings import config
-from epsilon.utils import navegador_reglas as reglas
+from epsilon.utils import hyprland, navegador_reglas as reglas
 
 # El navegador de la IA: habla con el Chromium de la persona por su puerto de depuración (CDP), SOLO en
 # 127.0.0.1:9222. Sin modelo. Los ÚNICOS puntos que tocan algo de afuera son `_http`, `_cdp`, `_resolve`, `_run`,
@@ -322,12 +323,12 @@ def check_browser() -> None:
         )
 
 
-def ensure_running() -> None:
+def ensure_running() -> bool:
     """Deja Chromium listo con el puerto abierto. Si está cerrado, lo abre (en su propia unidad de systemd, para que
-    reiniciar el servicio de Epsilon no lo cierre). Si ya está abierto SIN el puerto, no lo toca: lo explica."""
+    reiniciar el servicio de Epsilon no lo cierre) y devuelve True. Si ya está abierto SIN el puerto, no lo toca: lo explica."""
     try:
         check_browser()
-        return
+        return False
     except NavegadorError:
         pass
     if _run(["pgrep", "-x", "chromium"]).returncode == 0:
@@ -342,7 +343,7 @@ def ensure_running() -> None:
         time.sleep(0.5)
         try:
             check_browser()
-            return
+            return True
         except NavegadorError:
             continue
     raise NavegadorError("Abrí Chromium pero el puerto de depuración no respondió a tiempo.")
@@ -528,21 +529,42 @@ def _visible(ws_url: str) -> bool:
         return False
 
 
+def _reuse_page(url: str, host: str, always_front: bool = False) -> Tab | None:
+    """Navega a `url` una página ya abierta de `host` (en vez de abrir otra) y la devuelve; None si no hay ninguna. Con
+    varias del mismo sitio (una pestaña olvidada y la ventana de la web app), la VISIBLE: YouTube Music no reproduce en
+    una página oculta. Si no hay ninguna visible, la primera, y se la trae al frente. Una ya visible solo se trae al
+    frente con `always_front`: así no se le mueve el foco a la persona sin necesidad."""
+    pages = [i for i in _raw_tabs() if i.get("id") and i.get("webSocketDebuggerUrl") and reglas.matches(reglas.host_of(str(i.get("url", ""))), [host])]
+    if not pages:
+        return None
+    item = next((i for i in pages if _visible(str(i["webSocketDebuggerUrl"]))), None)
+    ws = str((item or pages[0])["webSocketDebuggerUrl"])
+    if item is None or always_front:
+        _cdp(ws, "Page.bringToFront")
+    _cdp(ws, "Page.navigate", {"url": url})
+    time.sleep(SETTLE_PAUSE)  # que empiece a navegar antes de preguntarle si cargó
+    return _tab(item or pages[0])
+
+
+def _blank_page() -> Tab | None:
+    """La única pestaña en blanco que deja Chromium recién lanzado, para usarla en vez de abrir otra. None si hay más
+    de una pestaña o ya tiene contenido."""
+    pages = _raw_tabs()
+    if len(pages) != 1 or not pages[0].get("webSocketDebuggerUrl"):
+        return None
+    if not str(pages[0].get("url", "")).startswith(("about:blank", "chrome://newtab", "chrome://new-tab-page")):
+        return None
+    return _tab(pages[0])
+
+
 def _webapp_tab(url: str, app_url: str) -> Tab:
     """La página de la web app que sirve para `url`: si ya hay una abierta se navega ahí (cada lanzamiento abriría
     otra ventana); si no, se lanza `omarchy-launch-webapp` con la dirección completa. Chromium la ve como una
     pestaña más (misma sesión de Google). NavegadorError si no sale: quien llama cae a una pestaña normal."""
     app_host = reglas.host_of(app_url)
-    pages = [i for i in _raw_tabs() if i.get("id") and i.get("webSocketDebuggerUrl") and reglas.matches(reglas.host_of(str(i.get("url", ""))), [app_host])]
-    if pages:
-        # Con varias del mismo sitio (una pestaña olvidada y la ventana de la web app), la VISIBLE: YouTube Music no
-        # reproduce en una página oculta. Si no hay ninguna visible, la primera, y se la trae al frente.
-        item = next((i for i in pages if _visible(str(i["webSocketDebuggerUrl"]))), pages[0])
-        ws = str(item["webSocketDebuggerUrl"])
-        _cdp(ws, "Page.bringToFront")
-        _cdp(ws, "Page.navigate", {"url": url})
-        time.sleep(SETTLE_PAUSE)  # que empiece a navegar antes de preguntarle si cargó
-        return _tab(item)
+    reused = _reuse_page(url, app_host, always_front=True)
+    if reused is not None:
+        return reused
     before = {i.get("id") for i in _raw_tabs()}
     if _run(["omarchy-launch-webapp", url]).returncode != 0:
         raise NavegadorError("No pude abrir la web app.")
@@ -558,7 +580,7 @@ def open_url(url: str, background: bool = False) -> Tab:
     """Abre la dirección en una pestaña nueva (al frente, o con `background` detrás, sin quitarle el foco a nadie).
     Si el sitio tiene una web app de Omarchy (BROWSER_USE_WEBAPPS), usa su ventana en vez de una pestaña.
     Revisa la dirección antes y la dirección final después."""
-    ensure_running()
+    launched = ensure_running()
     url = url.strip()
     _check_destination(url)
     tab = None
@@ -568,6 +590,13 @@ def open_url(url: str, background: bool = False) -> Tab:
             tab = _webapp_tab(url, app_url)
         except NavegadorError:
             tab = None  # sin web app que ande, la pestaña de siempre
+    if tab is None and not background and reglas.host_of(url) == MUSIC_HOST:
+        tab = _reuse_page(url, MUSIC_HOST)  # ya suena YouTube Music en una pestaña: se cambia ahí, sin abrir otra
+    if tab is None and launched and not background:
+        blank = _blank_page()  # Chromium recién lanzado: su pestaña vacía en vez de dejarla sobrando
+        if blank is not None:
+            _cdp(blank.ws, "Page.navigate", {"url": url})
+            tab = blank
     if tab is not None:
         tab_id = tab.id
     elif background:
@@ -997,6 +1026,18 @@ def _play_video(video: str) -> str:
     return f"Reproduciendo en YouTube: {title}"
 
 
+def _keeping_focus(func):
+    """La música abre ventanas: al terminar se le devuelve el foco a lo que la persona tenía (ver hyprland.keep_focus)."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with hyprland.keep_focus():
+            return func(*args, **kwargs)
+
+    return wrapper
+
+
+@_keeping_focus
 def play_music(kind: str, value: str, shuffle: bool = False) -> str:
     """Pone música en YouTube Music: una playlist por id o una búsqueda de canciones. La dirección la arma ESTE código
     (el id ya validado por `reglas.parse_play`; el texto va escapado en la búsqueda) y abre con `open_url`, así que usa
@@ -1068,6 +1109,7 @@ def _music_results(data: object, limit: int = MUSIC_RESULTS) -> list[tuple[str, 
     return found
 
 
+@_keeping_focus
 def music_search(query: str) -> str:
     """Busca playlists en YouTube Music: abre los resultados en una pestaña DETRÁS (no interrumpe lo que suena ni le roba
     el foco a la persona), los lee con MUSIC_SEARCH_JS y la cierra. No reproduce nada: devuelve id, título y detalle
@@ -1102,6 +1144,7 @@ def music_search(query: str) -> str:
 COUNT = re.compile(r"(\d[\d.,]*)\s*(?:pistas|canciones|songs|tracks)", re.IGNORECASE)
 
 
+@_keeping_focus
 def music_library() -> list[tuple[str, str, int]]:
     """Las playlists de la biblioteca de YouTube Music de la persona: (id, título, cantidad de canciones; 0 si no lo
     dice). Primero las que armó ella («N pistas») y después las que arma YouTube (mezclas, recaps), hasta
@@ -1128,6 +1171,7 @@ def music_library() -> list[tuple[str, str, int]]:
     return rows
 
 
+@_keeping_focus
 def music_tracks(ids: list[str]) -> dict[str, list[tuple[str, str]]]:
     """Las primeras INDEX_TRACKS canciones (título, artista) de cada playlist, leídas con PLAYLIST_JS (solo lee) en UNA
     pestaña DETRÁS que va de página en página con direcciones que arma el código (ids validados). Una que no

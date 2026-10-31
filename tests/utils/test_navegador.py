@@ -1,3 +1,4 @@
+import contextlib
 import json
 import subprocess
 from urllib.parse import quote, unquote
@@ -913,6 +914,86 @@ def test_play_music_opens_the_playlist_the_code_built_and_clicks_play(monkeypatc
     assert yt.chromium.requested == "/json/new?" + quote("https://music.youtube.com/playlist?list=PLabcdefghij", safe="")
     assert yt.clicks == [(1, 2)]
     assert result == "Sonando en YouTube Music: Canción Uno"
+
+
+def _record_cdp(monkeypatch, yt):
+    """Anota los (pestaña, método, parámetros) que pasan por CDP; un Page.navigate también cambia la dirección de esa pestaña."""
+    seen, inner = [], yt.cdp
+
+    def wrapper(ws_url, method, params=None):
+        tab_id = ws_url.rsplit("/", 1)[1]
+        seen.append((tab_id, method, params))
+        if method == "Page.navigate":
+            for tab in yt.chromium.tabs:
+                if tab["id"] == tab_id:
+                    tab["url"] = params["url"]
+        return inner(ws_url, method, params)
+
+    monkeypatch.setattr(navegador, "_cdp", wrapper)
+    return seen
+
+
+def test_play_music_changes_the_song_in_the_youtube_music_tab_that_is_already_open(monkeypatch):
+    yt = FakeYTMusic(monkeypatch, already_playing="Vieja")
+    yt.chromium.tabs.append(page("MUSICTAB0001", "Vieja", "https://music.youtube.com/watch?v=old"))
+    seen = _record_cdp(monkeypatch, yt)
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert not any(call[0] == "PUT" for call in yt.chromium.calls)  # nada de pestañas nuevas
+    assert ("MUSICTAB0001", "Page.navigate", {"url": "https://music.youtube.com/playlist?list=PLabcdefghij"}) in seen
+
+
+def test_play_music_does_not_bring_a_visible_tab_to_the_front(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+    yt.chromium.tabs.append(page("MUSICTAB0001", "Vieja", "https://music.youtube.com/watch?v=old"))
+    seen = _record_cdp(monkeypatch, yt)
+    monkeypatch.setattr(navegador, "_visible", lambda ws: True)
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert not any(method == "Page.bringToFront" for _, method, _ in seen)
+
+
+def test_a_freshly_launched_chromium_uses_its_blank_tab_instead_of_opening_another(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+    yt.chromium.tabs.append(page("BLANKTAB0001", "", "about:blank"))
+    seen = _record_cdp(monkeypatch, yt)
+    monkeypatch.setattr(navegador, "ensure_running", lambda: True)
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert not any(call[0] == "PUT" for call in yt.chromium.calls)
+    assert ("BLANKTAB0001", "Page.navigate", {"url": "https://music.youtube.com/playlist?list=PLabcdefghij"}) in seen
+
+
+def test_a_blank_tab_is_not_reused_when_chromium_was_already_running(monkeypatch):
+    yt = FakeYTMusic(monkeypatch)
+    yt.chromium.tabs.append(page("BLANKTAB0001", "", "about:blank"))
+    monkeypatch.setattr(navegador, "ensure_running", lambda: False)
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert yt.chromium.requested.startswith("/json/new?")
+
+
+def test_the_music_functions_give_the_focus_back_when_they_finish(monkeypatch):
+    FakeYTMusic(monkeypatch)
+    entered = []
+
+    @contextlib.contextmanager
+    def keep():
+        entered.append("in")
+        try:
+            yield
+        finally:
+            entered.append("out")
+
+    monkeypatch.setattr(navegador.hyprland, "keep_focus", keep)
+
+    navegador.play_music("playlist", "PLabcdefghij")
+
+    assert entered == ["in", "out"]
 
 
 def test_play_music_recognises_it_started_when_the_first_song_was_already_the_one_playing(monkeypatch):

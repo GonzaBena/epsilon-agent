@@ -1,6 +1,10 @@
 import os
 import re
 import subprocess
+import threading
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from epsilon.utils import ventanas
@@ -267,3 +271,71 @@ def run(command: str) -> None:
     if not _EXEC.fullmatch(command):
         raise ValueError("Ese comando tiene caracteres que no acepto.")
     _dispatch(f'hl.dsp.exec_cmd("{command}")', "exec", command)
+
+
+# --- Devolver el foco ------------------------------------------------------------------------------------------------------
+# Una acción que abre una ventana (poner música en Chromium) le roba el foco a la persona y puede mandarla a otro espacio de
+# trabajo. `keep_focus` guarda la ventana activa antes y la vuelve a enfocar al terminar; es todo o nada: sin Hyprland, o ante
+# cualquier problema, no hace nada y nunca rompe la acción que envuelve.
+
+SETTLE = 0.6  # que la ventana nueva termine de tomar el foco antes de devolverlo (si no, nos pisa)
+
+
+@dataclass(frozen=True)
+class Focus:
+    address: str
+    workspace: int | None
+
+
+_depth = 0
+_depth_lock = threading.Lock()
+
+
+def snapshot_focus() -> Focus | None:
+    """La ventana con el foco y su espacio de trabajo, o None si no se puede saber (sin Hyprland, sin ventana activa)."""
+    try:
+        active = ventanas._load("activewindow")
+        address = str(active.get("address", "")) if isinstance(active, dict) else ""
+        if not _ADDRESS.fullmatch(address):
+            return None
+        number = active["workspace"].get("id")
+        return Focus(address, number if isinstance(number, int) and number in WORKSPACES else None)
+    except Exception:
+        return None
+
+
+def restore_focus(snap: Focus | None) -> None:
+    """Devuelve el foco a la ventana guardada (Hyprland también te lleva a su espacio). Si ya no existe, vuelve al espacio
+    en que estabas. Si ya estás ahí no hace nada; cualquier error se traga."""
+    if snap is None:
+        return
+    try:
+        active = ventanas._load("activewindow")
+        if isinstance(active, dict) and active.get("address") == snap.address:
+            return
+        alive = any(isinstance(w, dict) and w.get("address") == snap.address and ventanas._visible(w) for w in ventanas._load("clients"))
+        if alive:
+            _dispatch(f'hl.dsp.focus({{ window = "address:{snap.address}" }})', "focuswindow", f"address:{snap.address}")
+        elif snap.workspace is not None:
+            go_to_workspace(snap.workspace)
+    except Exception:
+        return
+
+
+@contextmanager
+def keep_focus():
+    """Al terminar el bloque (salga bien o mal) vuelve a enfocar lo que tenías al empezar. Si hay varios anidados, solo el
+    de afuera guarda y devuelve (una sola vez al final de la tarea entera)."""
+    global _depth
+    with _depth_lock:
+        outer = _depth == 0
+        _depth += 1
+    snap = snapshot_focus() if outer else None
+    try:
+        yield
+    finally:
+        with _depth_lock:
+            _depth -= 1
+        if outer and snap is not None:
+            time.sleep(SETTLE)
+            restore_focus(snap)

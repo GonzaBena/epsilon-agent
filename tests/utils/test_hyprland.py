@@ -441,3 +441,75 @@ def test_unbind_hotkey_drops_it_with_classic_config(monkeypatch):
     hyprland.unbind_hotkey("alt, c")
 
     assert ("keyword", "unbind", "ALT, C") in fake.calls
+
+
+# --- Devolver el foco (keep_focus) ----------------------------------------------------------------------------------------
+
+
+def dispatches(fake):
+    return [call for call in fake.calls if call[0] == "dispatch"]
+
+
+def test_restore_focus_refocuses_the_saved_window_when_the_focus_moved(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    snap = hyprland.snapshot_focus()
+    windows["activewindow"] = windows["clients"][3]  # una ventana nueva se quedó con el foco
+
+    hyprland.restore_focus(snap)
+
+    assert snap == hyprland.Focus("0xaaa", 1)
+    assert dispatches(fake)[-1] == ("dispatch", 'hl.dsp.focus({ window = "address:0xaaa" })')
+
+
+def test_restore_focus_does_nothing_if_you_are_still_there(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+
+    hyprland.restore_focus(hyprland.snapshot_focus())
+
+    assert dispatches(fake) == []
+
+
+def test_restore_focus_goes_back_to_the_workspace_if_the_window_is_gone(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    snap = hyprland.snapshot_focus()
+    windows["clients"] = windows["clients"][1:]  # la ventana guardada se cerró
+    windows["activewindow"] = windows["clients"][2]
+
+    hyprland.restore_focus(snap)
+
+    assert dispatches(fake)[-1] == ("dispatch", 'hl.dsp.focus({ workspace = "1" })')
+
+
+def test_without_hyprland_there_is_nothing_to_save_or_restore(monkeypatch):
+    def broken(what):
+        raise hyprland.ventanas.VentanasError("sin Hyprland")
+
+    monkeypatch.setattr(hyprland.ventanas, "_load", broken)
+
+    assert hyprland.snapshot_focus() is None
+    hyprland.restore_focus(hyprland.Focus("0xaaa", 1))  # no lanza
+    with hyprland.keep_focus():
+        pass
+
+
+def test_keep_focus_restores_even_when_the_action_fails(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    monkeypatch.setattr(hyprland.time, "sleep", lambda s: None)
+
+    with pytest.raises(ValueError):
+        with hyprland.keep_focus():
+            windows["activewindow"] = windows["clients"][3]
+            raise ValueError("falló")
+
+    assert dispatches(fake)[-1] == ("dispatch", 'hl.dsp.focus({ window = "address:0xaaa" })')
+
+
+def test_nested_keep_focus_restores_only_once_at_the_end(monkeypatch, windows):
+    fake = FakeHyprland(monkeypatch, lua=True)
+    monkeypatch.setattr(hyprland.time, "sleep", lambda s: None)
+
+    with hyprland.keep_focus():
+        with hyprland.keep_focus():
+            windows["activewindow"] = windows["clients"][3]
+        assert dispatches(fake) == []  # el de adentro no devuelve nada
+    assert len(dispatches(fake)) == 1
